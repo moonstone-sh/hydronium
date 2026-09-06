@@ -1,0 +1,303 @@
+--[[
+  Hydronium WebRef Schema Data
+  Comprehensive WebRef specifications for HTML, SVG, and DOM events.
+--]]
+
+local data = {}
+
+data.events = {
+  {
+    name = "SyntheticEvent",
+    generic = "T",
+    description = "Base synthetic event dispatched by Hydronium DOM listeners",
+    fields = {
+      { name = "target", type = "T", doc = "Event target node" },
+      { name = "currentTarget", type = "T", doc = "Event listener target node" },
+      { name = "type", type = "string", doc = "Event type name" },
+      { name = "timeStamp", type = "number", doc = "Timestamp in milliseconds" },
+      { name = "preventDefault", type = "fun(): void", doc = "Prevents default browser action" },
+      { name = "stopPropagation", type = "fun(): void", doc = "Stops event propagation" },
+      { name = "isDefaultPrevented", type = "fun(): boolean", doc = "Whether default action was prevented" },
+      { name = "isPropagationStopped", type = "fun(): boolean", doc = "Whether propagation was stopped" },
+    },
+  },
+  {
+    name = "SyntheticMouseEvent",
+    parent = "SyntheticEvent<T>",
+    generic = "T",
+    description = "Synthetic mouse event representing clicks, mouse movements, and buttons",
+    fields = {
+      { name = "clientX", type = "number", doc = "X coordinate relative to the client viewport" },
+      { name = "clientY", type = "number", doc = "Y coordinate relative to the client viewport" },
+      { name = "screenX", type = "number", doc = "X coordinate relative to screen" },
+      { name = "screenY", type = "number", doc = "Y coordinate relative to screen" },
+      { name = "pageX", type = "number", doc = "X coordinate relative to full document" },
+      { name = "pageY", type = "number", doc = "Y coordinate relative to full document" },
+      { name = "button", type = "integer", doc = "Button pressed (0: left, 1: middle, 2: right)" },
+      { name = "buttons", type = "integer", doc = "Bitmask of currently pressed buttons" },
+      { name = "altKey", type = "boolean", doc = "Whether Alt key was held" },
+      { name = "ctrlKey", type = "boolean", doc = "Whether Ctrl key was held" },
+      { name = "metaKey", type = "boolean", doc = "Whether Meta / Command key was held" },
+      { name = "shiftKey", type = "boolean", doc = "Whether Shift key was held" },
+    },
+  },
+  {
+    name = "SyntheticKeyboardEvent",
+    parent = "SyntheticEvent<T>",
+    generic = "T",
+    description = "Synthetic keyboard event for keydown, keyup, keypress",
+    fields = {
+      { name = "key", type = "string", doc = "Key value (e.g. 'Enter', 'a')" },
+      { name = "code", type = "string", doc = "Physical key code (e.g. 'KeyA', 'Enter')" },
+      { name = "altKey", type = "boolean", doc = "Alt key state" },
+      { name = "ctrlKey", type = "boolean", doc = "Ctrl key state" },
+      { name = "metaKey", type = "boolean", doc = "Meta / Command key state" },
+      { name = "shiftKey", type = "boolean", doc = "Shift key state" },
+      { name = "repeat", type = "boolean", doc = "Whether key is repeating" },
+    },
+  },
+  {
+    name = "SyntheticFocusEvent",
+    parent = "SyntheticEvent<T>",
+    generic = "T",
+    description = "Synthetic focus and blur event",
+    fields = {
+      { name = "relatedTarget", type = "any", doc = "Secondary target node" },
+    },
+  },
+  {
+    name = "SyntheticInputEvent",
+    parent = "SyntheticEvent<T>",
+    generic = "T",
+    description = "Synthetic input change event",
+    fields = {
+      { name = "data", type = "string?", doc = "Characters inserted" },
+      { name = "inputType", type = "string", doc = "Type of input modification" },
+    },
+  },
+  {
+    name = "SyntheticChangeEvent",
+    parent = "SyntheticEvent<T>",
+    generic = "T",
+    description = "Synthetic change event for form inputs",
+    fields = {
+      { name = "value", type = "any", doc = "Current input value" },
+    },
+  },
+  {
+    name = "SyntheticWheelEvent",
+    parent = "SyntheticMouseEvent<T>",
+    generic = "T",
+    description = "Synthetic scroll wheel event",
+    fields = {
+      { name = "deltaX", type = "number", doc = "Horizontal scroll amount" },
+      { name = "deltaY", type = "number", doc = "Vertical scroll amount" },
+      { name = "deltaZ", type = "number", doc = "Z-axis scroll amount" },
+      { name = "deltaMode", type = "integer", doc = "Unit of delta values" },
+    },
+  },
+  {
+    name = "SyntheticTouchEvent",
+    parent = "SyntheticEvent<T>",
+    generic = "T",
+    description = "Synthetic multi-touch event",
+    fields = {
+      { name = "touches", type = "any[]", doc = "Active touch points" },
+      { name = "targetTouches", type = "any[]", doc = "Touch points originating on target" },
+      { name = "changedTouches", type = "any[]", doc = "Touch points that contributed to event" },
+    },
+  },
+}
+
+data.event_handlers = {
+  { prop = "onClick", event = "SyntheticMouseEvent" },
+  { prop = "onDoubleClick", event = "SyntheticMouseEvent" },
+  { prop = "onMouseDown", event = "SyntheticMouseEvent" },
+  { prop = "onMouseUp", event = "SyntheticMouseEvent" },
+  { prop = "onMouseMove", event = "SyntheticMouseEvent" },
+  { prop = "onMouseEnter", event = "SyntheticMouseEvent" },
+  { prop = "onMouseLeave", event = "SyntheticMouseEvent" },
+  { prop = "onKeyDown", event = "SyntheticKeyboardEvent" },
+  { prop = "onKeyUp", event = "SyntheticKeyboardEvent" },
+  { prop = "onKeyPress", event = "SyntheticKeyboardEvent" },
+  { prop = "onFocus", event = "SyntheticFocusEvent" },
+  { prop = "onBlur", event = "SyntheticFocusEvent" },
+  { prop = "onInput", event = "SyntheticInputEvent" },
+  { prop = "onChange", event = "SyntheticChangeEvent" },
+  { prop = "onSubmit", event = "SyntheticEvent" },
+  { prop = "onReset", event = "SyntheticEvent" },
+  { prop = "onWheel", event = "SyntheticWheelEvent" },
+  { prop = "onTouchStart", event = "SyntheticTouchEvent" },
+  { prop = "onTouchMove", event = "SyntheticTouchEvent" },
+  { prop = "onTouchEnd", event = "SyntheticTouchEvent" },
+  { prop = "onScroll", event = "SyntheticEvent" },
+}
+
+data.html_elements = {
+  { tag = "button", interface = "HTMLButtonElement", props_name = "HTMLButtonProps", specific_props = {
+    { name = "disabled", type = "boolean?" },
+    { name = "type", type = '"button" | "submit" | "reset" | string?' },
+    { name = "value", type = "string | number?" },
+    { name = "name", type = "string?" },
+    { name = "form", type = "string?" },
+  }},
+  { tag = "div", interface = "HTMLDivElement", props_name = "HTMLDivProps", specific_props = {} },
+  { tag = "span", interface = "HTMLSpanElement", props_name = "HTMLSpanProps", specific_props = {} },
+  { tag = "p", interface = "HTMLParagraphElement", props_name = "HTMLParagraphProps", specific_props = {} },
+  { tag = "a", interface = "HTMLAnchorElement", props_name = "HTMLAnchorProps", specific_props = {
+    { name = "href", type = "string?" },
+    { name = "target", type = '"_blank" | "_self" | "_parent" | "_top" | string?' },
+    { name = "rel", type = "string?" },
+    { name = "download", type = "any?" },
+  }},
+  { tag = "input", interface = "HTMLInputElement", props_name = "HTMLInputProps", specific_props = {
+    { name = "type", type = "string?" },
+    { name = "value", type = "any?" },
+    { name = "checked", type = "boolean?" },
+    { name = "disabled", type = "boolean?" },
+    { name = "placeholder", type = "string?" },
+    { name = "name", type = "string?" },
+    { name = "readOnly", type = "boolean?" },
+    { name = "required", type = "boolean?" },
+    { name = "min", type = "number | string?" },
+    { name = "max", type = "number | string?" },
+    { name = "step", type = "number | string?" },
+  }},
+  { tag = "form", interface = "HTMLFormElement", props_name = "HTMLFormProps", specific_props = {
+    { name = "action", type = "string?" },
+    { name = "method", type = '"get" | "post" | string?' },
+    { name = "noValidate", type = "boolean?" },
+  }},
+  { tag = "img", interface = "HTMLImageElement", props_name = "HTMLImageProps", specific_props = {
+    { name = "src", type = "string?" },
+    { name = "alt", type = "string?" },
+    { name = "width", type = "number | string?" },
+    { name = "height", type = "number | string?" },
+    { name = "loading", type = '"lazy" | "eager" | string?' },
+  }},
+  { tag = "textarea", interface = "HTMLTextAreaElement", props_name = "HTMLTextAreaProps", specific_props = {
+    { name = "value", type = "string?" },
+    { name = "placeholder", type = "string?" },
+    { name = "rows", type = "integer?" },
+    { name = "cols", type = "integer?" },
+    { name = "disabled", type = "boolean?" },
+    { name = "readOnly", type = "boolean?" },
+  }},
+  { tag = "select", interface = "HTMLSelectElement", props_name = "HTMLSelectProps", specific_props = {
+    { name = "value", type = "any?" },
+    { name = "disabled", type = "boolean?" },
+    { name = "multiple", type = "boolean?" },
+    { name = "name", type = "string?" },
+  }},
+  { tag = "option", interface = "HTMLOptionElement", props_name = "HTMLOptionProps", specific_props = {
+    { name = "value", type = "any?" },
+    { name = "selected", type = "boolean?" },
+    { name = "disabled", type = "boolean?" },
+  }},
+  { tag = "label", interface = "HTMLLabelElement", props_name = "HTMLLabelProps", specific_props = {
+    { name = "htmlFor", type = "string?" },
+    { name = "for", type = "string?" },
+  }},
+  { tag = "ul", interface = "HTMLUListElement", props_name = "HTMLUListProps", specific_props = {} },
+  { tag = "ol", interface = "HTMLOListElement", props_name = "HTMLOListProps", specific_props = {
+    { name = "start", type = "integer?" },
+    { name = "reversed", type = "boolean?" },
+  }},
+  { tag = "li", interface = "HTMLLIElement", props_name = "HTMLLIProps", specific_props = {
+    { name = "value", type = "integer?" },
+  }},
+  { tag = "h1", interface = "HTMLHeadingElement", props_name = "HTMLHeadingProps", specific_props = {} },
+  { tag = "h2", interface = "HTMLHeadingElement", props_name = "HTMLHeadingProps", specific_props = {} },
+  { tag = "h3", interface = "HTMLHeadingElement", props_name = "HTMLHeadingProps", specific_props = {} },
+  { tag = "h4", interface = "HTMLHeadingElement", props_name = "HTMLHeadingProps", specific_props = {} },
+  { tag = "h5", interface = "HTMLHeadingElement", props_name = "HTMLHeadingProps", specific_props = {} },
+  { tag = "h6", interface = "HTMLHeadingElement", props_name = "HTMLHeadingProps", specific_props = {} },
+  { tag = "header", interface = "HTMLElement", props_name = "HTMLHeaderProps", specific_props = {} },
+  { tag = "footer", interface = "HTMLElement", props_name = "HTMLFooterProps", specific_props = {} },
+  { tag = "nav", interface = "HTMLElement", props_name = "HTMLNavProps", specific_props = {} },
+  { tag = "section", interface = "HTMLElement", props_name = "HTMLSectionProps", specific_props = {} },
+  { tag = "main", interface = "HTMLElement", props_name = "HTMLMainProps", specific_props = {} },
+  { tag = "aside", interface = "HTMLElement", props_name = "HTMLAsideProps", specific_props = {} },
+  { tag = "article", interface = "HTMLElement", props_name = "HTMLArticleProps", specific_props = {} },
+  { tag = "table", interface = "HTMLTableElement", props_name = "HTMLTableProps", specific_props = {} },
+  { tag = "thead", interface = "HTMLTableSectionElement", props_name = "HTMLTableSectionProps", specific_props = {} },
+  { tag = "tbody", interface = "HTMLTableSectionElement", props_name = "HTMLTableSectionProps", specific_props = {} },
+  { tag = "tfoot", interface = "HTMLTableSectionElement", props_name = "HTMLTableSectionProps", specific_props = {} },
+  { tag = "tr", interface = "HTMLTableRowElement", props_name = "HTMLTableRowProps", specific_props = {} },
+  { tag = "th", interface = "HTMLTableCellElement", props_name = "HTMLTableCellProps", specific_props = {
+    { name = "colSpan", type = "integer?" },
+    { name = "rowSpan", type = "integer?" },
+  }},
+  { tag = "td", interface = "HTMLTableCellElement", props_name = "HTMLTableCellProps", specific_props = {
+    { name = "colSpan", type = "integer?" },
+    { name = "rowSpan", type = "integer?" },
+  }},
+  { tag = "canvas", interface = "HTMLCanvasElement", props_name = "HTMLCanvasProps", specific_props = {
+    { name = "width", type = "number | string?" },
+    { name = "height", type = "number | string?" },
+  }},
+  { tag = "audio", interface = "HTMLAudioElement", props_name = "HTMLAudioProps", specific_props = {
+    { name = "src", type = "string?" },
+    { name = "controls", type = "boolean?" },
+    { name = "autoPlay", type = "boolean?" },
+    { name = "loop", type = "boolean?" },
+  }},
+  { tag = "video", interface = "HTMLVideoElement", props_name = "HTMLVideoProps", specific_props = {
+    { name = "src", type = "string?" },
+    { name = "controls", type = "boolean?" },
+    { name = "autoPlay", type = "boolean?" },
+    { name = "loop", type = "boolean?" },
+    { name = "width", type = "number | string?" },
+    { name = "height", type = "number | string?" },
+  }},
+  { tag = "pre", interface = "HTMLElement", props_name = "HTMLPreProps", specific_props = {} },
+  { tag = "code", interface = "HTMLElement", props_name = "HTMLCodeProps", specific_props = {} },
+  { tag = "dialog", interface = "HTMLDialogElement", props_name = "HTMLDialogProps", specific_props = {
+    { name = "open", type = "boolean?" },
+  }},
+}
+
+data.svg_elements = {
+  { tag = "svg", interface = "SVGSVGElement", props_name = "SVGSVGProps", specific_props = {
+    { name = "width", type = "number | string?" },
+    { name = "height", type = "number | string?" },
+    { name = "viewBox", type = "string?" },
+    { name = "xmlns", type = "string?" },
+  }},
+  { tag = "path", interface = "SVGPathElement", props_name = "SVGPathProps", specific_props = {
+    { name = "d", type = "string?" },
+    { name = "fill", type = "string?" },
+    { name = "stroke", type = "string?" },
+    { name = "strokeWidth", type = "number | string?" },
+  }},
+  { tag = "circle", interface = "SVGCircleElement", props_name = "SVGCircleProps", specific_props = {
+    { name = "cx", type = "number | string?" },
+    { name = "cy", type = "number | string?" },
+    { name = "r", type = "number | string?" },
+    { name = "fill", type = "string?" },
+    { name = "stroke", type = "string?" },
+  }},
+  { tag = "rect", interface = "SVGRectElement", props_name = "SVGRectProps", specific_props = {
+    { name = "x", type = "number | string?" },
+    { name = "y", type = "number | string?" },
+    { name = "width", type = "number | string?" },
+    { name = "height", type = "number | string?" },
+    { name = "rx", type = "number | string?" },
+    { name = "ry", type = "number | string?" },
+    { name = "fill", type = "string?" },
+  }},
+  { tag = "g", interface = "SVGGElement", props_name = "SVGGProps", specific_props = {
+    { name = "fill", type = "string?" },
+    { name = "stroke", type = "string?" },
+    { name = "transform", type = "string?" },
+  }},
+  { tag = "text", interface = "SVGTextElement", props_name = "SVGTextProps", specific_props = {
+    { name = "x", type = "number | string?" },
+    { name = "y", type = "number | string?" },
+    { name = "fill", type = "string?" },
+    { name = "fontSize", type = "number | string?" },
+    { name = "fontFamily", type = "string?" },
+  }},
+}
+
+return data

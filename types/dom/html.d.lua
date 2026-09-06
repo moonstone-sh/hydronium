@@ -1,0 +1,1205 @@
+---@meta
+--[[
+  Hydronium HTML Elements & Props Type Definitions
+  Generated from WebRef specifications
+--]]
+
+--- Base HTML DOM Element representation
+---@class HTMLElement
+---@field tagName string
+---@field id string
+---@field className string
+---@field style table<string, any>
+
+---@class HTMLButtonElement : HTMLElement
+---@field disabled boolean?
+---@field type "button" | "submit" | "reset" | string?
+---@field value string | number?
+---@field name string?
+---@field form string?
+
+---@class HTMLDivElement : HTMLElement
+
+---@class HTMLSpanElement : HTMLElement
+
+---@class HTMLParagraphElement : HTMLElement
+
+---@class HTMLAnchorElement : HTMLElement
+---@field href string?
+---@field target "_blank" | "_self" | "_parent" | "_top" | string?
+---@field rel string?
+---@field download any?
+
+---@class HTMLInputElement : HTMLElement
+---@field type string?
+---@field value any?
+---@field checked boolean?
+---@field disabled boolean?
+---@field placeholder string?
+---@field name string?
+---@field readOnly boolean?
+---@field required boolean?
+---@field min number | string?
+---@field max number | string?
+---@field step number | string?
+
+---@class HTMLFormElement : HTMLElement
+---@field action string?
+---@field method "get" | "post" | string?
+---@field noValidate boolean?
+
+---@class HTMLImageElement : HTMLElement
+---@field src string?
+---@field alt string?
+---@field width number | string?
+---@field height number | string?
+---@field loading "lazy" | "eager" | string?
+
+---@class HTMLTextAreaElement : HTMLElement
+---@field value string?
+---@field placeholder string?
+---@field rows integer?
+---@field cols integer?
+---@field disabled boolean?
+---@field readOnly boolean?
+
+---@class HTMLSelectElement : HTMLElement
+---@field value any?
+---@field disabled boolean?
+---@field multiple boolean?
+---@field name string?
+
+---@class HTMLOptionElement : HTMLElement
+---@field value any?
+---@field selected boolean?
+---@field disabled boolean?
+
+---@class HTMLLabelElement : HTMLElement
+---@field htmlFor string?
+---@field for string?
+
+---@class HTMLUListElement : HTMLElement
+
+---@class HTMLOListElement : HTMLElement
+---@field start integer?
+---@field reversed boolean?
+
+---@class HTMLLIElement : HTMLElement
+---@field value integer?
+
+---@class HTMLHeadingElement : HTMLElement
+
+---@class HTMLTableElement : HTMLElement
+
+---@class HTMLTableSectionElement : HTMLElement
+
+---@class HTMLTableRowElement : HTMLElement
+
+---@class HTMLTableCellElement : HTMLElement
+---@field colSpan integer?
+---@field rowSpan integer?
+
+---@class HTMLCanvasElement : HTMLElement
+---@field width number | string?
+---@field height number | string?
+
+---@class HTMLAudioElement : HTMLElement
+---@field src string?
+---@field controls boolean?
+---@field autoPlay boolean?
+---@field loop boolean?
+
+---@class HTMLVideoElement : HTMLElement
+---@field src string?
+---@field controls boolean?
+---@field autoPlay boolean?
+---@field loop boolean?
+---@field width number | string?
+---@field height number | string?
+
+---@class HTMLDialogElement : HTMLElement
+---@field open boolean?
+
+--- Standard HTML attributes shared across all elements
+---@class HTMLAttributes : LuaxProps, { [integer]: any }
+---@field [integer] any
+---@field id? string
+---@field className? string
+---@field class? string
+---@field style? table<string, any> | string
+---@field title? string
+---@field role? string
+---@field tabIndex? integer
+---@field hidden? boolean
+---@field key? any
+---@field ref? any
+---@field children? any
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLElement>): void
+
+--- Props for <button> element
+---@class HTMLButtonProps : HTMLAttributes, { [integer]: any }
+---@field [integer] any
+---@field disabled boolean?
+---@field type "button" | "submit" | "reset" | string?
+---@field value string | number?
+---@field name string?
+---@field form string?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLButtonElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLButtonElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLButtonElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLButtonElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLButtonElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLButtonElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLButtonElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLButtonElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLButtonElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLButtonElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLButtonElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLButtonElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLButtonElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLButtonElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLButtonElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLButtonElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLButtonElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLButtonElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLButtonElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLButtonElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLButtonElement>): void
+
+--- Props for <div> element
+---@class HTMLDivProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLDivElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLDivElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLDivElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLDivElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLDivElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLDivElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLDivElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLDivElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLDivElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLDivElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLDivElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLDivElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLDivElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLDivElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLDivElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLDivElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLDivElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLDivElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLDivElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLDivElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLDivElement>): void
+
+--- Props for <span> element
+---@class HTMLSpanProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLSpanElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLSpanElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLSpanElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLSpanElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLSpanElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLSpanElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLSpanElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLSpanElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLSpanElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLSpanElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLSpanElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLSpanElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLSpanElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLSpanElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLSpanElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLSpanElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLSpanElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLSpanElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLSpanElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLSpanElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLSpanElement>): void
+
+--- Props for <p> element
+---@class HTMLParagraphProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLParagraphElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLParagraphElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLParagraphElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLParagraphElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLParagraphElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLParagraphElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLParagraphElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLParagraphElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLParagraphElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLParagraphElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLParagraphElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLParagraphElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLParagraphElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLParagraphElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLParagraphElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLParagraphElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLParagraphElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLParagraphElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLParagraphElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLParagraphElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLParagraphElement>): void
+
+--- Props for <a> element
+---@class HTMLAnchorProps : HTMLAttributes
+---@field href string?
+---@field target "_blank" | "_self" | "_parent" | "_top" | string?
+---@field rel string?
+---@field download any?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLAnchorElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLAnchorElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLAnchorElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLAnchorElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLAnchorElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLAnchorElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLAnchorElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLAnchorElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLAnchorElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLAnchorElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLAnchorElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLAnchorElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLAnchorElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLAnchorElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLAnchorElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLAnchorElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLAnchorElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLAnchorElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLAnchorElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLAnchorElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLAnchorElement>): void
+
+--- Props for <input> element
+---@class HTMLInputProps : HTMLAttributes
+---@field type string?
+---@field value any?
+---@field checked boolean?
+---@field disabled boolean?
+---@field placeholder string?
+---@field name string?
+---@field readOnly boolean?
+---@field required boolean?
+---@field min number | string?
+---@field max number | string?
+---@field step number | string?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLInputElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLInputElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLInputElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLInputElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLInputElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLInputElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLInputElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLInputElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLInputElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLInputElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLInputElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLInputElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLInputElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLInputElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLInputElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLInputElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLInputElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLInputElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLInputElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLInputElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLInputElement>): void
+
+--- Props for <form> element
+---@class HTMLFormProps : HTMLAttributes
+---@field action string?
+---@field method "get" | "post" | string?
+---@field noValidate boolean?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLFormElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLFormElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLFormElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLFormElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLFormElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLFormElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLFormElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLFormElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLFormElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLFormElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLFormElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLFormElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLFormElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLFormElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLFormElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLFormElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLFormElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLFormElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLFormElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLFormElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLFormElement>): void
+
+--- Props for <img> element
+---@class HTMLImageProps : HTMLAttributes
+---@field src string?
+---@field alt string?
+---@field width number | string?
+---@field height number | string?
+---@field loading "lazy" | "eager" | string?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLImageElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLImageElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLImageElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLImageElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLImageElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLImageElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLImageElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLImageElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLImageElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLImageElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLImageElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLImageElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLImageElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLImageElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLImageElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLImageElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLImageElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLImageElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLImageElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLImageElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLImageElement>): void
+
+--- Props for <textarea> element
+---@class HTMLTextAreaProps : HTMLAttributes
+---@field value string?
+---@field placeholder string?
+---@field rows integer?
+---@field cols integer?
+---@field disabled boolean?
+---@field readOnly boolean?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLTextAreaElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLTextAreaElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLTextAreaElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLTextAreaElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLTextAreaElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLTextAreaElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLTextAreaElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLTextAreaElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLTextAreaElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLTextAreaElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLTextAreaElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLTextAreaElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLTextAreaElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLTextAreaElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLTextAreaElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLTextAreaElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLTextAreaElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLTextAreaElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLTextAreaElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLTextAreaElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLTextAreaElement>): void
+
+--- Props for <select> element
+---@class HTMLSelectProps : HTMLAttributes
+---@field value any?
+---@field disabled boolean?
+---@field multiple boolean?
+---@field name string?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLSelectElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLSelectElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLSelectElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLSelectElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLSelectElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLSelectElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLSelectElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLSelectElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLSelectElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLSelectElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLSelectElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLSelectElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLSelectElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLSelectElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLSelectElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLSelectElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLSelectElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLSelectElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLSelectElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLSelectElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLSelectElement>): void
+
+--- Props for <option> element
+---@class HTMLOptionProps : HTMLAttributes
+---@field value any?
+---@field selected boolean?
+---@field disabled boolean?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLOptionElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLOptionElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLOptionElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLOptionElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLOptionElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLOptionElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLOptionElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLOptionElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLOptionElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLOptionElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLOptionElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLOptionElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLOptionElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLOptionElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLOptionElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLOptionElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLOptionElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLOptionElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLOptionElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLOptionElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLOptionElement>): void
+
+--- Props for <label> element
+---@class HTMLLabelProps : HTMLAttributes
+---@field htmlFor string?
+---@field for string?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLLabelElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLLabelElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLLabelElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLLabelElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLLabelElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLLabelElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLLabelElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLLabelElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLLabelElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLLabelElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLLabelElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLLabelElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLLabelElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLLabelElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLLabelElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLLabelElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLLabelElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLLabelElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLLabelElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLLabelElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLLabelElement>): void
+
+--- Props for <ul> element
+---@class HTMLUListProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLUListElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLUListElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLUListElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLUListElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLUListElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLUListElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLUListElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLUListElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLUListElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLUListElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLUListElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLUListElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLUListElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLUListElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLUListElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLUListElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLUListElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLUListElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLUListElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLUListElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLUListElement>): void
+
+--- Props for <ol> element
+---@class HTMLOListProps : HTMLAttributes
+---@field start integer?
+---@field reversed boolean?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLOListElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLOListElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLOListElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLOListElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLOListElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLOListElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLOListElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLOListElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLOListElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLOListElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLOListElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLOListElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLOListElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLOListElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLOListElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLOListElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLOListElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLOListElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLOListElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLOListElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLOListElement>): void
+
+--- Props for <li> element
+---@class HTMLLIProps : HTMLAttributes
+---@field value integer?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLLIElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLLIElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLLIElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLLIElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLLIElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLLIElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLLIElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLLIElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLLIElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLLIElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLLIElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLLIElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLLIElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLLIElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLLIElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLLIElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLLIElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLLIElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLLIElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLLIElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLLIElement>): void
+
+--- Props for <h1> element
+---@class HTMLHeadingProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLHeadingElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLHeadingElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLHeadingElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLHeadingElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLHeadingElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+
+--- Props for <h2> element
+---@class HTMLHeadingProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLHeadingElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLHeadingElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLHeadingElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLHeadingElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLHeadingElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+
+--- Props for <h3> element
+---@class HTMLHeadingProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLHeadingElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLHeadingElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLHeadingElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLHeadingElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLHeadingElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+
+--- Props for <h4> element
+---@class HTMLHeadingProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLHeadingElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLHeadingElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLHeadingElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLHeadingElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLHeadingElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+
+--- Props for <h5> element
+---@class HTMLHeadingProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLHeadingElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLHeadingElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLHeadingElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLHeadingElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLHeadingElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+
+--- Props for <h6> element
+---@class HTMLHeadingProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLHeadingElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLHeadingElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLHeadingElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLHeadingElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLHeadingElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLHeadingElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLHeadingElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLHeadingElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLHeadingElement>): void
+
+--- Props for <header> element
+---@class HTMLHeaderProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLElement>): void
+
+--- Props for <footer> element
+---@class HTMLFooterProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLElement>): void
+
+--- Props for <nav> element
+---@class HTMLNavProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLElement>): void
+
+--- Props for <section> element
+---@class HTMLSectionProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLElement>): void
+
+--- Props for <main> element
+---@class HTMLMainProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLElement>): void
+
+--- Props for <aside> element
+---@class HTMLAsideProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLElement>): void
+
+--- Props for <article> element
+---@class HTMLArticleProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLElement>): void
+
+--- Props for <table> element
+---@class HTMLTableProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLTableElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLTableElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLTableElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLTableElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLTableElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLTableElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLTableElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLTableElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLTableElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLTableElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLTableElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLTableElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLTableElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLTableElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLTableElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLTableElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLTableElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLTableElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLTableElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLTableElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLTableElement>): void
+
+--- Props for <thead> element
+---@class HTMLTableSectionProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLTableSectionElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLTableSectionElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLTableSectionElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLTableSectionElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLTableSectionElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLTableSectionElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLTableSectionElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLTableSectionElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLTableSectionElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLTableSectionElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLTableSectionElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLTableSectionElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLTableSectionElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLTableSectionElement>): void
+
+--- Props for <tbody> element
+---@class HTMLTableSectionProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLTableSectionElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLTableSectionElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLTableSectionElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLTableSectionElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLTableSectionElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLTableSectionElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLTableSectionElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLTableSectionElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLTableSectionElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLTableSectionElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLTableSectionElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLTableSectionElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLTableSectionElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLTableSectionElement>): void
+
+--- Props for <tfoot> element
+---@class HTMLTableSectionProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLTableSectionElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLTableSectionElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLTableSectionElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLTableSectionElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLTableSectionElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLTableSectionElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLTableSectionElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLTableSectionElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLTableSectionElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLTableSectionElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLTableSectionElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLTableSectionElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLTableSectionElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLTableSectionElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLTableSectionElement>): void
+
+--- Props for <tr> element
+---@class HTMLTableRowProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLTableRowElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLTableRowElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLTableRowElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLTableRowElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLTableRowElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLTableRowElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLTableRowElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLTableRowElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLTableRowElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLTableRowElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLTableRowElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLTableRowElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLTableRowElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLTableRowElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLTableRowElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLTableRowElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLTableRowElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLTableRowElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLTableRowElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLTableRowElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLTableRowElement>): void
+
+--- Props for <th> element
+---@class HTMLTableCellProps : HTMLAttributes
+---@field colSpan integer?
+---@field rowSpan integer?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLTableCellElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLTableCellElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLTableCellElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLTableCellElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLTableCellElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLTableCellElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLTableCellElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLTableCellElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLTableCellElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLTableCellElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLTableCellElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLTableCellElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLTableCellElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLTableCellElement>): void
+
+--- Props for <td> element
+---@class HTMLTableCellProps : HTMLAttributes
+---@field colSpan integer?
+---@field rowSpan integer?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLTableCellElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLTableCellElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLTableCellElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLTableCellElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLTableCellElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLTableCellElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLTableCellElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLTableCellElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLTableCellElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLTableCellElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLTableCellElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLTableCellElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLTableCellElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLTableCellElement>): void
+
+--- Props for <canvas> element
+---@class HTMLCanvasProps : HTMLAttributes
+---@field width number | string?
+---@field height number | string?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLCanvasElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLCanvasElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLCanvasElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLCanvasElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLCanvasElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLCanvasElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLCanvasElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLCanvasElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLCanvasElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLCanvasElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLCanvasElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLCanvasElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLCanvasElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLCanvasElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLCanvasElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLCanvasElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLCanvasElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLCanvasElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLCanvasElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLCanvasElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLCanvasElement>): void
+
+--- Props for <audio> element
+---@class HTMLAudioProps : HTMLAttributes
+---@field src string?
+---@field controls boolean?
+---@field autoPlay boolean?
+---@field loop boolean?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLAudioElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLAudioElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLAudioElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLAudioElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLAudioElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLAudioElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLAudioElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLAudioElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLAudioElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLAudioElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLAudioElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLAudioElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLAudioElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLAudioElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLAudioElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLAudioElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLAudioElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLAudioElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLAudioElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLAudioElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLAudioElement>): void
+
+--- Props for <video> element
+---@class HTMLVideoProps : HTMLAttributes
+---@field src string?
+---@field controls boolean?
+---@field autoPlay boolean?
+---@field loop boolean?
+---@field width number | string?
+---@field height number | string?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLVideoElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLVideoElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLVideoElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLVideoElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLVideoElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLVideoElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLVideoElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLVideoElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLVideoElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLVideoElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLVideoElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLVideoElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLVideoElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLVideoElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLVideoElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLVideoElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLVideoElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLVideoElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLVideoElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLVideoElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLVideoElement>): void
+
+--- Props for <pre> element
+---@class HTMLPreProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLElement>): void
+
+--- Props for <code> element
+---@class HTMLCodeProps : HTMLAttributes
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLElement>): void
+
+--- Props for <dialog> element
+---@class HTMLDialogProps : HTMLAttributes
+---@field open boolean?
+---@field onClick? fun(event: SyntheticMouseEvent<HTMLDialogElement>): void
+---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLDialogElement>): void
+---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLDialogElement>): void
+---@field onMouseUp? fun(event: SyntheticMouseEvent<HTMLDialogElement>): void
+---@field onMouseMove? fun(event: SyntheticMouseEvent<HTMLDialogElement>): void
+---@field onMouseEnter? fun(event: SyntheticMouseEvent<HTMLDialogElement>): void
+---@field onMouseLeave? fun(event: SyntheticMouseEvent<HTMLDialogElement>): void
+---@field onKeyDown? fun(event: SyntheticKeyboardEvent<HTMLDialogElement>): void
+---@field onKeyUp? fun(event: SyntheticKeyboardEvent<HTMLDialogElement>): void
+---@field onKeyPress? fun(event: SyntheticKeyboardEvent<HTMLDialogElement>): void
+---@field onFocus? fun(event: SyntheticFocusEvent<HTMLDialogElement>): void
+---@field onBlur? fun(event: SyntheticFocusEvent<HTMLDialogElement>): void
+---@field onInput? fun(event: SyntheticInputEvent<HTMLDialogElement>): void
+---@field onChange? fun(event: SyntheticChangeEvent<HTMLDialogElement>): void
+---@field onSubmit? fun(event: SyntheticEvent<HTMLDialogElement>): void
+---@field onReset? fun(event: SyntheticEvent<HTMLDialogElement>): void
+---@field onWheel? fun(event: SyntheticWheelEvent<HTMLDialogElement>): void
+---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLDialogElement>): void
+---@field onTouchMove? fun(event: SyntheticTouchEvent<HTMLDialogElement>): void
+---@field onTouchEnd? fun(event: SyntheticTouchEvent<HTMLDialogElement>): void
+---@field onScroll? fun(event: SyntheticEvent<HTMLDialogElement>): void

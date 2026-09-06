@@ -1,0 +1,41 @@
+-- Interactive Island Component
+local function InteractiveIsland(props)
+  local count = props.initialCount or 0
+  local title = props.title or "Hydronium Reactive Island"
+
+  return <section class="island-container" data-island="counter" data-island-priority="visible">
+    <div class="island-header">
+      <h3 class="island-title">{title}</h3>
+      <span class="island-badge">Interactive Island</span>
+    </div>
+    <p class="island-desc">
+      This island demonstrates fine-grained reactive updates and island hydration contract.
+    </p>
+    <div class="island-controls" style={{ marginTop = 16, display = "flex", alignItems = "center", gap = 12 }}>
+      <button
+        type="button"
+        class="btn btn-secondary"
+        data-testid="dec-btn"
+        onClick={props.onDecrement}
+      >
+        -
+      </button>
+      <span class="count-display" data-testid="count-value" style={{ fontWeight = "bold", minWidth = 40, textAlign = "center" }}>
+        {tostring(count)}
+      </span>
+      <button
+        type="button"
+        class="btn btn-primary"
+        data-testid="inc-btn"
+        onClick={props.onIncrement}
+      >
+        +
+      </button>
+    </div>
+    <div class="island-status" style={{ marginTop = 12, fontSize = 13, color = "#94a3b8" }}>
+      Status: <span class="badge badge-success">Hydrated &amp; Active</span>
+    </div>
+  </section>
+end
+
+return InteractiveIsland

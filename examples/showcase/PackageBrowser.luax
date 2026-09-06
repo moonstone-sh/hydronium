@@ -1,0 +1,56 @@
+-- Package Browser Component
+local function PackageCard(props)
+  local pkg = props.package or {}
+  local extra = props.extraAttrs or {}
+
+  return <article class="package-card" {...extra}>
+    <div class="card-top">
+      <div class="pkg-header">
+        <h3 class="pkg-name">{pkg.name}</h3>
+        <span class="pkg-version">v{pkg.version}</span>
+      </div>
+      <div class="pkg-stars" title="Stars count">
+        <span class="star-icon">&#9733;</span>
+        <span class="star-count">{tostring(pkg.stars or 0)}</span>
+      </div>
+    </div>
+    <p class="pkg-description">{pkg.description or "No description provided."}</p>
+    <div class="pkg-tags">
+      {pkg.isOfficial and <span class="tag tag-official">Official</span>}
+      {pkg.isSSRReady and <span class="tag tag-ssr">SSR Ready</span>}
+      <span class="tag tag-lang">{pkg.lang or "Lua"}</span>
+    </div>
+    <div class="pkg-install">
+      <code>partiture add {pkg.name}</code>
+    </div>
+  </article>
+end
+
+local function PackageBrowser(props)
+  local packages = props.packages or {}
+  local searchQuery = props.searchQuery or ""
+
+  return <section class="package-browser">
+    <div class="browser-controls">
+      <h2 class="section-title">Ecosystem Packages</h2>
+      <div class="search-box">
+        <input
+          type="text"
+          class="search-input"
+          placeholder="Search Lua packages..."
+          value={searchQuery}
+        />
+      </div>
+    </div>
+    <div class="package-grid">
+      {packages[1] and <PackageCard package={packages[1]} /> or nil}
+      {packages[2] and <PackageCard package={packages[2]} /> or nil}
+      {packages[3] and <PackageCard package={packages[3]} /> or nil}
+    </div>
+  </section>
+end
+
+return {
+  PackageCard = PackageCard,
+  PackageBrowser = PackageBrowser,
+}

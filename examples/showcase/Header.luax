@@ -1,0 +1,33 @@
+-- Header Component
+local function Header(props)
+  local title = props.title or "Hydronium Showcase"
+  local activeTab = props.activeTab or "packages"
+
+  return <header class="showcase-header">
+    <div class="brand">
+      <span class="logo-icon">&#9883;</span>
+      <h1 class="logo-text">{title}</h1>
+      <span class="version-tag">v1.0.0-luax</span>
+    </div>
+    <nav class="nav-menu">
+      <a href="#packages" class={activeTab == "packages" and "nav-link active" or "nav-link"}>
+        Packages
+      </a>
+      <a href="#island" class={activeTab == "island" and "nav-link active" or "nav-link"}>
+        Interactive Island
+      </a>
+      <a href="#form" class={activeTab == "form" and "nav-link active" or "nav-link"}>
+        Submit Package
+      </a>
+      <a href="#error" class={activeTab == "error" and "nav-link active" or "nav-link"}>
+        Error Boundary
+      </a>
+    </nav>
+    <div class="user-status">
+      <span class="status-indicator online" aria-label="System status online" />
+      <span class="username">{props.username or "Guest Developer"}</span>
+    </div>
+  </header>
+end
+
+return Header

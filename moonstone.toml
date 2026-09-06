@@ -1,0 +1,15 @@
+manifest_version = 2
+
+[package]
+name = "hydronium"
+version = "0.1.0"
+kind = "script"
+description = "A new Moonstone Lua project"
+
+[interpreter]
+name = "lua"
+version = "5.4"
+abi = "5.4"
+
+[scripts]
+dev = "lua ./src/main.lua \"$@\""

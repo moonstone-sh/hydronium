@@ -1,0 +1,30 @@
+{
+  "name": "tree-sitter-luax",
+  "version": "0.1.0",
+  "description": "Tree-sitter grammar for Hydronium LUAX (.luax)",
+  "main": "bindings/node",
+  "keywords": [
+    "parser",
+    "tree-sitter",
+    "lua",
+    "luax",
+    "jsx"
+  ],
+  "author": "Hydronium Contributors",
+  "license": "MIT",
+  "dependencies": {
+    "nan": "^2.18.0"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.20.8"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.luax",
+      "file-types": [
+        "luax"
+      ],
+      "injection-regex": "^luax$"
+    }
+  ]
+}

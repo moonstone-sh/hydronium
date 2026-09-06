@@ -1,0 +1,57 @@
+---@meta
+--[[
+  Hydronium LUAX Intrinsics Catalog
+  Exposes typed intrinsic factory table and global intrinsic functions
+--]]
+
+---@class LuaxIntrinsics
+---@field button fun(props?: HTMLButtonProps, ...: any): LuaxElement
+---@field div fun(props?: HTMLDivProps, ...: any): LuaxElement
+---@field span fun(props?: HTMLSpanProps, ...: any): LuaxElement
+---@field p fun(props?: HTMLParagraphProps, ...: any): LuaxElement
+---@field a fun(props?: HTMLAnchorProps, ...: any): LuaxElement
+---@field input fun(props?: HTMLInputProps, ...: any): LuaxElement
+---@field form fun(props?: HTMLFormProps, ...: any): LuaxElement
+---@field img fun(props?: HTMLImageProps, ...: any): LuaxElement
+---@field textarea fun(props?: HTMLTextAreaProps, ...: any): LuaxElement
+---@field select fun(props?: HTMLSelectProps, ...: any): LuaxElement
+---@field option fun(props?: HTMLOptionProps, ...: any): LuaxElement
+---@field label fun(props?: HTMLLabelProps, ...: any): LuaxElement
+---@field ul fun(props?: HTMLUListProps, ...: any): LuaxElement
+---@field ol fun(props?: HTMLOListProps, ...: any): LuaxElement
+---@field li fun(props?: HTMLLIProps, ...: any): LuaxElement
+---@field h1 fun(props?: HTMLHeadingProps, ...: any): LuaxElement
+---@field h2 fun(props?: HTMLHeadingProps, ...: any): LuaxElement
+---@field h3 fun(props?: HTMLHeadingProps, ...: any): LuaxElement
+---@field h4 fun(props?: HTMLHeadingProps, ...: any): LuaxElement
+---@field h5 fun(props?: HTMLHeadingProps, ...: any): LuaxElement
+---@field h6 fun(props?: HTMLHeadingProps, ...: any): LuaxElement
+---@field header fun(props?: HTMLHeaderProps, ...: any): LuaxElement
+---@field footer fun(props?: HTMLFooterProps, ...: any): LuaxElement
+---@field nav fun(props?: HTMLNavProps, ...: any): LuaxElement
+---@field section fun(props?: HTMLSectionProps, ...: any): LuaxElement
+---@field main fun(props?: HTMLMainProps, ...: any): LuaxElement
+---@field aside fun(props?: HTMLAsideProps, ...: any): LuaxElement
+---@field article fun(props?: HTMLArticleProps, ...: any): LuaxElement
+---@field table fun(props?: HTMLTableProps, ...: any): LuaxElement
+---@field thead fun(props?: HTMLTableSectionProps, ...: any): LuaxElement
+---@field tbody fun(props?: HTMLTableSectionProps, ...: any): LuaxElement
+---@field tfoot fun(props?: HTMLTableSectionProps, ...: any): LuaxElement
+---@field tr fun(props?: HTMLTableRowProps, ...: any): LuaxElement
+---@field th fun(props?: HTMLTableCellProps, ...: any): LuaxElement
+---@field td fun(props?: HTMLTableCellProps, ...: any): LuaxElement
+---@field canvas fun(props?: HTMLCanvasProps, ...: any): LuaxElement
+---@field audio fun(props?: HTMLAudioProps, ...: any): LuaxElement
+---@field video fun(props?: HTMLVideoProps, ...: any): LuaxElement
+---@field pre fun(props?: HTMLPreProps, ...: any): LuaxElement
+---@field code fun(props?: HTMLCodeProps, ...: any): LuaxElement
+---@field dialog fun(props?: HTMLDialogProps, ...: any): LuaxElement
+---@field svg fun(props?: SVGSVGProps, ...: any): LuaxElement
+---@field path fun(props?: SVGPathProps, ...: any): LuaxElement
+---@field circle fun(props?: SVGCircleProps, ...: any): LuaxElement
+---@field rect fun(props?: SVGRectProps, ...: any): LuaxElement
+---@field g fun(props?: SVGGProps, ...: any): LuaxElement
+---@field text fun(props?: SVGTextProps, ...: any): LuaxElement
+
+local intrinsics = {}
+return intrinsics

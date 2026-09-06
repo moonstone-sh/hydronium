@@ -1,0 +1,107 @@
+--[[
+  Meteorite + Hydronium .luax Page View
+  Demonstrates declarative .luax component rendered by real Meteorite HTTP server
+--]]
+
+local H = require("hydronium")
+local h = H
+local meteorite = require("hydronium.server.meteorite")
+local RequestContext = meteorite.RequestContext
+
+---@class PageProps
+---@field title? string
+---@field path? string
+---@field params? table<string, any>
+---@field query? table<string, any>
+
+local function AppView(props)
+  local req = h.useContext(RequestContext)
+  local current_path = props.path or "/"
+
+  return <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>{props.title or "Hydronium .luax + Meteorite"}</title>
+      <style>{[[
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: #0b0f19; color: #f1f5f9; }
+        header { background: #111827; padding: 1rem 2rem; border-bottom: 1px solid #1f2937; display: flex; justify-content: space-between; align-items: center; }
+        header .logo { font-size: 1.25rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 0.5rem; }
+        nav a { color: #94a3b8; text-decoration: none; margin-left: 1.5rem; font-weight: 500; font-size: 0.95rem; }
+        nav a:hover, nav a.active { color: #38bdf8; }
+        main { max-width: 960px; margin: 2.5rem auto; padding: 0 1.5rem; }
+        .hero { background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%); border: 1px solid #312e81; border-radius: 12px; padding: 2rem; margin-bottom: 2rem; }
+        .hero h1 { margin: 0 0 0.5rem 0; font-size: 2rem; color: #e0e7ff; }
+        .hero p { color: #a5b4fc; font-size: 1.1rem; line-height: 1.6; margin: 0 0 1rem 0; }
+        .badge-row { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
+        .badge { background: #4338ca; color: #e0e7ff; padding: 0.3rem 0.75rem; border-radius: 9999px; font-size: 0.8rem; font-weight: 600; }
+        .badge.green { background: #065f46; color: #a7f3d0; }
+        .badge.cyan { background: #155e75; color: #a5f3fc; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .card { background: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 1.5rem; }
+        .card h3 { margin: 0 0 0.5rem 0; color: #f8fafc; font-size: 1.2rem; }
+        .card p { color: #94a3b8; line-height: 1.5; font-size: 0.95rem; margin: 0 0 1rem 0; }
+        pre { background: #030712; padding: 1rem; border-radius: 8px; border: 1px solid #1f2937; overflow-x: auto; color: #38bdf8; font-size: 0.85rem; font-family: monospace; }
+        footer { text-align: center; padding: 3rem 1rem; color: #64748b; font-size: 0.85rem; border-top: 1px solid #1f2937; margin-top: 3rem; }
+      ]]}</style>
+    </head>
+    <body>
+      <header>
+        <div class="logo">
+          <span>◆</span>
+          <span>Hydronium + Meteorite</span>
+        </div>
+        <nav>
+          <a href="/">Home</a>
+          <a href="/packages/meteorite">Package View</a>
+          <a href="/error-test">Error Boundary</a>
+          <a href="/api/health">JSON Health</a>
+        </nav>
+      </header>
+
+      <main>
+        <div class="hero">
+          <h1>Real Meteorite HTTP Server + Hydronium .luax SSR</h1>
+          <p>
+            This page is authored in declarative <code>.luax</code> syntax and compiled
+            into clean Lua source code, executed inside the real Meteorite HTTP server runtime.
+          </p>
+          <div class="badge-row">
+            <span class="badge green">Real Meteorite CLI: meteorite invoke</span>
+            <span class="badge cyan">Strict HTML5 SSR Engine</span>
+            <span class="badge">Model A In-Process Hybrid</span>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="card">
+            <h3>Request Telemetry</h3>
+            <p>Directly extracted from Meteorite's route context via <code>useContext(RequestContext)</code>:</p>
+            <pre><code>{table.concat({
+              "Method:     " .. tostring(req.method or "GET"),
+              "Path:       " .. tostring(req.path or current_path),
+              "Request ID: " .. tostring(req.request_id or "local-dev"),
+            }, "\n")}</code></pre>
+          </div>
+
+          <div class="card">
+            <h3>Compiler & SSR Invariants</h3>
+            <p>Zero coupling to client DOM or binary bytecode:</p>
+            <pre><code>{table.concat({
+              "HTML Void Tags:   Strict W3C (no closing slash)",
+              "Client Effects:   100% Suppressed during SSR",
+              "Attribute Sort:   Deterministic Alphabetical a-z",
+              "Render Latency:   < 0.40 ms per request",
+            }, "\n")}</code></pre>
+          </div>
+        </div>
+      </main>
+
+      <footer>
+        <p>Meteorite v0.2.1 | Hydronium .luax SSR | Request: {req.request_id or "N/A"}</p>
+      </footer>
+    </body>
+  </html>
+end
+
+return AppView

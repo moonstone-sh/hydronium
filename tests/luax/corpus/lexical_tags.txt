@@ -1,0 +1,5 @@
+local el1 = <d.main>Main Content</d.main>
+local el2 = <d.h1>Heading 1</d.h1>
+local el3 = <d.button>Click Me</d.button>
+local el4 = <UI.Card title="Card Title" />
+return { el1, el2, el3, el4 }

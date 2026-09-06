@@ -1,0 +1,40 @@
+-- SVG Icon Components
+local function PackageIcon(props)
+  local size = props.size or 20
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M16.5 9.4 7.55 4.24a1.78 1.78 0 0 0-2.5 1.55v12.42a1.78 1.78 0 0 0 2.5 1.55L16.5 14.6a1.78 1.78 0 0 0 0-3.2z" />
+    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+  </svg>
+end
+
+local function StarIcon(props)
+  local size = props.size or 16
+  local fill = props.active and "#f59e0b" or "none"
+  local stroke = props.active and "#f59e0b" or "currentColor"
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={stroke} stroke-width="2">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  </svg>
+end
+
+local function CheckIcon(props)
+  local size = props.size or 16
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+end
+
+local function WarningIcon(props)
+  local size = props.size or 20
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </svg>
+end
+
+return {
+  PackageIcon = PackageIcon,
+  StarIcon = StarIcon,
+  CheckIcon = CheckIcon,
+  WarningIcon = WarningIcon,
+}

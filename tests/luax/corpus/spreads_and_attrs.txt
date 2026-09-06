@@ -1,0 +1,4 @@
+local function SubmitButton(props, fn)
+  return <d.button disabled {...props} onClick={fn} />
+end
+return SubmitButton

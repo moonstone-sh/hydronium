@@ -1,0 +1,2 @@
+local view = <d.div><d.span>Hello</d.span></d.div>
+return view

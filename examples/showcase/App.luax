@@ -1,0 +1,44 @@
+-- Root Application Component
+local function App(props)
+  local title = props.title or "Hydronium Modern Web Showcase"
+  local username = props.username or "Alex Doe"
+  local packages = props.packages or {}
+  local islandProps = props.islandProps or {}
+  local formProps = props.formProps or {}
+
+  return <div class="hydronium-app">
+    <Header title={title} username={username} activeTab="packages" />
+    
+    <main class="main-container">
+      <div class="hero-section">
+        <h2 class="hero-title">High-Performance Lua UI Framework</h2>
+        <p class="hero-subtitle">
+          Synchronous SSR &bull; Zero-overhead Islands &bull; 100% Type-Safe .luax Syntax
+        </p>
+      </div>
+
+      <PackageBrowser packages={packages} searchQuery="" />
+
+      <div class="showcase-columns" style={{ display = "flex", gap = 24, marginTop = 24 }}>
+        <div class="col" style={{ flex = 1 }}>
+          <InteractiveIsland {...islandProps} />
+        </div>
+        <div class="col" style={{ flex = 1 }}>
+          <PackageForm {...formProps} />
+        </div>
+      </div>
+
+      <SafeContainer fallbackMessage="The experimental experimental module threw during SSR.">
+        <div class="stable-submodule">
+          <p class="status-ok">All submodules running cleanly.</p>
+        </div>
+      </SafeContainer>
+    </main>
+
+    <footer class="app-footer">
+      <p>&copy; 2026 Hydronium &amp; Meteorite Engineering. Built with .luax components.</p>
+    </footer>
+  </div>
+end
+
+return App

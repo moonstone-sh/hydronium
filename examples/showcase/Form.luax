@@ -1,0 +1,82 @@
+-- Package Submission Form Component
+local function PackageForm(props)
+  local formState = props.values or {}
+  local isSubmitting = props.isSubmitting == true
+  local isValid = props.isValid == true
+
+  return <section class="form-container">
+    <h2 class="form-title">Publish a Package</h2>
+    <form class="publish-form" method="POST" action="/packages">
+      <div class="form-group">
+        <label for="pkg-name">Package Name</label>
+        <input
+          type="text"
+          id="pkg-name"
+          name="name"
+          class="form-input"
+          placeholder="e.g. hydronium-ssr"
+          value={formState.name or ""}
+          required
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="pkg-desc">Description</label>
+        <textarea
+          id="pkg-desc"
+          name="description"
+          class="form-textarea"
+          rows="3"
+          placeholder="A short summary of what this package does..."
+        >
+          {formState.description or ""}
+        </textarea>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group half">
+          <label for="pkg-version">Initial Version</label>
+          <input
+            type="text"
+            id="pkg-version"
+            name="version"
+            class="form-input"
+            value={formState.version or "0.1.0"}
+          />
+        </div>
+        <div class="form-group half">
+          <label for="pkg-license">License</label>
+          <select id="pkg-license" name="license" class="form-select">
+            <option value="MIT">MIT</option>
+            <option value="Apache-2.0">Apache-2.0</option>
+            <option value="BSD-3-Clause">BSD-3-Clause</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            name="ssr_compatible"
+            class="form-checkbox"
+            checked={formState.ssr_compatible ~= false}
+          />
+          SSR Compatible
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <button
+          type="submit"
+          class="btn btn-submit"
+          disabled={not isValid or isSubmitting}
+        >
+          {isSubmitting and "Publishing..." or "Publish Package"}
+        </button>
+      </div>
+    </form>
+  </section>
+end
+
+return PackageForm

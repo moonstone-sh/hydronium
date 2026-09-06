@@ -1,0 +1,27 @@
+-- Error Boundary Showcase Component
+local function SafeContainer(props)
+  local fallbackMessage = props.fallbackMessage or "A rendering error occurred in this section."
+
+  local function renderFallback(err)
+    local msg = type(err) == "table" and (err.message or tostring(err)) or tostring(err)
+    return <div class="error-boundary-box" role="alert">
+      <div class="error-header">
+        <span class="error-icon">&#9888;</span>
+        <strong class="error-title">Component Error Captured</strong>
+      </div>
+      <p class="error-desc">{fallbackMessage}</p>
+      <pre class="error-detail"><code>{msg}</code></pre>
+      <button type="button" class="btn btn-outline" onClick={props.onReset}>
+        Try Again
+      </button>
+    </div>
+  end
+
+  return <section class="boundary-wrapper">
+    <H.ErrorBoundary fallback={renderFallback}>
+      {props.children}
+    </H.ErrorBoundary>
+  </section>
+end
+
+return SafeContainer

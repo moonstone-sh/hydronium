@@ -1,0 +1,205 @@
+#!/usr/bin/env luajit
+--[[
+  Hydronium LUAX CLI Tool
+  Provides compilation, formatting, syntax checking, and DOM type generation.
+--]]
+
+-- Setup search paths
+local script_dir = debug.getinfo(1, "S").source:match("@?(.*)/") or "."
+local root_dir = script_dir:match("(.*)/bin") or "."
+package.path = root_dir .. "/src/?.lua;" .. root_dir .. "/src/?/init.lua;" .. root_dir .. "/?.lua;" .. root_dir .. "/?/init.lua;" .. package.path
+
+local luax = require("hydronium.luax")
+local dom_gen = require("tools.dom_generator")
+
+local function print_help()
+  print([[
+Hydronium LUAX CLI - Declarative JSX dialect compiler and tooling for Lua
+
+USAGE:
+  luax <command> [arguments] [options]
+
+COMMANDS:
+  compile <file.luax>     Compile a .luax file to standard Lua
+    -o, --output <file>   Specify output file path (defaults to stdout or input.lua)
+    --sourcemap           Generate a separate .map file
+    --inline-sourcemap    Append inline base64 source map comment
+
+  format <file.luax>      Pretty-print and format a .luax file (guaranteed idempotent)
+    -w, --write           Overwrite source file with formatted output
+    --check               Verify if file is already formatted (exit 1 if changed)
+
+  check <file.luax>       Validate .luax syntax and report any errors
+
+  generate-dom            Generate WebRef HTML/SVG/DOM type definitions
+    --out-dir <dir>       Target output directory (defaults to 'types')
+
+  --version, -v           Display Hydronium LUAX version
+  --help, -h              Show this help message
+]])
+end
+
+local function read_file(path)
+  local f, err = io.open(path, "r")
+  if not f then
+    io.stderr:write(string.format("Error: Cannot read file '%s': %s\n", path, tostring(err)))
+    os.exit(1)
+  end
+  local content = f:read("*all")
+  f:close()
+  return content
+end
+
+local function write_file(path, content)
+  local f, err = io.open(path, "w")
+  if not f then
+    io.stderr:write(string.format("Error: Cannot write file '%s': %s\n", path, tostring(err)))
+    os.exit(1)
+  end
+  f:write(content)
+  f:close()
+end
+
+local args = { ... }
+if #args == 0 or args[1] == "--help" or args[1] == "-h" then
+  print_help()
+  os.exit(0)
+end
+
+if args[1] == "--version" or args[1] == "-v" then
+  print("Hydronium LUAX v0.1.0")
+  os.exit(0)
+end
+
+local cmd = args[1]
+
+if cmd == "compile" then
+  local input_file = nil
+  local output_file = nil
+  local gen_map = false
+  local inline_map = false
+
+  local i = 2
+  while i <= #args do
+    if args[i] == "-o" or args[i] == "--output" then
+      output_file = args[i + 1]
+      i = i + 2
+    elseif args[i] == "--sourcemap" then
+      gen_map = true
+      i = i + 1
+    elseif args[i] == "--inline-sourcemap" then
+      inline_map = true
+      i = i + 1
+    elseif not input_file and not args[i]:match("^%-") then
+      input_file = args[i]
+      i = i + 1
+    else
+      i = i + 1
+    end
+  end
+
+  if not input_file then
+    io.stderr:write("Error: Missing input file for compile\n")
+    os.exit(1)
+  end
+
+  local content = read_file(input_file)
+  local result = luax.compile(content, {
+    filename = input_file,
+    output_filename = output_file,
+    sourcemap = gen_map or inline_map,
+    inline_sourcemap = inline_map,
+  })
+
+  if output_file then
+    write_file(output_file, result.code)
+    if gen_map and not inline_map then
+      write_file(output_file .. ".map", result.map_json)
+    end
+    print("Compiled " .. input_file .. " -> " .. output_file)
+  else
+    io.write(result.code)
+  end
+
+elseif cmd == "format" then
+  local input_file = nil
+  local write_back = false
+  local check_only = false
+
+  local i = 2
+  while i <= #args do
+    if args[i] == "-w" or args[i] == "--write" then
+      write_back = true
+      i = i + 1
+    elseif args[i] == "--check" then
+      check_only = true
+      i = i + 1
+    elseif not input_file and not args[i]:match("^%-") then
+      input_file = args[i]
+      i = i + 1
+    else
+      i = i + 1
+    end
+  end
+
+  if not input_file then
+    io.stderr:write("Error: Missing input file for format\n")
+    os.exit(1)
+  end
+
+  local content = read_file(input_file)
+  local formatted = luax.format(content, { filename = input_file })
+
+  if check_only then
+    if formatted ~= content then
+      io.stderr:write(string.format("File '%s' requires formatting\n", input_file))
+      os.exit(1)
+    else
+      print(string.format("File '%s' is formatted", input_file))
+      os.exit(0)
+    end
+  elseif write_back then
+    write_file(input_file, formatted)
+    print("Formatted " .. input_file)
+  else
+    io.write(formatted)
+  end
+
+elseif cmd == "check" then
+  local input_file = nil
+  for i = 2, #args do
+    if not args[i]:match("^%-") then
+      input_file = args[i]
+      break
+    end
+  end
+
+  if not input_file then
+    io.stderr:write("Error: Missing input file for check\n")
+    os.exit(1)
+  end
+
+  local content = read_file(input_file)
+  local ok, err = pcall(luax.parse, content, input_file)
+  if ok then
+    print(string.format("Syntax OK: %s", input_file))
+    os.exit(0)
+  else
+    io.stderr:write(string.format("Syntax Error in %s:\n%s\n", input_file, tostring(err)))
+    os.exit(1)
+  end
+
+elseif cmd == "generate-dom" then
+  local out_dir = "types"
+  for i = 2, #args do
+    if args[i] == "--out-dir" and args[i + 1] then
+      out_dir = args[i + 1]
+    end
+  end
+  dom_gen.run(out_dir)
+
+else
+  io.stderr:write("Unknown command: " .. tostring(cmd) .. "\n")
+  print_help()
+  os.exit(1)
+end

@@ -1,0 +1,46 @@
+-- Sample LUAX Component Fixture
+local function Avatar(props)
+  return <img class="avatar-img" src={props.url} alt={props.name or "User Avatar"} />
+end
+
+local function ProfileCard(props)
+  local isOnline = props.online == true
+  local statusClass = isOnline and "status-online" or "status-offline"
+
+  return <div class="profile-card" id={props.id} {...props.extraAttrs}>
+    <div class="header">
+      <Avatar url={props.avatarUrl} name={props.username} />
+      <span class={statusClass} data-online={isOnline}>
+        {isOnline and "Online" or "Offline"}
+      </span>
+    </div>
+    <div class="content">
+      <h3 class="username">{props.username}</h3>
+      <p class="bio">{props.bio or "No bio provided &amp; available."}</p>
+    </div>
+    <>
+      <span class="badge">Verified User</span>
+      <span class="badge">Starship Pioneer</span>
+    </>
+    <div class="actions">
+      <button
+        type="button"
+        class="btn-primary"
+        disabled={not isOnline}
+        onClick={function(event)
+          if props.onMessage then
+            props.onMessage(props.username)
+          end
+        end}
+      >
+        Send Message
+      </button>
+    </div>
+    {/* Component footer notes */}
+    <footer class="card-footer">
+      <small>&copy; 2026 Starship Fleet</small>
+    </footer>
+  </div>
+end
+
+return ProfileCard
