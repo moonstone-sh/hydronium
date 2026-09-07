@@ -270,6 +270,144 @@ ordinary page loads coexist, not just in theory.
 Full 356-spec LuaJIT suite unaffected (example-app-only change, same as
 the original route addition).
 
+### Update (2026-09-07): the client side, both halves — real bugs found building it
+
+Closes the remaining items from `docs/HYDRONIUM_SCHEDULER_HMR_FOUNDATION.md`:
+a real browser consumer of the dev transport, in two deliberately
+separate forms (live reload where no client runtime exists to preserve
+state in; a genuine `RefreshRegistry`-driven refresh where one does).
+All verified via Playwright driving a real installed Chromium against
+the real running server — not a synthetic DOM, not a mocked transport.
+
+**Two real, load-bearing bugs found only because this was tested through
+an actual browser, not curl/raw sockets:**
+
+1. **Chromium does not reliably resend `Last-Event-ID` across an
+   automatic EventSource reconnect for named (non-default) SSE event
+   types.** The route's own `id:` field on every `hello`/`reload`/`bye`
+   frame looks like it should make the browser's built-in "resume where
+   I left off" mechanism just work — every raw-socket/curl probe in the
+   update above only ever exercised a *single* connection's internal
+   poll loop, never an actual cross-connection reconnect driven by a
+   real browser, so this never surfaced until testing one. Confirmed via
+   `page.on("request")` network tracing: a real reconnect request
+   carried `Last-Event-ID: (none)` despite the prior connection's last
+   frame having a matching `id:`. Fixed by moving reconnection entirely
+   into the client (`src/hydronium/client/dev_transport.js`): it tracks
+   the fingerprint itself and passes it as an explicit `?since=` query
+   param (which the route already accepted as a documented fallback) on
+   a connection it closes and reopens itself, never depending on the
+   browser to resend anything.
+2. **Chromium's HTTP cache served a stale response to repeated,
+   identical `?since=...` reconnects instead of ever reaching the server
+   again**, because `stream_begin(status, content_type)` has no options
+   argument to set `Cache-Control` — confirmed by checking Meteorite's
+   own `l_stream_begin` signature (`zig/bridge/lua_bindings.zig`), which
+   takes exactly those two arguments and nothing else. This produced a
+   real, initially very confusing symptom: a file edit, verified landing
+   correctly on disk (content changed, `stat`'s own mtime updated,
+   confirmed via plain shell commands run directly), was still reported
+   as unchanged by every subsequent browser reconnect indefinitely — but
+   a bash/curl reproduction of the exact same timing never showed it at
+   all, which was the actual clue (curl has no HTTP cache to hit). Fixed
+   client-side, not server-side: every connection URL gets a `_t=<timestamp>`
+   cache-busting parameter, guaranteeing each request is unique regardless
+   of what `since` value it carries.
+
+**Live reload** (`src/hydronium/client/dev_reload.js`, wired into
+`views/App.luax`'s `<script type="module">`): deliberately not HMR — no
+hydrated Hydronium runtime exists on this SSR page, so `location.reload()`
+on a `reload` event is the complete, honest behavior, not a stand-in for
+something smarter. Verified via a real Playwright `page.on("load")`
+listener: one real edit to `views/App.luax` while the page is open
+produces a second real navigation ~130ms later.
+
+**Real state-preserving HMR proof** (`examples/meteorite_ssr/hmr_demo/`):
+the actual required proof, built and verified against a real WASM Lua
+VM, not simulated:
+
+- `hmr_demo/index.html`: loads `wasmoon` (real Lua 5.4 compiled to WASM)
+  from jsdelivr, embeds 12 real Hydronium source files verbatim (traced
+  by a script following every real `require()` from
+  `hydronium.signals`/`hydronium.core.scope`/`hydronium.core.refresh`/
+  `hydronium.interpreter.lua`, not hand-picked — the earlier WASM
+  hydration proof from an earlier session got bitten by exactly this
+  kind of manual-file-list drift), and registers them into the Lua VM's
+  `package.preload` so real `require("hydronium.xxx")` calls resolve to
+  the real source.
+- A new `hydronium.interpreter.lua.hydrate_counter_island_refreshable`
+  (`src/hydronium/interpreter/lua.lua`) — deliberately a *new* function,
+  not an edit to the existing `hydrate_counter_island` (see that
+  function's own doc comment on why this module stays narrow rather
+  than being extended in place). Returns a `setup(click_increment)`
+  function meant to be called inside
+  `hydronium.core.scope.runWithScope(scope, setup, click_increment)`,
+  wiring a `RefreshRegistry`-backed signal and a real `Scope`-owned
+  `Effect` to a real DOM button claimed via the same
+  `hy_find_island`/`hy_query_button`/`hy_get_text`/`hy_set_text`/
+  `hy_on_click` host-bridge contract `hydrate_counter_island` already
+  documents — extended with one new requirement, that `hy_on_click`
+  replace any previously registered listener on the same button rather
+  than accumulate one, since a refresh calls it again on the same
+  element. Proven correct natively (LuaJIT, fake host bridge) before any
+  WASM/browser work, exactly matching the required sequence: hydrate at
+  10, two clicks to 12, dispose old scope, new scope with a changed
+  `click_increment`, state still 12, one more click reaching 14 — this
+  native proof is what made the much slower WASM/browser debugging cycle
+  worth trusting once it started (the Lua logic itself was never in
+  doubt while chasing the two bugs above).
+- `hmr_demo/click_increment.lua`: the one watched, live-editable file
+  standing in for "the developer edited the click handler's logic."
+  Deliberately served by a dedicated inline route
+  (`GET /__hydronium/hmr-demo-increment`, not nested under
+  `/__hydronium/hmr-demo/` where it actually lives on disk) rather than
+  through `meteorite.site`'s static-asset serving used for
+  `hmr_demo/index.html` — found live that static-asset serving bakes
+  file *content* at graph/build time, not just the file list: editing
+  `hmr_demo/index.html` on disk after a build silently kept serving the
+  old content until a rebuild, and the very same thing would have made
+  this file un-editable at dev time too, defeating the entire premise.
+  An inline Lua handler's own `io.open` already reads live filesystem
+  state per request (confirmed via the same live-edit-no-rebuild
+  property `views/App.luax` already has). The route lives outside the
+  `/__hydronium/hmr-demo/` prefix because that exact path was found
+  live to silently lose to `meteorite.site`'s wildcard for that prefix
+  (declared earlier in the file) with no build-time conflict error —
+  `meteorite.site`'s own conflict detector only checks routes that exist
+  at the moment it runs, and this route is declared with `app:get` well
+  after it.
+- Real end-to-end result, from a real running page
+  (`test_hmr_full2.mjs`, four plain assertions read back from
+  `document.getElementById("counter-btn").textContent`):
+  ```
+  PASS: after hydrate, button text (expected="Count: 10", actual="Count: 10")
+  PASS: after 2 clicks, button text (expected="Count: 12", actual="Count: 12")
+  PASS: state preserved immediately after refresh (expected="Count: 12", actual="Count: 12")
+  PASS: after 1 click post-refresh (new +2 logic active) (expected="Count: 14", actual="Count: 14")
+  ```
+  The third and fourth assertions are the actual claim: the count
+  survives a real refresh (dispose old `Scope`, create a new one, rerun
+  `setup` with a real `hmr_demo/click_increment.lua` fetched fresh after
+  a real file edit and a real dev-transport push), and the *edited*
+  click logic (+2, not the original +1) is what genuinely executes on
+  the next click — proving `setup` was really rerun, not that the old
+  closure survived untouched.
+
+Full 356-spec LuaJIT suite unaffected throughout (all of this is
+example-app and client-JS work, no framework runtime code changed apart
+from the new, additive `hydrate_counter_island_refreshable`).
+
+**Explicitly not attempted**: wiring this into `core.component`/
+`core.reconciler` for an arbitrary component tree (this proves the
+mechanism against one hand-wired island, matching
+`hydrate_counter_island`'s own established scope); the LUAX compiler
+pass for automatic descriptor attachment (still hand-written here, same
+as both refresh specs); a real browser-side consumer for a JS island;
+Suspense/streaming HMR interaction; any of this against `std_http`
+specifically (the demo inherits whatever backend the example is built
+with, currently `fast_http`, and was not separately re-verified against
+`std_http`).
+
 ### Historical record: what this session originally found (superseded above)
 
 A `/stream-test` route (`stream_begin` → `stream_write("prefix")` → 1s

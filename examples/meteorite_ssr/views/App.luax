@@ -115,6 +115,7 @@ local function AppView(props)
       <footer>
         <p>Meteorite v0.2.1 | Hydronium .luax SSR | Request: {req.request_id or "N/A"}</p>
       </footer>
+      <script type="module" src="/js/bootstrap/dev_reload.js"></script>
     </body>
   </html>
 end

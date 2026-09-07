@@ -83,4 +83,64 @@ function M.hydrate_counter_island(island_id, initial)
   return { get = count }
 end
 
+--- Hydrates a Counter island the same way as `hydrate_counter_island`,
+--- but structured so a real HMR refresh can be driven against it
+--- afterward: a `RefreshRegistry`-backed signal (state survives a
+--- refresh) and a real `Scope`-owned `Effect` (the old effect's cleanup
+--- runs exactly once when the old scope is disposed; the new effect
+--- runs exactly once after refresh) -- matching
+--- `tests/core/refresh_component_spec.lua`'s proof shape exactly, just
+--- against a real browser DOM via WASM Lua instead of the test host.
+---
+--- Deliberately does NOT go through `core.component`/`core.reconciler`
+--- (see `hydrate_counter_island`'s own doc comment for why this module
+--- stays narrow, not extended in place): this returns a `setup`
+--- function meant to be called directly inside
+--- `hydronium.core.scope.runWithScope(scope, setup, click_increment)`,
+--- the same host-bridge way `hydrate_counter_island` wires its own
+--- signal -- just parameterized so it can be called a second time,
+--- inside a fresh scope, with a different `click_increment` after a
+--- refresh, standing in for "the developer edited the click handler's
+--- logic and it should take effect."
+---
+--- Extends the host contract above with one requirement:
+--- `hy_on_click(button, callback)` must replace any previously
+--- registered listener on that same `button` handle (not accumulate
+--- one per call) -- calling `setup` again after a refresh calls
+--- `hy_on_click` again on the same button, and the old scope's effect
+--- disposal (via `Scope:dispose()`'s existing cleanup) has no way to
+--- reach into host-side DOM listener bookkeeping to remove the old one
+--- itself.
+--- @param island_id string
+--- @param initial number
+--- @param registry table hydronium.core.refresh.RefreshRegistry
+--- @return fun(click_increment: number): table setup function -- call inside runWithScope
+function M.hydrate_counter_island_refreshable(island_id, initial, registry)
+  local island = hy_find_island(island_id)
+  if not island then
+    error("hydronium.interpreter.lua: no DOM found for island `" .. tostring(island_id) .. "`", 2)
+  end
+
+  local button = hy_query_button(island)
+  if not button then
+    error("hydronium.interpreter.lua: island `" .. tostring(island_id) .. "` has no <button> to hydrate", 2)
+  end
+
+  return function(click_increment)
+    registry:begin_generation()
+    local count, setCount = registry:signal(initial, { kind = "signal", name = "count", block_path = "Counter.setup" })
+    registry:finish_generation()
+
+    signals.createEffect(function()
+      hy_set_text(button, "Count: " .. tostring(count()))
+    end)
+
+    hy_on_click(button, function()
+      setCount(count() + click_increment)
+    end)
+
+    return count
+  end
+end
+
 return M

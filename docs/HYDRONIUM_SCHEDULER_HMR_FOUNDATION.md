@@ -474,6 +474,64 @@ provably run concurrently — a `GET /` issued while an
 in 15ms, not blocked until the watch connection closed. See
 `docs/METEORITE_STREAMING_FOUNDATION.md`'s "switched the example to
 fast_http" update for the full route-suite re-verification this
-required. Still open, unchanged: no browser `EventSource` consumer
-subscribes to the watch stream, and no `RefreshRegistry` wiring exists
-to actually act on a `reload` event.
+required.
+
+## Update — both client-side halves closed: live reload, and real state-preserving HMR
+
+Both remaining items from the update above are now closed, with real
+browser evidence (Chromium via Playwright, not a synthetic harness) for
+each — deliberately built and verified as two separate things, not one
+generalized mechanism, because they have genuinely different targets:
+
+**Live reload for `examples/meteorite_ssr`** (`src/hydronium/client/dev_reload.js`,
+wired into `views/App.luax`): this page is server-rendered with no
+hydrated Hydronium runtime in the browser, so there is no client-side
+state to preserve — a full `location.reload()` on a `reload` event is
+the honest, complete behavior here, not a placeholder for something
+smarter. Verified live: a real edit to `views/App.luax` while the page
+is open produces a second real `load` event ~130ms later, with zero
+manual intervention.
+
+**Real state-preserving HMR proof**
+(`examples/meteorite_ssr/hmr_demo/`): a real Lua 5.4 WASM VM (wasmoon)
+running 12 real Hydronium source files (`hydronium.signals`,
+`hydronium.core.scope`, `hydronium.core.refresh`, and a new
+`hydronium.interpreter.lua.hydrate_counter_island_refreshable`),
+hydrating a real SSR-marker-shaped DOM, driving the exact required proof
+sequence end to end:
+
+```
+SSR Counter = 10  ->  WASM Lua hydrates by claiming existing DOM
+->  2 real DOM clicks  ->  Count = 12
+->  real file edit on disk (hmr_demo/click_increment.lua: 1 -> 2)
+->  real dev-transport push  ->  browser fetches the new source
+->  RefreshRegistry-driven refresh (dispose old Scope, new Scope, rerun setup)
+->  Count still 12 (state preserved)
+->  1 more click  ->  Count = 14 (the NEW +2 logic is what ran, not the old +1)
+```
+
+All four assertions pass against the real running page (`node --test`-style
+plain assertions, read back from the DOM, not mocked): hydrate, 2 clicks,
+state-preserved-after-refresh, and new-logic-active-after-refresh. Full
+detail, including the real bugs found building this (Chromium not
+reliably resending `Last-Event-ID` for named SSE events across
+auto-reconnect, and the HTTP response getting cached by the browser with
+no way to set `Cache-Control` on Meteorite's streaming primitive) is in
+`docs/METEORITE_STREAMING_FOUNDATION.md`'s "the client side, both halves"
+section.
+
+This deliberately does NOT go through `core.component`/`core.reconciler`
+— same scoping reasoning as `hydrate_counter_island` itself (see that
+function's own doc comment): this proves the `RefreshRegistry` +
+`Scope`/`Effect` disposal mechanism composes correctly with a real
+browser DOM and a real WASM Lua runtime, which is what was actually
+open; wiring refresh into the general component/reconciler path remains
+a separate, larger, still-unstarted piece of work.
+
+**Still open, explicitly not attempted**: the LUAX compiler pass for
+automatic descriptor attachment (both refresh specs and this proof all
+hand-write `{kind, name, block_path}`); wiring refresh into
+`ComponentInstance`/`core.reconciler` itself, for an arbitrary component
+tree rather than one hand-wired island; the JS island HMR ABI; a real
+`"suspense"` boundary kind; the full mixed vertical slice (streamed
+Suspense + Lua island + JS island + HMR, all together, on one page).

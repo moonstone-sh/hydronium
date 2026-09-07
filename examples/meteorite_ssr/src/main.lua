@@ -49,6 +49,7 @@ meteorite.site(app, {
   assets = {
     ["/js/island/:path*"] = { dir = "../js_island", param = "path" },
     ["/js/bootstrap/:path*"] = { dir = "../../src/hydronium/client", param = "path" },
+    ["/__hydronium/hmr-demo/:path*"] = { dir = "hmr_demo", param = "path" },
   },
 })
 
@@ -326,11 +327,27 @@ end)
 --    second as a poll.
 --
 --    Protocol: GET /__hydronium/watch?since=<fingerprint>&budget=<seconds>
---      - `since` supplied and stale -> immediate `event: reload`, stream
---        ends. This is what makes the transport correct across the gap
---        between polls, not just "eventually consistent": a change that
---        happened while nothing was connected is still caught on the very
---        next connection with `since` from the last `bye`/`reload`.
+--    (also accepts a Last-Event-ID request header as an alternative to
+--    the `since` query param, for a client that wants to lean on plain
+--    SSE semantics). Real client code should NOT rely on EventSource's
+--    native Last-Event-ID auto-resend for this, though: every frame
+--    carries a matching `id:`, which looks like it should make the
+--    browser's own "resume where I left off" mechanism just work on
+--    reconnect -- but verified live via Playwright against a real
+--    Chromium that it does NOT reliably resend Last-Event-ID across an
+--    automatic reconnect for named (non-default) SSE event types like
+--    `hello`/`reload`/`bye`. See src/hydronium/client/dev_transport.js,
+--    the real client, for the actual fix: it tracks the fingerprint
+--    itself and passes it as an explicit `since` query param on a
+--    connection it closes and reopens itself, never relying on the
+--    browser to resend anything. The `since` param here predates that
+--    finding and was originally meant only as a curl/manual-testing
+--    convenience; it's now load-bearing for the real client instead.
+--    `retry: 200` is sent regardless -- harmless, and still relevant for
+--    any consumer that DOES lean on native auto-reconnect for the
+--    no-op-until-bye case.
+--      - Last-Event-ID header or `since` query param supplied and stale
+--        -> immediate `event: reload`, stream ends.
 --      - Otherwise: `event: hello` with the current fingerprint, then a
 --        poll loop (0.5s interval, matching Ballad's own default) until
 --        either a change is detected (`event: reload`, stream ends) or
@@ -347,7 +364,7 @@ end)
 --    request): the push notification is genuinely the only missing piece
 --    of a live-reload loop, not a proxy for one.
 app:get("/__hydronium/watch", function(c)
-  local WATCHED = { "views/App.luax", "src/views/App.lua" }
+  local WATCHED = { "views/App.luax", "src/views/App.lua", "hmr_demo/click_increment.lua" }
   local POLL_INTERVAL = 0.5
   local HEARTBEAT_EVERY = 2
 
@@ -395,14 +412,18 @@ app:get("/__hydronium/watch", function(c)
     return table.concat(lines, "|")
   end
 
+  -- `id:` is the fingerprint itself (no embedded newlines, per the "|"
+  -- delimiter above, so it's already a valid single-line field value) --
+  -- this is what the browser echoes back as Last-Event-ID.
   local function emit(event, data)
-    stream_write("event: " .. event .. "\ndata: " .. tostring(data) .. "\n\n")
+    stream_write("id: " .. tostring(data) .. "\nevent: " .. event .. "\ndata: " .. tostring(data) .. "\n\n")
   end
 
-  local since = get_query("since")
+  local since = c:header("Last-Event-ID") or get_query("since")
   local budget = tonumber(get_query("budget")) or 5
 
   stream_begin(200, "text/event-stream")
+  stream_write("retry: 200\n\n")
 
   local current = fingerprint(false)
 
@@ -433,6 +454,35 @@ app:get("/__hydronium/watch", function(c)
 
   emit("bye", current)
   stream_end()
+end)
+
+-- 9. Serves hmr_demo/click_increment.lua's CURRENT content, fresh on
+--    every request -- NOT via meteorite.site's static-asset serving
+--    (used for hmr_demo/index.html above), which was found live to bake
+--    file CONTENT at graph/build time, not just the file list: editing
+--    a static asset on disk after a build does not change what that
+--    route returns until a rebuild, which would defeat the entire point
+--    of this file (the HMR demo page fetches it fresh after each
+--    /__hydronium/watch reload event, expecting the just-edited value).
+--    An inline Lua handler's own io.open, by contrast, already reads
+--    live filesystem state per request -- the same property that makes
+--    editing views/App.luax work with no rebuild at all (see route 1's
+--    own comment and src/views/App.lua's load_luax).
+--
+--    Deliberately NOT nested under /__hydronium/hmr-demo/ (where the
+--    file actually lives on disk): that whole prefix is already claimed
+--    by the meteorite.site wildcard above, and this exact route was
+--    found live to lose to it silently (no build-time conflict error,
+--    since this route is declared with app:get after meteorite.site
+--    ran its own conflict check against only the routes that existed at
+--    that point) -- a live fetch kept returning the stale, baked
+--    content. Living outside that prefix entirely sidesteps the
+--    ambiguity rather than depending on undocumented router precedence.
+app:get("/__hydronium/hmr-demo-increment", function(c)
+  local f = assert(io.open("hmr_demo/click_increment.lua", "r"))
+  local content = f:read("*a")
+  f:close()
+  return c:text(200, content)
 end)
 
 return app
