@@ -453,13 +453,53 @@ function virtual_source.transform(source, filename, options)
             end
           end
 
-          -- Replace closing tag </tag> with whitespace / comment padding: e.g. </d.button> -> }          
+          -- Replace closing tag </tag> with `}` followed by a line
+          -- comment filling the rest of the span (e.g. </d.button> ->
+          -- }-------), but ONLY when nothing else follows on the same
+          -- physical line -- a line comment runs to the next `\n`
+          -- regardless of what real code sits after it, so using one
+          -- when a closing tag is immediately followed by more markup
+          -- on the same line (e.g. `</code></pre>`, or a sibling
+          -- separator comma) would silently swallow that content,
+          -- corrupting the parse (caught by the sweep in commit
+          -- b434c73's follow-up: examples/showcase/ErrorBoundary.luax's
+          -- `</code></pre>` and a sibling comma in
+          -- examples/meteorite_ssr/views/App.luax both broke this way
+          -- on the first attempt). When a closing tag IS the last thing
+          -- on its line (the common case -- most real markup puts one
+          -- closing tag per line), plain spaces (the prior behavior)
+          -- become real trailing whitespace in the virtual document:
+          -- harmless to parsing, but LuaLS's own "Line with trailing
+          -- space" diagnostic fires on every one (confirmed live:
+          -- 37/37 remaining diagnostics on that same App.luax were
+          -- exactly this, once the real syntax errors were fixed and
+          -- stopped burying it). The shortest possible closing tag,
+          -- `</a>`, is 4 bytes -- enough for `}` + `--` + 1 more `-`.
           if node.closing_element and node.closing_element.loc then
             local c_start = node.closing_element.loc.start.offset
             local c_end = node.closing_element.loc["end"].offset
             if c_start and c_end then
               local c_len = c_end - c_start + 1
-              overwrite_range(c_start, c_end, pad_to_length("}", c_len))
+              local is_last_on_line = true
+              for p = c_end + 1, #source do
+                local ch = source:sub(p, p)
+                if ch == "\n" then
+                  break
+                elseif ch ~= " " and ch ~= "\t" and ch ~= "\r" then
+                  is_last_on_line = false
+                  break
+                end
+              end
+
+              local padding
+              if c_len <= 1 then
+                padding = "}"
+              elseif c_len == 2 or not is_last_on_line then
+                padding = pad_to_length("}", c_len)
+              else
+                padding = "}--" .. string.rep("-", c_len - 3)
+              end
+              overwrite_range(c_start, c_end, padding)
             end
           end
         end
@@ -545,8 +585,36 @@ function virtual_source.transform(source, filename, options)
             -- against a neighbor with no gap (e.g. `v{pkg.version}`).
             local e_start = child.loc.start.offset
             local e_end = child.loc["end"].offset
-            if bytes[e_start] == "{" then bytes[e_start] = " " end
-            if bytes[e_end] == "}" then bytes[e_end] = " " end
+            -- Guard against the same trailing-whitespace artifact fixed
+            -- for closing tags above: a solo `{expr}` child (e.g.
+            -- `<main>{props.children}</main>`) as the only content on
+            -- its line has this `}` as the very last non-whitespace
+            -- byte -- blanking it to a space then reads as real
+            -- trailing whitespace to LuaLS. A lone `}` can't be
+            -- comment-padded (a `--` comment needs 2 bytes); leaving
+            -- BOTH original delimiters in place instead is simplest and
+            -- still valid Lua (a single-value nested table is a legal
+            -- positional table entry, same as a bare value). Blanking
+            -- only the closing `}` while still blanking the opening `{`
+            -- (an earlier version of this fix) removes one brace of the
+            -- pair but not the other, undercounting closing braces for
+            -- the *enclosing* call by one -- caught by the sweep
+            -- immediately: every file with a solo trailing `{expr}`
+            -- child stopped parsing.
+            local last_on_line = true
+            for p = e_end + 1, #source do
+              local ch = source:sub(p, p)
+              if ch == "\n" then
+                break
+              elseif ch ~= " " and ch ~= "\t" and ch ~= "\r" then
+                last_on_line = false
+                break
+              end
+            end
+            if not last_on_line then
+              if bytes[e_start] == "{" then bytes[e_start] = " " end
+              if bytes[e_end] == "}" then bytes[e_end] = " " end
+            end
           end
         end
 

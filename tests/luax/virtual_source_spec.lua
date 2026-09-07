@@ -112,12 +112,51 @@ end
       assert.equal(#src, 11)
     end)
 
-    it("lowers closing tag </d.button> (11 bytes) to '}          ' (11 bytes)", function()
+    it("lowers closing tag </d.button> (11 bytes) to '}----------' (11 bytes, comment-padded)", function()
+      -- Comment-padded (`}` + `--` line comment filling the rest), not
+      -- space-padded, when the closing tag is the last thing on its
+      -- line/source (as here) -- see virtual_source.lua's closing-tag
+      -- comment for why: plain spaces here become real trailing
+      -- whitespace in the virtual document, which LuaLS's own "Line
+      -- with trailing space" diagnostic flags on every closing tag in
+      -- a real file.
       local src = "<d.button>Hello</d.button>"
       local virt = virtual_source.transform(src)
       local close_part = virt:sub(-11)
-      assert.equal(close_part, "}          ")
+      assert.equal(close_part, "}----------")
       assert.equal(#virt, #src)
+    end)
+
+    it("falls back to space-padding a closing tag when more markup follows it on the same line", function()
+      -- Regression test: a first attempt at comment-padding
+      -- unconditionally used `--`, which swallowed whatever followed on
+      -- the same physical line as a comment -- caught by the sweep in
+      -- commit b434c73's follow-up via examples/showcase/ErrorBoundary.luax's
+      -- real `<pre><code>{msg}</code></pre>` (two closing tags on one
+      -- line) and a sibling-comma case in examples/meteorite_ssr's
+      -- App.luax, both of which stopped parsing as valid Lua.
+      local src = "<d.pre><d.code>x</d.code></d.pre>"
+      local virt = virtual_source.transform(src)
+      local ok = loadstring and loadstring(virt) or load(virt)
+      assert.truthy(ok, "virtual code with two closing tags on one line must still be valid Lua: " .. virt)
+      assert.equal(#src, #virt)
+    end)
+
+    it("keeps a solo trailing {expr} child's braces paired instead of unbalancing the enclosing call", function()
+      -- Regression test: a first attempt at avoiding trailing
+      -- whitespace on a lone `}` (when a bare {expr} child, like
+      -- `{props.children}`, is the only content on its line) blanked
+      -- the opening `{` unconditionally but only conditionally kept the
+      -- closing `}` -- removing one brace of the pair without the
+      -- other, undercounting the enclosing call's closing braces by
+      -- one. Caught by the sweep via examples/showcase/ErrorBoundary.luax's
+      -- real `{props.children}` (sole child, own line, inside
+      -- `<H.ErrorBoundary>`), which stopped parsing entirely.
+      local src = "<d.main>\n  {props.children}\n</d.main>"
+      local virt = virtual_source.transform(src)
+      local ok = loadstring and loadstring(virt) or load(virt)
+      assert.truthy(ok, "virtual code with a solo trailing {expr} child must still be valid Lua: " .. virt)
+      assert.equal(#src, #virt)
     end)
 
     it("preserves exact column and byte coordinates for attributes and handlers", function()
