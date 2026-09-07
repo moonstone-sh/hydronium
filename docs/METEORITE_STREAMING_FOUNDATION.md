@@ -129,6 +129,107 @@ decision below. All of `basic-service-build.sh`, `-http.sh`, and
 `-contracts.sh` pass unchanged in `release-static` mode after all of the
 above.
 
+### Update (2026-09-07): the streaming primitive used for a real HMR dev-transport trigger
+
+Closes one item from `docs/HYDRONIUM_SCHEDULER_HMR_FOUNDATION.md`'s "Left
+open" list: **file change on disk → real push notification to a connected
+client** — not the browser-side listener or `RefreshRegistry` wiring,
+which stay separate, larger, and still open.
+
+**Constraint that shaped the design, found by reading the code, not
+assumed:** `examples/meteorite_ssr` is built with the `std_http` backend,
+which is strictly single-connection-serial —
+`zig/backends/std_http.zig` sets `threaded_connections = false` and
+`pooled_connections = false`, and `zig/meteorite.zig`'s accept loop calls
+`serveConnection` inline; a handler that never returns doesn't just block
+other requests, it freezes the whole server's `accept()` loop. An
+indefinite SSE stream (the shape used for `/stream` above) is therefore
+not viable for a watch endpoint on this backend. The route below uses a
+**bounded long-poll** instead: a client-supplied budget (default 5s), a
+0.5s poll interval, and a `since=<fingerprint>` handoff so a change that
+happens while nothing is connected is still caught on the very next
+connection rather than lost in the gap between polls.
+
+Detection is a `stat`-snapshot poll — the same technique Ballad's own file
+watcher already uses in this stack
+(`.moonstone/env/libexec/ballad/src/ballad/plugins/watcher.lua`), so no
+new dependency (no `luafilesystem`) was needed. `%Fm` (BSD `stat`, this
+machine) / `%.9Y` (GNU `stat`) give sub-second mtime precision; plain
+`%m`/`%Y` are whole-seconds and can miss an edit landing in the same
+second as a poll.
+
+The new route: `GET /__hydronium/watch` in `examples/meteorite_ssr/src/main.lua`,
+self-contained per this file's own handler-lifting constraint (see its
+header comment). Watches exactly `views/App.luax` and
+`src/views/App.lua` — not a directory walk, which would traverse
+`.moonstone/env/`'s thousands of files every poll.
+
+**A real bug found and fixed during verification, not anticipated in the
+plan:** the fingerprint was originally newline-joined
+(`table.concat(lines, "\n")`). Round-tripping it through a `since=`
+query parameter (percent-encoded as `%0A`) got a real
+`HTTP/1.1 400 Bad Request` from Meteorite's router — a legitimate
+CRLF-injection guard, not a bug in Meteorite. A literal embedded newline
+in an SSE `data:` line is also malformed per the SSE spec (a multi-line
+payload needs one `data:` prefix per line, which the implementation
+wasn't doing either). Fixed by joining with `"|"` instead, which needs no
+encoding at all since it never appears in a `stat` line's own content.
+
+**Live, timestamped proof, three runs against the real rebuilt binary**
+(`moon exec --dev meteorite graph ...` then
+`zig build -Dmode=release-hybrid -Dbackend=std_http`), via the same raw
+Python socket technique used for the original streaming proof above —
+`curl -N` would show the events but flattens the timing evidence that's
+the actual point:
+
+**Run A — heartbeat and clean budget expiry, no edit** (`?budget=3`):
+```
+[  0.010s] event: hello  data: ...App.lua|1788807790.245608427 6003 views/App.luax
+[  2.109s] event: ping   data: 2.0
+[  3.161s] event: bye    data: ...App.lua|1788807790.245608427 6003 views/App.luax
+[  3.161s] connection closed by server
+```
+
+**Run B — the actual claim: live edit mid-stream** (`?budget=10`; file
+touched at wall-clock `1788807860.525106`, ~2s after connecting):
+```
+[  0.009s] event: hello  data: ...App.lua|1788807790.245608427 6003 views/App.luax
+[  2.069s] event: reload data: ...App.lua|1788807860.526486241 6048 views/App.luax
+[  2.069s] connection closed by server
+```
+The `reload` frame's own embedded mtime (`.526486241`) lands ~1.4ms after
+the actual write (`.525106`) and arrives on the very next 0.5s poll tick
+— the evidence is that timestamp delta, not just the frame's presence.
+
+**Run C — the reconnect race** (the case a naive long-poll gets wrong):
+baseline fingerprint fetched, file edited with **nothing connected**
+(wall-clock `1788807886.682253`), then reconnected with
+`since=<the stale baseline>`:
+```
+[  0.008s] event: reload data: ...App.lua|1788807886.682844714 6048 views/App.luax
+[  0.008s] connection closed by server
+```
+Immediate `reload` on the very first frame (no poll wait at all) — the
+embedded mtime (`.682844714`) matches the edit (`.682253`) to within
+~0.6ms, proving a change during a gap with no connection at all is still
+caught, not just changes that happen to land while a client is already
+watching.
+
+Regression check: all pre-existing routes (`/`, `/api/health`, `/mixed`,
+`/islands`) return `200` against the rebuilt binary; hydronium's own
+356-spec LuaJIT suite is unaffected (this touches only the example app,
+not the framework).
+
+**Explicitly not proven by this work**: no browser `EventSource`
+consumer exists; no `RefreshRegistry` wiring; page loads and the watch
+stream cannot coexist on `std_http` (the serial-backend hazard above) —
+switching to `fast_http` to fix that is deliberately deferred, since it
+needs the whole existing route suite re-verified on a backend it's never
+run on; client-disconnect-mid-stream remains as untested as it was for
+the original streaming primitive (see "What remains genuinely open"
+above) — the bounded budget sidesteps needing that path to be correct
+rather than proving it is.
+
 ### Historical record: what this session originally found (superseded above)
 
 A `/stream-test` route (`stream_begin` → `stream_write("prefix")` → 1s

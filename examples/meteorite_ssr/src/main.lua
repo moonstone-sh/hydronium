@@ -301,4 +301,138 @@ app:get("/mixed", function(c)
   }))
 end)
 
+-- 8. HMR dev-transport trigger: a real file-change -> push-notification
+--    proof, not the client-side half (no EventSource consumer, no
+--    RefreshRegistry wiring -- see docs/HYDRONIUM_SCHEDULER_HMR_FOUNDATION.md's
+--    "Left open" list; this closes exactly one item on it).
+--
+--    Shape is a BOUNDED long-poll over Meteorite's real
+--    stream_begin/stream_write/stream_end SSE primitive (proven live in
+--    route 5 above), not an indefinite stream -- this example is built
+--    with the `std_http` backend, which is strictly single-connection-serial
+--    (see zig/meteorite.zig's accept loop: no threading, no pooling; a
+--    handler that never returns freezes the whole server, not just this
+--    request). A short, client-bounded budget makes the route self-healing
+--    even if a client vanishes mid-stream, since client-disconnect
+--    handling is otherwise unverified here (see
+--    docs/METEORITE_STREAMING_FOUNDATION.md's open items).
+--
+--    Detection is a `stat`-snapshot poll, the same technique Ballad's own
+--    file watcher already uses in this stack
+--    (.moonstone/env/libexec/ballad/src/ballad/plugins/watcher.lua) --
+--    no new dependency (no luafilesystem) needed. `%Fm` (BSD stat, this
+--    machine) / `%.9Y` (GNU stat) give sub-second mtime precision; plain
+--    `%m`/`%Y` are whole-seconds and can miss an edit landing in the same
+--    second as a poll.
+--
+--    Protocol: GET /__hydronium/watch?since=<fingerprint>&budget=<seconds>
+--      - `since` supplied and stale -> immediate `event: reload`, stream
+--        ends. This is what makes the transport correct across the gap
+--        between polls, not just "eventually consistent": a change that
+--        happened while nothing was connected is still caught on the very
+--        next connection with `since` from the last `bye`/`reload`.
+--      - Otherwise: `event: hello` with the current fingerprint, then a
+--        poll loop (0.5s interval, matching Ballad's own default) until
+--        either a change is detected (`event: reload`, stream ends) or
+--        the budget expires (`event: bye` with the current fingerprint,
+--        stream ends) -- `event: ping` fires periodically in between so
+--        the stream is observably alive while waiting.
+--
+--    Watched set is a literal list, not a directory walk -- `find` over
+--    the whole project would traverse `.moonstone/env/`'s thousands of
+--    files every poll. Exactly the two files a `/` request already
+--    reflects live, with no rebuild, on every request (views/App.luax is
+--    compiled fresh by src/views/App.lua's load_luax on every require,
+--    and Meteorite's hybrid runtime creates a fresh Lua state per
+--    request): the push notification is genuinely the only missing piece
+--    of a live-reload loop, not a proxy for one.
+app:get("/__hydronium/watch", function(c)
+  local WATCHED = { "views/App.luax", "src/views/App.lua" }
+  local POLL_INTERVAL = 0.5
+  local HEARTBEAT_EVERY = 2
+
+  local function get_query(key)
+    if type(c.query) == "function" then
+      return c:query(key)
+    elseif type(c.query) == "table" then
+      return c.query[key]
+    end
+    return nil
+  end
+
+  -- Snapshot every watched file's mtime/size/name into one sorted string;
+  -- any create/delete/modify changes it. `sleep_first` folds the poll
+  -- delay into the same `io.popen` call as the stat commands, so each
+  -- tick costs one subprocess, not two.
+  local function fingerprint(sleep_first)
+    local parts = {}
+    if sleep_first then
+      parts[#parts + 1] = "sleep " .. tostring(POLL_INTERVAL) .. ";"
+    end
+    for _, f in ipairs(WATCHED) do
+      parts[#parts + 1] = "stat -f '%Fm %z %N' '" .. f .. "' 2>/dev/null || stat -c '%.9Y %s %n' '" .. f .. "';"
+    end
+    parts[#parts + 1] = "true"
+    local p = io.popen(table.concat(parts, " "), "r")
+    if not p then return "" end
+    local out = p:read("*a") or ""
+    p:close()
+    -- Sort lines so the fingerprint doesn't depend on filesystem stat
+    -- ordering, only on content -- matches Ballad's own watcher, which
+    -- pipes its snapshot through `sort` for the same reason. Joined with
+    -- "|", not "\n": a raw newline round-tripped through a query string
+    -- (percent-encoded as %0A in `since=...`) is rejected by Meteorite's
+    -- router as a CRLF-injection guard -- found live, not assumed -- and
+    -- a literal embedded newline in an SSE `data:` line is malformed per
+    -- the SSE spec too (a multi-line payload needs one `data:` prefix per
+    -- line). "|" sidesteps both without needing any encoding at all,
+    -- since it never appears in a `stat` line's own content.
+    local lines = {}
+    for line in out:gmatch("[^\n]+") do
+      lines[#lines + 1] = line
+    end
+    table.sort(lines)
+    return table.concat(lines, "|")
+  end
+
+  local function emit(event, data)
+    stream_write("event: " .. event .. "\ndata: " .. tostring(data) .. "\n\n")
+  end
+
+  local since = get_query("since")
+  local budget = tonumber(get_query("budget")) or 5
+
+  stream_begin(200, "text/event-stream")
+
+  local current = fingerprint(false)
+
+  if since and since ~= "" and since ~= current then
+    emit("reload", current)
+    stream_end()
+    return
+  end
+
+  emit("hello", current)
+
+  local elapsed = 0
+  local since_heartbeat = 0
+  while elapsed < budget do
+    local next_fp = fingerprint(true)
+    elapsed = elapsed + POLL_INTERVAL
+    since_heartbeat = since_heartbeat + POLL_INTERVAL
+    if next_fp ~= current then
+      emit("reload", next_fp)
+      stream_end()
+      return
+    end
+    if since_heartbeat >= HEARTBEAT_EVERY then
+      emit("ping", elapsed)
+      since_heartbeat = 0
+    end
+  end
+
+  emit("bye", current)
+  stream_end()
+end)
+
 return app

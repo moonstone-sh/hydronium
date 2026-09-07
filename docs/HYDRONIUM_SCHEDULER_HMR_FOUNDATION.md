@@ -436,16 +436,40 @@ to a string and failed with a clear, honest diff (`got {}`), not a false
 pass. Fixed by reading `.text` off the child VNode.
 
 **Left open, deliberately, not attempted this session**: the SSE
-transport implementation and its browser-side `EventSource` proof; file
-watching → build → invalidation wiring; the LUAX compiler pass that would
-attach `{kind, name, block_path}` automatically instead of by hand (every
-test in both refresh specs still hand-writes descriptors); the refresh
-sequence is still performed by the test itself, not by any real code path
-inside `component.lua` or a dev-transport-triggered coordinator; the JS
+transport implementation and its browser-side `EventSource` proof; the
+LUAX compiler pass that would attach `{kind, name, block_path}`
+automatically instead of by hand (every test in both refresh specs still
+hand-writes descriptors); the refresh sequence is still performed by the
+test itself, not by any real code path inside `component.lua`; the JS
 island HMR ABI; a real `"suspense"` boundary kind and a real
 streaming-Suspense consumer; the full mixed vertical slice. Both halves
 of refresh (signal identity, effect lifecycle) are now proven
 individually and in composition against real Hydronium code — what
-remains is entirely about *triggering* a refresh for real (a file change,
-a dev transport, a compiler pass attaching descriptors automatically),
-not about whether the refresh mechanism itself is sound.
+remains is entirely about *triggering* a refresh for real (a compiler
+pass attaching descriptors automatically, and wiring the proven
+mechanism into `component.lua` itself), not about whether the refresh
+mechanism itself is sound.
+
+## Update — the file-watching / dev-transport trigger, proven live
+
+One piece of "triggering a refresh for real" is now closed:
+**file change on disk → real push notification to a connected client**,
+via a bounded long-poll over Meteorite's `stream_begin`/`stream_write`/
+`stream_end` primitive at a new `/__hydronium/watch` route in
+`examples/meteorite_ssr/src/main.lua`. Full detail, including three
+live timestamped socket probes (heartbeat/budget expiry, a live edit
+mid-stream, and the reconnect-race case a naive long-poll gets wrong) is
+in `docs/METEORITE_STREAMING_FOUNDATION.md`'s "the streaming primitive
+used for a real HMR dev-transport trigger" section — not duplicated
+here since that document is the established home for live-socket
+evidence.
+
+**What this does and does not close**: the *transport* (server detects a
+change, pushes something a connected client would receive) is proven.
+Still open, unchanged from above: no browser `EventSource` consumer
+subscribes to it, no `RefreshRegistry` wiring exists to actually act on
+a `reload` event, and the example's `std_http` backend is
+single-connection-serial, so the watch stream and ordinary page loads
+cannot coexist on it today (switching to `fast_http` to fix that is
+deliberately deferred — it needs the whole existing route suite
+re-verified on a backend it has never run on).
