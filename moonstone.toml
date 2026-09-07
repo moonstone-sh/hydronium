@@ -1,0 +1,21 @@
+manifest_version = 2
+
+[package]
+name = "hydronium/create"
+version = "0.1.0"
+kind = "bin"
+description = "Starter project generator and scaffolding tool for Hydronium reactive applications"
+
+[interpreter]
+name = "lua"
+version = "5.4"
+abi = "5.4"
+
+[scripts]
+dev = "lua ./src/main.lua \"$@\""
+test = "lua ./tests/create_spec.lua"
+
+[[dependencies]]
+name = "moonstone/clingy"
+constraint = "^0.2.0"
+role = "runtime"
