@@ -127,6 +127,14 @@ function assert_lib.falsy(val, msg)
   end
 end
 
+--- Unconditionally fails with the given message. Found missing
+--- (tests/luax/isolation_spec.lua called it and got a confusing "attempt
+--- to call field 'fail'" instead of the intended pollution-detected
+--- message) while adding tests/interpreter/lua_spec.lua.
+function assert_lib.fail(msg)
+  error("Assertion failed: " .. tostring(msg), 2)
+end
+
 function assert_lib.is_nil(val, msg)
   if val ~= nil then
     local err = string.format("Assertion failed: expected nil, got %s%s",
@@ -388,6 +396,7 @@ local function main()
       "tests/server/server_spec.lua",
       "tests/server/islands_suspense_spec.lua",
       "tests/server/meteorite_spec.lua",
+      "tests/interpreter/lua_spec.lua",
       "tests/meteorite/meteorite_integration_spec.lua",
       -- LUAX compiler & tooling specs
       "tests/luax/lexer_spec.lua",
