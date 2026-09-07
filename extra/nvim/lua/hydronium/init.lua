@@ -167,6 +167,160 @@ function M.setup_autotag(bufnr)
   return true
 end
 
+--- Finds the JSX element (element_expression, i.e. a tag with a
+--- separate opening_element/closing_element pair, or a standalone
+--- self_closing_element) enclosing the given tree-sitter node, walking
+--- up the parent chain. Returns nil if none is found (cursor isn't
+--- inside any tag).
+--- @param node userdata? A TSNode to start walking up from
+--- @return userdata? element
+local function find_enclosing_element(node)
+  while node do
+    local t = node:type()
+    if t == "element_expression" or t == "self_closing_element" then
+      return node
+    end
+    node = node:parent()
+  end
+  return nil
+end
+
+--- Returns the element_expression/self_closing_element node enclosing
+--- the cursor in the current window, or nil (with a user-facing
+--- warning) if the buffer isn't luax, has no active parser, or the
+--- cursor isn't inside any tag.
+--- @return userdata? element
+--- @return number? bufnr
+local function element_at_cursor()
+  if vim.bo.filetype ~= "luax" then
+    vim.notify("hydronium.nvim: this only works in a luax buffer", vim.log.levels.WARN)
+    return nil
+  end
+  local bufnr = vim.api.nvim_get_current_buf()
+  local ok, parser = pcall(vim.treesitter.get_parser, bufnr, "luax")
+  if not ok then
+    vim.notify("hydronium.nvim: no tree-sitter parser for this buffer", vim.log.levels.ERROR)
+    return nil
+  end
+  local tree = parser:parse()[1]
+  local row0, col0 = unpack(vim.api.nvim_win_get_cursor(0))
+  row0 = row0 - 1
+  local node = tree:root():named_descendant_for_range(row0, col0, row0, col0)
+  local element = find_enclosing_element(node)
+  if not element then
+    vim.notify("hydronium.nvim: no JSX tag found at cursor", vim.log.levels.WARN)
+    return nil
+  end
+  return element, bufnr
+end
+
+--- Removes the JSX tag at cursor. With `opts.keep_children = true`
+--- ("unwrap"), the opening and closing tags are dropped but everything
+--- between them is kept in place verbatim; otherwise the whole element
+--- (tag and children) is deleted. A self_closing_element has no
+--- children by construction (verified via tree-sitter-luax's grammar:
+--- self_closing_element never has a `children` field, only
+--- element_expression does), so `keep_children` on one is refused
+--- rather than silently doing a full delete instead of what was asked.
+--- @param opts { keep_children: boolean? }?
+--- @return boolean ok
+function M.remove_tag_at_cursor(opts)
+  opts = opts or {}
+  local element, bufnr = element_at_cursor()
+  if not element then
+    return false
+  end
+
+  local srow, scol, erow, ecol = element:range()
+
+  if opts.keep_children then
+    if element:type() == "self_closing_element" then
+      vim.notify(
+        "hydronium.nvim: self-closing tags have no children to keep -- use :LuaxRemoveTag to delete it",
+        vim.log.levels.WARN
+      )
+      return false
+    end
+    local open_fields = element:field("open")
+    local close_fields = element:field("close")
+    local open_node = open_fields and open_fields[1]
+    local close_node = close_fields and close_fields[1]
+    if not (open_node and close_node) then
+      vim.notify(
+        "hydronium.nvim: element is missing an opening or closing tag (unterminated?), refusing to unwrap",
+        vim.log.levels.WARN
+      )
+      return false
+    end
+    local _, _, open_erow, open_ecol = open_node:range()
+    local close_srow, close_scol = close_node:range()
+    local inner_lines = vim.api.nvim_buf_get_text(bufnr, open_erow, open_ecol, close_srow, close_scol, {})
+    vim.api.nvim_buf_set_text(bufnr, srow, scol, erow, ecol, inner_lines)
+  else
+    vim.api.nvim_buf_set_text(bufnr, srow, scol, erow, ecol, {})
+  end
+  return true
+end
+
+--- Prompts for a new tag name and renames the JSX element at cursor,
+--- updating its opening and closing tag names (or the single name of a
+--- self_closing_element) atomically. Complements nvim-ts-autotag's
+--- typing-based "linked editing" (edit one side, the other follows
+--- live) with an explicit, prompt-driven rename that doesn't require
+--- retyping the name character by character, and works even when
+--- nvim-ts-autotag isn't installed.
+--- @return boolean ok
+function M.rename_tag_at_cursor()
+  local element, bufnr = element_at_cursor()
+  if not element then
+    return false
+  end
+
+  local name_nodes = {}
+  if element:type() == "self_closing_element" then
+    local fields = element:field("name")
+    if fields and fields[1] then table.insert(name_nodes, fields[1]) end
+  else
+    for _, field_name in ipairs({ "open", "close" }) do
+      local fields = element:field(field_name)
+      local tag_node = fields and fields[1]
+      if tag_node then
+        local name_fields = tag_node:field("name")
+        if name_fields and name_fields[1] then
+          table.insert(name_nodes, name_fields[1])
+        end
+      end
+    end
+  end
+
+  if #name_nodes == 0 then
+    vim.notify("hydronium.nvim: could not find a tag name to rename", vim.log.levels.WARN)
+    return false
+  end
+
+  local current_name = vim.treesitter.get_node_text(name_nodes[1], bufnr)
+
+  vim.ui.input({ prompt = "Rename <" .. current_name .. "> to: ", default = current_name }, function(new_name)
+    if not new_name or new_name == "" or new_name == current_name then
+      return
+    end
+    -- Apply the later (by buffer position) edit first so replacing the
+    -- opening tag's name -- which always comes before the closing
+    -- tag's in the buffer -- can't shift the closing tag's
+    -- already-captured range out from under it.
+    table.sort(name_nodes, function(a, b)
+      local ar, br = { a:range() }, { b:range() }
+      if ar[1] ~= br[1] then return ar[1] > br[1] end
+      return ar[2] > br[2]
+    end)
+    for _, n in ipairs(name_nodes) do
+      local sr, sc, er, ec = n:range()
+      vim.api.nvim_buf_set_text(bufnr, sr, sc, er, ec, { new_name })
+    end
+  end)
+  return true
+end
+
 --- Plugin setup function
 --- @param opts table? User configuration table
 function M.setup(opts)
@@ -304,6 +458,27 @@ function M.setup(opts)
 
     vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO, { title = "Hydronium LUAX" })
   end, { desc = "Show LUAX filetype/tree-sitter/LSP status for the current buffer" })
+
+  -- :LuaxRemoveTag / :LuaxUnwrapTag -- tree-sitter-based tag removal.
+  -- Not an LSP code action (neither lua_ls nor any JSX/HTML server
+  -- exposes "remove tag" as one); these operate directly on the real
+  -- tree-sitter-luax parse of the buffer. No default keymap is bound --
+  -- map these yourself, e.g. `vim.keymap.set("n", "dst", "<cmd>LuaxUnwrapTag<cr>")`.
+  vim.api.nvim_create_user_command("LuaxRemoveTag", function()
+    M.remove_tag_at_cursor({ keep_children = false })
+  end, { desc = "Remove the JSX tag at cursor, including its children" })
+
+  vim.api.nvim_create_user_command("LuaxUnwrapTag", function()
+    M.remove_tag_at_cursor({ keep_children = true })
+  end, { desc = "Remove the JSX tag at cursor, keeping its children in place" })
+
+  -- :LuaxRenameTag -- prompt-based rename updating both the opening and
+  -- closing tag name atomically. Complements nvim-ts-autotag's
+  -- typing-based linked editing (setup_autotag above); works even
+  -- without it installed.
+  vim.api.nvim_create_user_command("LuaxRenameTag", function()
+    M.rename_tag_at_cursor()
+  end, { desc = "Rename the JSX tag at cursor (prompts for the new name)" })
 end
 
 return M

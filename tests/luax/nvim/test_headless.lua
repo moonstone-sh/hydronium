@@ -205,6 +205,180 @@ test("Autotag > registers luax tag config and auto-closes tags when nvim-ts-auto
   )
 end)
 
+-- Test 6: Tag removal (extra/nvim's M.remove_tag_at_cursor) -- real
+-- tree-sitter-based edits against real tree-sitter-luax parses, not
+-- an LSP code action (no server exposes "remove tag" as one).
+test("Tag Removal > deletes, unwraps, and refuses to unwrap a childless tag", function()
+  local info = debug.getinfo(1, "S")
+  local this_file = info.source:gsub("^@", "")
+  local root = this_file:match("^(.*)/tests/luax/nvim/test_headless%.lua$")
+  assert(root, "Could not determine workspace root from test file path")
+  local hydronium = dofile(root .. "/extra/nvim/lua/hydronium/init.lua")
+
+  local function with_buf(lines, fn)
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.api.nvim_set_option_value("filetype", "luax", { buf = buf })
+    vim.api.nvim_set_current_buf(buf)
+    fn(buf)
+    vim.api.nvim_buf_delete(buf, { force = true })
+  end
+
+  local function text_of(buf)
+    return table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+  end
+
+  with_buf({ 'return <div><meta charset="utf-8" /></div>' }, function(buf)
+    vim.api.nvim_win_set_cursor(0, { 1, 15 }) -- inside 'meta'
+    local ok = hydronium.remove_tag_at_cursor({ keep_children = false })
+    assert(ok, "expected remove_tag_at_cursor to succeed on a self-closing tag")
+    assert(text_of(buf) == "return <div></div>", "got: " .. text_of(buf))
+  end)
+
+  with_buf({ "return <div><span>hi</span></div>" }, function(buf)
+    vim.api.nvim_win_set_cursor(0, { 1, 14 }) -- inside 'span'
+    local ok = hydronium.remove_tag_at_cursor({ keep_children = false })
+    assert(ok, "expected full removal to succeed")
+    assert(text_of(buf) == "return <div></div>", "got: " .. text_of(buf))
+  end)
+
+  with_buf({ "return <div><span>hi</span></div>" }, function(buf)
+    vim.api.nvim_win_set_cursor(0, { 1, 14 }) -- inside 'span'
+    local ok = hydronium.remove_tag_at_cursor({ keep_children = true })
+    assert(ok, "expected unwrap to succeed")
+    assert(text_of(buf) == "return <div>hi</div>", "got: " .. text_of(buf))
+  end)
+
+  with_buf({ 'return <div><meta charset="utf-8" /></div>' }, function(buf)
+    vim.api.nvim_win_set_cursor(0, { 1, 15 }) -- inside 'meta'
+    local ok = hydronium.remove_tag_at_cursor({ keep_children = true })
+    assert(ok == false, "expected unwrap on a self-closing tag to be refused")
+    assert(
+      text_of(buf) == 'return <div><meta charset="utf-8" /></div>',
+      "expected buffer to be untouched, got: " .. text_of(buf)
+    )
+  end)
+
+  with_buf({ "return <div>", "  <span>hi</span>", "</div>" }, function(buf)
+    vim.api.nvim_win_set_cursor(0, { 1, 9 }) -- inside the outer 'div'
+    local ok = hydronium.remove_tag_at_cursor({ keep_children = true })
+    assert(ok, "expected multi-line unwrap to succeed")
+    assert(text_of(buf) == "return \n  <span>hi</span>\n", "got: " .. text_of(buf))
+  end)
+end)
+
+-- Test 7: Explicit rename (extra/nvim's M.rename_tag_at_cursor) --
+-- prompt-driven, updates opening and closing tag names atomically.
+-- Complements (doesn't replace) nvim-ts-autotag's typing-based linked
+-- editing already covered by Test 5.
+test("Rename Tag > updates open+close atomically via a stubbed prompt", function()
+  local info = debug.getinfo(1, "S")
+  local this_file = info.source:gsub("^@", "")
+  local root = this_file:match("^(.*)/tests/luax/nvim/test_headless%.lua$")
+  assert(root, "Could not determine workspace root from test file path")
+  local hydronium = dofile(root .. "/extra/nvim/lua/hydronium/init.lua")
+
+  local orig_input = vim.ui.input
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "return <div><span>hi</span></div>" })
+  vim.api.nvim_set_option_value("filetype", "luax", { buf = buf })
+  vim.api.nvim_set_current_buf(buf)
+  vim.api.nvim_win_set_cursor(0, { 1, 14 }) -- inside 'span'
+  vim.ui.input = function(_, callback) callback("em") end
+  local ok = hydronium.rename_tag_at_cursor()
+  vim.ui.input = orig_input
+  local text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+  assert(ok, "expected rename_tag_at_cursor to succeed")
+  assert(text == "return <div><em>hi</em></div>", "got: " .. text)
+  vim.api.nvim_buf_delete(buf, { force = true })
+
+  local buf2 = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf2, 0, -1, false, { "return <br/>" })
+  vim.api.nvim_set_option_value("filetype", "luax", { buf = buf2 })
+  vim.api.nvim_set_current_buf(buf2)
+  vim.api.nvim_win_set_cursor(0, { 1, 9 })
+  vim.ui.input = function(_, callback) callback("hr") end
+  local ok2 = hydronium.rename_tag_at_cursor()
+  vim.ui.input = orig_input
+  local text2 = table.concat(vim.api.nvim_buf_get_lines(buf2, 0, -1, false), "\n")
+  assert(ok2, "expected rename_tag_at_cursor to succeed on a self-closing tag")
+  assert(text2 == "return <hr/>", "got: " .. text2)
+  vim.api.nvim_buf_delete(buf2, { force = true })
+end)
+
+-- Test 8: Emmet expansion for luax buffers via the real, installed
+-- emmet-ls (github.com/aca/emmet-ls) -- not a hand-rolled abbreviation
+-- expander. emmet-ls treats any languageId it doesn't specifically
+-- special-case (see its own source: only a handful of non-HTML markup
+-- languages are listed) as HTML-syntax markup by default, so "luax"
+-- needs no server-side config at all -- only attaching the client to
+-- luax buffers, done here directly rather than through
+-- nvim-lspconfig/LazyVim's plugin loading (out of scope for this
+-- headless harness). Degrades gracefully if emmet-ls isn't installed,
+-- same contract as the autotag test above.
+test("Emmet > expands a real abbreviation for a luax buffer via emmet-ls", function()
+  local candidates = {
+    vim.fn.exepath("emmet-ls"),
+    vim.fn.expand("~/.local/share/nvim/mason/bin/emmet-ls"),
+  }
+  local emmet_bin = nil
+  for _, c in ipairs(candidates) do
+    if c and c ~= "" and vim.fn.executable(c) == 1 then
+      emmet_bin = c
+      break
+    end
+  end
+  if not emmet_bin then
+    print("    (emmet-ls not installed in this environment -- skipping the live expansion check)")
+    return
+  end
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  local line = "return div.hero"
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { line })
+  vim.api.nvim_set_option_value("filetype", "luax", { buf = buf })
+
+  local client_id = vim.lsp.start({
+    name = "emmet_ls",
+    cmd = { emmet_bin, "--stdio" },
+    root_dir = vim.fn.getcwd(),
+  }, { bufnr = buf })
+  assert(client_id, "expected emmet-ls client to start")
+
+  local attached = vim.wait(5000, function()
+    local c = vim.lsp.get_client_by_id(client_id)
+    return c ~= nil and c.initialized == true
+  end, 100)
+  assert(attached, "expected emmet-ls client to finish initializing within 5s")
+
+  local params = {
+    textDocument = vim.lsp.util.make_text_document_params(buf),
+    position = { line = 0, character = #line },
+  }
+  local results = vim.lsp.buf_request_sync(buf, "textDocument/completion", params, 3000)
+  assert(results, "expected a completion response from emmet-ls")
+
+  local found = nil
+  for _, res in pairs(results) do
+    if res.result then
+      for _, item in ipairs(res.result) do
+        if item.textEdit and item.textEdit.newText then
+          found = item.textEdit.newText
+          break
+        end
+      end
+    end
+  end
+  assert(found, "expected at least one completion item with a textEdit")
+  assert(
+    found:find('<div class="hero">', 1, true) ~= nil,
+    "expected a real HTML-shaped expansion of div.hero, got: " .. tostring(found)
+  )
+
+  vim.lsp.get_client_by_id(client_id):stop()
+end)
+
 print("\n" .. string.rep("=", 60))
 if failed == 0 then
   print(string.format("SUMMARY: %d Total | %d Passed | 0 Failed\n", passed + failed, passed))
