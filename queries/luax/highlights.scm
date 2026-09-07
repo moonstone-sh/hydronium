@@ -130,15 +130,25 @@
 (self_closing_fragment
   [ "<" "/>" ] @tag.delimiter)
 
-;; Tag Names
+;; Tag Names. Priority is boosted above Neovim's default semantic-token
+;; priority (125 > treesitter's default 100) so an element's opening
+;; and closing tag names always match visually. Without this, lua_ls's
+;; real semantic tokens (which it provides for the opening tag's name
+;; once it resolves to a real global -- see
+;; docs/LUAX_TYPE_ENVIRONMENT_VERIFICATION.md's ambient-types work) win
+;; over this @tag color for the opening tag but not the closing one
+;; (blanked out in the virtual document, so lua_ls has no identifier
+;; there to tokenize at all) -- the two ends of the same element
+;; visibly disagree even though this rule already treats them
+;; identically.
 (opening_element
-  name: (tag_expression) @tag)
+  name: (tag_expression) @tag (#set! "priority" 200))
 
 (closing_element
-  name: (tag_expression) @tag)
+  name: (tag_expression) @tag (#set! "priority" 200))
 
 (self_closing_element
-  name: (tag_expression) @tag)
+  name: (tag_expression) @tag (#set! "priority" 200))
 
 ;; Dotted Tag Names: d.button, UI.Card, etc.
 (dotted_identifier
