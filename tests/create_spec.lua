@@ -1,6 +1,7 @@
 package.path = "./src/?.lua;./src/?/init.lua;" .. package.path
 
 local create = require("create.init")
+local luals = require("create.luals")
 
 local total = 0
 local passed = 0
@@ -77,6 +78,35 @@ test("scaffold rejects invalid template name", function()
   })
   assert(res == nil, "expected error for unknown template")
   assert(err:find("Unknown template"), "expected Unknown template error message")
+end)
+
+test("luals.configure uses alter to update .luarc.json with Hydronium LuaX plugin", function()
+  local tmp_dir = os.tmpname()
+  os.remove(tmp_dir)
+  os.execute(string.format('mkdir -p "%s"', tmp_dir))
+
+  local res, err = luals.configure(tmp_dir, {
+    interpreter = "lua@5.4",
+  })
+  assert(res ~= nil, "luals.configure failed: " .. tostring(err))
+  assert(res.changed == true, "expected changed to be true")
+
+  local f = io.open(tmp_dir .. "/.luarc.json", "r")
+  assert(f ~= nil, "could not open generated .luarc.json")
+  local content = f:read("*a")
+  f:close()
+
+  assert(content:find("hydronium/luax/luals/init.lua"), "missing hydronium plugin in .luarc.json")
+  assert(content:find("%.moonstone/env/share/lua/5.4"), "missing workspace library in .luarc.json")
+  assert(content:find("%*%.luax"), "missing *.luax association in .luarc.json")
+
+  -- Idempotency check: running again should succeed without redundant duplicates
+  local res2, err2 = luals.configure(tmp_dir, {
+    interpreter = "lua@5.4",
+  })
+  assert(res2 ~= nil, "idempotent luals.configure failed: " .. tostring(err2))
+
+  os.execute(string.format('rm -rf "%s"', tmp_dir))
 end)
 
 print(string.format("\nResults: %d/%d passed\n", passed, total))

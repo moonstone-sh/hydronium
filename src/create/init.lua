@@ -1,4 +1,5 @@
 local writer = require("create.writer")
+local luals = require("create.luals")
 
 local templates = {
   ssr = require("create.templates.ssr"),
@@ -76,11 +77,18 @@ function create.scaffold(opts, ctx)
     return nil, err
   end
 
+  -- Configure LuaLS with Alter
+  local luals_res, luals_err = luals.configure(target_dir, {
+    interpreter = opts.interpreter,
+    dry_run = opts.dry_run,
+  })
+
   return {
     project_name = project_name,
     target_dir = target_dir,
     template = template_id,
     created = results.created,
+    luals = luals_res,
     dry_run = opts.dry_run,
   }
 end

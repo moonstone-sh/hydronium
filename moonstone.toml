@@ -12,8 +12,18 @@ version = "5.4"
 abi = "5.4"
 
 [scripts]
-dev = "lua ./src/main.lua \"$@\""
 test = "lua ./tests/create_spec.lua"
+dev = "lua ./src/main.lua \"$@\""
+
+[[dependencies]]
+name = "moonstone/alter"
+constraint = "^0.1.1"
+role = "runtime"
+
+[[dependencies]]
+name = "moonstone/alter-jsonc"
+constraint = "^0.1.1"
+role = "runtime"
 
 [[dependencies]]
 name = "moonstone/clingy"
