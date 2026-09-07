@@ -407,14 +407,27 @@ function virtual_source.transform(source, filename, options)
             end
           end
 
-          -- Insert comma field separator between attributes
+          -- Insert comma field separator between attributes. Scans for
+          -- the first non-newline byte in the gap rather than always
+          -- writing to curr_end + 1 -- a multi-line attribute list (each
+          -- attribute on its own line, extremely common real-world
+          -- formatting) has that exact byte be the preserved "\n" itself,
+          -- and unconditionally overwriting it collapsed the entire
+          -- attribute list onto one virtual line, corrupting every
+          -- subsequent line's 1:1 coordinate mapping for the rest of the
+          -- element.
           if idx < num_attrs and attr.type ~= "JSXSpreadAttribute" then
             local next_attr = opening.attributes[idx + 1]
             if next_attr and next_attr.type ~= "JSXSpreadAttribute" then
               local curr_end = attr.loc and attr.loc["end"] and attr.loc["end"].offset
               local next_start = next_attr.loc and next_attr.loc.start and next_attr.loc.start.offset
               if curr_end and next_start and next_start > curr_end then
-                bytes[curr_end + 1] = ","
+                for p = curr_end + 1, next_start - 1 do
+                  if bytes[p] ~= "\n" then
+                    bytes[p] = ","
+                    break
+                  end
+                end
               end
             end
           end
