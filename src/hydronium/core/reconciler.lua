@@ -171,6 +171,134 @@ function Reconciler:mount(vnode, parentHostNode, beforeChild, parentComponent)
   return nil
 end
 
+--- Claim existing host nodes for `vnode` instead of creating new ones --
+--- the general hydration path every Hydronium host (real DOM, or any
+--- future host that has a real pre-existing tree to claim) shares, in
+--- place of a per-demo hand bridge. `domNode` is the next live host
+--- node to try to claim (nil once the host runs out); `boundaryNode`,
+--- if given, is a sentinel this walk must never claim or step past (the
+--- closing marker of a partial-island hydration range -- nil for a
+--- whole-container hydration, e.g. `d.lua.mount`'s root case).
+---
+--- On any mismatch (wrong tag, element/text kind mismatch, or the host
+--- simply ran out of nodes), reports it via `host.hydrationMismatch`
+--- (if the host provides one) and falls back to `self:mount` for that
+--- one vnode -- through the SAME six-method Host contract every other
+--- mount already goes through, not a second DOM-patching mechanism.
+--- @return hostNode, nextDomNode
+function Reconciler:hydrate(vnode, parentHostNode, domNode, boundaryNode, parentComponent)
+  if not vnode or vnode._typeof ~= symbols.VNODE then
+    return nil, domNode
+  end
+
+  local host = self.host
+  local kind = vnode.kind
+
+  local function reportMismatch(reason)
+    if host.hydrationMismatch then
+      host.hydrationMismatch({ reason = reason, vnode = vnode, domNode = domNode })
+    end
+  end
+
+  local function fallbackMount(consumedNode)
+    local newHostNode = self:mount(vnode, parentHostNode, consumedNode, parentComponent)
+    local afterConsumed = nil
+    if consumedNode then
+      afterConsumed = host.nextSibling(consumedNode)
+      host.removeChild(parentHostNode, consumedNode)
+    end
+    return newHostNode, afterConsumed
+  end
+
+  if kind == symbols.ELEMENT then
+    local tag = unwrapTag(vnode.tag)
+    if not domNode or domNode == boundaryNode or not host.isElementNode(domNode) or host.tagOf(domNode) ~= tag then
+      reportMismatch("element_mismatch")
+      return fallbackMount(domNode)
+    end
+
+    vnode.hostNode = domNode
+    if host.hydrateProps then
+      host.hydrateProps(domNode, vnode.props)
+    end
+    if vnode.ref then
+      refModule.bindRef(vnode.ref, domNode)
+    end
+
+    local raw, len = getChildrenList(vnode)
+    local childCursor = host.firstChild(domNode)
+    for i = 1, len do
+      local _, nextCursor = self:hydrate(raw[i], domNode, childCursor, nil, parentComponent)
+      childCursor = nextCursor
+    end
+    -- Real children left over past what the vnode tree accounted for
+    -- were never part of this render -- a genuine hydration mismatch,
+    -- not a simulated one -- so they're removed rather than left as
+    -- orphaned live nodes no vnode will ever again reference.
+    while childCursor do
+      local after = host.nextSibling(childCursor)
+      reportMismatch("extra_child")
+      host.removeChild(domNode, childCursor)
+      childCursor = after
+    end
+
+    return domNode, host.nextSibling(domNode)
+
+  elseif kind == symbols.TEXT then
+    if not domNode or domNode == boundaryNode or not host.isTextNode(domNode) then
+      reportMismatch("text_mismatch")
+      return fallbackMount(domNode)
+    end
+    vnode.hostNode = domNode
+    return domNode, host.nextSibling(domNode)
+
+  elseif kind == symbols.COMPONENT or kind == symbols.BOUNDARY then
+    local compInstance = componentModule.ComponentInstance.new(vnode, parentComponent, host)
+    vnode.componentInstance = compInstance
+    local hostNode, nextCursor = compInstance:hydrate(parentHostNode, domNode, boundaryNode, self)
+    vnode.hostNode = hostNode
+    return hostNode, nextCursor
+
+  elseif kind == symbols.FRAGMENT then
+    local firstHostNode = nil
+    local raw, len = getChildrenList(vnode)
+    local cursor = domNode
+    for i = 1, len do
+      local childHost, nextCursor = self:hydrate(raw[i], parentHostNode, cursor, boundaryNode, parentComponent)
+      if not firstHostNode and childHost then firstHostNode = childHost end
+      cursor = nextCursor
+    end
+    vnode.hostNode = firstHostNode
+    return firstHostNode, cursor
+  end
+
+  -- SUSPENSE/ISLAND/SCRIPT: hydration cannot do more than self:mount()
+  -- already refuses to do -- same explicit, loud boundary.
+  error("Hydronium: " .. tostring(symbols.isSymbol(kind) and kind.name or kind) ..
+    " has no client hydration path yet (SSR-only in this version) -- see docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md", 2)
+end
+
+--- Hydrate an entire container's existing children against `vnode` --
+--- the `d.lua.mount` root case, or any boundary-free "claim everything
+--- already in this host node" hydration. Any real children left over
+--- once `vnode` is fully consumed are removed (reported as a mismatch
+--- first) rather than left live with nothing referencing them.
+--- @return hostNode
+function Reconciler:hydrateRoot(vnode, containerHostNode, parentComponent)
+  local host = self.host
+  local cursor = host.firstChild(containerHostNode)
+  local hostNode, nextCursor = self:hydrate(vnode, containerHostNode, cursor, nil, parentComponent)
+  while nextCursor do
+    local after = host.nextSibling(nextCursor)
+    if host.hydrationMismatch then
+      host.hydrationMismatch({ reason = "extra_root_child", domNode = nextCursor })
+    end
+    host.removeChild(containerHostNode, nextCursor)
+    nextCursor = after
+  end
+  return hostNode
+end
+
 --- Reconcile children lists with Amendment 4 duplicate key hardening.
 function Reconciler:reconcileChildren(parentHostNode, oldChildren, newChildren, parentComponent)
   local oldList, oldLen = getChildrenList({ children = oldChildren })

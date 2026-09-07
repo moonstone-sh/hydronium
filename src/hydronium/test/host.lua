@@ -261,6 +261,43 @@ function testHostModule.createTestHost()
     })
   end
 
+  -- Hydration helpers: the general Reconciler:hydrate()/hydrateRoot()
+  -- walk implemented against ANY host's own existing tree, not a
+  -- Counter-specific comment-marker bridge. TestHost implements these
+  -- purely from its own in-memory `.parent`/`.children` bookkeeping so
+  -- the hydration algorithm itself (structural matching + mismatch
+  -- fallback) can be proven fast and natively, before the slow real-DOM
+  -- browser proof -- see tests/core/hydration_spec.lua.
+  function host.firstChild(node)
+    if not node or not node.children then return nil end
+    return node.children[1]
+  end
+
+  function host.nextSibling(node)
+    if not node or not node.parent or not node.parent.children then return nil end
+    local siblings = node.parent.children
+    for i = 1, #siblings do
+      if siblings[i] == node then return siblings[i + 1] end
+    end
+    return nil
+  end
+
+  function host.isElementNode(node)
+    return node ~= nil and node.type == "element"
+  end
+
+  function host.isTextNode(node)
+    return node ~= nil and node.type == "text"
+  end
+
+  function host.tagOf(node)
+    return node and node.tag or nil
+  end
+
+  function host.hydrationMismatch(details)
+    logOp("hydration_mismatch", { reason = details.reason })
+  end
+
   return host
 end
 

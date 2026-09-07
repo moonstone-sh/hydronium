@@ -11,6 +11,8 @@ local scopeModule = require("hydronium.core.scope")
 local scheduler = require("hydronium.core.scheduler")
 local contextModule = require("hydronium.core.context")
 local graph = require("hydronium.signals.graph")
+local familyLoader = require("hydronium.core.family_loader")
+local RefreshRegistry = require("hydronium.core.refresh").RefreshRegistry
 
 local unpack = table.unpack or unpack
 
@@ -49,6 +51,22 @@ function ComponentInstance.new(vnode, parentComponent, host)
   local parentScope = parentComponent and parentComponent.scope or nil
   self.scope = scopeModule.Scope.new(parentScope)
 
+  -- HMR: one RefreshRegistry per instance, persisting across refreshes
+  -- (NOT recreated in :refresh() -- it must remember the previous
+  -- generation's records to compare the next one against). Deliberately
+  -- one per instance, not one shared per family/module: two mounted
+  -- instances of the same component calling
+  -- `scope.refresh_registry:signal(initial, {kind="signal", name="count", ...})`
+  -- with the identical descriptor would collide on the same registry
+  -- key if they shared a registry, corrupting each other's state --
+  -- see docs/HMR_COMPONENT_FAMILIES.md. Exposed to component code via
+  -- `scope.refresh_registry`, set below and again in :refresh() (a
+  -- fresh Scope is created there); render() drives
+  -- begin_generation()/finish_generation() automatically, so component
+  -- code only ever calls :signal(...), never the generation bookkeeping.
+  self.refresh_registry = RefreshRegistry.new()
+  self.scope.refresh_registry = self.refresh_registry
+
   -- Hierarchical context
   if parentComponent and parentComponent.context then
     self.context = setmetatable({}, { __index = parentComponent.context })
@@ -75,6 +93,21 @@ function ComponentInstance.new(vnode, parentComponent, host)
 
   -- Reactive observer dependencies
   self.sources = {}
+
+  -- HMR generalization: if `hydronium.core.family_loader` has been
+  -- enabled (dev-only, opt-in, see that module's own doc comment) and
+  -- `self.type` was discovered as a real module export, register with
+  -- its ComponentFamily so a later family update reaches this instance
+  -- automatically. A no-op (self.family stays nil) for any component
+  -- the loader was never enabled for, or that isn't itself a module's
+  -- top-level export (a local/anonymous component) -- such instances
+  -- simply never participate in automatic refresh, which is the
+  -- intended safe default, not a guess at an identity that can't be
+  -- proven.
+  self.family = familyLoader.lookup(self.type)
+  if self.family then
+    self.family:register_instance(self)
+  end
 
   return self
 end
@@ -172,8 +205,18 @@ function ComponentInstance:render()
         end
 
         if not self.renderFn then
-          -- Initial invocation
+          -- Initial invocation ("setup"). Generation bookkeeping on this
+          -- instance's own RefreshRegistry (see the field comment on
+          -- self.refresh_registry in .new()) is automatic and hidden
+          -- here -- component code never calls begin/finish_generation
+          -- itself, only `scope.refresh_registry:signal(initial, descriptor)`
+          -- if it wants a piece of state to survive HMR. A component
+          -- that never touches scope.refresh_registry is completely
+          -- unaffected; begin/finish_generation on an empty registry is
+          -- a cheap no-op.
+          self.refresh_registry:begin_generation()
           local initialRes = self.type(self.props, self.scope)
+          self.refresh_registry:finish_generation()
           if type(initialRes) == "function" then
             self.renderFn = initialRes
             return self.renderFn(self.props, self.scope)
@@ -230,6 +273,34 @@ function ComponentInstance:mount(parentHostNode, beforeChild, reconciler)
   return self.hostNode
 end
 
+--- Hydration counterpart to :mount() -- claims `domNode` (and its real
+--- children) for this component's rendered subtree instead of creating
+--- new host nodes, via `reconciler:hydrate` rather than
+--- `reconciler:mount`. Deliberately does not replicate :mount()'s
+--- ErrorBoundary-fallback-remount branch (a hydration-time render
+--- failure is a rarer, differently-shaped problem than a client-only
+--- mount failure and was not worked through for this pass -- see
+--- docs/HMR_GENERALIZATION_RESULTS.md).
+--- @return hostNode, nextDomNode
+function ComponentInstance:hydrate(parentHostNode, domNode, boundaryNode, reconciler)
+  self.parentHostNode = parentHostNode
+  self.reconciler = reconciler or self.reconciler
+  self.isMounting = true
+  self.isMounted = true
+
+  local renderedVNode = self:render()
+  local nextCursor = domNode
+
+  if renderedVNode then
+    self.subTree = renderedVNode
+    self.hostNode, nextCursor = self.reconciler:hydrate(renderedVNode, parentHostNode, domNode, boundaryNode, self)
+  end
+
+  self.isDirty = false
+  self.isMounting = false
+  return self.hostNode, nextCursor
+end
+
 function ComponentInstance:update(newProps, reconciler)
   if not self.isMounted or self.isDisposed then
     return
@@ -276,6 +347,16 @@ function ComponentInstance:unmount(reconciler)
   self.isDisposed = true
   self.isMounted = false
 
+  -- HMR generalization: deterministic, immediate removal from the
+  -- family registry -- not left to a weak table and the next GC cycle,
+  -- since a family update fanning out to an already-unmounted instance
+  -- would be a real bug (item 8 of the generalization mission: "no
+  -- stale instance references").
+  if self.family then
+    self.family:unregister_instance(self)
+    self.family = nil
+  end
+
   -- Unsubscribe from reactive sources
   graph.cleanupObserverSources(self)
 
@@ -297,6 +378,62 @@ function ComponentInstance:unmount(reconciler)
   if not ok then
     self:handleError(err)
   end
+end
+
+--- HMR: rerun this instance's setup against `new_definition`, preserving
+--- compatible state, then reconcile the result into the live tree
+--- through the NORMAL reconciler -- no bespoke HMR DOM diff engine (the
+--- generalization mission's own requirement). Generalizes the sequence
+--- tests/core/refresh_component_spec.lua proved by hand: dispose the
+--- old scope (which is what runs the old effect's cleanup exactly once,
+--- via Scope's own existing LIFO disposal -- no HMR-specific disposal
+--- logic needed here either), create a fresh scope, swap in the new
+--- definition, clear the cached render closure so the next render()
+--- treats this as an initial invocation again (reruns setup), then
+--- reuse :update() for the actual re-render + reconcile.
+---
+--- Signal-level state preservation (the *values* surviving this) is
+--- unrelated to this method and unrelated to ComponentFamily: it comes
+--- entirely from whether the new setup call itself declares its signals
+--- through a hydronium.core.refresh.RefreshRegistry with matching
+--- {kind, name, block_path} descriptors, exactly as already proven --
+--- this method only guarantees setup runs again and the result reaches
+--- the DOM through ordinary reconciliation. Which state (if any)
+--- survives that rerun is the refresh registry's concern, deliberately
+--- kept separate (see docs/HMR_COMPONENT_FAMILIES.md).
+--- @param new_definition function|table
+--- @return boolean ok
+function ComponentInstance:refresh(new_definition)
+  if self.isDisposed or not self.isMounted then
+    return false
+  end
+
+  local old_scope = self.scope
+  local dispose_ok, dispose_err = pcall(function()
+    old_scope:dispose()
+  end)
+  if not dispose_ok then
+    self:handleError(dispose_err)
+    return false
+  end
+
+  local parentScope = self.parent and self.parent.scope or nil
+  self.scope = scopeModule.Scope.new(parentScope)
+  -- self.refresh_registry itself is NOT recreated -- see its field
+  -- comment in .new() -- only re-attached to the fresh scope.
+  self.scope.refresh_registry = self.refresh_registry
+  self.type = new_definition
+  self.renderFn = nil
+
+  local ok, err = pcall(function()
+    self:update(self.props, self.reconciler)
+  end)
+  if not ok then
+    self:handleError(err)
+    return false
+  end
+
+  return true
 end
 
 componentModule.ComponentInstance = ComponentInstance

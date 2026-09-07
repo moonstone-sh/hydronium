@@ -535,3 +535,45 @@ hand-write `{kind, name, block_path}`); wiring refresh into
 tree rather than one hand-wired island; the JS island HMR ABI; a real
 `"suspense"` boundary kind; the full mixed vertical slice (streamed
 Suspense + Lua island + JS island + HMR, all together, on one page).
+
+## Update — superseded: refresh IS now wired into `ComponentInstance`/`core.reconciler`, for arbitrary automatically-discovered components
+
+The item directly above — "wiring refresh into
+`ComponentInstance`/`core.reconciler` itself, for an arbitrary component
+tree rather than one hand-wired island" — is done, generalized beyond a
+single hand-wired island, and proven both natively (LuaJIT) and in a
+real browser (WASM Lua via Playwright/Chromium), including the
+mandatory multiple-simultaneous-instances-of-one-family case. This
+closes the last item this document's own scheduler/HMR foundation work
+had flagged as the next real gap.
+
+New: `src/hydronium/core/family.lua` (`Family` — stable identity for
+"the current definition of this component, wherever it's mounted") and
+`src/hydronium/core/family_loader.lua` (automatic discovery via
+wrapping global `require`, zero hand-registration, zero source list).
+`core/component.lua`'s `ComponentInstance` now auto-registers into a
+family on mount, auto-unregisters on unmount, and gained a real
+`:refresh(new_definition)` method that disposes the old scope and
+reuses the existing `:update()` — no bespoke HMR diff engine.
+
+This does **not** close the compiler-descriptor gap named above
+(`{kind, name, block_path}` signal identity is still 100%
+hand-written), and does not add a module dependency graph or
+propagation from a changed non-component module to its dependents —
+both remain real, unstarted gaps. Full detail, the full evidence
+trail, and an honest hard-gate-by-hard-gate accounting (9 of 15 fully
+met) are in `docs/HMR_COMPONENT_FAMILIES.md` and
+`docs/HMR_GENERALIZATION_RESULTS.md` — this update intentionally does
+not duplicate that content.
+
+Also newly surfaced while building the browser proof, and not
+previously named anywhere in this document: **no real browser DOM host
+adapter exists for the general `Reconciler`** — only the narrow
+hand-bridge above (`hydrate_counter_island`/`_refreshable`) and the
+in-memory `TestHost` used by the test suite. The family/refresh browser
+proof runs a real WASM Lua VM against real reconciliation logic, but
+through `TestHost`, not real DOM nodes. See
+`docs/HMR_GENERALIZATION_RESULTS.md` Part 4 for the full reasoning —
+this is flagged as a separate, sizeable, still-unstarted piece of
+foundational work, not something this round's proof should be read as
+having covered.

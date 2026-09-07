@@ -364,7 +364,7 @@ end)
 --    request): the push notification is genuinely the only missing piece
 --    of a live-reload loop, not a proxy for one.
 app:get("/__hydronium/watch", function(c)
-  local WATCHED = { "views/App.luax", "src/views/App.lua", "hmr_demo/click_increment.lua" }
+  local WATCHED = { "views/App.luax", "src/views/App.lua", "hmr_demo/click_increment.lua", "hmr_demo/family_counter.lua", "hmr_demo/arbitrary_tree_counter.lua" }
   local POLL_INTERVAL = 0.5
   local HEARTBEAT_EVERY = 2
 
@@ -480,6 +480,30 @@ end)
 --    ambiguity rather than depending on undocumented router precedence.
 app:get("/__hydronium/hmr-demo-increment", function(c)
   local f = assert(io.open("hmr_demo/click_increment.lua", "r"))
+  local content = f:read("*a")
+  f:close()
+  return c:text(200, content)
+end)
+
+-- 10. Same live-content-per-request reasoning as route 9, for the HMR
+--     generalization proof's real component-module source
+--     (hmr_demo/family_counter.lua) -- edit its `+ 1` to `+ 2` on disk
+--     while examples/meteorite_ssr/hmr_demo/family_proof.html is open to
+--     prove the generalized (non-hand-wired) refresh path.
+app:get("/__hydronium/hmr-demo-family-counter", function(c)
+  local f = assert(io.open("hmr_demo/family_counter.lua", "r"))
+  local content = f:read("*a")
+  f:close()
+  return c:text(200, content)
+end)
+
+-- 11. Same live-content-per-request reasoning as routes 9-10, for the
+--     DOM-Host/arbitrary-tree counter-audit proof's real component
+--     source (hmr_demo/arbitrary_tree_counter.lua, docs/HMR_DOM_HOST.md)
+--     -- edit its `+ 1` to `+ 2` on disk while
+--     examples/meteorite_ssr/hmr_demo/dom_host_proof.html is open.
+app:get("/__hydronium/hmr-demo-arbitrary-tree-counter", function(c)
+  local f = assert(io.open("hmr_demo/arbitrary_tree_counter.lua", "r"))
   local content = f:read("*a")
   f:close()
   return c:text(200, content)
