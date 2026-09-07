@@ -390,6 +390,8 @@ local function main()
       "tests/core/reconciler_spec.lua",
       "tests/core/context_ref_spec.lua",
       "tests/core/error_spec.lua",
+      "tests/core/refresh_spec.lua",
+      "tests/core/refresh_component_spec.lua",
       "tests/test_renderer/test_renderer_spec.lua",
       -- Server renderer specs
       "tests/server/ssr_spec.lua",
