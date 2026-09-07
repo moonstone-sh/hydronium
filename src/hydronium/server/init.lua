@@ -11,8 +11,52 @@ local scopeModule = require("hydronium.core.scope")
 local contextModule = require("hydronium.core.context")
 local scheduler = require("hydronium.core.scheduler")
 local html = require("hydronium.server.html")
+local json = require("hydronium.server.json")
+local sink_protocol = require("hydronium.server.sink")
+local resourceModule = require("hydronium.core.resource")
 
 local server = {}
+
+--[[
+  Per-render bookkeeping for islands and the client plan (v1: SSR-only,
+  buffered). Module-local rather than threaded through every render_node/
+  render_children call site, matching this file's existing pattern for
+  per-render state (see scheduler.setSSR / scopeModule's stack, both saved
+  and restored around each top-level render_to_string/render call below).
+  Not reentrant -- correct for the single synchronous render pass this
+  file has always assumed (render_to_string/render are not called
+  concurrently against the same Lua state).
+--]]
+local render_state = {
+  island_seq = 0,
+  client_plan = nil,
+  -- Stack of interpreters ("lua"|"js") for currently-open ancestor
+  -- islands, innermost last. Used only to diagnose a Lua event-callback
+  -- prop with no enclosing d.lua.island/d.lua.mount boundary -- see
+  -- html.serialize_attributes's caller below.
+  island_stack = {},
+}
+
+local function reset_render_state()
+  render_state.island_seq = 0
+  render_state.client_plan = { version = "hydronium.client-plan.v1", islands = {}, scripts = {} }
+  render_state.island_stack = {}
+end
+
+local function next_island_id()
+  render_state.island_seq = render_state.island_seq + 1
+  -- Deterministic, tree-order-derived, versioned -- never a pointer,
+  -- random value, or timestamp (see docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md).
+  return "hy:i" .. tostring(render_state.island_seq)
+end
+
+function server.current_lua_island()
+  local stack = render_state.island_stack
+  for i = #stack, 1, -1 do
+    if stack[i] == "lua" then return true end
+  end
+  return false
+end
 
 -- Export HTML helpers on server table
 server.escape_html = html.escape_html
@@ -164,6 +208,11 @@ render_node = function(node, write_fn, parent_scope, raw_text_mode)
       for _, chunk in ipairs(buffered) do
         write_fn(chunk)
       end
+    elseif resourceModule.isSuspension(err) then
+      -- A pending Resource is not a render error -- ErrorBoundary and
+      -- Suspense are orthogonal (see docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md).
+      -- Let it keep propagating toward the nearest actual <h.Suspense>.
+      error(err, 0)
     else
       if raw_props.onError and type(raw_props.onError) == "function" then
         pcall(raw_props.onError, err)
@@ -181,6 +230,100 @@ render_node = function(node, write_fn, parent_scope, raw_text_mode)
       elseif fallback ~= nil then
         render_node(fallback, write_fn, parent_scope, raw_text_mode)
       end
+    end
+    return
+  end
+
+  -- Suspense: "can this subtree render right now, and what shows while it
+  -- can't" -- deliberately independent of ErrorBoundary (above) and of
+  -- island/client-ownership (below). v1: sequential/buffered only -- no
+  -- out-of-order streaming replacement yet (see
+  -- docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md). Isolates its subtree's writes
+  -- in an internal buffer (same trick as ErrorBoundary above) so a
+  -- suspension partway through never leaks partial bytes to the real sink.
+  if node.kind == symbols.SUSPENSE then
+    local raw_props = (type(node.props) == "table" and node.props._store) or node.props or {}
+    local children = raw_props.children or node.children or {}
+    local buffered = {}
+    local buffer_write = function(chunk)
+      table.insert(buffered, chunk)
+    end
+
+    local ok, err = pcall(function()
+      render_children(children, buffer_write, parent_scope, raw_text_mode)
+    end)
+
+    if ok then
+      for _, chunk in ipairs(buffered) do
+        write_fn(chunk)
+      end
+    elseif resourceModule.isSuspension(err) then
+      local fallback = raw_props.fallback
+      if fallback ~= nil then
+        render_node(fallback, write_fn, parent_scope, raw_text_mode)
+      end
+    else
+      -- A real render error (not a suspension) is not this boundary's
+      -- concern -- let it keep propagating toward the nearest ErrorBoundary.
+      error(err, 0)
+    end
+    return
+  end
+
+  -- Island: "who executes this subtree in the browser" -- a DOM-bound
+  -- client-execution boundary (d.lua.island / d.js.island / d.lua.mount),
+  -- NOT an implementation of an interpreter (see hydronium/dom/init.lua).
+  -- v1 (SSR only): render children normally, wrap them in stable-ID HTML
+  -- comment markers a future client bootstrap can locate, and record a
+  -- ClientPlan island entry. No interpreter is loaded or referenced here.
+  if node.kind == symbols.ISLAND then
+    local descriptor = node_tag
+    local raw_props = (type(node.props) == "table" and node.props._store) or node.props or {}
+    local children = raw_props.children or node.children or {}
+    local id = next_island_id()
+
+    local plan = render_state.client_plan
+    if plan then
+      table.insert(plan.islands, {
+        id = id,
+        interpreter = descriptor.interpreter,
+        root = raw_props.root == true,
+        module = raw_props.module,
+        mode = raw_props.mode,
+        hydrate = raw_props.hydrate or "load",
+        props = raw_props.props,
+      })
+    end
+
+    write_fn("<!--hy:i:" .. id .. ":" .. tostring(descriptor.interpreter) .. "-->")
+    table.insert(render_state.island_stack, descriptor.interpreter)
+    local ok, err = pcall(function()
+      render_children(children, write_fn, parent_scope, raw_text_mode)
+    end)
+    table.remove(render_state.island_stack)
+    write_fn("<!--hy:/i:" .. id .. "-->")
+    if not ok then
+      error(err, 0)
+    end
+    return
+  end
+
+  -- Script: a client-plan resource, not an unstructured `<script>` string
+  -- (d.js.script). Produces no HTML output of its own in v1 -- loading
+  -- strategy/injection is a client-plan concern for a future client
+  -- bootstrap, not something SSR decides today.
+  if node.kind == symbols.SCRIPT then
+    local raw_props = (type(node.props) == "table" and node.props._store) or node.props or {}
+    local plan = render_state.client_plan
+    if plan then
+      table.insert(plan.scripts, {
+        src = raw_props.src,
+        module = raw_props.type == "module" and raw_props.src or nil,
+        type = raw_props.type,
+        strategy = raw_props.strategy,
+        integrity = raw_props.integrity,
+        bindings = raw_props.binds,
+      })
     end
     return
   end
@@ -210,27 +353,73 @@ render_node = function(node, write_fn, parent_scope, raw_text_mode)
     local raw_props = (type(node.props) == "table" and node.props._store) or node.props or {}
     local comp_scope = scopeModule.Scope.new(parent_scope)
 
+    -- Mirrors ComponentInstance:render's (props, scope) calling convention
+    -- (src/hydronium/core/component.lua) exactly, including the
+    -- setup-function-returns-a-render-function ("double function") pattern:
+    -- both the setup call and the render call it may return receive the
+    -- same (raw_props, comp_scope) arguments the client path passes. Calling
+    -- the setup function with only `raw_props` and no `scope` -- and, worse,
+    -- letting a returned render closure fall through to render_node's
+    -- generic zero-argument function-child case -- silently gave SSR
+    -- components `nil` for any second/`scope` parameter their render
+    -- closure reads, a real client/server divergence for the documented
+    -- component pattern.
     local ok, res = pcall(function()
       return scopeModule.runWithScope(comp_scope, function()
-        return node_tag(raw_props)
+        local result = node_tag(raw_props, comp_scope)
+        if type(result) == "function" then
+          result = result(raw_props, comp_scope)
+        end
+        -- Render descendants while their owner scope is live. This preserves
+        -- client ownership: nested component scopes are children of this
+        -- component, and child cleanup runs before parent cleanup.
+        render_node(result, write_fn, comp_scope, raw_text_mode)
       end)
     end)
 
-    comp_scope:dispose()
+    local disposed, dispose_err = pcall(function() comp_scope:dispose() end)
 
     if not ok then
       error(res, 0)
     end
-
-    render_node(res, write_fn, parent_scope, raw_text_mode)
+    if not disposed then
+      error(dispose_err, 0)
+    end
     return
   end
 
   -- Intrinsic DOM Element (e.g. "div", "button", "input")
   if type(node_tag) == "string" then
+    if not html.is_valid_tag_name(node_tag) then
+      error("Invalid SSR tag name: " .. tostring(node_tag), 2)
+    end
     local tag = node_tag:lower()
+    -- SVG is case-sensitive XML; a handful of real SVG element names
+    -- (linearGradient, clipPath, feGaussianBlur, ...) are camelCase and
+    -- naively lowercasing them (as HTML tag names normally are) would
+    -- output an element name the SVG spec doesn't recognize. `tag` (always
+    -- lowercase) remains the internal comparison key for VOID_ELEMENTS /
+    -- script / style checks below; `output_tag` is what's actually written.
+    local output_tag = html.SVG_TAG_CASING[tag] or tag
     local raw_props = (type(node.props) == "table" and node.props._store) or node.props or {}
-    local attrs = html.serialize_attributes(node.props)
+
+    -- html.serialize_attributes already drops function-valued props (never
+    -- serialized into HTML -- see its own filter). A Lua function on an
+    -- event-shaped prop (onClick, onInput, ...) with no enclosing Lua
+    -- client boundary would therefore be silently dropped there, which the
+    -- project's diagnostics policy forbids: it must be a build/SSR error,
+    -- not silent data loss (see docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md).
+    if not server.current_lua_island() then
+      for k, v in pairs(raw_props) do
+        if type(k) == "string" and type(v) == "function" and #k > 2 and k:sub(1, 2) == "on" and k:byte(3) >= 65 and k:byte(3) <= 90 then
+          error("Hydronium: Lua callback `" .. k .. "` requires a Lua client execution boundary.\n"
+            .. "Wrap this subtree in <d.lua.island>, mount the root through d.lua.mount(), "
+            .. "or use a JavaScript client integration.", 0)
+        end
+      end
+    end
+
+    local attrs = html.serialize_attributes(node.props, tag)
     local has_kids = has_meaningful_children(node)
 
     -- Strict HTML5 Void Element Check
@@ -238,7 +427,7 @@ render_node = function(node, write_fn, parent_scope, raw_text_mode)
       if has_kids then
         error("Void element <" .. tag .. "> cannot have children", 2)
       end
-      write_fn(string.format("<%s%s>", tag, attrs))
+      write_fn(string.format("<%s%s>", output_tag, attrs))
       return
     end
 
@@ -248,11 +437,11 @@ render_node = function(node, write_fn, parent_scope, raw_text_mode)
       if has_kids then
         error("Cannot provide both children and raw HTML (unsafe_raw_html / dangerouslySetInnerHTML)", 2)
       end
-      write_fn(string.format("<%s%s>%s</%s>", tag, attrs, tostring(raw_html_content), tag))
+      write_fn(string.format("<%s%s>%s</%s>", output_tag, attrs, tostring(raw_html_content), output_tag))
       return
     end
 
-    write_fn(string.format("<%s%s>", tag, attrs))
+    write_fn(string.format("<%s%s>", output_tag, attrs))
 
     local children = raw_props.children or node.children
     local child_raw = raw_text_mode or (tag == "script") or (tag == "style")
@@ -271,46 +460,13 @@ render_node = function(node, write_fn, parent_scope, raw_text_mode)
       render_children(children, write_fn, parent_scope, child_raw)
     end
 
-    write_fn(string.format("</%s>", tag))
+    write_fn(string.format("</%s>", output_tag))
     return
   end
 end
 
 --- Deterministic JSON encoder for state serialization in SSR.
-local function encode_json(val)
-  local t = type(val)
-  if t == "nil" then
-    return "null"
-  elseif t == "boolean" then
-    return val and "true" or "false"
-  elseif t == "number" then
-    return tostring(val)
-  elseif t == "string" then
-    local s = val:gsub('\\', '\\\\'):gsub('"', '\\"'):gsub('\n', '\\n'):gsub('\r', '\\r'):gsub('\t', '\\t')
-    return '"' .. s .. '"'
-  elseif t == "table" then
-    if #val > 0 then
-      local items = {}
-      for i = 1, #val do
-        table.insert(items, encode_json(val[i]))
-      end
-      return "[" .. table.concat(items, ",") .. "]"
-    else
-      local keys = {}
-      for k in pairs(val) do
-        table.insert(keys, tostring(k))
-      end
-      table.sort(keys)
-      local items = {}
-      for _, k in ipairs(keys) do
-        table.insert(items, string.format('"%s":%s', k, encode_json(val[k])))
-      end
-      return "{" .. table.concat(items, ",") .. "}"
-    end
-  else
-    return '"' .. tostring(val) .. '"'
-  end
-end
+server.encode_state = json.encode
 
 --- Synchronously renders a virtual DOM tree to an HTML string.
 --- @param vnode table Root VNode or Component
@@ -323,6 +479,7 @@ function server.render_to_string(vnode, options)
     table.insert(chunks, chunk)
   end
 
+  reset_render_state()
   local prev_ssr = scheduler.isSSR()
   scheduler.setSSR(true)
 
@@ -340,22 +497,38 @@ function server.render_to_string(vnode, options)
     render_node(vnode, write_fn, root_scope, false)
 
     if options.state and not options.suppress_state_script then
-      local state_json = encode_json(options.state)
+      local state_json = json.encode(options.state)
       write_fn(string.format('<script id="__HYDRONIUM_STATE__" type="application/json">%s</script>', state_json))
+    end
+
+    -- Emitted only when the page actually declared client surface
+    -- (islands/scripts): an SSR-only page ships no client-plan tag and no
+    -- client bootstrap reference at all (see docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md).
+    local plan = render_state.client_plan
+    if plan and not options.suppress_client_plan_script and (#plan.islands > 0 or #plan.scripts > 0) then
+      local plan_json = json.encode(plan)
+      write_fn(string.format('<script id="__HYDRONIUM_CLIENT_PLAN__" type="application/json">%s</script>', plan_json))
     end
   end)
 
   -- Guaranteed cleanup in finally block
-  root_scope:dispose()
+  local disposed, dispose_err = pcall(function() root_scope:dispose() end)
   scopeModule.resetScopeStack(initial_scope_depth)
   contextModule.resetContextStack(initial_ctx_depth, initial_ctx_map)
   scheduler.setSSR(prev_ssr)
 
   if not ok then
+    if resourceModule.isSuspension(err) then
+      error("Hydronium: a Resource was read while pending with no enclosing <h.Suspense> boundary "
+        .. "(root suspension policy is not defined -- wrap the resource's reader in <h.Suspense fallback={...}>)", 0)
+    end
     error(err, 0)
   end
+  if not disposed then
+    error(dispose_err, 0)
+  end
 
-  return table.concat(chunks, "")
+  return table.concat(chunks, ""), render_state.client_plan
 end
 
 server.renderToString = server.render_to_string
@@ -369,32 +542,22 @@ server.renderToString = server.render_to_string
 --- @return string|nil err
 function server.render(vnode, sink, options)
   options = options or {}
+  local normalized_sink
   local write_fn
 
-  if type(sink) == "function" then
-    write_fn = sink
-  elseif type(sink) == "table" and type(sink.write) == "function" then
-    local info = debug.getinfo(sink.write, "u")
-    if info and info.nparams == 1 and not info.isvararg then
-      write_fn = function(chunk)
-        sink.write(chunk)
-      end
-    else
-      write_fn = function(chunk)
-        sink:write(chunk)
-      end
-    end
-  elseif type(sink) == "table" and (type(sink.onChunk) == "function" or type(sink.on_chunk) == "function") then
+  if type(sink) == "table" and (type(sink.onChunk) == "function" or type(sink.on_chunk) == "function") then
     options = sink
     local on_chunk = options.onChunk or options.on_chunk
     write_fn = on_chunk
   else
-    error("server.render: sink must be a function or provide a :write(chunk) method", 2)
+    normalized_sink = sink_protocol.normalize(sink)
+    write_fn = normalized_sink.write
   end
 
   options.on_complete = options.on_complete or options.onComplete
   options.on_error = options.on_error or options.onError
 
+  reset_render_state()
   local prev_ssr = scheduler.isSSR()
   scheduler.setSSR(true)
 
@@ -412,36 +575,55 @@ function server.render(vnode, sink, options)
     render_node(vnode, write_fn, root_scope, false)
 
     if options.state and not options.suppress_state_script then
-      local state_json = encode_json(options.state)
+      local state_json = json.encode(options.state)
       write_fn(string.format('<script id="__HYDRONIUM_STATE__" type="application/json">%s</script>', state_json))
     end
 
-    if type(sink) == "table" and type(sink.flush) == "function" then
-      sink:flush()
+    -- Emitted only when the page actually declared client surface
+    -- (islands/scripts): an SSR-only page ships no client-plan tag and no
+    -- client bootstrap reference at all (see docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md).
+    local plan = render_state.client_plan
+    if plan and not options.suppress_client_plan_script and (#plan.islands > 0 or #plan.scripts > 0) then
+      local plan_json = json.encode(plan)
+      write_fn(string.format('<script id="__HYDRONIUM_CLIENT_PLAN__" type="application/json">%s</script>', plan_json))
+    end
+
+    if normalized_sink then
+      normalized_sink.flush()
     end
   end)
 
-  root_scope:dispose()
+  local disposed, dispose_err = pcall(function() root_scope:dispose() end)
   scopeModule.resetScopeStack(initial_scope_depth)
   contextModule.resetContextStack(initial_ctx_depth, initial_ctx_map)
   scheduler.setSSR(prev_ssr)
 
-  if type(sink) == "table" and type(sink.close) == "function" then
-    pcall(function() sink:close() end)
+  if normalized_sink then
+    pcall(normalized_sink.close)
   end
 
   if not ok then
+    if resourceModule.isSuspension(err) then
+      err = "Hydronium: a Resource was read while pending with no enclosing <h.Suspense> boundary "
+        .. "(root suspension policy is not defined -- wrap the resource's reader in <h.Suspense fallback={...}>)"
+    end
     if options.on_error then
       options.on_error(err)
       return false, err
     else
       error(err, 0)
     end
+  elseif not disposed then
+    if options.on_error then
+      options.on_error(dispose_err)
+      return false, dispose_err
+    end
+    error(dispose_err, 0)
   else
     if options.on_complete then
-      options.on_complete()
+      options.on_complete(render_state.client_plan)
     end
-    return true
+    return true, render_state.client_plan
   end
 end
 

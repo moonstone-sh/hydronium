@@ -37,6 +37,98 @@ local function create_descriptor(tag_name)
   return setmetatable(desc, descriptor_metatable)
 end
 
+--[[
+  d.lua / d.js -- DOM-bound client-execution descriptors (Island/Script
+  authoring surface). These are plain, immutable, callable marker tables,
+  exactly like `d.button` etc. above -- `<d.lua.island>` is ordinary LUAX
+  lexical tag resolution (`(d.lua).island`, then a normal call), not new
+  grammar. See docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md.
+
+  Deliberately does NOT require hydronium.interpreter.lua / .js or any
+  client-runtime module: importing hydronium.dom must stay cheap even when
+  islands are never used on a given page (see that doc's "tree shaking"
+  section for what this enables, most of which is not implemented yet --
+  only the "importing this costs nothing" half is true today).
+--]]
+
+local island_descriptor_metatable = {
+  __call = function(self, props, ...)
+    return elementModule.createElement(self, props, ...)
+  end,
+  __tostring = function(self)
+    return "Hydronium.DOM.Island(" .. tostring(self.interpreter) .. ")"
+  end,
+  __newindex = function(_, k, _)
+    error("Cannot modify immutable island descriptor property: " .. tostring(k), 2)
+  end,
+}
+
+local script_descriptor_metatable = {
+  __call = function(self, props, ...)
+    return elementModule.createElement(self, props, ...)
+  end,
+  __tostring = function(self)
+    return "Hydronium.DOM.Script(" .. tostring(self.interpreter) .. ")"
+  end,
+  __newindex = function(_, k, _)
+    error("Cannot modify immutable script descriptor property: " .. tostring(k), 2)
+  end,
+}
+
+--- @param interpreter "lua"|"js"
+local function create_island_descriptor(interpreter)
+  return setmetatable({
+    ["$$typeof"] = symbols.ISLAND_DESCRIPTOR,
+    _typeof = symbols.ISLAND_DESCRIPTOR,
+    tag = "island",
+    interpreter = interpreter,
+  }, island_descriptor_metatable)
+end
+
+--- @param interpreter "js" (Lua has no equivalent script-tag concept yet)
+local function create_script_descriptor(interpreter)
+  return setmetatable({
+    ["$$typeof"] = symbols.SCRIPT_DESCRIPTOR,
+    _typeof = symbols.SCRIPT_DESCRIPTOR,
+    tag = "script",
+    interpreter = interpreter,
+  }, script_descriptor_metatable)
+end
+
+local lua_island = create_island_descriptor("lua")
+local js_island = create_island_descriptor("js")
+local js_script = create_script_descriptor("js")
+
+--- `d.lua.mount(<App/>)` is a root-sized island: the semantic equivalent
+--- of `<d.lua.island root>`, so a full Lua-hydrated application and a
+--- partial Lua island share the exact same client machinery (see mission
+--- invariant "full application and partial islands share the same
+--- hydration machinery"). Not a JSX tag -- an ordinary function call,
+--- since it is always used as `return d.lua.mount(<App/>)`, not inside a
+--- LUAX tag position.
+local function lua_mount(vnode)
+  return elementModule.createElement(lua_island, { root = true }, vnode)
+end
+
+-- Empty outer tables with all real values behind __index: unlike a table
+-- literal with pre-set keys, this ensures __newindex actually fires for
+-- EVERY key (Lua only invokes __newindex for keys absent as a raw entry --
+-- a literal `{island = ...}` would silently allow `t.island = other` via
+-- a plain rawset, never reaching this guard).
+local function namespace(entries, name)
+  return setmetatable({}, {
+    __index = entries,
+    __newindex = function(_, k, _)
+      error("Cannot modify immutable descriptor table 'd." .. name .. "'", 2)
+    end,
+    __tostring = function() return "Hydronium.DOM.Namespace(" .. name .. ")" end,
+    __pairs = function() return pairs(entries) end,
+  })
+end
+
+local dom_lua = namespace({ island = lua_island, mount = lua_mount }, "lua")
+local dom_js = namespace({ island = js_island, script = js_script }, "js")
+
 local STANDARD_TAGS = {
   -- HTML tags
   "a", "abbr", "address", "area", "article", "aside", "audio", "b", "base",
@@ -71,6 +163,12 @@ local d_mt = {
       if key == "d" then
         return d
       end
+      if key == "lua" then
+        return dom_lua
+      end
+      if key == "js" then
+        return dom_js
+      end
       if not cache[key] then
         cache[key] = create_descriptor(key)
       end
@@ -91,6 +189,7 @@ local d_mt = {
 
 setmetatable(d, d_mt)
 
+---@type HydroniumDOMDescriptors
 local dom = {
   d = d,
   createIntrinsic = create_descriptor,

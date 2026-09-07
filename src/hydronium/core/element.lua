@@ -6,6 +6,7 @@
 
 local symbols = require("hydronium.core.symbols")
 local errors = require("hydronium.core.errors")
+local suspense = require("hydronium.core.suspense")
 
 local unpack = table.unpack or unpack
 
@@ -165,10 +166,23 @@ function elementModule.createElement(tag, props, ...)
   end
 
   local kind
-  if resolvedTag == symbols.FRAGMENT then
+  local is_island_descriptor = type(tag) == "table" and tag["$$typeof"] == symbols.ISLAND_DESCRIPTOR
+  local is_script_descriptor = type(tag) == "table" and tag["$$typeof"] == symbols.SCRIPT_DESCRIPTOR
+  if is_island_descriptor then
+    -- Unlike INTRINSIC, keep the full descriptor as the resolved tag: the
+    -- server renderer needs its interpreter/module/mode/root metadata,
+    -- not just a bare string like intrinsic HTML tags unwrap to.
+    resolvedTag = tag
+    kind = symbols.ISLAND
+  elseif is_script_descriptor then
+    resolvedTag = tag
+    kind = symbols.SCRIPT
+  elseif resolvedTag == symbols.FRAGMENT then
     kind = symbols.FRAGMENT
   elseif resolvedTag == errors.ErrorBoundary then
     kind = symbols.BOUNDARY
+  elseif resolvedTag == suspense.Suspense then
+    kind = symbols.SUSPENSE
   elseif type(resolvedTag) == "function" or (type(resolvedTag) == "table" and (resolvedTag.__context or (getmetatable(resolvedTag) and getmetatable(resolvedTag).__call))) then
     kind = symbols.COMPONENT
   elseif type(resolvedTag) == "string" then

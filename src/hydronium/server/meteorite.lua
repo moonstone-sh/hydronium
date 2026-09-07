@@ -1,4 +1,17 @@
 --- Hydronium Server SSR Adapter for Meteorite (Model A In-Process Hybrid Integration)
+---
+--- `.handler(...)` and `.stream_handler(...)` below are factories: they
+--- return a closure over their `component_or_vnode`/`default_opts`
+--- arguments. That is fine for Meteorite's CLI dev/invoke path, but NOT
+--- for a real compiled hybrid build passed directly to `app:get(path,
+--- <expr>)` -- Meteorite's hybrid mode "lifts" each inline route handler
+--- (extracts its own source text, reloads it standalone per request), and
+--- rejects any handler that closes over an upvalue from outside its own
+--- body ("inline Lua handler captures outer local `...`"). For a real
+--- compiled route, call `.render(c, vnode, opts)` / `.render_stream(c,
+--- vnode, sink, opts)` / `.make_stream_sink(...)` directly from inside a
+--- literal `function(c) ... end` passed to `app:get`, doing your own
+--- `require(...)` inside that body (see examples/meteorite_ssr/src/main.lua).
 local server = require("hydronium.server")
 local context_api = require("hydronium.core.context")
 local h = require("hydronium.core.element").createElement
@@ -119,10 +132,12 @@ function meteorite_adapter.render(c, vnode, opts)
     return c:html(status, html_output, { headers = custom_headers })
   end
 
-  -- Standard Meteorite response table fallback
-  local resp_headers = {
-    ["content-type"] = "text/html; charset=utf-8",
-  }
+  -- Standard Meteorite response table fallback. NOTE: `content-type` must
+  -- NOT appear in `headers` -- Meteorite reserves it (along with
+  -- content-length/connection/date/transfer-encoding) and rejects any
+  -- handler-supplied header with that name; it belongs only in the
+  -- separate top-level `content_type` field below.
+  local resp_headers = {}
   for k, v in pairs(custom_headers) do
     resp_headers[k] = v
   end
@@ -157,6 +172,37 @@ function meteorite_adapter.handler(component_or_vnode, default_opts)
   end
 end
 
+--- Builds a Hydronium server-sink backed directly by Meteorite's real
+--- `stream_begin`/`stream_write`/`stream_end` Lua globals (installed by
+--- `zig/bridge/lua_bindings.zig` for the currently-executing inline Lua
+--- handler). Headers are sent lazily on the first chunk, so a component
+--- that renders nothing still gets a correctly-terminated empty stream.
+--- @param status? integer HTTP status for the streamed response
+--- @param content_type? string
+--- @return table sink `{ write, flush, close }` per `hydronium.server.sink`
+function meteorite_adapter.make_stream_sink(status, content_type)
+  local began = false
+  local function ensure_begun()
+    if not began then
+      stream_begin(status or 200, content_type or "text/html; charset=utf-8")
+      began = true
+    end
+  end
+  return {
+    write = function(_, chunk)
+      ensure_begun()
+      if chunk ~= "" then
+        stream_write(chunk)
+      end
+    end,
+    flush = function() end,
+    close = function()
+      ensure_begun()
+      stream_end()
+    end,
+  }
+end
+
 --- Stream a Hydronium vnode or component into a Meteorite sink.
 --- @param c table Meteorite context
 --- @param vnode table|function
@@ -182,6 +228,31 @@ function meteorite_adapter.render_stream(c, vnode, sink, opts)
   end
 
   return server.render(root_element, sink, opts)
+end
+
+--- Create a Meteorite route handler that streams a component's SSR output
+--- chunk-by-chunk over a real HTTP/1.1 chunked-transfer response, using
+--- Meteorite's `stream_begin`/`stream_write`/`stream_end` globals. Requires
+--- the app to be built in hybrid mode (inline Lua handlers only).
+--- @param component_or_vnode table|function
+--- @param default_opts? table
+--- @return fun(c: table)
+function meteorite_adapter.stream_handler(component_or_vnode, default_opts)
+  default_opts = default_opts or {}
+  return function(c)
+    local opts = {}
+    for k, v in pairs(default_opts) do
+      opts[k] = v
+    end
+    if type(opts.status) == "function" then
+      opts.status = opts.status(c)
+    end
+    local sink = meteorite_adapter.make_stream_sink(opts.status, opts.content_type)
+    local ok, err = meteorite_adapter.render_stream(c, component_or_vnode, sink, opts)
+    if not ok then
+      error(err, 0)
+    end
+  end
 end
 
 return meteorite_adapter

@@ -31,6 +31,15 @@ symbols.FRAGMENT = createSymbol("FRAGMENT")
 symbols.TEXT = createSymbol("TEXT")
 symbols.BOUNDARY = createSymbol("BOUNDARY")
 symbols.INTRINSIC = createSymbol("INTRINSIC")
+symbols.SUSPENSE = createSymbol("SUSPENSE")
+symbols.ISLAND = createSymbol("ISLAND")
+symbols.SCRIPT = createSymbol("SCRIPT")
+-- Marks a `hydronium.dom` descriptor as an island/script authoring
+-- primitive rather than an ordinary HTML/SVG intrinsic -- see
+-- hydronium/dom/init.lua. Distinct from symbols.INTRINSIC so `d.lua`/`d.js`
+-- cannot be mistaken for a real (fake) `<lua>`/`<js>` HTML element.
+symbols.ISLAND_DESCRIPTOR = createSymbol("ISLAND_DESCRIPTOR")
+symbols.SCRIPT_DESCRIPTOR = createSymbol("SCRIPT_DESCRIPTOR")
 
 symbols.SCOPE = createSymbol("SCOPE")
 symbols.CONTEXT = createSymbol("CONTEXT")

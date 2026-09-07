@@ -158,6 +158,14 @@ function Reconciler:mount(vnode, parentHostNode, beforeChild, parentComponent)
     end
     vnode.hostNode = firstHostNode
     return firstHostNode
+  elseif kind == symbols.SUSPENSE or kind == symbols.ISLAND or kind == symbols.SCRIPT then
+    -- Client (live-DOM/test-renderer) mounting for these kinds is not
+    -- implemented yet -- they exist for SSR (buffered) this version. Erroring
+    -- loudly here is deliberate: silently mounting nothing would make an
+    -- island's or Suspense's children simply vanish client-side with no
+    -- indication why, which the project's diagnostics policy forbids.
+    error("Hydronium: " .. tostring(symbols.isSymbol(kind) and kind.name or kind) ..
+      " has no client reconciler yet (SSR-only in this version) -- see docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md", 2)
   end
 
   return nil
