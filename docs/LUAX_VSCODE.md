@@ -1,5 +1,20 @@
 # Hydronium .luax Visual Studio Code Integration Guide
 
+> **2026-09-06 correction**: prior to this note, there was no `package.json`
+> extension manifest anywhere in this repo — `syntaxes/luax.tmLanguage.json`
+> and `language-configuration.json` existed but nothing declared them as a
+> VS Code language/grammar contribution, so `files.associations: {"*.luax":
+> "luax"}` (§4 below) would have mapped to a language VS Code had never
+> heard of. A minimal `package.json` at the repo root now registers `luax`
+> as a language and wires both files in via `contributes.languages`/
+> `contributes.grammars`, so the extension is at least structurally
+> installable (e.g. via "Developer: Install Extension from Location..." or
+> `vsce package`). **This was not verified in a running VS Code instance —
+> no `code` CLI was available in the environment this fix was made in.**
+> Treat this section's other claims with the same caution as the rest of
+> `docs/` per `LUAX_DX_CURRENT_STATE.md` until someone actually opens a
+> `.luax` file in real VS Code and checks.
+
 ## 1. VS Code Architecture Overview
 
 Hydronium provides comprehensive Visual Studio Code editor support through standard extension configuration:

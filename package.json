@@ -1,0 +1,28 @@
+{
+  "name": "hydronium-luax",
+  "displayName": "Hydronium LUAX",
+  "description": "Syntax highlighting, language configuration, and LuaLS integration for .luax (Hydronium's JSX-like Lua syntax extension)",
+  "version": "0.1.0",
+  "publisher": "hydronium",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "luax",
+        "aliases": ["LUAX", "luax"],
+        "extensions": [".luax"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "luax",
+        "scopeName": "source.luax",
+        "path": "./syntaxes/luax.tmLanguage.json"
+      }
+    ]
+  }
+}
