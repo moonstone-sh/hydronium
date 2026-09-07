@@ -36,6 +36,41 @@ item below).
 | Signature help | any | **Not tested** | open item below |
 | p50/p95 completion latency | separated from virtual-transform cost | **Not measured** — `benchmarks/luax/*` measure transform latency only, as the mission itself flags; no LSP-round-trip latency harness was built this session | open item below |
 
+## Update — prop completion was broken for ~130 of 132 intrinsic tags
+
+Reported live via a user screenshot showing no completions at all on
+`<meta ` inside a real file. Root-caused by driving a real
+`lua-language-server` (via `tests/luax/lsp_client.py`) directly:
+`types/dom/init.d.lua` only gave `button` and `input` the explicit
+`| fun(props?: P, ...: any): LuaxElement` overload union alongside
+their bare `hydronium.Intrinsic<P, H>` alias -- every other intrinsic
+tag (`meta`, `div`, `html`, all ~130 of them) lacked it. Hover still
+showed the correctly-substituted generic type as text (`meta:
+hydronium.Intrinsic<HTMLAttributes, HTMLElement>`), which is why this
+went unnoticed until completion was actually tried: LuaLS's generic
+instantiation through a `---@class` field access resolves far enough
+for display purposes but wasn't, on its own, resolving the concrete
+parameter type for prop completion at the call site. Fixed by
+mechanically adding the same union to all ~130 remaining fields.
+Verified with a real completion request at `<d.meta |`: before the
+fix, generic keywords/field-names-used-anywhere-in-the-project only
+(`lang`, `name`, `content`, `width`, ...); after, the correct,
+type-scoped `HTMLAttributes` fields (`id?`, `className?`, `onClick?`,
+`hidden?`, ...). A permanent regression test
+(`tests/luax/run_lsp_tests.py`, "Prop Completion > <d.meta |") locks
+this in.
+
+One real, separate LuaLS behavior surfaced during this investigation,
+not fixed (it isn't a Hydronium bug): completion at a position with no
+typed prefix yet -- cursor sitting in trailing whitespace after an
+existing attribute's value, before any character of the new attribute
+name has been typed -- falls back to generic keyword completion
+regardless of typing correctness, even with the union fix in place.
+The moment even one real character is typed (matching actual editing
+workflow: type a letter, then see suggestions), completion correctly
+narrows to real, type-scoped field names. Confirmed by testing both
+positions directly against the real server.
+
 ## What this session actually added beyond the prior pass
 
 - Confirmed real diagnostics (not just completion/hover) point to correct

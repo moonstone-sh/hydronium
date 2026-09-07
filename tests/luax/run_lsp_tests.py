@@ -124,6 +124,39 @@ return App
         )
         client.close_document(doc_prop_uri)
 
+        # 3a. Prop completion on <d.meta | -- regression test for a real
+        # bug found live via a user-reported screenshot: types/dom/init.d.lua
+        # only gave `button` and `input` the explicit
+        # `| fun(props?: P, ...): LuaxElement` overload union alongside
+        # their bare `hydronium.Intrinsic<P, H>` alias. Every one of the
+        # other ~130 intrinsic tags (meta included) lacked it, and
+        # without it LuaLS's generic-instantiation-through-a-class-field
+        # resolution wasn't enough on its own to know the call's
+        # parameter type for prop completion (hover alone still showed
+        # the correctly-substituted type text, which is why this went
+        # unnoticed until completion was actually tried). Fixed by
+        # mechanically adding the same union to all of them.
+        doc_meta_prop_uri = f"file://{WORKSPACE_PATH}/tests/fixtures/test_meta_prop_comp.luax"
+        doc_meta_prop_src = """local function App()
+  return (
+    <d.meta""" + " \n" + """  )
+end
+return App
+"""
+        client.open_document(doc_meta_prop_uri, doc_meta_prop_src, language_id="lua", version=1)
+        time.sleep(0.5)
+        # Line 3 is '    <d.meta ' -> column 13 is right after the space
+        comp_meta_prop = client.completion(doc_meta_prop_uri, 3, 13, timeout=5.0)
+        items_meta_prop = comp_meta_prop.get("items", []) if isinstance(comp_meta_prop, dict) else (comp_meta_prop or [])
+        labels_meta_prop = set(it.get("label", "").rstrip("?") for it in items_meta_prop)
+        expected_meta_props = {"id", "className", "onClick"}
+        runner.check(
+            "Prop Completion > <d.meta | suggests HTMLAttributes fields (regression: was generic keywords only)",
+            expected_meta_props.issubset(labels_meta_prop),
+            f"Expected {expected_meta_props} in prop labels, got sample: {list(labels_meta_prop)[:10]}"
+        )
+        client.close_document(doc_meta_prop_uri)
+
         # 3b. Member completion on <d.lua.| and <d.js.| (islands -- see
         # docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md). Inserted before the
         # Contextual Typing block below because a pre-existing, unrelated

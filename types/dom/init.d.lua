@@ -48,139 +48,139 @@
 ---@field createIntrinsic fun(tag: string): hydronium.Intrinsic<any, any>
 ---@field lua HydroniumDOMLuaNamespace
 ---@field js HydroniumDOMJsNamespace
----@field [string] hydronium.Intrinsic<any, any>
+---@field [string] hydronium.Intrinsic<any, any> | fun(props?: any, ...: any): LuaxElement
 ---@field button hydronium.Intrinsic<HTMLButtonProps, HTMLButtonElement> | fun(props?: HTMLButtonProps, ...: any): LuaxElement
 ---@field input hydronium.Intrinsic<HTMLInputProps, HTMLInputElement> | fun(props?: HTMLInputProps, ...: any): LuaxElement
----@field h1 hydronium.Intrinsic<HTMLHeadingProps, HTMLHeadingElement>
----@field h2 hydronium.Intrinsic<HTMLHeadingProps, HTMLHeadingElement>
----@field h3 hydronium.Intrinsic<HTMLHeadingProps, HTMLHeadingElement>
----@field h4 hydronium.Intrinsic<HTMLHeadingProps, HTMLHeadingElement>
----@field h5 hydronium.Intrinsic<HTMLHeadingProps, HTMLHeadingElement>
----@field h6 hydronium.Intrinsic<HTMLHeadingProps, HTMLHeadingElement>
----@field div hydronium.Intrinsic<HTMLDivProps, HTMLDivElement>
----@field span hydronium.Intrinsic<HTMLSpanProps, HTMLSpanElement>
----@field main hydronium.Intrinsic<HTMLMainProps, HTMLElement>
----@field section hydronium.Intrinsic<HTMLSectionProps, HTMLElement>
----@field a hydronium.Intrinsic<HTMLAnchorProps, HTMLAnchorElement>
----@field p hydronium.Intrinsic<HTMLParagraphProps, HTMLParagraphElement>
----@field form hydronium.Intrinsic<HTMLFormProps, HTMLFormElement>
----@field img hydronium.Intrinsic<HTMLImageProps, HTMLImageElement>
----@field textarea hydronium.Intrinsic<HTMLTextAreaProps, HTMLTextAreaElement>
----@field select hydronium.Intrinsic<HTMLSelectProps, HTMLSelectElement>
----@field option hydronium.Intrinsic<HTMLOptionProps, HTMLOptionElement>
----@field label hydronium.Intrinsic<HTMLLabelProps, HTMLLabelElement>
----@field ul hydronium.Intrinsic<HTMLUListProps, HTMLUListElement>
----@field ol hydronium.Intrinsic<HTMLOListProps, HTMLOListElement>
----@field li hydronium.Intrinsic<HTMLLIProps, HTMLLIElement>
----@field header hydronium.Intrinsic<HTMLHeaderProps, HTMLElement>
----@field footer hydronium.Intrinsic<HTMLFooterProps, HTMLElement>
----@field nav hydronium.Intrinsic<HTMLNavProps, HTMLElement>
----@field aside hydronium.Intrinsic<HTMLAsideProps, HTMLElement>
----@field article hydronium.Intrinsic<HTMLArticleProps, HTMLElement>
----@field table hydronium.Intrinsic<HTMLTableProps, HTMLTableElement>
----@field thead hydronium.Intrinsic<HTMLTableSectionProps, HTMLTableSectionElement>
----@field tbody hydronium.Intrinsic<HTMLTableSectionProps, HTMLTableSectionElement>
----@field tfoot hydronium.Intrinsic<HTMLTableSectionProps, HTMLTableSectionElement>
----@field tr hydronium.Intrinsic<HTMLTableRowProps, HTMLTableRowElement>
----@field th hydronium.Intrinsic<HTMLTableCellProps, HTMLTableCellElement>
----@field td hydronium.Intrinsic<HTMLTableCellProps, HTMLTableCellElement>
----@field canvas hydronium.Intrinsic<HTMLCanvasProps, HTMLCanvasElement>
----@field audio hydronium.Intrinsic<HTMLAudioProps, HTMLAudioElement>
----@field video hydronium.Intrinsic<HTMLVideoProps, HTMLVideoElement>
----@field pre hydronium.Intrinsic<HTMLPreProps, HTMLElement>
----@field code hydronium.Intrinsic<HTMLCodeProps, HTMLElement>
----@field dialog hydronium.Intrinsic<HTMLDialogProps, HTMLDialogElement>
----@field svg hydronium.Intrinsic<SVGSVGProps, SVGElement>
----@field path hydronium.Intrinsic<SVGPathProps, SVGElement>
----@field circle hydronium.Intrinsic<SVGCircleProps, SVGElement>
----@field rect hydronium.Intrinsic<SVGRectProps, SVGElement>
----@field g hydronium.Intrinsic<SVGGProps, SVGElement>
----@field text hydronium.Intrinsic<SVGTextProps, SVGElement>
----@field abbr hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field address hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field area hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field b hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field base hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field bdi hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field bdo hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field blockquote hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field body hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field br hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field caption hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field cite hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field col hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field colgroup hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field data hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field datalist hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field dd hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field del hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field details hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field dfn hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field dl hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field dt hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field em hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field embed hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field fieldset hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field figcaption hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field figure hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field head hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field hgroup hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field hr hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field html hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field i hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field iframe hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field ins hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field kbd hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field legend hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field link hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field map hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field mark hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field menu hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field meta hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field meter hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field noscript hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field object hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field optgroup hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field output hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field picture hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field progress hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field q hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field rp hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field rt hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field ruby hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field s hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field samp hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field script hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field search hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field slot hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field small hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field source hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field strong hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field style hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field sub hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field summary hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field sup hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field template hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field time hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field title hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field track hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field u hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field var hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field wbr hydronium.Intrinsic<HTMLAttributes, HTMLElement>
----@field line hydronium.Intrinsic<SVGAttributes, SVGElement>
----@field polyline hydronium.Intrinsic<SVGAttributes, SVGElement>
----@field polygon hydronium.Intrinsic<SVGAttributes, SVGElement>
----@field tspan hydronium.Intrinsic<SVGAttributes, SVGElement>
----@field defs hydronium.Intrinsic<SVGAttributes, SVGElement>
----@field use hydronium.Intrinsic<SVGAttributes, SVGElement>
----@field symbol hydronium.Intrinsic<SVGAttributes, SVGElement>
----@field clipPath hydronium.Intrinsic<SVGAttributes, SVGElement>
----@field mask hydronium.Intrinsic<SVGAttributes, SVGElement>
----@field pattern hydronium.Intrinsic<SVGAttributes, SVGElement>
----@field linearGradient hydronium.Intrinsic<SVGAttributes, SVGElement>
----@field radialGradient hydronium.Intrinsic<SVGAttributes, SVGElement>
----@field stop hydronium.Intrinsic<SVGAttributes, SVGElement>
----@field image hydronium.Intrinsic<SVGAttributes, SVGElement>
+---@field h1 hydronium.Intrinsic<HTMLHeadingProps, HTMLHeadingElement> | fun(props?: HTMLHeadingProps, ...: any): LuaxElement
+---@field h2 hydronium.Intrinsic<HTMLHeadingProps, HTMLHeadingElement> | fun(props?: HTMLHeadingProps, ...: any): LuaxElement
+---@field h3 hydronium.Intrinsic<HTMLHeadingProps, HTMLHeadingElement> | fun(props?: HTMLHeadingProps, ...: any): LuaxElement
+---@field h4 hydronium.Intrinsic<HTMLHeadingProps, HTMLHeadingElement> | fun(props?: HTMLHeadingProps, ...: any): LuaxElement
+---@field h5 hydronium.Intrinsic<HTMLHeadingProps, HTMLHeadingElement> | fun(props?: HTMLHeadingProps, ...: any): LuaxElement
+---@field h6 hydronium.Intrinsic<HTMLHeadingProps, HTMLHeadingElement> | fun(props?: HTMLHeadingProps, ...: any): LuaxElement
+---@field div hydronium.Intrinsic<HTMLDivProps, HTMLDivElement> | fun(props?: HTMLDivProps, ...: any): LuaxElement
+---@field span hydronium.Intrinsic<HTMLSpanProps, HTMLSpanElement> | fun(props?: HTMLSpanProps, ...: any): LuaxElement
+---@field main hydronium.Intrinsic<HTMLMainProps, HTMLElement> | fun(props?: HTMLMainProps, ...: any): LuaxElement
+---@field section hydronium.Intrinsic<HTMLSectionProps, HTMLElement> | fun(props?: HTMLSectionProps, ...: any): LuaxElement
+---@field a hydronium.Intrinsic<HTMLAnchorProps, HTMLAnchorElement> | fun(props?: HTMLAnchorProps, ...: any): LuaxElement
+---@field p hydronium.Intrinsic<HTMLParagraphProps, HTMLParagraphElement> | fun(props?: HTMLParagraphProps, ...: any): LuaxElement
+---@field form hydronium.Intrinsic<HTMLFormProps, HTMLFormElement> | fun(props?: HTMLFormProps, ...: any): LuaxElement
+---@field img hydronium.Intrinsic<HTMLImageProps, HTMLImageElement> | fun(props?: HTMLImageProps, ...: any): LuaxElement
+---@field textarea hydronium.Intrinsic<HTMLTextAreaProps, HTMLTextAreaElement> | fun(props?: HTMLTextAreaProps, ...: any): LuaxElement
+---@field select hydronium.Intrinsic<HTMLSelectProps, HTMLSelectElement> | fun(props?: HTMLSelectProps, ...: any): LuaxElement
+---@field option hydronium.Intrinsic<HTMLOptionProps, HTMLOptionElement> | fun(props?: HTMLOptionProps, ...: any): LuaxElement
+---@field label hydronium.Intrinsic<HTMLLabelProps, HTMLLabelElement> | fun(props?: HTMLLabelProps, ...: any): LuaxElement
+---@field ul hydronium.Intrinsic<HTMLUListProps, HTMLUListElement> | fun(props?: HTMLUListProps, ...: any): LuaxElement
+---@field ol hydronium.Intrinsic<HTMLOListProps, HTMLOListElement> | fun(props?: HTMLOListProps, ...: any): LuaxElement
+---@field li hydronium.Intrinsic<HTMLLIProps, HTMLLIElement> | fun(props?: HTMLLIProps, ...: any): LuaxElement
+---@field header hydronium.Intrinsic<HTMLHeaderProps, HTMLElement> | fun(props?: HTMLHeaderProps, ...: any): LuaxElement
+---@field footer hydronium.Intrinsic<HTMLFooterProps, HTMLElement> | fun(props?: HTMLFooterProps, ...: any): LuaxElement
+---@field nav hydronium.Intrinsic<HTMLNavProps, HTMLElement> | fun(props?: HTMLNavProps, ...: any): LuaxElement
+---@field aside hydronium.Intrinsic<HTMLAsideProps, HTMLElement> | fun(props?: HTMLAsideProps, ...: any): LuaxElement
+---@field article hydronium.Intrinsic<HTMLArticleProps, HTMLElement> | fun(props?: HTMLArticleProps, ...: any): LuaxElement
+---@field table hydronium.Intrinsic<HTMLTableProps, HTMLTableElement> | fun(props?: HTMLTableProps, ...: any): LuaxElement
+---@field thead hydronium.Intrinsic<HTMLTableSectionProps, HTMLTableSectionElement> | fun(props?: HTMLTableSectionProps, ...: any): LuaxElement
+---@field tbody hydronium.Intrinsic<HTMLTableSectionProps, HTMLTableSectionElement> | fun(props?: HTMLTableSectionProps, ...: any): LuaxElement
+---@field tfoot hydronium.Intrinsic<HTMLTableSectionProps, HTMLTableSectionElement> | fun(props?: HTMLTableSectionProps, ...: any): LuaxElement
+---@field tr hydronium.Intrinsic<HTMLTableRowProps, HTMLTableRowElement> | fun(props?: HTMLTableRowProps, ...: any): LuaxElement
+---@field th hydronium.Intrinsic<HTMLTableCellProps, HTMLTableCellElement> | fun(props?: HTMLTableCellProps, ...: any): LuaxElement
+---@field td hydronium.Intrinsic<HTMLTableCellProps, HTMLTableCellElement> | fun(props?: HTMLTableCellProps, ...: any): LuaxElement
+---@field canvas hydronium.Intrinsic<HTMLCanvasProps, HTMLCanvasElement> | fun(props?: HTMLCanvasProps, ...: any): LuaxElement
+---@field audio hydronium.Intrinsic<HTMLAudioProps, HTMLAudioElement> | fun(props?: HTMLAudioProps, ...: any): LuaxElement
+---@field video hydronium.Intrinsic<HTMLVideoProps, HTMLVideoElement> | fun(props?: HTMLVideoProps, ...: any): LuaxElement
+---@field pre hydronium.Intrinsic<HTMLPreProps, HTMLElement> | fun(props?: HTMLPreProps, ...: any): LuaxElement
+---@field code hydronium.Intrinsic<HTMLCodeProps, HTMLElement> | fun(props?: HTMLCodeProps, ...: any): LuaxElement
+---@field dialog hydronium.Intrinsic<HTMLDialogProps, HTMLDialogElement> | fun(props?: HTMLDialogProps, ...: any): LuaxElement
+---@field svg hydronium.Intrinsic<SVGSVGProps, SVGElement> | fun(props?: SVGSVGProps, ...: any): LuaxElement
+---@field path hydronium.Intrinsic<SVGPathProps, SVGElement> | fun(props?: SVGPathProps, ...: any): LuaxElement
+---@field circle hydronium.Intrinsic<SVGCircleProps, SVGElement> | fun(props?: SVGCircleProps, ...: any): LuaxElement
+---@field rect hydronium.Intrinsic<SVGRectProps, SVGElement> | fun(props?: SVGRectProps, ...: any): LuaxElement
+---@field g hydronium.Intrinsic<SVGGProps, SVGElement> | fun(props?: SVGGProps, ...: any): LuaxElement
+---@field text hydronium.Intrinsic<SVGTextProps, SVGElement> | fun(props?: SVGTextProps, ...: any): LuaxElement
+---@field abbr hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field address hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field area hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field b hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field base hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field bdi hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field bdo hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field blockquote hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field body hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field br hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field caption hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field cite hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field col hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field colgroup hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field data hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field datalist hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field dd hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field del hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field details hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field dfn hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field dl hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field dt hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field em hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field embed hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field fieldset hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field figcaption hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field figure hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field head hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field hgroup hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field hr hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field html hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field i hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field iframe hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field ins hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field kbd hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field legend hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field link hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field map hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field mark hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field menu hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field meta hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field meter hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field noscript hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field object hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field optgroup hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field output hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field picture hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field progress hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field q hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field rp hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field rt hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field ruby hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field s hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field samp hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field script hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field search hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field slot hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field small hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field source hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field strong hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field style hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field sub hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field summary hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field sup hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field template hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field time hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field title hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field track hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field u hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field var hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field wbr hydronium.Intrinsic<HTMLAttributes, HTMLElement> | fun(props?: HTMLAttributes, ...: any): LuaxElement
+---@field line hydronium.Intrinsic<SVGAttributes, SVGElement> | fun(props?: SVGAttributes, ...: any): LuaxElement
+---@field polyline hydronium.Intrinsic<SVGAttributes, SVGElement> | fun(props?: SVGAttributes, ...: any): LuaxElement
+---@field polygon hydronium.Intrinsic<SVGAttributes, SVGElement> | fun(props?: SVGAttributes, ...: any): LuaxElement
+---@field tspan hydronium.Intrinsic<SVGAttributes, SVGElement> | fun(props?: SVGAttributes, ...: any): LuaxElement
+---@field defs hydronium.Intrinsic<SVGAttributes, SVGElement> | fun(props?: SVGAttributes, ...: any): LuaxElement
+---@field use hydronium.Intrinsic<SVGAttributes, SVGElement> | fun(props?: SVGAttributes, ...: any): LuaxElement
+---@field symbol hydronium.Intrinsic<SVGAttributes, SVGElement> | fun(props?: SVGAttributes, ...: any): LuaxElement
+---@field clipPath hydronium.Intrinsic<SVGAttributes, SVGElement> | fun(props?: SVGAttributes, ...: any): LuaxElement
+---@field mask hydronium.Intrinsic<SVGAttributes, SVGElement> | fun(props?: SVGAttributes, ...: any): LuaxElement
+---@field pattern hydronium.Intrinsic<SVGAttributes, SVGElement> | fun(props?: SVGAttributes, ...: any): LuaxElement
+---@field linearGradient hydronium.Intrinsic<SVGAttributes, SVGElement> | fun(props?: SVGAttributes, ...: any): LuaxElement
+---@field radialGradient hydronium.Intrinsic<SVGAttributes, SVGElement> | fun(props?: SVGAttributes, ...: any): LuaxElement
+---@field stop hydronium.Intrinsic<SVGAttributes, SVGElement> | fun(props?: SVGAttributes, ...: any): LuaxElement
+---@field image hydronium.Intrinsic<SVGAttributes, SVGElement> | fun(props?: SVGAttributes, ...: any): LuaxElement
 
 --- Immutable descriptor table 'd' exported by hydronium.dom
 ---@type HydroniumDOMDescriptors
