@@ -24,18 +24,33 @@ local function read_file(path)
   return content
 end
 
---- Parses source with Tree-sitter AST without crashing
+-- Root of the hydronium checkout, so the standalone headless-nvim fallback
+-- below can find the real compiled tree-sitter-luax parser (parser/luax.so)
+-- and queries on its runtimepath -- without this, `nvim --headless` starts
+-- with no `luax` parser registered at all.
+local HYDRONIUM_ROOT = (function()
+  local info = debug.getinfo(1, "S")
+  local src = info and info.source and info.source:gsub("^@", "") or ""
+  return src:match("^(.*)/tests/luax/corpus_spec%.lua$") or "."
+end)()
+
+--- Parses source with the REAL tree-sitter-luax grammar (not plain "lua" --
+--- Neovim's stock Lua grammar has its own error recovery and will produce a
+--- non-empty tree for almost anything, including raw JSX syntax it doesn't
+--- understand, which made this check pass vacuously without ever loading
+--- tree-sitter-luax at all).
 local function parse_treesitter_ast(source)
   if _G.vim and _G.vim.treesitter then
     local ok, res = pcall(function()
-      local p = _G.vim.treesitter.get_string_parser(source, "lua")
+      local p = _G.vim.treesitter.get_string_parser(source, "luax")
       local trees = p:parse()
       return trees and #trees > 0
     end)
     return ok and res
   end
 
-  -- Standalone fallback via headless Neovim
+  -- Standalone fallback via headless Neovim (this is the path actually
+  -- taken by `luajit tests/runner.lua`, which has no `_G.vim`).
   local tmp = os.tmpname()
   local f = io.open(tmp, "w")
   if not f then return false, "Cannot write temp file" end
@@ -43,8 +58,8 @@ local function parse_treesitter_ast(source)
   f:close()
 
   local cmd = string.format(
-    'nvim --headless -c "lua local fh = io.open(\'%s\', \'r\'); local s = fh:read(\'*a\'); fh:close(); local p = vim.treesitter.get_string_parser(s, \'lua\'); local t = p:parse(); assert(t and #t > 0); os.exit(0)" -c "q" >/dev/null 2>&1',
-    tmp
+    'nvim --headless --clean -u NONE -c "set rtp+=%s" -c "lua local fh = io.open(\'%s\', \'r\'); local s = fh:read(\'*a\'); fh:close(); local p = vim.treesitter.get_string_parser(s, \'luax\'); local t = p:parse(); assert(t and #t > 0); os.exit(0)" -c "q" >/dev/null 2>&1',
+    HYDRONIUM_ROOT, tmp
   )
   local exit_code = os.execute(cmd)
   os.remove(tmp)

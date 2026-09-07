@@ -170,7 +170,7 @@ function Parser:parse_jsx_attributes()
       local end_tok = self:expect("EXPR_CLOSE", "}", "Expected '}' closing spread attribute")
       local loc = ast.create_loc(
         { line = start_tok.line, column = start_tok.col, offset = start_tok.pos },
-        { line = end_tok.end_line or end_tok.line, column = end_tok.end_col or end_tok.col, offset = end_tok.pos }
+        { line = end_tok.end_line or end_tok.line, column = end_tok.end_col or end_tok.col, offset = (end_tok.end_pos or end_tok.pos) }
       )
       table.insert(attributes, ast.JSXSpreadAttribute(expr, loc))
     elseif tok.type == "ATTR_NAME" then
@@ -189,7 +189,7 @@ function Parser:parse_jsx_attributes()
           local clean_val = raw_str:sub(2, -2)
           val_node = ast.StringLiteral(clean_val, raw_str, ast.create_loc(
             { line = str_tok.line, column = str_tok.col, offset = str_tok.pos },
-            { line = str_tok.end_line or str_tok.line, column = str_tok.end_col or str_tok.col, offset = str_tok.pos }
+            { line = str_tok.end_line or str_tok.line, column = str_tok.end_col or str_tok.col, offset = (str_tok.end_pos or str_tok.pos) }
           ))
         elseif next_tok.type == "EXPR_OPEN" then
           local open_tok = self:advance()
@@ -198,7 +198,7 @@ function Parser:parse_jsx_attributes()
           end_tok = close_tok
           local expr_loc = ast.create_loc(
             { line = open_tok.line, column = open_tok.col, offset = open_tok.pos },
-            { line = close_tok.end_line or close_tok.line, column = close_tok.end_col or close_tok.col, offset = close_tok.pos }
+            { line = close_tok.end_line or close_tok.line, column = close_tok.end_col or close_tok.col, offset = (close_tok.end_pos or close_tok.pos) }
           )
           val_node = ast.JSXExpressionContainer(expr, expr_loc)
         else
@@ -211,7 +211,7 @@ function Parser:parse_jsx_attributes()
 
       local loc = ast.create_loc(
         { line = name_tok.line, column = name_tok.col, offset = name_tok.pos },
-        { line = end_tok.end_line or end_tok.line, column = end_tok.end_col or end_tok.col, offset = end_tok.pos }
+        { line = end_tok.end_line or end_tok.line, column = end_tok.end_col or end_tok.col, offset = (end_tok.end_pos or end_tok.pos) }
       )
       table.insert(attributes, ast.JSXAttribute(attr_name, val_node, loc))
     elseif tok.type == "COMMENT" then
@@ -235,7 +235,7 @@ function Parser:parse_jsx_element()
     local close_tok = self:expect("FRAGMENT_CLOSE", "</>", "Expected closing fragment '</>'")
     local loc = ast.create_loc(
       { line = start_tok.line, column = start_tok.col, offset = start_tok.pos },
-      { line = close_tok.end_line or close_tok.line, column = close_tok.end_col or close_tok.col, offset = close_tok.pos }
+      { line = close_tok.end_line or close_tok.line, column = close_tok.end_col or close_tok.col, offset = (close_tok.end_pos or close_tok.pos) }
     )
     return ast.JSXFragment(children, loc)
   end
@@ -245,7 +245,7 @@ function Parser:parse_jsx_element()
   local tag_str = open_tok.tag
   local tag_name_node = self:parse_tag_name(tag_str, ast.create_loc(
     { line = open_tok.line, column = open_tok.col, offset = open_tok.pos },
-    { line = open_tok.end_line or open_tok.line, column = open_tok.end_col or open_tok.col, offset = open_tok.pos }
+    { line = open_tok.end_line or open_tok.line, column = open_tok.end_col or open_tok.col, offset = (open_tok.end_pos or open_tok.pos) }
   ))
 
   local attributes = self:parse_jsx_attributes()
@@ -265,7 +265,7 @@ function Parser:parse_jsx_element()
   local tag_close_tok = self:expect("TAG_CLOSE", ">", "Expected '>' or '/>' to close opening tag")
   local open_loc = ast.create_loc(
     { line = open_tok.line, column = open_tok.col, offset = open_tok.pos },
-    { line = tag_close_tok.end_line or tag_close_tok.line, column = tag_close_tok.end_col or tag_close_tok.col, offset = tag_close_tok.pos }
+    { line = tag_close_tok.end_line or tag_close_tok.line, column = tag_close_tok.end_col or tag_close_tok.col, offset = (tag_close_tok.end_pos or tag_close_tok.pos) }
   )
   local opening_el = ast.JSXOpeningElement(tag_name_node, attributes, false, open_loc)
 
@@ -329,7 +329,7 @@ function Parser:parse_jsx_children(expected_parent_tag)
       local close_tok = self:expect("EXPR_CLOSE", "}", "Expected '}' closing embedded JSX expression")
       local loc = ast.create_loc(
         { line = open_tok.line, column = open_tok.col, offset = open_tok.pos },
-        { line = close_tok.end_line or close_tok.line, column = close_tok.end_col or close_tok.col, offset = close_tok.pos }
+        { line = close_tok.end_line or close_tok.line, column = close_tok.end_col or close_tok.col, offset = (close_tok.end_pos or close_tok.pos) }
       )
       table.insert(children, ast.JSXExpressionContainer(expr, loc))
     elseif tok.type == "TAG_OPEN" or tok.type == "FRAGMENT_OPEN" then
@@ -466,7 +466,7 @@ function Parser:parse_primary_expression()
     local close_tok = self:expect("PUNCT", ")", "Expected ')'")
     local loc = ast.create_loc(
       { line = open_tok.line, column = open_tok.col, offset = open_tok.pos },
-      { line = close_tok.end_line or close_tok.line, column = close_tok.end_col or close_tok.col, offset = close_tok.pos }
+      { line = close_tok.end_line or close_tok.line, column = close_tok.end_col or close_tok.col, offset = (close_tok.end_pos or close_tok.pos) }
     )
     local inner = ast.ParenthesizedExpression(expr, loc)
     return self:parse_postfix_expressions(inner)
@@ -586,7 +586,7 @@ function Parser:parse_table_constructor()
   local close_tok = self:expect("PUNCT", "}", "Expected '}' closing table")
   local loc = ast.create_loc(
     { line = open_tok.line, column = open_tok.col, offset = open_tok.pos },
-    { line = close_tok.end_line or close_tok.line, column = close_tok.end_col or close_tok.col, offset = close_tok.pos }
+    { line = close_tok.end_line or close_tok.line, column = close_tok.end_col or close_tok.col, offset = (close_tok.end_pos or close_tok.pos) }
   )
 
   return ast.TableConstructor(fields, loc)
@@ -603,7 +603,7 @@ function Parser:parse_function_expression()
 
   local loc = ast.create_loc(
     { line = fn_tok.line, column = fn_tok.col, offset = fn_tok.pos },
-    { line = end_tok.end_line or end_tok.line, column = end_tok.end_col or end_tok.col, offset = end_tok.pos }
+    { line = end_tok.end_line or end_tok.line, column = end_tok.end_col or end_tok.col, offset = (end_tok.end_pos or end_tok.pos) }
   )
 
   return ast.FunctionExpression(params, is_vararg, body, loc)
@@ -901,7 +901,7 @@ end
 function Parser:make_node_loc(tok)
   return ast.create_loc(
     { line = tok.line, column = tok.col, offset = tok.pos },
-    { line = tok.end_line or tok.line, column = tok.end_col or tok.col, offset = tok.pos }
+    { line = tok.end_line or tok.line, column = tok.end_col or tok.col, offset = (tok.end_pos or tok.pos) }
   )
 end
 

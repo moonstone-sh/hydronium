@@ -23,30 +23,9 @@ local virtual_source = require("hydronium.luax.luals.virtual_source")
 
 local plugin = {}
 
-local function compute_diff(orig, virt)
-  if orig == virt then
-    return {}
-  end
-  local len_orig = #orig
-  local len_virt = #virt
-  local s = 1
-  while s <= len_orig and s <= len_virt and orig:byte(s) == virt:byte(s) do
-    s = s + 1
-  end
-  local e_orig = len_orig
-  local e_virt = len_virt
-  while e_orig >= s and e_virt >= s and orig:byte(e_orig) == virt:byte(e_virt) do
-    e_orig = e_orig - 1
-    e_virt = e_virt - 1
-  end
-  return {
-    {
-      start = s,
-      finish = e_orig,
-      text = virt:sub(s, e_virt),
-    }
-  }
-end
+-- See hydronium.luax.plugin's compute_diff for why this must be a multi-hunk,
+-- per-changed-run diff rather than a single first-diff..last-diff hunk.
+local compute_diff = plugin_mod.compute_diff
 
 --- LuaLS plugin OnSetText lifecycle hook.
 --- Triggered whenever a document is opened or modified.

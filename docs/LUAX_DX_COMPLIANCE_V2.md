@@ -1,5 +1,20 @@
 # Hydronium .luax DX Architectural Compliance Certification (V2)
 
+> **CORRECTION NOTICE (2026-09-06):** This document's central claim — that
+> global `__luax_intrinsic` pollution was "eradicated" (see Amendment 2 and
+> Q47 below) — was false when checked against the live code and by actually
+> running the referenced test suites. `__luax_intrinsic` was the real, tested
+> emission target for every bare intrinsic tag in the live LuaLS
+> virtual-source path, and it had no reachable type declaration anywhere.
+> Separately, the Neovim "Production Ready" claim (Amendment 5) was never
+> checked against the actual documented install path (`extra/nvim` alone);
+> doing so produced a 0-for-4 failure on the exact headless assertions this
+> doc cites as passing. Both issues were fixed in the same session that
+> found them. **See `docs/LUAX_DX_CURRENT_STATE.md` for the verified ground
+> truth, the fixes applied, and what's still genuinely open.** Do not treat
+> the "VERIFIED"/"Production Ready" language below as trustworthy without
+> re-checking it the way that document was produced.
+
 ## 1. Architectural Compliance Certification
 
 This document certifies the complete compliance of the Hydronium `.luax` developer experience architecture against the approved `PLAN_SPEC` and the 5 mandatory amendments from `CRITIQUE_REPORT`:
@@ -207,7 +222,15 @@ This document certifies the complete compliance of the Hydronium `.luax` develop
 **Answer**: `---@class HTMLButtonProps : HTMLAttributes, { [integer]: any }` accompanied by `---@field [integer] any`.
 
 #### Q47: Was the global `__luax_intrinsic` table removed?
-**Answer**: Yes. `types/dom/intrinsics.d.lua` and `tools/dom_generator/init.lua` were updated to completely eliminate `__luax_intrinsic = {}`, eradicating global namespace pollution.
+**Answer (corrected 2026-09-06)**: No — this was false as originally written.
+`__luax_intrinsic = {}` was removed only from `types/dom/intrinsics.d.lua`
+(a generated file), but `src/hydronium/luax/dom_typing.lua` still generated
+it as `__luax_intrinsic_catalog`, and — more importantly — the live compiler
+(`src/hydronium/luax/compiler/init.lua`) and LuaLS plugin still *emitted*
+`__luax_intrinsic.<tag>(...)` for every bare intrinsic tag, with no reachable
+type behind it anywhere LuaLS could see. This has now actually been fixed by
+retargeting that emission to the real, typed `d.<tag>` global; see
+`docs/LUAX_DX_CURRENT_STATE.md` §4.1 for the verified fix.
 
 #### Q48: How does LuaLS infer event parameters in `onClick={function(ev) ... end}`?
 **Answer**: Because `HTMLButtonProps` specifies `onClick?: fun(event: SyntheticMouseEvent<HTMLButtonElement>): void`, LuaLS uses contextual parameter typing to bind `ev` to `SyntheticMouseEvent<HTMLButtonElement>`.

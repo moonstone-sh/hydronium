@@ -399,10 +399,10 @@ local function main()
       "tests/luax/formatter_spec.lua",
       "tests/luax/luals_plugin_spec.lua",
       "tests/luax/virtual_source_spec.lua",
-      "tests/luax/dom_typing_spec.lua",
       "tests/luax/type_declarations_spec.lua",
       "tests/luax/isolation_spec.lua",
       "tests/luax/corpus_spec.lua",
+      "tests/luax/environment_pragma_spec.lua",
     }
   end
 

@@ -8,7 +8,8 @@ else
 end
 
 local compiler = require("hydronium.luax.compiler")
-local dom_typing = require("hydronium.luax.dom_typing")
+local parser_mod = require("hydronium.luax.parser")
+local virtual_source = require("hydronium.luax.luals.virtual_source")
 
 local M = {}
 
@@ -17,12 +18,40 @@ local M = {}
 -- - <MyComp ...> -> __luax_component(MyComp, { ... })
 -- - <> ... </>   -> __luax_fragment(...)
 -- Preserves 1:1 line coordinate stability
+local function recover_incomplete_source(source)
+  local virt = source
+  -- 1. Incomplete tag opening with space for attributes: <d.button 
+  virt = virt:gsub("<([%a_][%w_]*%.[%w_]+)[ \t]+(\r?\n)", " %1{ }\n")
+  virt = virt:gsub("<([%a_][%w_]*%.[%w_]+)[ \t]+(%))", " %1{ }%2")
+  virt = virt:gsub("<([%a_][%w_]*%.[%w_]+)[ \t]+$", " %1{ }")
+  virt = virt:gsub("<([%a_][%w_]*%.[%w_]+)[ \t]+", " %1{ ")
+  -- 2. Incomplete member access: <d. (not followed by another identifier character)
+  virt = virt:gsub("<([%a_][%w_]*%.)([ \t\r\n%)])", " %1%2")
+  virt = virt:gsub("<([%a_][%w_]*%.)$", " %1")
+  -- 3. Replace remaining < before identifier
+  virt = virt:gsub("<([%a_][%w_]*)", " %1")
+  return virt
+end
+
 function M.virtual_lower(source, filename)
-  local res = compiler.compile(source, {
-    virtual_luals = true,
-    filename = filename or "file.luax",
-  })
-  local virtual_code = res.code
+  -- Use the byte-aligned, in-place rewriter (virtual_source.transform), not
+  -- compiler.compile's virtual_luals mode: the compiler builds a fresh
+  -- nested-call AST rewrite (reordering/collapsing children into varargs),
+  -- which does NOT preserve line/column correspondence for anything beyond
+  -- a single self-closing tag with no children. That mismatch is silently
+  -- invisible for completion/hover (which mostly land on short, early-line
+  -- spans) but corrupts `textDocument/rename`/`references` results for any
+  -- multi-line or nested element, since LuaLS's OnSetText plugin protocol
+  -- has no separate source-map layer -- positions in the virtual document
+  -- from OnSetText are used verbatim against the original document. See
+  -- docs/LUAX_DX_CURRENT_STATE.md for the reproduction and rationale.
+  local parse_ok = pcall(parser_mod.parse, source, filename or "file.luax")
+  local virtual_code
+  if parse_ok then
+    virtual_code = virtual_source.transform(source, filename)
+  else
+    virtual_code = recover_incomplete_source(source)
+  end
 
   -- Coordinate stability check / adjustment:
   -- Count lines in original vs virtual to ensure 1:1 line correspondence
@@ -43,30 +72,61 @@ function M.virtual_lower(source, filename)
   return virtual_code
 end
 
+-- Splits the diff into one hunk per contiguous run of changed bytes, rather
+-- than a single hunk spanning from the first to the last differing byte.
+-- virtual_source.transform is byte-length-preserving (same total length,
+-- same line count), so a plain per-byte comparison is a correct diff here --
+-- no LCS/alignment needed. This matters a lot in practice: with a single
+-- "first diff .. last diff" hunk, everything between the first and last
+-- changed byte (which, for a JSX-heavy file, is nearly the entire document)
+-- falls *inside* one diff hunk, including every unchanged identifier in
+-- between (e.g. every occurrence of a locally-declared `d`). LuaLS's
+-- reference/rename position-remapping does not reliably recover individual
+-- positions *within* such a hunk -- verified by reproducing the same
+-- structure in a plain .lua file (correct, single-character reference
+-- ranges) vs. through this plugin's single-hunk diff (garbled, overlapping
+-- ranges). Emitting one small hunk per actually-changed run leaves every
+-- unchanged span -- including each reference to `d` -- entirely outside any
+-- hunk, which resolves it. See docs/LUAX_DX_CURRENT_STATE.md.
 local function compute_diff(orig, virt)
   if orig == virt then
     return {}
   end
-  local len_orig = #orig
-  local len_virt = #virt
-  local s = 1
-  while s <= len_orig and s <= len_virt and orig:byte(s) == virt:byte(s) do
-    s = s + 1
+  if #orig ~= #virt then
+    -- Should not happen (virtual_source.transform preserves length), but
+    -- fall back to a single-hunk diff rather than erroring.
+    local len_orig, len_virt = #orig, #virt
+    local s = 1
+    while s <= len_orig and s <= len_virt and orig:byte(s) == virt:byte(s) do
+      s = s + 1
+    end
+    local e_orig, e_virt = len_orig, len_virt
+    while e_orig >= s and e_virt >= s and orig:byte(e_orig) == virt:byte(e_virt) do
+      e_orig = e_orig - 1
+      e_virt = e_virt - 1
+    end
+    return { { start = s, finish = e_orig, text = virt:sub(s, e_virt) } }
   end
-  local e_orig = len_orig
-  local e_virt = len_virt
-  while e_orig >= s and e_virt >= s and orig:byte(e_orig) == virt:byte(e_virt) do
-    e_orig = e_orig - 1
-    e_virt = e_virt - 1
+
+  local diffs = {}
+  local n = #orig
+  local i = 1
+  while i <= n do
+    if orig:byte(i) ~= virt:byte(i) then
+      local j = i
+      while j <= n and orig:byte(j) ~= virt:byte(j) do
+        j = j + 1
+      end
+      table.insert(diffs, { start = i, finish = j - 1, text = virt:sub(i, j - 1) })
+      i = j
+    else
+      i = i + 1
+    end
   end
-  return {
-    {
-      start = s,
-      finish = e_orig,
-      text = virt:sub(s, e_virt),
-    }
-  }
+  return diffs
 end
+
+M.compute_diff = compute_diff
 
 -- LuaLS Hook: OnSetText
 function M.OnSetText(uri, text)

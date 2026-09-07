@@ -48,6 +48,12 @@ function __luax_element(tag, props, ...) end
 ---@return any
 function __luax_component(component, props, ...) end
 
+--- Fragment helper referenced by virtual-source LuaLS projection (`<>...</>`)
+---@param props table?
+---@param ... any
+---@return LuaxElement
+function __luax_fragment(props, ...) end
+
 --- Runtime merge helper for JSX spread attributes
 --- Evaluates left-to-right with later keys overwriting earlier keys
 ---@param ... table|nil

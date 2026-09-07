@@ -13,6 +13,8 @@ local context = require("hydronium.core.context")
 local scheduler = require("hydronium.core.scheduler")
 local component = require("hydronium.core.component")
 local reconciler = require("hydronium.core.reconciler")
+local suspense = require("hydronium.core.suspense")
+local resource = require("hydronium.core.resource")
 
 return {
   symbols = symbols,
@@ -34,6 +36,12 @@ return {
   ComponentInstance = component.ComponentInstance,
   ErrorBoundary = errors.ErrorBoundary,
   HydroniumError = errors.HydroniumError,
+
+  -- Suspense & Resources (v1: SSR-only, sequential/buffered -- see
+  -- docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md)
+  Suspense = suspense.Suspense,
+  resource = resource.new,
+  isSuspension = resource.isSuspension,
 
   -- Context & Refs
   createContext = context.createContext,

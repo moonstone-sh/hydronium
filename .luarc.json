@@ -30,7 +30,6 @@
   "diagnostics": {
     "globals": [
       "__luax",
-      "__luax_intrinsic",
       "__luax_component",
       "__luax_fragment"
     ]

@@ -41,6 +41,9 @@ local Hydronium = {
   -- Component Systems & Resilient Boundaries
   ErrorBoundary = core.ErrorBoundary,
   HydroniumError = core.HydroniumError,
+  Suspense = core.Suspense,
+  resource = core.resource,
+  isSuspension = core.isSuspension,
 
   -- Context & Refs
   createContext = core.createContext,

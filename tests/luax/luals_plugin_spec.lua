@@ -3,35 +3,51 @@ local plugin = require("hydronium.luax.plugin")
 
 describe("LUAX LuaLS Plugin & Virtual Lowering", function()
   describe("virtual_lower", function()
-    it("lowers intrinsic elements to __luax_intrinsic calls", function()
+    -- `virtual_lower` is byte-length-preserving (see the "1:1 line coordinate
+    -- stability" tests below and docs/LUAX_DX_CURRENT_STATE.md): every tag
+    -- projects to a direct call using the *exact same identifier text* the
+    -- source already contains (`button{...}`, `UserProfile{...}`, `d.button{...}`),
+    -- never a longer qualified/wrapped form (`__luax_intrinsic.button(...)`,
+    -- `__luax_component(UserProfile, ...)`), because introducing extra
+    -- characters at a tag site cannot be done without shifting every
+    -- following byte on that line -- which corrupts LuaLS rename/reference
+    -- results computed against the virtual document. Bare intrinsic tags
+    -- therefore surface as plain identifier calls (typically an
+    -- undefined-global from LuaLS's point of view unless the project
+    -- happens to bind that name), which is a real, honest signal nudging
+    -- toward the lexical `<d.button>` form or an explicit
+    -- `---@luax environment <alias>` pragma (see compiler/init.lua and the
+    -- "Explicit Bare-Tag Environment Pragma" spec) rather than a cosmetic one.
+    it("lowers bare intrinsic tags to a direct, byte-width-preserving call", function()
       local src = [[local btn = <button id="my-btn" disabled onClick={handleClick}>Click Me</button>]]
       local virt = plugin.virtual_lower(src)
 
-      assert.truthy(virt:find("__luax_intrinsic%.button"), "Expected __luax_intrinsic.button in output")
-      assert.truthy(virt:find("id = \"my%-btn\""), "Expected id prop in output")
-      assert.truthy(virt:find("disabled = true"), "Expected boolean attribute disabled=true in output")
-      assert.truthy(virt:find("onClick = handleClick"), "Expected onClick attribute in output")
-      assert.truthy(virt:find("\"Click Me\""), "Expected child text in output")
+      assert.truthy(virt:find("button{"), "Expected a direct button{...} call in output")
+      assert.truthy(virt:find('id="my%-btn"'), "Expected id prop in output")
+      assert.truthy(virt:find("disabled"), "Expected boolean attribute disabled in output")
+      assert.truthy(virt:find("onClick=%(handleClick%)"), "Expected onClick attribute in output")
+      assert.equal(#src, #virt, "Virtual output must be exactly as long as the source")
     end)
 
-    it("lowers custom components to __luax_component calls", function()
+    it("lowers custom components to a direct call on the component identifier", function()
       local src = [[local comp = <UserProfile name="Ada" age={36} />]]
       local virt = plugin.virtual_lower(src)
 
-      assert.truthy(virt:find("__luax_component%s*%(%s*UserProfile"), "Expected __luax_component(UserProfile) in output")
-      assert.truthy(virt:find("name = \"Ada\""), "Expected name prop in output")
-      assert.truthy(virt:find("age = 36"), "Expected age prop in output")
+      assert.truthy(virt:find("UserProfile{"), "Expected a direct UserProfile{...} call in output")
+      assert.truthy(virt:find('name="Ada"'), "Expected name prop in output")
+      assert.truthy(virt:find("age=%(36%)"), "Expected age prop in output")
+      assert.equal(#src, #virt, "Virtual output must be exactly as long as the source")
     end)
 
-    it("lowers fragments to __luax_fragment calls", function()
+    it("lowers fragments to a bare table literal", function()
       local src = [[local frag = <><span>Item 1</span><span>Item 2</span></>]]
       local virt = plugin.virtual_lower(src)
 
-      assert.truthy(virt:find("__luax_fragment"), "Expected __luax_fragment in output")
-      assert.truthy(virt:find("__luax_intrinsic%.span"), "Expected span elements in output")
+      assert.truthy(virt:find("span{"), "Expected span elements in output")
+      assert.equal(#src, #virt, "Virtual output must be exactly as long as the source")
     end)
 
-    it("lowers nested elements and components preserving structure", function()
+    it("lowers nested elements and components preserving structure and byte length", function()
       local src = [[
 local card = (
   <Card title="Overview">
@@ -43,10 +59,11 @@ local card = (
 ]]
       local virt = plugin.virtual_lower(src)
 
-      assert.truthy(virt:find("__luax_component%s*%(%s*Card"), "Expected Card component")
-      assert.truthy(virt:find("__luax_intrinsic%.div"), "Expected div intrinsic")
-      assert.truthy(virt:find("__luax_intrinsic%.button"), "Expected button intrinsic")
-      assert.truthy(virt:find("onClick = onSave"), "Expected onClick handler")
+      assert.truthy(virt:find("Card{"), "Expected a direct Card{...} call")
+      assert.truthy(virt:find("div{"), "Expected div intrinsic")
+      assert.truthy(virt:find("button{"), "Expected button intrinsic")
+      assert.truthy(virt:find("onClick=%(onSave%)"), "Expected onClick handler")
+      assert.equal(#src, #virt, "Virtual output must be exactly as long as the source")
     end)
   end)
 
@@ -110,7 +127,7 @@ return Counter
 
       assert.is_table(res, "Expected table result from OnSetText for .luax")
       assert.is_string(res.text, "Expected string text property")
-      assert.truthy(res.text:find("__luax_intrinsic%.button"), "Expected virtual lowering in text")
+      assert.truthy(res.text:find("button{"), "Expected virtual lowering in text")
     end)
 
     it("ignores non-.luax URIs (returns nil)", function()

@@ -139,6 +139,22 @@
 ---@field onError? fun(err: any)
 ---@field children? any
 
+--- "Can this subtree render right now, and what shows while it can't" --
+--- see docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md. Independent of ErrorBoundary
+--- (a failed Resource is an ErrorBoundary concern, not a Suspense one) and
+--- of d.lua.island/d.js.island (client ownership is a separate axis).
+---@class SuspenseProps
+---@field fallback VNode
+---@field children? any
+
+---@alias HydroniumResourceStatus "pending"|"ready"|"failed"
+
+---@class HydroniumResource<T>
+---@field get fun(self: HydroniumResource<T>): T
+---@field status fun(self: HydroniumResource<T>): HydroniumResourceStatus
+---@field resolve fun(self: HydroniumResource<T>, value: T)
+---@field reject fun(self: HydroniumResource<T>, err: any)
+
 ---@class Hydronium
 ---@field _VERSION string
 ---@field _DESCRIPTION string
@@ -160,6 +176,11 @@
 ---@field createRef fun<T>(initialValue?: T): Ref<T>
 ---@field ErrorBoundary fun(props: ErrorBoundaryProps): VNode
 ---@field HydroniumError HydroniumError
+---@field Suspense fun(props: SuspenseProps): VNode
+---@field resource fun<T>(loader?: fun(): T): HydroniumResource<T>
+---@field isSuspension fun(err: any): boolean
+---@field dom HydroniumDOMDescriptors
+---@field d HydroniumDOMDescriptors
 ---@field test HydroniumTest
 ---@field server HydroniumServer
 

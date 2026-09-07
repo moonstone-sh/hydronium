@@ -44,6 +44,19 @@ function CodeEmitter.new(source_filename, source_content, env, options)
     pragma = self.source_content:match("@jsx%s+([%w_%.]+)")
   end
 
+  -- Explicit bare-tag environment alias:
+  --   local d = require("hydronium.dom")
+  --   ---@luax environment d
+  -- When present, every bare intrinsic tag `<tag>` in this file is sugar for
+  -- `<d.tag>` (the declared lexical alias) rather than resolving through the
+  -- ambient/global default environment. This gives bare tags an explicit,
+  -- per-file semantic source instead of a process-global heuristic.
+  self.bare_tag_alias = options.bare_tag_alias
+  self.bare_tags_without_alias = {}
+  if not self.bare_tag_alias and self.source_content then
+    self.bare_tag_alias = self.source_content:match("%-%-%-@luax%s+environment%s+([%w_]+)")
+  end
+
   local runtime_target = options.runtime or (pragma and "custom") or "universal"
   if pragma then
     self.factory_name = pragma
@@ -242,19 +255,42 @@ function CodeEmitter:emit_jsx_element(node)
 
   if self.options.virtual_luals then
     if is_intrinsic then
-      self:write("__luax_intrinsic." .. name_node.name .. "(", node.loc)
+      -- Explicit per-file environment (`---@luax environment <alias>`) makes
+      -- bare tags sugar for `<alias.tag>`, giving them an explicit lexical
+      -- source. With no pragma, fall back to the real, typed global `d`
+      -- (types/dom/init.d.lua) rather than the untyped `__luax_intrinsic`
+      -- placeholder, and record the tag so callers can surface a lint note
+      -- recommending the explicit pragma.
+      local alias = self.bare_tag_alias
+      if not alias then
+        alias = "d"
+        table.insert(self.bare_tags_without_alias, { tag = name_node.name, loc = node.loc })
+      end
+      self:write(alias .. "." .. name_node.name .. "(", node.loc)
+    elseif name_node.type == "JSXMemberExpression" then
+      self:write(" ")
+      self:emit_node(name_node)
+      self:write("(", node.loc)
     else
       self:write("__luax_component(", node.loc)
       self:emit_node(name_node)
       self:write(", ")
     end
   elseif self.factory_name == "direct" then
-    self:emit_node(name_node)
-    self:write("(", node.loc)
+    if is_intrinsic and self.bare_tag_alias then
+      self:write(self.bare_tag_alias .. "." .. name_node.name .. "(", node.loc)
+    else
+      self:emit_node(name_node)
+      self:write("(", node.loc)
+    end
   else
     self:write(self.factory_name .. "(", node.loc)
     if is_intrinsic then
-      self:write(string.format("%q", name_node.name), name_node.loc)
+      if self.bare_tag_alias then
+        self:write(self.bare_tag_alias .. "." .. name_node.name, name_node.loc)
+      else
+        self:write(string.format("%q", name_node.name), name_node.loc)
+      end
     else
       self:emit_node(name_node)
     end
@@ -756,6 +792,10 @@ function compiler.compile(source_or_ast, options)
     code = code,
     sourcemap = map,
     map_json = map:to_json(),
+    -- Bare intrinsic tags compiled without an explicit `---@luax environment
+    -- <alias>` pragma (resolved via the implicit default global instead).
+    -- Empty when the file declares the pragma or uses only lexical/component tags.
+    bare_tags_without_alias = emitter.bare_tags_without_alias,
   }
 end
 

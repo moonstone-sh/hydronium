@@ -884,6 +884,19 @@ function M.tokenize(src, filename, options)
 
   while true do
     local tok = lexer:next_token()
+    -- Most token constructors in next_token()/read_* only record end_line/
+    -- end_col (for human-readable diagnostics), not an end byte offset.
+    -- Parser loc computations (ast.create_loc) fall back to a token's
+    -- *start* offset (`.pos`) when `.end_pos` is absent, which silently
+    -- truncates any AST node's loc.end to the start of its last token
+    -- instead of that token's actual end -- corrupting byte-range consumers
+    -- like the LuaLS virtual-source rewriter (src/hydronium/luax/luals/virtual_source.lua)
+    -- for any multi-character end token (e.g. a whole string-literal
+    -- attribute value). Backfill it centrally here, once, using the
+    -- lexer's position immediately after the token was fully consumed.
+    if tok.end_pos == nil then
+      tok.end_pos = math.max(tok.pos or 1, lexer.pos - 1)
+    end
     if not options.include_whitespace and tok.type == M.TOKEN.WHITESPACE then
       -- Skip whitespace
     else

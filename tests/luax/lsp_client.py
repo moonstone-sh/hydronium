@@ -8,20 +8,31 @@ coordinate translation, and lifecycle management.
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-DEFAULT_LUALS_PATH = os.environ.get(
-    "LUA_LS_PATH",
-    "/Users/extrordinaire/.local/share/nvim/mason/bin/lua-language-server"
-)
+def resolve_luals_path() -> Optional[str]:
+    """Return a runnable LuaLS executable without assuming a developer home."""
+    candidates = []
+    if os.environ.get("LUA_LS_PATH"):
+        candidates.append(os.environ["LUA_LS_PATH"])
+    from_path = shutil.which("lua-language-server")
+    if from_path:
+        candidates.append(from_path)
+    # Mason is a useful local fallback, not a requirement of the harness.
+    candidates.append(os.path.expanduser("~/.local/share/nvim/mason/bin/lua-language-server"))
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
 
 class LspClient:
     def __init__(self, server_path: Optional[str] = None, cwd: Optional[str] = None):
-        self.server_path = server_path or DEFAULT_LUALS_PATH
+        self.server_path = server_path or resolve_luals_path()
         self.cwd = cwd or os.getcwd()
         self.process: Optional[subprocess.Popen] = None
         self.reader_thread: Optional[threading.Thread] = None
@@ -71,6 +82,10 @@ class LspClient:
         """Start the LuaLS subprocess and background reader thread."""
         if self.running:
             return
+        if not self.server_path:
+            raise RuntimeError(
+                "lua-language-server is unavailable; set LUA_LS_PATH or add it to PATH"
+            )
 
         cmd = [self.server_path]
         self.process = subprocess.Popen(
@@ -255,6 +270,9 @@ class LspClient:
                     "definition": {
                         "linkSupport": True
                     },
+                    "rename": {
+                        "prepareSupport": True
+                    },
                     "publishDiagnostics": {
                         "relatedInformation": True,
                         "tagSupport": {"valueSet": [1, 2]}
@@ -326,6 +344,15 @@ class LspClient:
             "position": self.to_lsp_pos(line_1b, col_1b)
         }
         return self.send_request("textDocument/definition", params, timeout=timeout)
+
+    def rename(self, uri: str, line_1b: int, col_1b: int, new_name: str, timeout: float = 10.0) -> Any:
+        """Query textDocument/rename using 1-based coordinates."""
+        params = {
+            "textDocument": {"uri": uri},
+            "position": self.to_lsp_pos(line_1b, col_1b),
+            "newName": new_name
+        }
+        return self.send_request("textDocument/rename", params, timeout=timeout)
 
     def get_diagnostics(self, uri: str) -> List[Dict[str, Any]]:
         """Get latest cached diagnostics for URI."""

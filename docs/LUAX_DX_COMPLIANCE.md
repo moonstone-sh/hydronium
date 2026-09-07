@@ -1,5 +1,16 @@
 # Hydronium .luax DX & Compiler Architectural Compliance Report
 
+> **CORRECTION NOTICE (2026-09-06):** This is an early, superseded
+> compliance pass with its own hand-maintained, now-stale test count (one
+> of at least five different counts scattered across this repo's docs over
+> time — see `docs/LUAX_DX_COMPLIANCE_V2.md`'s correction notice and
+> `docs/LUAX_DX_CURRENT_STATE.md` for the actual, currently-accurate
+> architecture audit). **`luajit tests/runner.lua`'s own output is the only
+> authoritative test count.** Do not trust this document's specific
+> architectural claims without re-verifying against `LUAX_DX_CURRENT_STATE.md`
+> first — several of them (global intrinsic handling in particular) were
+> found false when checked against the live code.
+
 ## 1. Architectural Compliance Certification
 
 This document certifies the compliance of the Hydronium `.luax` compiler, language tooling, LuaLS integration, DOM generator, and formatter against the core architectural plan (`PLAN_SPEC`) and the 7 mandatory critique amendments (`CRITIQUE_REPORT`).

@@ -181,13 +181,31 @@ elseif cmd == "check" then
 
   local content = read_file(input_file)
   local ok, err = pcall(luax.parse, content, input_file)
-  if ok then
-    print(string.format("Syntax OK: %s", input_file))
-    os.exit(0)
-  else
+  if not ok then
     io.stderr:write(string.format("Syntax Error in %s:\n%s\n", input_file, tostring(err)))
     os.exit(1)
   end
+
+  print(string.format("Syntax OK: %s", input_file))
+
+  -- Lint: bare intrinsic tags compiled without an explicit
+  -- `---@luax environment <alias>` pragma (see docs/LUAX_TAG_SEMANTICS.md).
+  local compiler = require("hydronium.luax.compiler")
+  local comp_ok, comp_res = pcall(compiler.compile, content, { virtual_luals = true, filename = input_file })
+  if comp_ok and comp_res.bare_tags_without_alias and #comp_res.bare_tags_without_alias > 0 then
+    local seen = {}
+    for _, entry in ipairs(comp_res.bare_tags_without_alias) do
+      if not seen[entry.tag] then
+        seen[entry.tag] = true
+        local line = entry.loc and entry.loc.start and entry.loc.start.line
+        io.stderr:write(string.format(
+          "Notice: <%s>%s resolves via the default global environment (no `---@luax environment <alias>` pragma declared in this file). Add `local d = require(\"hydronium.dom\")` + `---@luax environment d` (or your host's namespace) for an explicit source.\n",
+          entry.tag, line and (" at line " .. line) or ""
+        ))
+      end
+    end
+  end
+  os.exit(0)
 
 elseif cmd == "generate-dom" then
   local out_dir = "types"

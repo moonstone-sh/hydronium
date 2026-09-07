@@ -471,6 +471,60 @@ function virtual_source.transform(source, filename, options)
       end
     end
 
+    -- JSX has no comma-separated child list, but the virtual Lua table
+    -- constructor each element becomes (`tag{ ...attrs..., child1, child2 }`)
+    -- requires one. Without this, e.g. `<a><b/><c/></a>` (2 sibling
+    -- children, no separator in the source) lowers to invalid Lua
+    -- (`b{} c{}` with no `,`/`;` between them), which does not fail loudly --
+    -- LuaLS's own Lua parser recovers by folding the malformed span into one
+    -- oversized token/reference, which silently corrupts multi-line
+    -- rename/reference results (see docs/LUAX_DX_CURRENT_STATE.md). Insert a
+    -- "," into the first available non-newline byte of the gap between each
+    -- pair of consecutive significant children (that gap is ordinary
+    -- whitespace between tags in real-world formatted code, so this rarely
+    -- needs to consume anything meaningful; if no such byte exists -- e.g.
+    -- `<a/><b/>` with zero whitespace between them -- the gap is left as-is
+    -- and the virtual document remains invalid Lua for that one edge case).
+    local function significant_children(children)
+      local sig = {}
+      for _, c in ipairs(children or {}) do
+        if c.type == "JSXComment" then
+          -- skip: comments are blanked out, not a value in the child list
+        elseif c.type == "JSXText" then
+          if c.value and c.value:match("%S") then
+            table.insert(sig, c)
+          end
+        else
+          table.insert(sig, c)
+        end
+      end
+      return sig
+    end
+
+    local function insert_separator(gap_start, gap_end)
+      for p = gap_start, gap_end do
+        if bytes[p] and bytes[p] ~= "\n" then
+          bytes[p] = ","
+          return
+        end
+      end
+    end
+
+    for _, node in ipairs(jsx_nodes) do
+      local children = (node.type == "JSXElement" or node.type == "JSXFragment") and node.children
+      if children then
+        local sig = significant_children(children)
+        for i = 1, #sig - 1 do
+          local a, b = sig[i], sig[i + 1]
+          local a_end = a.loc and a.loc["end"] and a.loc["end"].offset
+          local b_start = b.loc and b.loc.start and b.loc.start.offset
+          if a_end and b_start and b_start > a_end + 1 then
+            insert_separator(a_end + 1, b_start - 1)
+          end
+        end
+      end
+    end
+
     return table.concat(bytes)
   end
 

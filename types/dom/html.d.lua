@@ -288,6 +288,7 @@
 
 --- Props for <input> element
 ---@class HTMLInputProps : HTMLAttributes
+---@field ref? Ref<HTMLInputElement> | (fun(element: HTMLInputElement): void)
 ---@field type string?
 ---@field value any?
 ---@field checked boolean?
