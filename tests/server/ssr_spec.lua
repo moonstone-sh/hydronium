@@ -122,16 +122,31 @@ describe("Hydronium Server Renderer (SSR)", function()
       assert.truthy(html:find('data%-visible="true"'))
     end)
 
-    it("ignores event handlers and functions when serializing attributes", function()
-      local vnode = H.h("button", {
+    it("never serializes event handlers or other functions as HTML attributes", function()
+      local vnode = H.h(H.d.lua.island, nil, H.h("button", {
         onClick = function() end,
         onInput = function() end,
         on_change = function() end,
         id = "btn",
-      }, "Click")
+      }, "Click"))
       local html = server.render_to_string(vnode)
       assert.falsy(html:find("onClick"))
       assert.falsy(html:find("onInput"))
+      assert.falsy(html:find("on_change"))
+      assert.truthy(html:find('id="btn"'))
+    end)
+
+    it("raises a diagnostic for a Lua event callback with no enclosing Lua client boundary", function()
+      local vnode = H.h("button", { onClick = function() end }, "Click")
+      local ok, err = pcall(server.render_to_string, vnode)
+      assert.falsy(ok)
+      assert.truthy(tostring(err):find("requires a Lua client execution boundary", 1, true))
+      assert.truthy(tostring(err):find("onClick", 1, true))
+    end)
+
+    it("does not raise for a non-camelCase function prop with no island (silently excluded, not a recognized event name)", function()
+      local vnode = H.h("button", { on_change = function() end, id = "btn" }, "Click")
+      local html = server.render_to_string(vnode)
       assert.falsy(html:find("on_change"))
       assert.truthy(html:find('id="btn"'))
     end)

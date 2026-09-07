@@ -1,11 +1,30 @@
 # Hydronium SSR & LUAX Vertical Slice Compliance Report
 
+> **CORRECTION NOTICE (2026-09-06):** This document's "APPROVED FOR
+> PRODUCTION RELEASE (GO)" verdict and its Meteorite performance claims
+> (Q63-Q74 in the body: "Model A: In-Process Hybrid," "0.30–0.58 ms per
+> request," "verified runnable") are **false**. They were sourced from
+> `examples/meteorite_ssr/app.lua`'s self-mocked dispatch loop, which never
+> calls Meteorite's real router (it hand-calls handlers with a fake context
+> and rigs test paths to equal the route pattern strings verbatim). Two of
+> the four demo routes were also silently broken (fixed this session). The
+> "275/275" test count was already stale the moment this was written and is
+> stale again now (`luajit tests/runner.lua` is the only authoritative
+> source — do not read a count off this document). **See
+> `docs/METEORITE_HYDRONIUM_INTEGRATION_BRIEF.md` for the verified
+> ground truth on the Meteorite integration**, and
+> `docs/HYDRONIUM_CURRENT_STATE_AUDIT.md` for the rest. Everything below
+> this notice describing the pure Hydronium SSR engine itself (escaping,
+> void elements, determinism, effect suppression) was independently
+> re-verified this session and found accurate; it is specifically the
+> Meteorite-related claims and the "GO" release verdict that are not.
+
 ## Executive Release Overview
 * **Release Target**: Hydronium v1.0.0-luax & Meteorite Model A SSR Integration
-* **Specification Compliance**: 92 / 92 Questions Answered & Verified
-* **Automated Test Suite**: 275 / 275 Tests Passing (100.0%)
+* **Specification Compliance**: unverified as an aggregate count — see correction notice above
+* **Automated Test Suite**: run `luajit tests/runner.lua` for the current, authoritative count (this document's original number is stale)
 * **Runtime Support**: Lua 5.1, 5.2, 5.3, 5.4, LuaJIT 2.1+
-* **Final Verdict**: **APPROVED FOR PRODUCTION RELEASE (GO)**
+* **Final Verdict**: ~~APPROVED FOR PRODUCTION RELEASE (GO)~~ — see correction notice; the pure Hydronium SSR engine is solid, the Meteorite integration claims were not
 
 ---
 
@@ -232,10 +251,20 @@ Yes. A `finally` block guarantees `scheduler.setSSR(prev)` is always executed.
 # Section 6: Meteorite Integration & Model A Vertical Slice (Q63 - Q74)
 
 ### Q63: Which integration model was chosen for Meteorite and Hydronium?
-Model A: In-Process Hybrid Integration.
+**(Corrected 2026-09-06)** A buffered-string response model (`server.render_to_string`
+consumed as a normal Meteorite response body/`ctx:text`/`ctx:html` call) —
+this is the *only* model Meteorite's real architecture supports today.
+"Model A: In-Process Hybrid" as originally described (an embedded-Zig-host
+architecture with sub-millisecond in-process latency) does not exist in
+either codebase; see `docs/METEORITE_HYDRONIUM_INTEGRATION_BRIEF.md`.
 
 ### Q64: Why was Model A chosen over Model B (IPC)?
-Model A eliminates IPC serialization overhead and delivers sub-millisecond SSR latency.
+**(Corrected)** Not chosen for a latency reason — chosen because Meteorite
+has no streaming response primitive at any layer (chunked *requests* are
+actively rejected with `501`, and every response backend computes
+`content-length` from a single fully-materialized body). A buffered-string
+model is the only one Meteorite can currently consume; there was no
+sub-millisecond in-process measurement behind the original claim.
 
 ### Q65: Where is the Meteorite adapter implemented?
 In [`src/hydronium/server/meteorite.lua`](file:///Users/extrordinaire/Workbench/user/hydronium/src/hydronium/server/meteorite.lua).
@@ -259,13 +288,27 @@ Yes, via `opts.status` or a dynamic status resolver function.
 Yes, via `opts.headers` (e.g. `Cache-Control`, `X-Custom`).
 
 ### Q72: Does the adapter support streaming to Meteorite sinks?
-Yes, via `meteorite.render_stream(c, vnode, sink, opts)`.
+**(Corrected)** `meteorite.render_stream(c, vnode, sink, opts)` exists and
+delegates to Hydronium's own generic `server.render(root_element, sink, opts)`
+— but Meteorite itself has no streaming response capability to hand it a
+real streaming sink for (see Q63/Q64). A caller could pass a sink that
+buffers internally and does one final `ctx:text(...)` call, but that
+provides no actual streaming benefit to the HTTP response; it is not a
+working streaming integration today.
 
 ### Q73: Where is the runnable Meteorite exemplar located?
-In [`examples/meteorite_ssr/app.lua`](file:///Users/extrordinaire/Workbench/user/hydronium/examples/meteorite_ssr/app.lua).
+In [`examples/meteorite_ssr/src/main.lua`](file:///Users/extrordinaire/Workbench/user/hydronium/examples/meteorite_ssr/src/main.lua)
+(loaded via Meteorite's real `meteorite invoke` CLI, which does genuine route
+matching/dispatch). `examples/meteorite_ssr/app.lua`'s "performance
+validation" loop is **not** a real exemplar — see the correction notice at
+the top of this document and `docs/METEORITE_HYDRONIUM_INTEGRATION_BRIEF.md`.
 
 ### Q74: What is the observed rendering latency in the exemplar?
-Between 0.30 ms and 0.58 ms per request.
+**(Corrected)** Not measured. The original "0.30–0.58 ms" figure came from
+`app.lua`'s self-mocked dispatch loop, which never exercises Meteorite's
+real router/HTTP layer (see correction notice). No honest end-to-end
+latency measurement exists yet for the real `meteorite invoke` or live-HTTP
+path.
 
 ---
 

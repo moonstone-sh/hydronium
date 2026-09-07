@@ -1,5 +1,19 @@
 # Hydronium SSR Hydration Contract & Islands Architecture
 
+> **Status (2026-09-06): this is a design specification, not an
+> implementation status report.** No client-side hydration runtime exists
+> anywhere in this repository (`find . -iname "*hydrat*"` finds only this
+> document) — this is intentional and matches the mission's own guidance
+> ("do not implement a full browser client... produce a concrete
+> *specification* for the next experiment"). Read every present-tense claim
+> below ("the hydration runtime scans...") as describing the *intended*
+> design for that future runtime, not something that currently runs.
+> `server.render_to_string` today emits plain HTML with **none** of the
+> `data-island-*` markers described below — nothing in `src/hydronium/server/`
+> references "island" at all (verified by grep). This document is the
+> target contract for whoever builds that runtime next, per Part IX/§43 of
+> the SSR mission brief ("First hydration experiment specification").
+
 ## 1. Core Principles
 Hydronium adopts an **Islands of Interactivity** architecture for client hydration. In this model:
 - The vast majority of a document (layouts, navigation, static articles, tables, footers) is rendered by the server into pure, non-reactive HTML with zero client JavaScript/Lua overhead.

@@ -1,5 +1,16 @@
 # Hydronium Foundation Architectural Compliance Report
 
+> **CORRECTION NOTICE (2026-09-06):** This document's "78 Total | 78 Passed"
+> figure is stale hand-maintained test-count text, one of at least five
+> different hardcoded counts scattered across this repo's docs over time
+> (78 here, 131 in `LUAX_DX_COMPLIANCE.md`, 275 in
+> `HYDRONIUM_CURRENT_STATE_AUDIT.md`, 311 in `LUAX_DX_COMPLIANCE_V2.md`,
+> now 315 for real). **`luajit tests/runner.lua`'s own output is the only
+> authoritative test count — never read one off a doc.** The architectural
+> claims below about specific files/mechanisms were not re-verified as part
+> of this correction; treat them with the same caution as any other
+> unverified doc per `docs/HYDRONIUM_CURRENT_STATE_AUDIT.md`.
+
 ## 1. Architectural Compliance Certification
 
 This document provides the definitive verification of compliance for the Hydronium UI framework against the core architectural plan (`PLAN_SPEC`) and the five mandatory critique amendments (`CRITIQUE_REPORT`).

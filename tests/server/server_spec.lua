@@ -361,4 +361,176 @@ describe("Hydronium Server-Side Rendering (SSR)", function()
       assert.equal(table.concat(chunks), "<section><p>Chunked Section</p></section>")
     end)
   end)
+
+  describe("Component calling convention parity with the client renderer", function()
+    it("passes (props, scope) to the setup function, matching ComponentInstance:render", function()
+      local seen_props, seen_scope
+      local function Probe(props, scope)
+        seen_props, seen_scope = props, scope
+        return H.h("span", nil, "ok")
+      end
+
+      H.server.render_to_string(H.h(Probe, { label = "x" }))
+
+      assert.equal(seen_props.label, "x")
+      assert.truthy(seen_scope, "Expected the setup function to receive a non-nil scope, matching the client component contract")
+    end)
+
+    it("passes (props, scope) to the render closure returned by a double-function component", function()
+      -- This is the documented idiomatic pattern (h.component-style setup
+      -- function returning a render function) -- previously, the render
+      -- closure fell through to render_node's generic zero-argument
+      -- function-child case during SSR, silently giving it nil for both
+      -- arguments even though the client's ComponentInstance:render passes
+      -- (self.props, self.scope) on every call.
+      local seen_props, seen_scope
+      local function Counter(setup_props)
+        return function(render_props, render_scope)
+          seen_props, seen_scope = render_props, render_scope
+          return H.h("span", nil, tostring(setup_props.initial))
+        end
+      end
+
+      local html = H.server.render_to_string(H.h(Counter, { initial = 5 }))
+
+      assert.equal(html, "<span>5</span>")
+      assert.equal(seen_props.initial, 5, "Expected the render closure's own props argument to be populated, not nil")
+      assert.truthy(seen_scope, "Expected the render closure's own scope argument to be populated, not nil")
+    end)
+  end)
+
+  describe("Refs during SSR", function()
+    it("leaves refs unset -- server rendering never instantiates a host reconciler to bind them", function()
+      local nodeRef = H.createRef()
+      local vnode = H.h("input", { type = "text", ref = nodeRef })
+
+      local html = H.server.render_to_string(vnode)
+
+      assert.equal(html, '<input type="text">')
+      assert.is_nil(nodeRef.current, "A ref passed to an SSR-rendered element must remain unset (no real host instance exists on the server)")
+    end)
+  end)
+
+  describe("SSR ownership and hardened state serialization", function()
+    it("keeps descendant scopes owned by their rendering component until descendants finish", function()
+      local cleanup_order = {}
+      local parent_scope, child_scope
+
+      local function Child(_, scope)
+        child_scope = scope
+        H.onCleanup(function() cleanup_order[#cleanup_order + 1] = "child" end)
+        return H.h("span", nil, "child")
+      end
+      local function Parent(_, scope)
+        parent_scope = scope
+        H.onCleanup(function() cleanup_order[#cleanup_order + 1] = "parent" end)
+        return H.h("div", nil, H.h(Child))
+      end
+
+      assert.equal(H.server.render_to_string(H.h(Parent)), "<div><span>child</span></div>")
+      assert.equal(child_scope.parent, parent_scope)
+      assert.same(cleanup_order, { "child", "parent" })
+    end)
+
+    it("emits deterministic state JSON that cannot terminate its script element", function()
+      local state = {
+        z = "</script><script>alert(1)</script>",
+        a = "\0\n\1<&>\226\128\168",
+        nested = { enabled = true, items = { "one", "two" } },
+      }
+      local output = H.server.render_to_string(H.h("main"), { state = state })
+
+      assert.truthy(output:find('"a":"\\u0000\\n\\u0001\\u003c\\u0026\\u003e\\u2028"', 1, true))
+      assert.truthy(output:find('"z":"\\u003c/script\\u003e\\u003cscript\\u003ealert(1)\\u003c/script\\u003e"', 1, true))
+      assert.falsy(output:find("</script><script>", 1, true))
+      assert.truthy(output:find('"nested":{"enabled":true,"items":["one","two"]}', 1, true))
+    end)
+
+    it("rejects ambiguous or unsafe state values rather than coercing them", function()
+      local cyclic = {}
+      cyclic.self = cyclic
+      assert.has_error(function() H.server.encode_state(cyclic) end, "cyclic table")
+      assert.has_error(function() H.server.encode_state({ [1] = "mixed", kind = "object" }) end, "object keys must be strings")
+      assert.has_error(function() H.server.encode_state(0 / 0) end, "non-finite number")
+    end)
+
+    it("rejects malformed tag and attribute names before emitting HTML", function()
+      assert.has_error(function()
+        H.server.render_to_string(H.h('div><script>alert(1)</script', nil))
+      end, "Invalid SSR tag name")
+      assert.has_error(function()
+        H.server.render_to_string(H.h("div", { ['title" onclick="x'] = "unsafe" }))
+      end, "Invalid SSR attribute name")
+    end)
+
+    it("closes a normalized sink after a write failure and restores SSR state", function()
+      local scheduler = require("hydronium.core.scheduler")
+      local closed = 0
+      local sink = {
+        write = function() error("socket write failed") end,
+        close = function() closed = closed + 1 end,
+      }
+      local ok, err = H.server.render(H.h("div", nil, "x"), sink, {
+        on_error = function() end,
+      })
+      assert.falsy(ok)
+      assert.truthy(tostring(err):find("socket write failed", 1, true))
+      assert.equal(closed, 1)
+      assert.falsy(scheduler.isSSR())
+    end)
+  end)
+
+  describe("SVG rendering (case-sensitive XML, unlike HTML5)", function()
+    it("renders a basic SVG fixture with correct namespace-sensitive tag/attribute casing", function()
+      local vnode = H.h("svg", { viewBox = "0 0 10 10" },
+        H.h("path", { d = "M0 0 L10 10" })
+      )
+      local html = H.server.render_to_string(vnode)
+      assert.equal(html, '<svg viewBox="0 0 10 10"><path d="M0 0 L10 10"></path></svg>')
+    end)
+
+    it("preserves camelCase SVG element names instead of lowercasing them like HTML tags", function()
+      -- SVG is case-sensitive XML: <lineargradient>/<clippath> are not the
+      -- same element as <linearGradient>/<clipPath> and browsers won't
+      -- recognize the lowercased forms.
+      local vnode = H.h("svg", nil,
+        H.h("linearGradient", { id = "g1" },
+          H.h("stop", { offset = "0%", stopColor = "red" })
+        ),
+        H.h("clipPath", { id = "c1" })
+      )
+      local html = H.server.render_to_string(vnode)
+      assert.truthy(html:find("<linearGradient id=\"g1\">", 1, true))
+      assert.truthy(html:find("</linearGradient>", 1, true))
+      assert.truthy(html:find("<clipPath id=\"c1\">", 1, true))
+      assert.truthy(html:find("</clipPath>", 1, true))
+      assert.falsy(html:find("lineargradient", 1, true), "Must not lowercase linearGradient")
+      assert.falsy(html:find("clippath", 1, true), "Must not lowercase clipPath")
+    end)
+
+    it("aliases camelCase SVG presentation attributes to their real kebab-case XML names", function()
+      -- strokeWidth/stopColor etc. match the JSX/DOM-property authoring
+      -- convention (same as `strokeWidth` elsewhere in JSX-alikes), but
+      -- real SVG/XML requires kebab-case attribute names.
+      local vnode = H.h("svg", nil,
+        H.h("path", { d = "M0 0", strokeWidth = 2, strokeDasharray = "4 2" }),
+        H.h("stop", { stopColor = "red", stopOpacity = 0.5 })
+      )
+      local html = H.server.render_to_string(vnode)
+      assert.truthy(html:find('stroke-width="2"', 1, true))
+      assert.truthy(html:find('stroke-dasharray="4 2"', 1, true))
+      assert.truthy(html:find('stop-color="red"', 1, true))
+      assert.truthy(html:find('stop-opacity="0.5"', 1, true))
+      assert.falsy(html:find("strokeWidth", 1, true))
+      assert.falsy(html:find("stopColor", 1, true))
+    end)
+
+    it("does not apply SVG attribute aliasing to ordinary HTML elements", function()
+      -- A hypothetical HTML element with a same-named custom/data attribute
+      -- must not be mistaken for an SVG presentation attribute.
+      local vnode = H.h("div", { ["data-strokewidth"] = "2" }, "not svg")
+      local html = H.server.render_to_string(vnode)
+      assert.truthy(html:find('data-strokewidth="2"', 1, true))
+    end)
+  end)
 end)

@@ -51,6 +51,99 @@ M.BOOLEAN_ATTRIBUTES = {
   selected = true,
 }
 
+--- SVG is case-sensitive XML, unlike HTML5. A handful of real SVG element
+--- names use camelCase and MUST keep it -- naively lowercasing them (as
+--- HTML tag names normally are) produces an element the SVG spec doesn't
+--- recognize (e.g. `<lineargradient>` is not `<linearGradient>`).
+--- Keyed by lowercase for case-insensitive lookup regardless of how the
+--- caller wrote the tag; not exhaustive of the full SVG spec, but covers
+--- the commonly-used camelCase elements.
+M.SVG_TAG_CASING = {
+  lineargradient = "linearGradient",
+  radialgradient = "radialGradient",
+  clippath = "clipPath",
+  textpath = "textPath",
+  foreignobject = "foreignObject",
+  animatemotion = "animateMotion",
+  animatetransform = "animateTransform",
+  fegaussianblur = "feGaussianBlur",
+  fecolormatrix = "feColorMatrix",
+  feblend = "feBlend",
+  fecomposite = "feComposite",
+  feflood = "feFlood",
+  femerge = "feMerge",
+  femergenode = "feMergeNode",
+  feoffset = "feOffset",
+  feturbulence = "feTurbulence",
+  fedisplacementmap = "feDisplacementMap",
+  feimage = "feImage",
+  fetile = "feTile",
+  fedropshadow = "feDropShadow",
+  feconvolvematrix = "feConvolveMatrix",
+  fediffuselighting = "feDiffuseLighting",
+  fespecularlighting = "feSpecularLighting",
+  fepointlight = "fePointLight",
+  fespotlight = "feSpotLight",
+  fedistantlight = "feDistantLight",
+  fefuncr = "feFuncR",
+  fefuncg = "feFuncG",
+  fefuncb = "feFuncB",
+  fefunca = "feFuncA",
+  fecomponenttransfer = "feComponentTransfer",
+}
+
+--- SVG elements whose *attribute* names also need SVG-specific casing (see
+--- SVG_ATTRIBUTE_ALIASES below) rather than being passed through as-is the
+--- way ordinary/custom HTML attributes are. Keyed by lowercase tag name.
+--- Deliberately broad (covers standard shape/container/gradient/filter
+--- elements) but not a full SVG spec enumeration.
+M.SVG_TAGS = {}
+for _, name in ipairs({
+  "svg", "path", "circle", "rect", "line", "polyline", "polygon", "g", "text",
+  "tspan", "defs", "use", "symbol", "mask", "pattern", "stop", "image",
+  "ellipse", "marker", "switch", "view", "desc", "title", "metadata",
+  "animate", "set", "mpath", "filter",
+}) do
+  M.SVG_TAGS[name] = true
+end
+for lower_name, cased_name in pairs(M.SVG_TAG_CASING) do
+  M.SVG_TAGS[lower_name] = true
+  M.SVG_TAGS[cased_name] = true
+end
+
+--- Common SVG presentation attributes that are camelCase as authored
+--- (matching the DOM property name, same convention as `strokeWidth` etc.
+--- in JSX) but must serialize as kebab-case in the actual SVG/XML output.
+--- Keyed by lowercase for case-insensitive lookup. Not exhaustive.
+M.SVG_ATTRIBUTE_ALIASES = {
+  stopcolor = "stop-color",
+  stopopacity = "stop-opacity",
+  strokewidth = "stroke-width",
+  strokedasharray = "stroke-dasharray",
+  strokedashoffset = "stroke-dashoffset",
+  strokelinecap = "stroke-linecap",
+  strokelinejoin = "stroke-linejoin",
+  strokemiterlimit = "stroke-miterlimit",
+  strokeopacity = "stroke-opacity",
+  fillopacity = "fill-opacity",
+  fillrule = "fill-rule",
+  cliprule = "clip-rule",
+  fontfamily = "font-family",
+  fontsize = "font-size",
+  fontweight = "font-weight",
+  fontstyle = "font-style",
+  textanchor = "text-anchor",
+  gradientunits = "gradientUnits", -- already correct casing; listed for clarity
+  gradienttransform = "gradientTransform",
+  patternunits = "patternUnits",
+  patterncontenunits = "patternContentUnits",
+  markerwidth = "markerWidth",
+  markerheight = "markerHeight",
+  markerunits = "markerUnits",
+  preserveaspectratio = "preserveAspectRatio",
+  spreadmethod = "spreadMethod",
+}
+
 --- CSS Properties that remain unitless when numbers are provided
 M.UNITLESS_NUMBER_PROPS = {
   animationiterationcount = true,
@@ -154,6 +247,16 @@ function M.escape_style_content(str)
   return (str:gsub("</[sS][tT][yY][lL][eE]", "<\\/style"))
 end
 
+--- Reject tag names which could otherwise break out of server-generated HTML.
+--- Custom elements and namespace-like SVG names remain supported.
+function M.is_valid_tag_name(tag)
+  return type(tag) == "string" and tag:match("^[A-Za-z][A-Za-z0-9:_%-]*$") ~= nil
+end
+
+function M.is_valid_attribute_name(name)
+  return type(name) == "string" and name:match("^[A-Za-z_:][A-Za-z0-9:_.%-]*$") ~= nil
+end
+
 --- Converts camelCase property names to kebab-case
 --- e.g. "backgroundColor" -> "background-color"
 --- @param str string CamelCase property name
@@ -245,8 +348,13 @@ end
 --- Deterministically serializes an attributes/props table to an HTML attribute string.
 --- Attributes are sorted alphabetically (a-z).
 --- @param props table VNode props
+--- @param tag_lower string? Lowercased tag name of the element these props belong
+---   to; when it's a known SVG element (M.SVG_TAGS), camelCase presentation
+---   attributes are aliased to their real SVG/XML kebab-case names
+---   (M.SVG_ATTRIBUTE_ALIASES) instead of being passed through as-is the way
+---   ordinary/custom HTML attributes are.
 --- @return string Attribute string starting with a leading space if non-empty
-function M.serialize_attributes(props)
+function M.serialize_attributes(props, tag_lower)
   if not props or (type(props) ~= "table" and type(props) ~= "userdata") then
     return ""
   end
@@ -261,14 +369,31 @@ function M.serialize_attributes(props)
   end
 
   for k, raw_v in pairs(raw_props) do
+    if type(k) ~= "string" then
+      error("SSR attributes must use string keys", 2)
+    end
     -- Ignore internal framework properties, _store proxy field, and event handlers
     if k ~= "class" and k ~= "className" and k ~= "key" and k ~= "ref"
        and k ~= "children" and k ~= "__source" and k ~= "dangerouslySetInnerHTML"
        and k ~= "unsafe_raw_html" and k ~= "_store" and type(raw_v) ~= "function" then
 
+      if not M.is_valid_attribute_name(k) then
+        error("Invalid SSR attribute name: " .. k, 2)
+      end
+
       local v = evaluate_value(raw_v)
       local lower_k = k:lower()
       local is_event = lower_k:sub(1, 2) == "on" and (#k > 2)
+
+      -- SVG attribute name resolution happens before the boolean/aria/data
+      -- checks below: an SVG presentation attribute like `strokeWidth` is
+      -- not a boolean attribute and not aria-*/data-*, so without this it
+      -- would fall to the general-attribute branch and be emitted verbatim
+      -- (`strokeWidth="2"`), which real SVG/XML does not recognize.
+      local out_key = k
+      if tag_lower and M.SVG_TAGS[tag_lower] then
+        out_key = M.SVG_ATTRIBUTE_ALIASES[lower_k] or k
+      end
 
       if not is_event then
         if k == "style" then
@@ -291,13 +416,15 @@ function M.serialize_attributes(props)
             normalized[k] = M.escape_html(v)
           end
         else
-          -- General attribute: boolean false serialized as "false", true as "true"
+          -- General attribute (including SVG presentation attributes
+          -- resolved to out_key above): boolean false serialized as
+          -- "false", true as "true"
           if v == false then
-            normalized[k] = "false"
+            normalized[out_key] = "false"
           elseif v == true then
-            normalized[k] = "true"
+            normalized[out_key] = "true"
           elseif v ~= nil then
-            normalized[k] = M.escape_html(v)
+            normalized[out_key] = M.escape_html(v)
           end
         end
       end

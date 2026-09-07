@@ -78,6 +78,20 @@ Hydronium enforces strict effect suppression during SSR:
 - `createSignal` and `createComputed`: Evaluated synchronously to extract their current value without attaching observers.
 - `scheduler.scheduleRender` and `scheduler.queueEffect`: Suppressed during SSR.
 
+## 5.1 State transfer and sink ownership
+
+`server.encode_state` accepts only acyclic JSON values. Object keys are sorted,
+arrays must be contiguous positive-integer sequences, and unsupported values
+(including functions, userdata, `NaN`, infinity, cycles, and mixed tables)
+fail rather than being coerced. State strings escape `<`, `>`, and `&` as JSON
+unicode escapes, so serialized state cannot terminate the
+`application/json` script element.
+
+`server.render` accepts either `fun(chunk)` or a sink object with
+`write(self, chunk)` and optional `flush`/`close`. The renderer owns exactly
+one close attempt after its render transaction, including write failure. It is
+synchronous: sinks and components must not yield or retain a render scope.
+
 ---
 
 ## 6. ErrorBoundary & Resilient State Cleanup
