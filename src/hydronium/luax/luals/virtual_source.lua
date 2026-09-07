@@ -17,6 +17,35 @@ local env_mod = require("hydronium.luax.environment")
 
 local virtual_source = {}
 
+local LUA_KEYWORDS = {
+  ["and"] = true, ["break"] = true, ["do"] = true, ["else"] = true, ["elseif"] = true,
+  ["end"] = true, ["false"] = true, ["for"] = true, ["function"] = true, ["goto"] = true,
+  ["if"] = true, ["in"] = true, ["local"] = true, ["nil"] = true, ["not"] = true,
+  ["or"] = true, ["repeat"] = true, ["return"] = true, ["then"] = true, ["true"] = true,
+  ["until"] = true, ["while"] = true,
+}
+
+--- Attribute names are free-form JSX/HTML text (kebab-case like
+--- `stroke-width`, or a Lua keyword like `for`), but the virtual
+--- projection writes them as bare Lua table-constructor keys. Returns a
+--- same-length, valid, non-keyword identifier to overwrite the name's
+--- own byte range with, or nil if the original name is already fine
+--- as-is (the overwhelmingly common case, so most attribute names are
+--- never touched at all).
+local function sanitize_attr_name(name)
+  if name:match("^[_%a][_%w]*$") and not LUA_KEYWORDS[name] then
+    return nil
+  end
+  local sanitized = name:gsub("[^%w_]", "_")
+  if sanitized:match("^%d") then
+    sanitized = "_" .. sanitized:sub(2)
+  end
+  if LUA_KEYWORDS[sanitized] then
+    sanitized = sanitized:sub(1, -2) .. "_"
+  end
+  return sanitized
+end
+
 --- Replaces characters in a string range [start_idx, end_idx] with replacement string,
 --- padding with spaces or comments so the total character count remains identical.
 local function pad_to_length(replacement, target_len)
@@ -230,15 +259,22 @@ function virtual_source.transform(source, filename, options)
       bytes[idx] = source:sub(idx, idx)
     end
 
-    -- Helper to replace range in bytes array with string, strictly preserving newlines
+    -- Helper to replace range in bytes array with string, strictly preserving newlines.
+    -- `write_idx` (the cursor into `new_str`) only advances on an actual
+    -- write, so a newline inside the range (e.g. a multi-line opening
+    -- tag like `<input\n  type="text"\n  .../>`) is skipped without
+    -- eating a character of `new_str` -- previously it advanced in lockstep
+    -- with `pos`, so every newline silently dropped one character of the
+    -- replacement (frequently the opening `{`), corrupting the emitted
+    -- virtual Lua for any multi-line tag.
     local function overwrite_range(start_idx, end_idx, new_str)
-      local target_len = end_idx - start_idx + 1
-      for idx = 1, target_len do
-        local pos = start_idx + idx - 1
+      local write_idx = 1
+      for pos = start_idx, end_idx do
         if pos <= #bytes and bytes[pos] ~= "\n" then
-          local ch = new_str:sub(idx, idx)
+          local ch = new_str:sub(write_idx, write_idx)
           if ch == "" then ch = " " end
           bytes[pos] = ch
+          write_idx = write_idx + 1
         end
       end
     end
@@ -337,6 +373,16 @@ function virtual_source.transform(source, filename, options)
 
         -- Attribute replacements: name={expr} -> name = (expr)
         for idx, attr in ipairs(opening.attributes) do
+          if attr.type == "JSXAttribute" and attr.loc and attr.loc.start then
+            local sanitized = sanitize_attr_name(attr.name)
+            if sanitized then
+              local name_start = attr.loc.start.offset
+              for k = 1, #sanitized do
+                bytes[name_start + k - 1] = sanitized:sub(k, k)
+              end
+            end
+          end
+
           if attr.type == "JSXAttribute" and attr.value.type == "JSXExpressionContainer" then
             if attr.value.loc and attr.value.loc.start and attr.value.loc["end"] then
               bytes[attr.value.loc.start.offset] = "("
@@ -411,8 +457,20 @@ function virtual_source.transform(source, filename, options)
             local t_start = child.loc.start.offset
             local t_end = child.loc["end"].offset
             if t_end >= t_start then
-              -- Process line by line within [t_start, t_end]
+              -- Process line by line within [t_start, t_end]. A single
+              -- JSXText node that spans multiple physical lines becomes
+              -- one separate quoted-string (or lone "0") table entry per
+              -- line, since a plain "..." Lua string can't itself
+              -- contain a literal newline -- but that means these
+              -- per-line segments are new SIBLING table entries that
+              -- also need a "," between them, same as sibling JSX
+              -- children do. `prev_seg_end` tracks the last byte of the
+              -- previous line's segment (across blank lines too, so a
+              -- blank line in between doesn't lose the anchor) so a
+              -- comma can be stolen from whatever whitespace exists
+              -- between it and the next segment.
               local line_start = t_start
+              local prev_seg_end = nil
               while line_start <= t_end do
                 local line_end = line_start
                 while line_end <= t_end and bytes[line_end] ~= "\n" do
@@ -431,6 +489,7 @@ function virtual_source.transform(source, filename, options)
                 end
 
                 if first_non_ws and last_non_ws then
+                  local seg_start_pos = first_non_ws
                   if first_non_ws == last_non_ws then
                     bytes[first_non_ws] = "0"
                   else
@@ -440,6 +499,16 @@ function virtual_source.transform(source, filename, options)
                       bytes[p] = " "
                     end
                   end
+
+                  if prev_seg_end then
+                    for p = prev_seg_end + 1, seg_start_pos - 1 do
+                      if bytes[p] == " " then
+                        bytes[p] = ","
+                        break
+                      end
+                    end
+                  end
+                  prev_seg_end = last_non_ws
                 end
 
                 line_start = line_end + 1
@@ -451,6 +520,20 @@ function virtual_source.transform(source, filename, options)
             for idx = t_start, t_end do
               if bytes[idx] ~= "\n" then bytes[idx] = " " end
             end
+          elseif child.type == "JSXExpressionContainer" and child.loc and child.loc.start and child.loc["end"] then
+            -- A bare `{expr}` child (as opposed to an attribute value,
+            -- handled separately above) needs no parenthesizing -- a
+            -- bare expression is already a valid positional table
+            -- entry. Blank its `{`/`}` delimiters to plain spaces,
+            -- leaving `expr` untouched at its exact offsets; blanking to
+            -- spaces (rather than leaving `{`/`}` in place) also makes
+            -- these positions valid steal-a-separator candidates for the
+            -- sibling-comma pass below when this child sits directly
+            -- against a neighbor with no gap (e.g. `v{pkg.version}`).
+            local e_start = child.loc.start.offset
+            local e_end = child.loc["end"].offset
+            if bytes[e_start] == "{" then bytes[e_start] = " " end
+            if bytes[e_end] == "}" then bytes[e_end] = " " end
           end
         end
 
@@ -518,8 +601,33 @@ function virtual_source.transform(source, filename, options)
           local a, b = sig[i], sig[i + 1]
           local a_end = a.loc and a.loc["end"] and a.loc["end"].offset
           local b_start = b.loc and b.loc.start and b.loc.start.offset
-          if a_end and b_start and b_start > a_end + 1 then
-            insert_separator(a_end + 1, b_start - 1)
+          if a_end and b_start then
+            if b_start > a_end + 1 then
+              insert_separator(a_end + 1, b_start - 1)
+            else
+              -- No gap between the two children's own loc spans -- the
+              -- common case for inline text mixed with inline elements
+              -- (e.g. `text <code>x</code> more text`), since a JSXText
+              -- node's span already consumes its own surrounding
+              -- whitespace, leaving no byte "between" the two spans to
+              -- claim. Steal a literal space from inside one of the two
+              -- children's own spans instead: `a`'s last byte is either
+              -- a text node's untouched trailing whitespace or a closing
+              -- tag's padding space (both plain " ", never "\n" or a
+              -- quote written by the text-quoting pass above); failing
+              -- that, `b`'s first byte is a JSXText node's own leading
+              -- whitespace, OR -- if `b` is itself an element -- always
+              -- a synthesized leading space, since every element-open
+              -- replacement is " " .. tag .. "{" overwriting the
+              -- original `<` (see the opening-tag overwrites above) --
+              -- so this also resolves the previously-uncovered
+              -- zero-whitespace-anywhere case (e.g. `<a/><b/>`).
+              if bytes[a_end] == " " then
+                bytes[a_end] = ","
+              elseif bytes[b_start] == " " then
+                bytes[b_start] = ","
+              end
+            end
           end
         end
       end
