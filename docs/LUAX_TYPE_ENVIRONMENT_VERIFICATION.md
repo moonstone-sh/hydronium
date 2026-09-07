@@ -115,3 +115,46 @@ syntax, since `-` is the subtraction operator), so that exact bare-hyphenated
 form is not currently typeable through either mechanism. A third-party host
 that wants typed intrinsics today should expose non-hyphenated member names
 (`s.reactorCore` or `s.ReactorCore`) rather than hyphenated bare tags.
+
+## Update — opt-in ambient DOM globals (`ambient-types/`)
+
+Gate #3 above is Hydronium's *default* stance for its own repo and test
+suite, not a hard technical ceiling on what LuaLS can express. A real
+`.luax`-authoring project that has already decided DOM is universally
+active for it (a pure SSR-view project, say, where every file is DOM
+markup and there is no competing host environment to isolate from) can
+reasonably want bare tags typed everywhere without writing `d.` on
+every tag. `ambient-types/dom.d.lua` (repo root, a sibling of `types/`,
+deliberately *not* inside it) now ships exactly that as an opt-in
+augmentation: one bare global per intrinsic tag (`html = d.html`,
+`div = d.div`, ...), inferred from the same `d` declared in
+`types/dom/init.d.lua` so it can't drift out of sync, with `table` and
+`select` excluded (both shadow a constantly-used Lua stdlib global).
+
+This does not touch Gate #3's guarantee for the framework itself:
+`ambient-types/` lives outside the `types/` directory the root
+`.luarc.json` lists in `workspace.library`, so the default config never
+sees it, and `types/dom/init.d.lua` itself is unchanged. A project
+opts in per-workspace, the same way any Lua project layers in ambient
+declarations for a library it has decided to treat as globally
+available: add the directory to its own `.luarc.json`'s
+`workspace.library`. `examples/meteorite_ssr/.luarc.json` is a real,
+working instance of that opt-in -- that example's whole purpose is
+DOM-authored SSR views (its `views/App.luax` uses `<html>`, `<head>`,
+`<meta>`, `<title>`, `<style>`, `<body>`, `<nav>`, `<svg>`, `<path>`,
+`<span>` and more, all bare), so ambient DOM typing is exactly the
+right default there, unlike the framework repo as a whole. Adding that
+file also gives the example its own LuaLS root (nvim-lspconfig's
+default `lua_ls` root-pattern search stops at the nearest `.luarc.json`
+going up from the buffer), so it no longer inherits the outer
+hydronium-repo root's config at all.
+
+Not attempted: extending this to a *per-file* opt-in (a pragma comment
+inside a single `.luax` file, rather than a whole workspace). LuaLS
+ambient globals are inherently workspace-scoped via
+`workspace.library` -- there is no per-file ambient-import primitive to
+hook into, so a real per-file version of this would need either a
+second, separate LuaLS workspace-folder trick per file (impractical)
+or the same kind of genuine source-mapping layer `LUAX_DX_CURRENT_STATE.md`
+already names as the real fix for the rename/references gap, not a
+type-declaration change.
