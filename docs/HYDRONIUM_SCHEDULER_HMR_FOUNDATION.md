@@ -466,10 +466,14 @@ evidence.
 
 **What this does and does not close**: the *transport* (server detects a
 change, pushes something a connected client would receive) is proven.
-Still open, unchanged from above: no browser `EventSource` consumer
-subscribes to it, no `RefreshRegistry` wiring exists to actually act on
-a `reload` event, and the example's `std_http` backend is
-single-connection-serial, so the watch stream and ordinary page loads
-cannot coexist on it today (switching to `fast_http` to fix that is
-deliberately deferred — it needs the whole existing route suite
-re-verified on a backend it has never run on).
+The example was also switched to `fast_http` (meteorite's own
+production-default backend), closing the coexistence gap this section
+originally flagged: the watch stream and ordinary page loads now
+provably run concurrently — a `GET /` issued while an
+`/__hydronium/watch` connection was still mid-poll-loop returned `200`
+in 15ms, not blocked until the watch connection closed. See
+`docs/METEORITE_STREAMING_FOUNDATION.md`'s "switched the example to
+fast_http" update for the full route-suite re-verification this
+required. Still open, unchanged: no browser `EventSource` consumer
+subscribes to the watch stream, and no `RefreshRegistry` wiring exists
+to actually act on a `reload` event.

@@ -221,14 +221,54 @@ Regression check: all pre-existing routes (`/`, `/api/health`, `/mixed`,
 not the framework).
 
 **Explicitly not proven by this work**: no browser `EventSource`
-consumer exists; no `RefreshRegistry` wiring; page loads and the watch
-stream cannot coexist on `std_http` (the serial-backend hazard above) —
-switching to `fast_http` to fix that is deliberately deferred, since it
-needs the whole existing route suite re-verified on a backend it's never
-run on; client-disconnect-mid-stream remains as untested as it was for
-the original streaming primitive (see "What remains genuinely open"
-above) — the bounded budget sidesteps needing that path to be correct
-rather than proving it is.
+consumer exists; no `RefreshRegistry` wiring; client-disconnect-mid-stream
+remains as untested as it was for the original streaming primitive (see
+"What remains genuinely open" above) — the bounded budget sidesteps
+needing that path to be correct rather than proving it is.
+
+### Update (2026-09-07): switched the example to `fast_http`, the serial-backend hazard is gone
+
+The example is meant to reflect what shipping to production actually
+looks like, and `fast_http` — not `std_http` — is meteorite's own
+production default (`zig/build_api.zig`'s `fast_http_strategy` defaults
+to `"threaded_probe"`, no extra build flag needed). Switched both
+`examples/meteorite_ssr/build.zig`'s default `-Dbackend` and
+`moonstone.toml`'s `graph` script from `std_http` to `fast_http`,
+regenerated the graph, and rebuilt
+(`zig build -Dmode=release-hybrid -Dbackend=fast_http`) — this
+constant had never been exercised on this backend before, so the whole
+existing route suite needed re-verification, not just the new one:
+
+- Startup banner: `backend: fast_http`, `Lua runtime: included` — build
+  is sound.
+- All pre-existing non-streaming routes (`/`, `/packages/:name?v=...`,
+  `/error-test` — 500, its own deliberate demo — `/api/health`,
+  `/islands`, `/mixed`, both `meteorite.site` static asset routes)
+  return the same codes as on `std_http`.
+- `/stream`'s real incremental chunked delivery is unchanged: the same
+  5 feed rows arrive ~0.4s apart, matching each row's own
+  `os.execute("sleep 0.4")`, verified via the same raw-socket technique.
+- All three `/__hydronium/watch` probes (heartbeat/budget, live edit
+  mid-stream, reconnect-race) re-run against the `fast_http` binary
+  with materially identical timing to the `std_http` results above
+  (e.g. `reload`'s embedded mtime landing ~1.9ms after the actual write
+  in the live-edit run).
+
+**The actual point of switching, proven directly, not inferred from
+`threaded_connections = true`:** started a `/__hydronium/watch?budget=8`
+connection, then — *while it was still open*, mid-poll-loop — issued
+`GET /` and `GET /api/health` concurrently. Both returned `200`
+immediately (`0.015s` and `0.001s` respectively via `curl`'s own timing),
+while the watch connection kept running its full 8-second budget
+(pings at 2/4/6/8s) independently in the background. On `std_http` this
+would have hung both requests until the watch connection closed — this
+is the serial-backend hazard from the update above, and it's now gone:
+`fast_http`'s `connectionStarted`/thread-per-connection model
+(`zig/backends/fast_http.zig`) really does let an open long-poll and
+ordinary page loads coexist, not just in theory.
+
+Full 356-spec LuaJIT suite unaffected (example-app-only change, same as
+the original route addition).
 
 ### Historical record: what this session originally found (superseded above)
 

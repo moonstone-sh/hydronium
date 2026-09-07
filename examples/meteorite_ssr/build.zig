@@ -11,7 +11,7 @@ pub fn build(b: *std.Build) void {
         .mode = b.option([]const u8, "mode", "Meteorite build mode") orelse "release-hybrid",
         .graph_input = b.option([]const u8, "graph-input", "Meteorite graph input") orelse "src/main.lua",
         .graph_output = b.option([]const u8, "graph-output", "Meteorite graph output") orelse ".meteorite/graph/current",
-        .backend = b.option([]const u8, "backend", "Meteorite HTTP backend") orelse "std_http",
+        .backend = b.option([]const u8, "backend", "Meteorite HTTP backend") orelse "fast_http",
         .router_dispatch = b.option([]const u8, "router-dispatch", "Router dispatch strategy") orelse "method_buckets",
         .hybrid_profile = b.option([]const u8, "hybrid-profile", "Meteorite hybrid runtime profile") orelse "default",
     });
