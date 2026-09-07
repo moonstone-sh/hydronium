@@ -3,7 +3,12 @@
 
 # Zig
 zig-cache/
+.zig-cache/
 zig-out/
+
+# Meteorite build cache and compiled output
+.meteorite/
+examples/meteorite_ssr/dist/
 
 # OS
 .DS_Store

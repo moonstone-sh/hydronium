@@ -1,0 +1,25 @@
+manifest_version = 2
+
+[package]
+name = "hydronium-meteorite-ssr-example"
+version = "0.1.0"
+kind = "script"
+description = "Real, compiled Meteorite SSR vertical slice for Hydronium"
+
+[interpreter]
+name = "lua"
+version = "5.4"
+abi = "5.4"
+
+[scripts]
+"graph" = "moon exec meteorite graph src/main.lua .meteorite/graph/current release-hybrid std_http"
+
+[[dependencies]]
+name = "moonstone/meteorite"
+constraint = "path:../../../meteorite"
+role = "tool"
+
+[[dependencies]]
+name = "moonstone/ballad"
+constraint = "^0.3.0"
+role = "tool"

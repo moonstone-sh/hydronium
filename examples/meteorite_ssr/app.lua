@@ -1,8 +1,22 @@
 --[[
-  Meteorite + Hydronium SSR Example (Model A In-Process Hybrid Integration)
-  This application demonstrates server-side rendering of Hydronium component trees
-  within Meteorite HTTP route handlers, bridging request context, route parameters,
-  and ErrorBoundaries seamlessly.
+  Hydronium SSR + Meteorite context-shape demo (NOT a Meteorite integration test)
+
+  IMPORTANT (corrected 2026-09-06): the `run_dispatch_simulation()` function
+  below does NOT exercise Meteorite's real router or HTTP layer. It scans
+  `app.routes` for `r.raw_path == req_info.path` and calls the handler
+  directly with a hand-built mock `c` table -- and the test requests below
+  use the literal route pattern string (e.g. "/packages/:id") as the
+  request path, not a real URL, which is why that naive lookup "works" at
+  all. Any timing numbers this script prints are NOT representative of
+  Meteorite request latency. For a real, working exemplar routed through
+  Meteorite's actual `meteorite invoke` CLI (genuine route matching, query
+  parsing, dispatch), see examples/meteorite_ssr/src/main.lua instead. See
+  docs/METEORITE_HYDRONIUM_INTEGRATION_BRIEF.md for the full picture.
+
+  What this file IS useful for: a quick, dependency-light way to check that
+  Hydronium component trees render correctly against the props/context
+  shape a real Meteorite `ctx` would provide, without needing Meteorite
+  installed at all (see the mock fallback below).
 
   Run standalone with:
     luajit examples/meteorite_ssr/app.lua
@@ -213,7 +227,10 @@ local function run_dispatch_simulation()
       local response = handler_fn(mock_c)
       local elapsed_ms = (os.clock() - t0) * 1000
 
-      print(string.format("\n[HTTP GET %s] -> Status: %d | Time: %.3f ms | Bytes: %d",
+      -- elapsed_ms is Hydronium render time only (direct in-process Lua
+      -- function call, no router/HTTP layer involved) -- NOT a Meteorite
+      -- request latency measurement. See the file header.
+      print(string.format("\n[HTTP GET %s] -> Status: %d | Hydronium render time (not HTTP latency): %.3f ms | Bytes: %d",
         req_info.path, response.status, elapsed_ms, #response.body))
       print(string.format("Preview (first 180 chars):\n%s...", response.body:sub(1, 180):gsub("\n", " ")))
     else

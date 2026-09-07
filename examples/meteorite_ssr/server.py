@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
 """
 Meteorite + Hydronium Live HTTP Gateway Server
-Listens on http://127.0.0.1:8080 and serves dynamic SSR requests
-by routing them through the real Meteorite HTTP application graph and Hydronium SSR engine.
+Listens on http://127.0.0.1:8080 and serves dynamic SSR requests by
+routing them through the real Meteorite HTTP application graph and
+Hydronium SSR engine.
+
+Implementation note: this is a Python http.server that shells out to
+`moon exec lua src/cli/main.lua invoke` (Meteorite's real request-simulation
+CLI, which does genuine route matching/dispatch) for every incoming HTTP
+request -- i.e. a new Lua process is spawned per request. This is a simple
+local dev/demo bridge, not a demonstration of Meteorite's real socket-level
+HTTP performance (Meteorite's actual Zig HTTP backends are not invoked
+here). See docs/METEORITE_HYDRONIUM_INTEGRATION_BRIEF.md.
 """
 
 import http.server

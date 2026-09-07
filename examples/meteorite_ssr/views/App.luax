@@ -48,12 +48,19 @@ local function AppView(props)
     <body>
       <header>
         <div class="logo">
-          <span>◆</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <linearGradient id="logo-grad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#38bdf8" />
+              <stop offset="100%" stopColor="#4338ca" />
+            </linearGradient>
+            <path d="M12 2 L22 12 L12 22 L2 12 Z" fill="url(#logo-grad)" strokeWidth="0" />
+          </svg>
           <span>Hydronium + Meteorite</span>
         </div>
         <nav>
           <a href="/">Home</a>
           <a href="/packages/meteorite">Package View</a>
+          <a href="/stream">Streaming SSR</a>
           <a href="/error-test">Error Boundary</a>
           <a href="/api/health">JSON Health</a>
         </nav>
@@ -63,13 +70,19 @@ local function AppView(props)
         <div class="hero">
           <h1>Real Meteorite HTTP Server + Hydronium .luax SSR</h1>
           <p>
-            This page is authored in declarative <code>.luax</code> syntax and compiled
-            into clean Lua source code, executed inside the real Meteorite HTTP server runtime.
+            This page is authored in declarative <code>.luax</code> syntax, compiled to
+            plain Lua source, and served by a real, compiled Meteorite binary
+            (`zig build -Dmode=release-hybrid`) listening on a real TCP socket --
+            not a CLI request simulation. This route renders fully buffered
+            (<code>server.render_to_string</code>); see <a href="/stream">/stream</a>
+            for the same renderer writing to a real chunked HTTP response as it
+            executes. See docs/METEORITE_HYDRONIUM_INTEGRATION_BRIEF.md for the
+            full picture and what is still not built (client hydration).
           </p>
           <div class="badge-row">
-            <span class="badge green">Real Meteorite CLI: meteorite invoke</span>
+            <span class="badge green">Real compiled Meteorite binary</span>
             <span class="badge cyan">Strict HTML5 SSR Engine</span>
-            <span class="badge">Model A In-Process Hybrid</span>
+            <span class="badge">Real HTTP/1.1 chunked streaming available at /stream</span>
           </div>
         </div>
 
@@ -86,15 +99,17 @@ local function AppView(props)
 
           <div class="card">
             <h3>Compiler & SSR Invariants</h3>
-            <p>Zero coupling to client DOM or binary bytecode:</p>
+            <p>Zero coupling to client DOM or binary Lua bytecode:</p>
             <pre><code>{table.concat({
+              "Compiler output: Lua source (loadstring-able), not bytecode",
               "HTML Void Tags:   Strict W3C (no closing slash)",
               "Client Effects:   100% Suppressed during SSR",
               "Attribute Sort:   Deterministic Alphabetical a-z",
-              "Render Latency:   < 0.40 ms per request",
             }, "\n")}</code></pre>
           </div>
         </div>
+
+        {props.children}
       </main>
 
       <footer>
