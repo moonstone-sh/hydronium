@@ -1,0 +1,35 @@
+{
+  "runtime": {
+    "version": "LuaJIT",
+    "path": ["?.lua", "?/init.lua", "?.luax"],
+    "plugin": "../../luax/src/hydronium_luax/luals/init.lua"
+  },
+  "workspace": {
+    "library": [
+      "../../luax/types",
+      "../../luax/src",
+      "../../core/src",
+      "../../ink/src"
+    ],
+    "checkThirdParty": false,
+    "useGitIgnore": false,
+    "ignoreDir": [
+      ".moonstone",
+      ".git"
+    ]
+  },
+  "files.associations": {
+    "*.luax": "lua"
+  },
+  "plugin": {
+    "enable": true,
+    "path": "../../luax/src/hydronium_luax/luals/init.lua"
+  },
+  "diagnostics": {
+    "globals": [
+      "__luax",
+      "__luax_component",
+      "__luax_fragment"
+    ]
+  }
+}

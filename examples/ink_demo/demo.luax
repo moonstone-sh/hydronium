@@ -1,0 +1,41 @@
+--[[
+  Hydronium Ink demo -- .luax version. The real-lexical-tag counterpart
+  of run.lua (which uses hydronium.h(ink.Box, {...}, ...) directly).
+  Proves docs/LUAX_HOST_TYPE_AUTHORING.md's Tier 1 pipeline for real:
+  <ink.Box> compiles through the exact same host-agnostic path <d.button>
+  does (see that doc), and hydronium_ink/init.lua's LuaCATS types give
+  this file real completion on ink.Box/ink.Text's props in an editor.
+
+  CounterLine below also demonstrates the far more common case --
+  see docs/LUAX_COMPONENT_TYPING.md: an ordinary custom component with
+  typed props needs none of ink.Box/ink.Text's descriptor machinery, just
+  a plain ---@param annotation on the function itself.
+
+  Not directly runnable with `luajit` -- .luax has no native LuaJIT
+  execution, it is always compiled to plain Lua first (see
+  examples/showcase/run.lua for the established pattern). Run via:
+
+    luajit examples/ink_demo/run_luax.lua
+
+  which compiles this file and drives it exactly like run.lua drives its
+  own inline hydronium.h(...) tree.
+--]]
+
+local ink = require("hydronium_ink")
+
+---@class CounterLineProps
+---@field count integer
+
+---@param props CounterLineProps
+local function CounterLine(props)
+  return <ink.Text color="cyan">{"Count: " .. tostring(props.count)}</ink.Text>
+end
+
+--- @param count integer
+return function(count)
+  return <ink.Box borderStyle="single" flexDirection="column" paddingX={1}>
+    <ink.Text bold={true}>Hydronium Ink demo</ink.Text>
+    <CounterLine count={count} />
+    <ink.Text color="gray">(Ctrl-C to stop)</ink.Text>
+  </ink.Box>
+end

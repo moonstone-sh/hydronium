@@ -400,6 +400,8 @@ local function main()
       "tests/core/family_identity_adversarial_spec.lua",
       "tests/host/dom_spec.lua",
       "tests/host/terminal_spec.lua",
+      "tests/host/keys_spec.lua",
+      "tests/host/render_spec.lua",
       "tests/core/lua_mount_spec.lua",
       "tests/core/lazy_barrel_spec.lua",
       "tests/luax/no_core_coupling_spec.lua",

@@ -1,0 +1,26 @@
+manifest_version = 2
+
+[package]
+name = "hydronium-ink"
+version = "0.1.0"
+kind = "lib"
+description = "Hydronium Ink: real terminal Host adapter and Box/Text/Newline intrinsics"
+
+[interpreter]
+name = "luajit"
+version = "2.1.0"
+abi = "5.1"
+
+[scripts]
+package = "moon exec ballad -- play partiture.lua"
+
+[[dependencies]]
+name = "moonstone/ballad"
+constraint = "^0.3.7"
+role = "tool"
+
+[[dependencies]]
+name = "hydronium"
+constraint = "path:../core"
+registry = "path"
+role = "runtime"

@@ -1,0 +1,30 @@
+manifest_version = 2
+
+[package]
+name = "hydronium-ink-todo-example"
+version = "0.1.0"
+kind = "script"
+description = "Hydronium Ink example: a real, interactive todo list"
+
+[interpreter]
+name = "luajit"
+version = "2.1.0"
+abi = "5.1"
+
+[[dependencies]]
+name = "hydronium"
+constraint = "path:../../core"
+registry = "path"
+role = "runtime"
+
+[[dependencies]]
+name = "hydronium-ink"
+constraint = "path:../../ink"
+registry = "path"
+role = "runtime"
+
+[[dependencies]]
+name = "hydronium-luax"
+constraint = "path:../../luax"
+registry = "path"
+role = "runtime"

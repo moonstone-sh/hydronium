@@ -24,6 +24,7 @@ local describe, it, assert = runner.describe, runner.it, runner.assert
 local H = require("hydronium")
 local ink = require("hydronium_ink")
 local terminalHostModule = require("hydronium_ink.host.terminal")
+local measure = require("hydronium_ink.measure")
 
 -- ===================== Test-only ANSI interpreter =====================
 -- Not part of the host implementation -- exists purely so this spec can
@@ -44,12 +45,16 @@ local function utf8SeqLen(byte0)
   else return 1 end
 end
 
+local function blankCell()
+  return { ch = " ", fg = nil, bg = nil, bold = false, dim = false, italic = false, underline = false, strikethrough = false, inverse = false }
+end
+
 local function newGrid(w, h)
   local grid = {}
   for y = 1, h do
     local row = {}
     for x = 1, w do
-      row[x] = { ch = " ", fg = nil, bold = false }
+      row[x] = blankCell()
     end
     grid[y] = row
   end
@@ -60,11 +65,21 @@ end
 --- returning the resulting grid. Passing the previous call's result back
 --- in lets a test interpret a stream incrementally, matching how a real
 --- terminal accumulates state across writes.
+---
+--- Understands exactly the escape vocabulary host/terminal.lua emits
+--- (see that module's own sgrFor()): SGR reset/bold/dim/italic/
+--- underline/inverse/strikethrough/fg/bg (\27[0m, \27[1m, \27[2m,
+--- \27[3m, \27[4m, \27[7m, \27[9m, \27[3<n>m, \27[4<n>m), cursor moves,
+--- full clear, and clear-to-end-of-line.
 local function interpretAnsi(bytes, w, h, grid)
   grid = grid or newGrid(w, h)
   local row, col = 1, 1
-  local fg, bold = nil, false
+  local fg, bg, bold, dim, italic, underline, strikethrough, inverse = nil, nil, false, false, false, false, false, false
   local i, n = 1, #bytes
+
+  local function resetStyle()
+    fg, bg, bold, dim, italic, underline, strikethrough, inverse = nil, nil, false, false, false, false, false, false
+  end
 
   while i <= n do
     if bytes:byte(i) == 27 and bytes:sub(i + 1, i + 1) == "[" then
@@ -80,20 +95,32 @@ local function interpretAnsi(bytes, w, h, grid)
           grid = newGrid(w, h)
         elseif cmd == "K" then
           for x = col, w do
-            grid[row][x] = { ch = " ", fg = nil, bold = false }
+            grid[row][x] = blankCell()
           end
         elseif cmd == "m" then
           if params == "" or params == "0" then
-            fg, bold = nil, false
+            resetStyle()
           else
             for code in params:gmatch("%d+") do
               local num = tonumber(code)
               if num == 0 then
-                fg, bold = nil, false
+                resetStyle()
               elseif num == 1 then
                 bold = true
+              elseif num == 2 then
+                dim = true
+              elseif num == 3 then
+                italic = true
+              elseif num == 4 then
+                underline = true
+              elseif num == 7 then
+                inverse = true
+              elseif num == 9 then
+                strikethrough = true
               elseif num >= 30 and num <= 37 then
                 fg = num - 30
+              elseif num >= 40 and num <= 47 then
+                bg = num - 40
               end
             end
           end
@@ -105,7 +132,10 @@ local function interpretAnsi(bytes, w, h, grid)
       local seqLen = (b0 and b0 >= 0xC0) and utf8SeqLen(b0) or 1
       local ch = bytes:sub(i, i + seqLen - 1)
       if row >= 1 and row <= h and col >= 1 and col <= w then
-        grid[row][col] = { ch = ch, fg = fg, bold = bold }
+        grid[row][col] = {
+          ch = ch, fg = fg, bg = bg, bold = bold, dim = dim, italic = italic,
+          underline = underline, strikethrough = strikethrough, inverse = inverse,
+        }
       end
       col = col + 1
       i = i + seqLen
@@ -444,5 +474,204 @@ describe("hydronium.host.terminal -- real Host contract + real ANSI output", fun
     assert.equal(grid[1][5].ch, "X", "a single-cell child centered in a 9-wide Box must land at column 5, not column 1")
     assert.equal(grid[1][1].ch, " ", "columns before the centered child must be blank")
     assert.equal(grid[1][9].ch, " ", "columns after the centered child must be blank")
+  end)
+
+  -- The specs below exercise Phase 2's remaining Box/Text props (margin,
+  -- absolute positioning, backgroundColor, per-edge border color,
+  -- overflow=hidden clipping, Text's italic/underline/strikethrough/
+  -- inverse/dimColor, and the truncate wrap variants) -- none of these
+  -- existed before this pass.
+
+  it("applies real Yoga margin, offsetting a child's position without changing its own size", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    local vnode = H.h(ink.Box, { flexDirection = "column" },
+      H.h(ink.Box, { margin = 2 }, H.h(ink.Text, nil, "X"))
+    )
+    reconciler:mount(vnode, root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 6, 6)
+    assert.equal(grid[3][3].ch, "X", "a margin=2 box's single-char child must land at row 3, col 3 (2 rows/cols of margin, 1-indexed)")
+    assert.equal(grid[1][1].ch, " ", "the margin area itself must be blank")
+  end)
+
+  it("positions a child absolutely at an explicit top/left, independent of normal flow", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    local vnode = H.h(ink.Box, { width = 10, height = 3 },
+      H.h(ink.Box, { position = "absolute", top = 1, left = 4 }, H.h(ink.Text, nil, "A"))
+    )
+    reconciler:mount(vnode, root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 10, 3)
+    assert.equal(grid[2][5].ch, "A", "top=1 left=4 (0-indexed Yoga coords) must land at row 2 col 5 (1-indexed)")
+  end)
+
+  it("fills a Box's real backgroundColor and colors border characters with borderColor", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    local vnode = H.h(ink.Box, { borderStyle = "single", borderColor = "red", backgroundColor = "blue", width = 5, height = 3 })
+    reconciler:mount(vnode, root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 5, 3)
+    assert.equal(grid[1][1].fg, 1, "top-left corner must carry borderColor=red (fg=1)")
+    assert.equal(grid[1][1].bg, 4, "the border cell itself must also carry backgroundColor=blue (bg=4)")
+    assert.equal(grid[2][2].bg, 4, "interior (non-border) cells must also carry backgroundColor=blue")
+    assert.is_nil(grid[2][2].fg, "interior cells have no fg of their own -- only the background fill")
+  end)
+
+  it("resolves a specific border edge color over the box-wide borderColor fallback", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    local vnode = H.h(ink.Box, { borderStyle = "single", borderColor = "red", borderTopColor = "green", width = 5, height = 3 })
+    reconciler:mount(vnode, root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 5, 3)
+    assert.equal(grid[1][2].fg, 2, "top edge must use borderTopColor=green (fg=2), overriding borderColor")
+    assert.equal(grid[2][1].fg, 1, "left edge (no override) must fall back to borderColor=red (fg=1)")
+  end)
+
+  it("clips a child's overflowing content to its own box when overflow=hidden, without affecting a sibling", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    local vnode = H.h(ink.Box, { flexDirection = "row" },
+      H.h(ink.Box, { width = 5, height = 1, overflow = "hidden" }, H.h(ink.Text, nil, "HELLOWORLD")),
+      H.h(ink.Box, { width = 5, height = 1 }, H.h(ink.Text, nil, "SIDE"))
+    )
+    reconciler:mount(vnode, root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 10, 1)
+    assert.equal(rowText(grid, 1, 1, 10), "HELLOSIDE ", "overflowing 'WORLD' must be clipped, and the sibling's own 'SIDE' must be untouched")
+  end)
+
+  it("applies real SGR codes for italic, underline, strikethrough, inverse, and dimColor", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    local vnode = H.h(ink.Text, { italic = true, underline = true, strikethrough = true, inverse = true, dimColor = true }, "X")
+    reconciler:mount(vnode, root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 1, 1)
+    local cell = grid[1][1]
+    assert.truthy(cell.italic, "expected SGR 3 (italic)")
+    assert.truthy(cell.underline, "expected SGR 4 (underline)")
+    assert.truthy(cell.strikethrough, "expected SGR 9 (strikethrough)")
+    assert.truthy(cell.inverse, "expected SGR 7 (inverse)")
+    assert.truthy(cell.dim, "expected SGR 2 (dim)")
+  end)
+
+  it("truncates Text to fit an explicit width with truncate/truncate-start/truncate-middle", function()
+    local cases = {
+      { wrap = "truncate", expected = "Hello..." },
+      { wrap = "truncate-start", expected = "...World" },
+      { wrap = "truncate-middle", expected = "He...rld" },
+    }
+    for _, c in ipairs(cases) do
+      local writes, capture, clearWrites = newCapture()
+      local host = terminalHostModule.createTerminalHost(capture)
+      local root = host.getRoot()
+      local reconciler = H.Reconciler.new(host)
+
+      reconciler:mount(H.h(ink.Text, { width = 8, wrap = c.wrap }, "HelloWorld"), root)
+      host.flush()
+
+      local grid = interpretAnsi(table.concat(writes), 8, 1)
+      assert.equal(rowText(grid, 1, 1, 8), c.expected, "wrap=" .. c.wrap)
+    end
+  end)
+
+  -- The specs below exercise Phase 3's Spacer, measureElement, and
+  -- Transform -- none of these existed before this pass. `Static` is
+  -- deliberately NOT covered here (and not implemented) -- see
+  -- docs/HYDRONIUM_INK_TERMINAL_HOST.md's "Explicitly NOT implemented"
+  -- section for why it needs a genuinely different rendering mode this
+  -- host doesn't have yet, not just a new prop.
+
+  it("expands a real Spacer to consume the remaining space along the main flex axis", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    local vnode = H.h(ink.Box, { flexDirection = "row", width = 10 },
+      H.h(ink.Text, nil, "L"),
+      H.h(ink.Spacer),
+      H.h(ink.Text, nil, "R")
+    )
+    reconciler:mount(vnode, root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 10, 1)
+    assert.equal(rowText(grid, 1, 1, 10), "L        R", "Spacer must push R all the way to the last column")
+  end)
+
+  it("measureElement(ref) reports real x/y/width/height/clientWidth/clientHeight from a bound ref", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    local boxRef = H.createRef()
+    assert.equal(measure.measureElement(boxRef).hasMeasured, false, "an unbound/unpainted ref must report hasMeasured=false")
+
+    reconciler:mount(
+      H.h(ink.Box, { ref = boxRef, borderStyle = "single", padding = 1, width = 10, height = 5 }),
+      root
+    )
+    host.flush()
+
+    local m = measure.measureElement(boxRef)
+    assert.truthy(m.hasMeasured)
+    assert.equal(m.x, 1)
+    assert.equal(m.y, 1)
+    assert.equal(m.width, 10)
+    assert.equal(m.height, 5)
+    assert.equal(m.clientWidth, 6, "10 - 2*border(1) - 2*padding(1)")
+    assert.equal(m.clientHeight, 1, "5 - 2*border(1) - 2*padding(1)")
+  end)
+
+  it("Transform renders its children in isolation and applies transform(line, index) to each plain-text output line", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    local vnode = H.h(ink.Transform, { transform = function(line, i) return i .. ":" .. line end },
+      H.h(ink.Text, nil,
+        H.h(ink.Text, nil, "line one"),
+        H.h(ink.Newline),
+        H.h(ink.Text, nil, "line two")
+      )
+    )
+    reconciler:mount(vnode, root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 10, 2)
+    assert.equal(rowText(grid, 1, 1, 10), "1:line one")
+    assert.equal(rowText(grid, 2, 1, 10), "2:line two")
+    assert.is_nil(grid[1][1].fg, "Transform output is plain, unstyled text -- no fg color of its own")
   end)
 end)
