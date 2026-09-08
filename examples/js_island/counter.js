@@ -2,7 +2,7 @@
   A real `d.js.island` module, hydrating a server-rendered <button> with
   vanilla JS -- no framework, no build step, and (this is the point) no
   Lua or WASM anywhere in this file or its import graph. See
-  ../../src/hydronium/client/bootstrap.js for the ABI this implements
+  ../../dom/src/hydronium_dom/client/bootstrap.js for the ABI this implements
   (context.root / context.props, hydrate/mount/dispose) and
   ../../docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md for what this proves.
 

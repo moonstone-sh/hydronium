@@ -4,8 +4,8 @@
   This is a REAL, compiled Meteorite service: `require("meteorite")` and
   `require("hydronium")` resolve via Meteorite's own CLI package-path setup
   (`src/?.lua;src/?/init.lua`, relative to this project's root) plus the
-  `src/hydronium` symlink checked in alongside this file, pointing at the
-  real Hydronium source tree (../../../src/hydronium). No sibling-repo
+  declared Moonstone dependencies on the `core`, `luax`, and `dom` workspace
+  members. No source symlink or sibling-repo
   package.path hacking is needed -- see moonstone.toml for the
   `moonstone/meteorite` path dependency that makes `meteorite` and its Zig
   build tooling (`zig/build_api.zig`) available under `.moonstone/env/`.
@@ -48,14 +48,49 @@ meteorite.site(app, {
   root = ".",
   assets = {
     ["/js/island/:path*"] = { dir = "../js_island", param = "path" },
-    ["/js/bootstrap/:path*"] = { dir = "../../src/hydronium/client", param = "path" },
+    ["/js/bootstrap/:path*"] = { dir = "../../dom/src/hydronium_dom/client", param = "path" },
     ["/__hydronium/hmr-demo/:path*"] = { dir = "hmr_demo", param = "path" },
+    ["/__hydronium/client-mount-demo/:path*"] = { dir = "client_mount_demo", param = "path" },
   },
 })
 
+-- Real, reusable hydronium.client.mount proof (docs/HMR_DOM_HOST.md's
+-- H1/H4 follow-up): serves individual real files out of hydronium's own
+-- `src/` tree for mount.js to `fetch()`, exactly the same way a real
+-- app would -- a plain `app:get` route reading one file per request
+-- (io.open, matching the hmr_demo live-content routes' own pattern)
+-- rather than a `meteorite.site` static-directory glob over the WHOLE
+-- `src/` tree, which is large (the compiler, LuaLS plugin, tests --
+-- everything, not just the client runtime) and made a real `zig build`
+-- of this example unacceptably slow. Restricted to `.lua`/`.json` under
+-- the member source roots with no `..` traversal -- this is dev/example-only
+-- serving, not a real production asset pipeline (that's the still-open,
+-- separate bundler work, docs/BUNDLING.md).
+app:get("/hydronium-src/:path*", function(c)
+  local rel = c:param("path") or ""
+  if rel:find("%.%.") or not (rel:match("%.lua$") or rel:match("%.json$")) then
+    return c:text(400, "invalid path")
+  end
+  local source_root
+  if rel:match("^hydronium/") then
+    source_root = "../../core/src/"
+  elseif rel:match("^hydronium_dom/") then
+    source_root = "../../dom/src/"
+  else
+    return c:text(404, "not found")
+  end
+  local f = io.open(source_root .. rel, "r")
+  if not f then
+    return c:text(404, "not found")
+  end
+  local content = f:read("*a")
+  f:close()
+  return c:text(200, content)
+end)
+
 -- 1. Root SSR Route rendering AppView (.luax component), fully buffered.
 app:get("/", function(c)
-  local meteorite_adapter = require("hydronium.server.meteorite")
+  local meteorite_adapter = require("hydronium_dom.server.meteorite")
   local AppView = require("views.App")
   return meteorite_adapter.render(c, AppView, {
     status = 200,
@@ -67,7 +102,7 @@ end)
 app:get("/packages/:name", function(c)
   local hydronium = require("hydronium")
   local h = hydronium.createElement
-  local meteorite_adapter = require("hydronium.server.meteorite")
+  local meteorite_adapter = require("hydronium_dom.server.meteorite")
   local AppView = require("views.App")
 
   local name = c.params and c.params.name or "unknown"
@@ -97,7 +132,7 @@ end)
 app:get("/error-test", function(c)
   local hydronium = require("hydronium")
   local h = hydronium.createElement
-  local meteorite_adapter = require("hydronium.server.meteorite")
+  local meteorite_adapter = require("hydronium_dom.server.meteorite")
   local AppView = require("views.App")
 
   local function ThrowingComponent()
@@ -133,7 +168,7 @@ app:get("/api/health", function(c)
   return c:json({
     status = "ok",
     framework = "meteorite",
-    renderer = "hydronium.server",
+    renderer = "hydronium_dom.server",
     timestamp = os.time(),
   })
 end)
@@ -142,7 +177,7 @@ end)
 --    Package Feed" list whose rows arrive one at a time over a real
 --    HTTP/1.1 chunked-transfer response (Meteorite's
 --    stream_begin/stream_write/stream_end, driven here through
---    hydronium.server.meteorite.render_stream + make_stream_sink). Each
+--    hydronium_dom.server.meteorite.render_stream + make_stream_sink). Each
 --    row's `os.execute("sleep 0.4")` simulates a slow per-item lookup
 --    (e.g. a registry API call); it is NOT how fast Hydronium itself
 --    renders -- it exists so the incremental delivery is observable on
@@ -152,7 +187,7 @@ end)
 app:get("/stream", function(c)
   local hydronium = require("hydronium")
   local h = hydronium.createElement
-  local meteorite_adapter = require("hydronium.server.meteorite")
+  local meteorite_adapter = require("hydronium_dom.server.meteorite")
   local AppView = require("views.App")
 
   local FEED_ITEMS = { "moonstone/meteorite", "moonstone/clingy", "moonstone/ballad", "hydronium", "moonstone/valua" }
@@ -202,9 +237,9 @@ end)
 app:get("/islands", function(c)
   local hydronium = require("hydronium")
   local h = hydronium.createElement
-  local d = require("hydronium.dom").d
+  local d = require("hydronium_dom").d
   local resource = require("hydronium.core.resource")
-  local meteorite_adapter = require("hydronium.server.meteorite")
+  local meteorite_adapter = require("hydronium_dom.server.meteorite")
   local AppView = require("views.App")
 
   local function Counter(props)
@@ -260,9 +295,9 @@ end)
 app:get("/mixed", function(c)
   local hydronium = require("hydronium")
   local h = hydronium.createElement
-  local d = require("hydronium.dom").d
+  local d = require("hydronium_dom").d
   local resource = require("hydronium.core.resource")
-  local meteorite_adapter = require("hydronium.server.meteorite")
+  local meteorite_adapter = require("hydronium_dom.server.meteorite")
   local AppView = require("views.App")
 
   local function Feed()
@@ -336,7 +371,7 @@ end)
 --    reconnect -- but verified live via Playwright against a real
 --    Chromium that it does NOT reliably resend Last-Event-ID across an
 --    automatic reconnect for named (non-default) SSE event types like
---    `hello`/`reload`/`bye`. See src/hydronium/client/dev_transport.js,
+--    `hello`/`reload`/`bye`. See dom/src/hydronium_dom/client/dev_transport.js,
 --    the real client, for the actual fix: it tracks the fingerprint
 --    itself and passes it as an explicit `since` query param on a
 --    connection it closes and reopens itself, never relying on the

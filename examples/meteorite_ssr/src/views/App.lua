@@ -10,7 +10,7 @@
   cannot.
 --]]
 
-local luax = require("hydronium.luax")
+local luax = require("hydronium_luax")
 
 local function load_luax(filepath)
   local f = assert(io.open(filepath, "r"), "Cannot open .luax file: " .. filepath)

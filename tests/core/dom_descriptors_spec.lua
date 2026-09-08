@@ -2,8 +2,9 @@ local runner = require("tests.runner")
 local describe, it, assert = runner.describe, runner.it, runner.assert
 local Hydronium = require("hydronium")
 local symbols = require("hydronium.core.symbols")
-local dom = require("hydronium.dom")
+local dom = require("hydronium_dom")
 local d = dom.d
+local server = require("hydronium_dom.server")
 
 describe("Hydronium DOM Runtime Descriptors & Normalization", function()
   it("exports symbols.INTRINSIC", function()
@@ -54,13 +55,13 @@ describe("Hydronium DOM Runtime Descriptors & Normalization", function()
 
   it("renders descriptor elements to HTML string in SSR", function()
     local node = d.button({ id = "my-btn", className = "primary" }, "Hello World")
-    local html = Hydronium.renderToString(node)
+    local html = server.renderToString(node)
     assert.equal(html, '<button class="primary" id="my-btn">Hello World</button>')
   end)
 
   it("renders void elements using descriptors without self-closing slash in SSR", function()
     local node = d.input({ type = "text", placeholder = "Enter name", disabled = true })
-    local html = Hydronium.renderToString(node)
+    local html = server.renderToString(node)
     assert.truthy(html:find("^<input"))
     assert.truthy(html:find('placeholder="Enter name"'))
     assert.truthy(html:find("disabled"))

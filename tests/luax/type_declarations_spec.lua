@@ -10,8 +10,8 @@ describe("Hydronium LUAX LuaCATS Types & ElementType", function()
     return content
   end
 
-  describe("Core LUAX types (types/luax.d.lua)", function()
-    local luax_d = read_file("types/luax.d.lua")
+  describe("Core LUAX types (luax/types/luax.d.lua)", function()
+    local luax_d = read_file("luax/types/luax.d.lua")
 
     it("declares hydronium.Intrinsic<P, H>", function()
       assert.truthy(luax_d:find("---@class hydronium%.Intrinsic<P,%s*H>"), "Expected hydronium.Intrinsic<P, H>")
@@ -32,8 +32,8 @@ describe("Hydronium LUAX LuaCATS Types & ElementType", function()
     end)
   end)
 
-  describe("DOM Descriptors (types/dom/init.d.lua)", function()
-    local dom_init_d = read_file("types/dom/init.d.lua")
+  describe("DOM Descriptors (dom/types/dom/init.d.lua)", function()
+    local dom_init_d = read_file("dom/types/dom/init.d.lua")
 
     it("types d with hydronium.Intrinsic descriptors for HTML and SVG elements", function()
       assert.truthy(dom_init_d:find("---@class HydroniumDOMDescriptors"), "Expected HydroniumDOMDescriptors class")
@@ -53,8 +53,8 @@ describe("Hydronium LUAX LuaCATS Types & ElementType", function()
     end)
   end)
 
-  describe("Mixed Table Support (types/dom/html.d.lua)", function()
-    local html_d = read_file("types/dom/html.d.lua")
+  describe("Mixed Table Support (dom/types/dom/html.d.lua)", function()
+    local html_d = read_file("dom/types/dom/html.d.lua")
 
     it("defines mixed table indexing on HTMLButtonProps and HTMLAttributes", function()
       assert.truthy(html_d:find("---@class HTMLAttributes : LuaxProps, { %[integer%]: any }"), "Expected HTMLAttributes mixed table")
@@ -63,8 +63,8 @@ describe("Hydronium LUAX LuaCATS Types & ElementType", function()
     end)
   end)
 
-  describe("Global Namespace Cleanliness (types/dom/intrinsics.d.lua)", function()
-    local intrinsics_d = read_file("types/dom/intrinsics.d.lua")
+  describe("Global Namespace Cleanliness (dom/types/dom/intrinsics.d.lua)", function()
+    local intrinsics_d = read_file("dom/types/dom/intrinsics.d.lua")
 
     it("removes global __luax_intrinsic table pollution", function()
       assert.falsy(intrinsics_d:find("__luax_intrinsic%s*=%s*{}"), "Global __luax_intrinsic = {} must NOT exist in intrinsics.d.lua")

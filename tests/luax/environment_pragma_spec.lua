@@ -6,7 +6,7 @@
 --]]
 
 local runner = require("tests.runner")
-local compiler = require("hydronium.luax.compiler")
+local compiler = require("hydronium_luax.compiler")
 
 describe("LUAX Explicit Bare-Tag Environment Pragma", function()
   describe("with `---@luax environment <alias>` declared", function()

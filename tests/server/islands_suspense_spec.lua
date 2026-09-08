@@ -1,10 +1,10 @@
 local runner = require("tests.runner")
 local describe, it, assert = runner.describe, runner.it, runner.assert
 local H = require("hydronium")
-local server = require("hydronium.server")
+local server = require("hydronium_dom.server")
 local symbols = require("hydronium.core.symbols")
 local resource = require("hydronium.core.resource")
-local dom = require("hydronium.dom")
+local dom = require("hydronium_dom")
 local d = dom.d
 
 describe("Hydronium DOM Islands (d.lua / d.js)", function()

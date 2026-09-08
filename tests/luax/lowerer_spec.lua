@@ -1,7 +1,7 @@
 -- Lowerer Test Suite for Hydronium LUAX
 local runner = require("tests.runner")
 local describe, it, assert = runner.describe, runner.it, runner.assert
-local lowerer = require("hydronium.luax.lowerer")
+local lowerer = require("hydronium_luax.lowerer")
 
 describe("LUAX: Lowering & Code Generation", function()
 
@@ -71,7 +71,7 @@ describe("LUAX: Lowering & Code Generation", function()
 
       -- Test that lowered code is syntactically valid Lua
       local H = require("hydronium")
-      local env = { H = H, __luax = require("hydronium.luax.runtime"), tostring = tostring }
+      local env = { H = H, __luax = require("hydronium_luax.runtime"), tostring = tostring }
       setmetatable(env, { __index = _G })
       local chunk, err = load(res.code, "test.lua", "t", env)
       assert.truthy(chunk, "Compilation error in lowered code: " .. tostring(err))

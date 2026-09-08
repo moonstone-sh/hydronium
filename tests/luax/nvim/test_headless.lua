@@ -22,7 +22,28 @@ local function test(name, fn)
   end
 end
 
-print("=== Running Hydronium Headless Neovim Integration Suite ===")
+print("=== Running LUAX Headless Neovim Integration Suite ===")
+
+local info = debug.getinfo(1, "S")
+local this_file = info.source:gsub("^@", "")
+local workspace_root = this_file:match("^(.*)/tests/luax/nvim/test_headless%.lua$")
+assert(workspace_root, "Could not determine workspace root from test file path")
+local luax_root = workspace_root .. "/luax"
+local luax_entry = luax_root .. "/nvim/lua/luax/init.lua"
+
+-- The canonical runtime module is `luax`, never the Hydronium core package
+-- or a compatibility alias.
+test("Plugin Loading > canonical luax.nvim API is loaded", function()
+  local plugin = require("luax")
+  assert(type(plugin.setup) == "function", "Expected canonical plugin setup() API")
+  assert(type(plugin.remove_tag_at_cursor) == "function", "Expected canonical tag-editing API")
+  assert(plugin.get_root_dir() == luax_root, "Expected LUAX root, got: " .. plugin.get_root_dir())
+  plugin.setup({ autotag = false })
+  assert(
+    vim.fn.index(vim.api.nvim_list_runtime_paths(), luax_root) >= 0,
+    "Expected setup() to add the self-located LUAX package root to runtimepath"
+  )
+end)
 
 -- Test 1: Filetype detection
 test("Filetype Detection > detects *.luax files as filetype=luax", function()
@@ -75,11 +96,8 @@ test("Tree-sitter > compiles 'luax' highlights query successfully", function()
   assert(query.captures and #query.captures > 0, "Expected compiled query to contain capture groups")
 end)
 
--- Test 4: :checkhealth hydronium
-test("Healthcheck > :checkhealth hydronium returns OK", function()
-  local health_mod = require("hydronium.health")
-  assert(type(health_mod.check) == "function", "Expected hydronium.health to export check function")
-
+-- Test 4: :checkhealth luax
+test("Healthcheck > :checkhealth luax returns OK", function()
   -- Intercept health reporting to verify OK status
   local reported_oks = 0
   local reported_errors = 0
@@ -97,6 +115,13 @@ test("Healthcheck > :checkhealth hydronium returns OK", function()
     if orig_error then orig_error(msg) end
   end
 
+  -- The health module resolves Neovim's reporting functions when it is
+  -- loaded. Reload it after installing our interceptors so this test observes
+  -- the real healthcheck contract rather than an implementation detail.
+  package.loaded["luax.health"] = nil
+  local health_mod = require("luax.health")
+  assert(type(health_mod.check) == "function", "Expected luax.health to export check function")
+
   local ok, err = pcall(health_mod.check)
 
   vim.health.ok = orig_ok
@@ -107,8 +132,8 @@ test("Healthcheck > :checkhealth hydronium returns OK", function()
   assert(reported_oks >= 3, "Expected at least 3 health.ok checks, got: " .. reported_oks)
 end)
 
--- Test 5: nvim-ts-autotag "linked editing" integration (extra/nvim's
--- M.setup_autotag). This is an *optional* peer plugin, not a hydronium
+-- Test 5: nvim-ts-autotag "linked editing" integration (luax.nvim's
+-- M.setup_autotag). This is an *optional* peer plugin, not a LUAX
 -- dependency, so this test degrades gracefully rather than failing hard
 -- when it isn't installed on the machine running the suite -- but if it
 -- IS available (as it is on a machine that has it in its plugin manager's
@@ -134,24 +159,19 @@ test("Autotag > registers luax tag config and auto-closes tags when nvim-ts-auto
     end
   end
 
-  local info = debug.getinfo(1, "S")
-  local this_file = info.source:gsub("^@", "")
-  local root = this_file:match("^(.*)/tests/luax/nvim/test_headless%.lua$")
-  assert(root, "Could not determine workspace root from test file path")
-  local hydronium_entry = root .. "/extra/nvim/lua/hydronium/init.lua"
-  local hydronium = dofile(hydronium_entry)
+  local luax = dofile(luax_entry)
 
   local ts_autotag_available = pcall(require, "nvim-ts-autotag.config.init")
   if not ts_autotag_available then
     -- Graceful degradation contract: must not error when the peer plugin
     -- is absent.
-    local ok = hydronium.setup_autotag()
+    local ok = luax.setup_autotag()
     assert(ok == false, "Expected setup_autotag() to return false when nvim-ts-autotag isn't installed")
     print("    (nvim-ts-autotag not installed in this environment -- skipping the deeper behavioral check)")
     return
   end
 
-  local registered = hydronium.setup_autotag()
+  local registered = luax.setup_autotag()
   assert(registered == true, "Expected setup_autotag() to return true when nvim-ts-autotag is available")
 
   local TagConfigs = require("nvim-ts-autotag.config.init")
@@ -173,7 +193,7 @@ test("Autotag > registers luax tag config and auto-closes tags when nvim-ts-auto
   vim.cmd("enew")
   vim.bo.filetype = "luax"
   vim.wait(300)
-  hydronium.setup_autotag(vim.api.nvim_get_current_buf())
+  luax.setup_autotag(vim.api.nvim_get_current_buf())
 
   -- Auto-close: buffer already has the `>` a keymap would have just
   -- inserted (mirrors internal.lua's own M.close_tag contract: it expects
@@ -205,15 +225,11 @@ test("Autotag > registers luax tag config and auto-closes tags when nvim-ts-auto
   )
 end)
 
--- Test 6: Tag removal (extra/nvim's M.remove_tag_at_cursor) -- real
+-- Test 6: Tag removal (luax.nvim's M.remove_tag_at_cursor) -- real
 -- tree-sitter-based edits against real tree-sitter-luax parses, not
 -- an LSP code action (no server exposes "remove tag" as one).
 test("Tag Removal > deletes, unwraps, and refuses to unwrap a childless tag", function()
-  local info = debug.getinfo(1, "S")
-  local this_file = info.source:gsub("^@", "")
-  local root = this_file:match("^(.*)/tests/luax/nvim/test_headless%.lua$")
-  assert(root, "Could not determine workspace root from test file path")
-  local hydronium = dofile(root .. "/extra/nvim/lua/hydronium/init.lua")
+  local luax = dofile(luax_entry)
 
   local function with_buf(lines, fn)
     local buf = vim.api.nvim_create_buf(false, true)
@@ -230,28 +246,28 @@ test("Tag Removal > deletes, unwraps, and refuses to unwrap a childless tag", fu
 
   with_buf({ 'return <div><meta charset="utf-8" /></div>' }, function(buf)
     vim.api.nvim_win_set_cursor(0, { 1, 15 }) -- inside 'meta'
-    local ok = hydronium.remove_tag_at_cursor({ keep_children = false })
+    local ok = luax.remove_tag_at_cursor({ keep_children = false })
     assert(ok, "expected remove_tag_at_cursor to succeed on a self-closing tag")
     assert(text_of(buf) == "return <div></div>", "got: " .. text_of(buf))
   end)
 
   with_buf({ "return <div><span>hi</span></div>" }, function(buf)
     vim.api.nvim_win_set_cursor(0, { 1, 14 }) -- inside 'span'
-    local ok = hydronium.remove_tag_at_cursor({ keep_children = false })
+    local ok = luax.remove_tag_at_cursor({ keep_children = false })
     assert(ok, "expected full removal to succeed")
     assert(text_of(buf) == "return <div></div>", "got: " .. text_of(buf))
   end)
 
   with_buf({ "return <div><span>hi</span></div>" }, function(buf)
     vim.api.nvim_win_set_cursor(0, { 1, 14 }) -- inside 'span'
-    local ok = hydronium.remove_tag_at_cursor({ keep_children = true })
+    local ok = luax.remove_tag_at_cursor({ keep_children = true })
     assert(ok, "expected unwrap to succeed")
     assert(text_of(buf) == "return <div>hi</div>", "got: " .. text_of(buf))
   end)
 
   with_buf({ 'return <div><meta charset="utf-8" /></div>' }, function(buf)
     vim.api.nvim_win_set_cursor(0, { 1, 15 }) -- inside 'meta'
-    local ok = hydronium.remove_tag_at_cursor({ keep_children = true })
+    local ok = luax.remove_tag_at_cursor({ keep_children = true })
     assert(ok == false, "expected unwrap on a self-closing tag to be refused")
     assert(
       text_of(buf) == 'return <div><meta charset="utf-8" /></div>',
@@ -261,22 +277,18 @@ test("Tag Removal > deletes, unwraps, and refuses to unwrap a childless tag", fu
 
   with_buf({ "return <div>", "  <span>hi</span>", "</div>" }, function(buf)
     vim.api.nvim_win_set_cursor(0, { 1, 9 }) -- inside the outer 'div'
-    local ok = hydronium.remove_tag_at_cursor({ keep_children = true })
+    local ok = luax.remove_tag_at_cursor({ keep_children = true })
     assert(ok, "expected multi-line unwrap to succeed")
     assert(text_of(buf) == "return \n  <span>hi</span>\n", "got: " .. text_of(buf))
   end)
 end)
 
--- Test 7: Explicit rename (extra/nvim's M.rename_tag_at_cursor) --
+-- Test 7: Explicit rename (luax.nvim's M.rename_tag_at_cursor) --
 -- prompt-driven, updates opening and closing tag names atomically.
 -- Complements (doesn't replace) nvim-ts-autotag's typing-based linked
 -- editing already covered by Test 5.
 test("Rename Tag > updates open+close atomically via a stubbed prompt", function()
-  local info = debug.getinfo(1, "S")
-  local this_file = info.source:gsub("^@", "")
-  local root = this_file:match("^(.*)/tests/luax/nvim/test_headless%.lua$")
-  assert(root, "Could not determine workspace root from test file path")
-  local hydronium = dofile(root .. "/extra/nvim/lua/hydronium/init.lua")
+  local luax = dofile(luax_entry)
 
   local orig_input = vim.ui.input
 
@@ -286,7 +298,7 @@ test("Rename Tag > updates open+close atomically via a stubbed prompt", function
   vim.api.nvim_set_current_buf(buf)
   vim.api.nvim_win_set_cursor(0, { 1, 14 }) -- inside 'span'
   vim.ui.input = function(_, callback) callback("em") end
-  local ok = hydronium.rename_tag_at_cursor()
+  local ok = luax.rename_tag_at_cursor()
   vim.ui.input = orig_input
   local text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
   assert(ok, "expected rename_tag_at_cursor to succeed")
@@ -299,7 +311,7 @@ test("Rename Tag > updates open+close atomically via a stubbed prompt", function
   vim.api.nvim_set_current_buf(buf2)
   vim.api.nvim_win_set_cursor(0, { 1, 9 })
   vim.ui.input = function(_, callback) callback("hr") end
-  local ok2 = hydronium.rename_tag_at_cursor()
+  local ok2 = luax.rename_tag_at_cursor()
   vim.ui.input = orig_input
   local text2 = table.concat(vim.api.nvim_buf_get_lines(buf2, 0, -1, false), "\n")
   assert(ok2, "expected rename_tag_at_cursor to succeed on a self-closing tag")

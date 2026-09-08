@@ -1,0 +1,12 @@
+manifest_version = 2
+
+[package]
+name = "hydronium-luax"
+version = "0.1.0"
+kind = "lib"
+description = "Hydronium LUAX compiler, formatter, and editor integrations"
+
+[interpreter]
+name = "lua"
+version = "5.4"
+abi = "5.4"

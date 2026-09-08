@@ -1,6 +1,6 @@
 local runner = require("tests.runner")
-local virtual_source = require("hydronium.luax.luals.virtual_source")
-local luals_plugin = require("hydronium.luax.luals")
+local virtual_source = require("hydronium_luax.luals.virtual_source")
+local luals_plugin = require("hydronium_luax.luals")
 local loadstring = loadstring or load
 
 describe("LUAX Virtual Source & LuaLS Lowering", function()

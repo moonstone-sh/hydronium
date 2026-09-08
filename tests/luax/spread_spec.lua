@@ -1,5 +1,5 @@
 local runner = require("tests.runner")
-local runtime = require("hydronium.luax.runtime")
+local runtime = require("hydronium_luax.runtime")
 
 describe("LUAX Spread Operator Runtime", function()
   it("merges tables left-to-right with later keys overwriting earlier keys", function()

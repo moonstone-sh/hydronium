@@ -1,5 +1,5 @@
 local runner = require("tests.runner")
-local plugin = require("hydronium.luax.plugin")
+local plugin = require("hydronium_luax.plugin")
 
 describe("LUAX LuaLS Plugin & Virtual Lowering", function()
   describe("virtual_lower", function()

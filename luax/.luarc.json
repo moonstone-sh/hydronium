@@ -1,0 +1,22 @@
+{
+  "runtime": {
+    "version": "Lua 5.4",
+    "plugin": "src/hydronium_luax/luals/init.lua"
+  },
+  "workspace": {
+    "library": ["src", "types", ".moonstone/env/share/lua/5.4"],
+    "checkThirdParty": false,
+    "useGitIgnore": false
+  },
+  "files.associations": {
+    "*.luax": "lua"
+  },
+  "plugin": {
+    "enable": true,
+    "path": "src/hydronium_luax/luals/init.lua"
+  },
+  "diagnostics": {
+    "globals": ["__luax", "__luax_component", "__luax_fragment"]
+  },
+  "workspace.maxPreload": 10000
+}

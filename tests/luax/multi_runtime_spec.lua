@@ -2,7 +2,7 @@
 -- Verifies compiling identical .luax source against Hydronium AND Starship UI runtimes
 local runner = require("tests.runner")
 local describe, it, assert = runner.describe, runner.it, runner.assert
-local luax = require("hydronium.luax")
+local luax = require("hydronium_luax")
 local H = require("hydronium")
 local Starship = require("tests.fixtures.fixture_runtime")
 
@@ -29,7 +29,7 @@ describe("LUAX: Multi-Runtime Compilation (Zero Coupling)", function()
       -- Execute chunk to get ProfileCard component function
       local env = {
         H = H,
-        __luax = require("hydronium.luax.runtime"),
+        __luax = require("hydronium_luax.runtime"),
         tostring = tostring,
         pairs = pairs,
         type = type,
@@ -90,7 +90,7 @@ describe("LUAX: Multi-Runtime Compilation (Zero Coupling)", function()
       -- Execute chunk in Starship environment (no Hydronium required)
       local env = {
         Starship = Starship,
-        __luax = require("hydronium.luax.runtime"),
+        __luax = require("hydronium_luax.runtime"),
         tostring = tostring,
         pairs = pairs,
         type = type,

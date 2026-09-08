@@ -1,20 +1,20 @@
-# Hydronium .luax Neovim Plugin Architecture & Integration Guide
+# LUAX Neovim Plugin Architecture & Integration Guide
 
 ## 1. Relocatable Design & Zero Absolute Paths
 
-The Hydronium Neovim plugin (`extra/nvim/`) is designed with **100% relocatability**. It strictly avoids any hardcoded absolute user home paths (e.g. `/Users/...` or `/home/...`), allowing it to be installed via any plugin manager, embedded as a submodule, or symlinked into `runtimepath`.
+The LUAX Neovim plugin (`luax/nvim/`) is designed with **100% relocatability**. It strictly avoids any hardcoded absolute user home paths (e.g. `/Users/...` or `/home/...`), allowing it to be installed via any plugin manager, embedded as a submodule, or symlinked into `runtimepath`.
 
 Dynamic path resolution relies on Lua's reflection API (`debug.getinfo(1, "S")`) and Neovim's runtime discovery (`vim.api.nvim_get_runtime_file`):
 
 ```mermaid
 flowchart LR
     NVIM["Neovim Startup"] --> FT["ftdetect/luax.vim\n*.luax -> filetype=luax"]
-    NVIM --> SETUP["require('hydronium').setup()"]
+    NVIM --> SETUP["require('luax').setup()"]
     SETUP --> DYN["Dynamic Root Discovery\n(get_root_dir)"]
     DYN --> LUALS_CFG["LuaLS Plugin Path\nget_luals_plugin_path()"]
     DYN --> TYPES_CFG["LuaCATS Types Path\nget_types_path()"]
-    SETUP --> CMD[":HydroniumFormat Command"]
-    NVIM --> HEALTH[":checkhealth hydronium"]
+    SETUP --> CMD[":LuaxFormat Command"]
+    NVIM --> HEALTH[":checkhealth luax"]
 ```
 
 ---
@@ -22,13 +22,13 @@ flowchart LR
 ## 2. Plugin File Structure
 
 ```
-extra/nvim/
+nvim/
 ├── ftdetect/
 │   └── luax.vim                # Auto-detects *.luax as filetype 'luax'
 └── lua/
-    └── hydronium/
+    └── luax/
         ├── init.lua            # Plugin setup, formatting, and dynamic paths
-        └── health.lua          # :checkhealth hydronium verification suite
+        └── health.lua          # :checkhealth luax verification suite
 ```
 
 ---
@@ -38,12 +38,12 @@ extra/nvim/
 ### Using `lazy.nvim`
 ```lua
 {
-  "hydronium-ui/hydronium",
+  "hydronium-ui/luax.nvim",
   -- If using local path during development:
-  -- dir = "~/Workbench/user/hydronium/extra/nvim",
+  -- dir = "~/Workbench/user/hydronium/luax/nvim",
   ft = { "luax", "lua" },
   config = function()
-    require("hydronium").setup({
+    require("luax").setup({
       treesitter = true,
       format_on_save = true,
     })
@@ -54,10 +54,10 @@ extra/nvim/
 ### Using `packer.nvim`
 ```lua
 use({
-  "hydronium-ui/hydronium",
-  rtp = "extra/nvim",
+  "hydronium-ui/luax.nvim",
+  rtp = "nvim",
   config = function()
-    require("hydronium").setup()
+    require("luax").setup()
   end,
 })
 ```
@@ -70,7 +70,7 @@ To enable real-time 1:1 type diagnostics, prop autocompletion, and hover inspect
 
 ```lua
 local lspconfig = require("lspconfig")
-local hydronium = require("hydronium")
+local luax = require("luax")
 
 lspconfig.lua_ls.setup({
   settings = {
@@ -82,13 +82,13 @@ lspconfig.lua_ls.setup({
         checkThirdParty = false,
         library = {
           -- Dynamically injects types without hardcoded absolute paths
-          hydronium.get_types_path(),
+          luax.get_types_path(),
           vim.env.VIMRUNTIME,
         },
       },
       plugin = {
         -- Dynamically injects the LuaLS plugin hook
-        path = hydronium.get_luals_plugin_path(),
+        path = luax.get_luals_plugin_path(),
       },
       diagnostics = {
         globals = { "Hydronium", "d", "H" },
@@ -102,31 +102,31 @@ lspconfig.lua_ls.setup({
 
 ## 5. Commands & Features
 
-### `:HydroniumFormat`
+### `:LuaxFormat`
 Formats the active buffer using the pure-Lua CST idempotent formatter or `bin/luax format`:
 ```vim
-:HydroniumFormat
+:LuaxFormat
 ```
 
 ### Format on Save
 Enable automatic formatting on buffer write in your setup configuration:
 ```lua
-require("hydronium").setup({
+require("luax").setup({
   format_on_save = true,
 })
 ```
 
-### `:checkhealth hydronium`
+### `:checkhealth luax`
 Runs comprehensive environment verification:
 - LuaJIT / Lua runtime detection.
-- Hydronium library availability.
+- LUAX Neovim plugin availability.
 - `bin/luax` CLI executable permissions.
 - Tree-sitter `luax` parser and query files.
 - LuaLS virtual source plugin and typing directory presence.
 
 ### `:LuaxVirtualSource`, `:LuaxTree`, `:LuaxInfo`
 Debugging aids: `:LuaxVirtualSource` opens a split showing exactly what
-LuaLS sees for the current buffer (the same `hydronium.luax.plugin.virtual_lower`
+LuaLS sees for the current buffer (the same `hydronium_luax.plugin.virtual_lower`
 its live `OnSetText` hook calls) — invaluable when hover/completion/rename
 behave unexpectedly, since that's usually because the virtual projection
 isn't what you'd expect, not because LuaLS itself is wrong. `:LuaxTree` is a
@@ -167,8 +167,8 @@ updating both ends of a `<span>...</span>` pair and a self-closing
 
 ### Emmet
 `emmet-ls` (github.com/aca/emmet-ls) works for `.luax` files with zero
-Hydronium-specific server config — see the "Local Neovim config" section
+LUAX-specific server config — see the "Local Neovim config" section
 of the Workbench-level `CLAUDE.md` for how its `filetypes` list is
-extended and why no bridging is needed. This isn't a `hydronium.nvim`
+extended and why no bridging is needed. This isn't a `luax.nvim`
 feature; it's LSP client wiring that lives in the consuming Neovim config,
 not this plugin.

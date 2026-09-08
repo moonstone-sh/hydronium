@@ -1,0 +1,41 @@
+lockfile_version = 3
+
+[[realization]]
+realization_hash = "b3:9d00185b40021ec3ff5b46a9cf7c3b7b918f3b83ed4aa1d52f1d056088c0a9c6"
+name = "moonstone/lua"
+version = "5.4.9"
+kind = "runtime"
+recipe_hash = "b3:9ddef3514e834e33889eccd8b8526e6aa458749bdf5cd7a9b5063276257c50e4"
+artifact_hash = "b3:39bfa29bd95756b038e2f42deb93e325b9f7f2b80951a5a66a0f1b5639ee50c7"
+replay_mode = "artifact_only"
+runtime = "moonstone/lua"
+lua_abi = "5.4"
+target = "aarch64-macos"
+constellation = "default"
+source_kind = "runtime"
+resolver = "moonstone"
+
+[[realization]]
+realization_hash = "b3:e1a001d5b3b8f8d293997113fe7fe2cff455b1e8e437f338eefbd5edd13a30dc"
+name = "hydronium"
+version = "0.1.0"
+kind = "lib"
+recipe_hash = ""
+artifact_hash = "path"
+replay_mode = "artifact_only"
+runtime = "5.4"
+lua_abi = "5.4"
+target = "aarch64-macos"
+constellation = "default"
+source = "/Users/extrordinaire/Workbench/user/hydronium/dom/../core"
+source_kind = "local_path"
+resolver = "path"
+roles = ["runtime"]
+
+[[profile]]
+id = "aarch64-macos+moonstone/lua+5.4"
+target = "aarch64-macos"
+runtime = "moonstone/lua"
+lua_abi = "5.4"
+packages = [{ name = "moonstone/lua", version = "5.4.9", realization_hash = "b3:9d00185b40021ec3ff5b46a9cf7c3b7b918f3b83ed4aa1d52f1d056088c0a9c6" }, { name = "hydronium", version = "0.1.0", realization_hash = "b3:e1a001d5b3b8f8d293997113fe7fe2cff455b1e8e437f338eefbd5edd13a30dc" }]
+edges = []

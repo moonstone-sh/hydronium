@@ -23,3 +23,21 @@ role = "tool"
 name = "moonstone/ballad"
 constraint = "^0.3.0"
 role = "tool"
+
+[[dependencies]]
+name = "hydronium"
+constraint = "path:../../core"
+registry = "path"
+role = "runtime"
+
+[[dependencies]]
+name = "hydronium-luax"
+constraint = "path:../../luax"
+registry = "path"
+role = "runtime"
+
+[[dependencies]]
+name = "hydronium-dom"
+constraint = "path:../../dom"
+registry = "path"
+role = "runtime"

@@ -1,0 +1,7 @@
+.git/**
+.moonstone/**
+benchmarks/**
+examples/**
+tests/**
+docs/**
+*.vsix

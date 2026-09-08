@@ -13,7 +13,8 @@ local describe, it, assert = runner.describe, runner.it, runner.assert
 
 local H = require("hydronium")
 local symbols = H.symbols
-local d = require("hydronium.dom")
+local d = require("hydronium_dom")
+local server = require("hydronium_dom.server")
 
 describe("Core: DOM Descriptor Tables & Lexical Tags", function()
 
@@ -92,19 +93,19 @@ describe("Core: DOM Descriptor Tables & Lexical Tags", function()
   describe("SSR render_to_string with Descriptors", function()
     it("renders <d.button>Save</d.button> to <button>Save</button>", function()
       local vnode = d.button(nil, "Save")
-      local html_out = H.render_to_string(vnode)
+      local html_out = server.render_to_string(vnode)
       assert.equal(html_out, "<button>Save</button>")
     end)
 
     it("renders <d.button class='btn'>Save</d.button> to <button class='btn'>Save</button>", function()
       local vnode = d.button({ class = "btn" }, "Save")
-      local html_out = H.render_to_string(vnode)
+      local html_out = server.render_to_string(vnode)
       assert.equal(html_out, '<button class="btn">Save</button>')
     end)
 
     it("renders <d.input /> to <input> (void tag without slash)", function()
       local vnode = d.input()
-      local html_out = H.render_to_string(vnode)
+      local html_out = server.render_to_string(vnode)
       assert.equal(html_out, "<input>")
       assert.falsy(html_out:find("/>"))
       assert.falsy(html_out:find("</input>"))
@@ -112,7 +113,7 @@ describe("Core: DOM Descriptor Tables & Lexical Tags", function()
 
     it("renders <d.input disabled /> producing void element with boolean attribute", function()
       local vnode = d.input({ disabled = true })
-      local html_out = H.render_to_string(vnode)
+      local html_out = server.render_to_string(vnode)
       assert.equal(html_out, "<input disabled>")
     end)
 
@@ -122,7 +123,7 @@ describe("Core: DOM Descriptor Tables & Lexical Tags", function()
         d.input({ disabled = true }),
         d.button({ disabled = true }, "Submit")
       )
-      local html_out = H.render_to_string(vnode)
+      local html_out = server.render_to_string(vnode)
       assert.equal(html_out, '<div class="container"><h1>Hello Hydronium</h1><input disabled><button disabled>Submit</button></div>')
     end)
   end)

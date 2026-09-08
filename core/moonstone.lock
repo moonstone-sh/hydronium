@@ -1,0 +1,39 @@
+lockfile_version = 3
+
+[[realization]]
+realization_hash = "b3:9d00185b40021ec3ff5b46a9cf7c3b7b918f3b83ed4aa1d52f1d056088c0a9c6"
+name = "moonstone/lua"
+version = "5.4.9"
+kind = "runtime"
+recipe_hash = "b3:9ddef3514e834e33889eccd8b8526e6aa458749bdf5cd7a9b5063276257c50e4"
+artifact_hash = "b3:39bfa29bd95756b038e2f42deb93e325b9f7f2b80951a5a66a0f1b5639ee50c7"
+replay_mode = "artifact_only"
+runtime = "moonstone/lua"
+lua_abi = "5.4"
+target = "aarch64-macos"
+constellation = "default"
+source_kind = "runtime"
+resolver = "moonstone"
+
+[[realization]]
+realization_hash = "b3:9d00185b40021ec3ff5b46a9cf7c3b7b918f3b83ed4aa1d52f1d056088c0a9c6"
+name = "moonstone/lua"
+version = "5.4.9"
+kind = "runtime"
+recipe_hash = "b3:9ddef3514e834e33889eccd8b8526e6aa458749bdf5cd7a9b5063276257c50e4"
+artifact_hash = "b3:39bfa29bd95756b038e2f42deb93e325b9f7f2b80951a5a66a0f1b5639ee50c7"
+replay_mode = "artifact_only"
+runtime = "moonstone/lua"
+lua_abi = "5.4"
+target = "aarch64-macos"
+constellation = "default"
+source_kind = "runtime"
+resolver = "moonstone"
+
+[[profile]]
+id = "aarch64-macos+moonstone/lua+5.4"
+target = "aarch64-macos"
+runtime = "moonstone/lua"
+lua_abi = "5.4"
+packages = [{ name = "moonstone/lua", version = "5.4.9", realization_hash = "b3:9d00185b40021ec3ff5b46a9cf7c3b7b918f3b83ed4aa1d52f1d056088c0a9c6" }]
+edges = []

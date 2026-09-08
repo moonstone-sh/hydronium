@@ -9,8 +9,8 @@
 
 local runner = require("tests.runner")
 local describe, it, assert = runner.describe, runner.it, runner.assert
-local luax = require("hydronium.luax")
-local environment = require("hydronium.luax.environment")
+local luax = require("hydronium_luax")
+local environment = require("hydronium_luax.environment")
 local Starship = require("tests.fixtures.fixture_runtime")
 local H = require("hydronium")
 
@@ -82,7 +82,7 @@ describe("LUAX: 4-Quadrant Host Environment Isolation Matrix", function()
 
       local sandbox_env = {
         H = H,
-        __luax = require("hydronium.luax.runtime"),
+        __luax = require("hydronium_luax.runtime"),
         pairs = pairs,
         type = type,
         tostring = tostring,
@@ -138,7 +138,7 @@ describe("LUAX: 4-Quadrant Host Environment Isolation Matrix", function()
       local res = luax.compile(src)
 
       local sandbox_env = {
-        __luax = require("hydronium.luax.runtime"),
+        __luax = require("hydronium_luax.runtime"),
         pairs = pairs,
         type = type,
         tostring = tostring,
@@ -200,7 +200,7 @@ describe("LUAX: 4-Quadrant Host Environment Isolation Matrix", function()
       -- Sandbox WITHOUT Hydronium (H is completely absent)
       local sandbox_env = {
         Starship = Starship,
-        __luax = require("hydronium.luax.runtime"),
+        __luax = require("hydronium_luax.runtime"),
         pairs = pairs,
         type = type,
         tostring = tostring,

@@ -10,8 +10,8 @@
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
 local hydronium = require("hydronium")
-local luax = require("hydronium.luax")
-local server = require("hydronium.server")
+local luax = require("hydronium_luax")
+local server = require("hydronium_dom.server")
 local test_module = require("hydronium.test")
 local TestHost = test_module.TestHost
 
@@ -43,7 +43,7 @@ local compiled_modules = {}
 local shared_env = {
   H = hydronium,
   hydronium = hydronium,
-  __luax = require("hydronium.luax.runtime"),
+  __luax = require("hydronium_luax.runtime"),
   tostring = tostring,
   tonumber = tonumber,
   pairs = pairs,

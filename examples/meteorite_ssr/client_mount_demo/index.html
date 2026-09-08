@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>hydronium.client.mount proof</title>
+<style>
+  body { font-family: -apple-system, monospace; background: #0b0f19; color: #f1f5f9; padding: 2rem; max-width: 700px; margin: 0 auto; }
+  #status { font-weight: bold; margin: 1rem 0; padding: 0.75rem; background: #1e1b4b; border-radius: 6px; }
+  #log { white-space: pre-wrap; background: #111827; padding: 1rem; border-radius: 8px; margin-top: 1rem; font-size: 0.85rem; }
+  .pass { color: #4ade80; }
+  .fail { color: #f87171; }
+  #app button { font-size: 1.2rem; padding: 0.5rem 1rem; }
+</style>
+</head>
+<body>
+  <h1>hydronium.client.mount proof</h1>
+  <p>Real, reusable client bootstrap: fetches hydronium's runtime modules over HTTP via a manifest derived from the real require() graph (tools/gen_client_manifest.lua) -- NOT a hand-pasted JSON blob typed into this page. This page's own inline script is under 40 lines; every actual framework module comes from a real network request.</p>
+  <div id="app">Loading...</div>
+  <div id="status"></div>
+  <div id="log"></div>
+  <script type="module">
+    import { mount } from "/js/bootstrap/mount.js";
+
+    window.__mountDemoResults = [];
+    function check(label, actual, expected) {
+      const ok = actual === expected;
+      window.__mountDemoResults.push({ label, actual, expected, ok });
+      const line = document.createElement("div");
+      line.className = ok ? "pass" : "fail";
+      line.textContent = `${ok ? "PASS" : "FAIL"}: ${label} -- expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`;
+      document.getElementById("log").appendChild(line);
+    }
+
+    async function main() {
+      document.getElementById("status").textContent = "Booting via hydronium.client.mount (real fetch, real wasmoon)...";
+      window.__fetchedUrls = [];
+      const origFetch = window.fetch;
+      window.fetch = (url, ...rest) => { window.__fetchedUrls.push(String(url)); return origFetch(url, ...rest); };
+
+      await mount({
+        hydroniumBaseUrl: "/hydronium-src",
+        manifestUrl: "/__hydronium/client-mount-demo/client_manifest.json",
+        appModuleId: "app",
+        appModuleUrl: "/__hydronium/client-mount-demo/app.lua",
+        container: "#app",
+        props: { initial: 10 },
+        hydrate: false,
+      });
+
+      check("at least 20 real module files were fetched (not embedded)", window.__fetchedUrls.length >= 20, true);
+      check("the manifest itself was fetched over HTTP", window.__fetchedUrls.some((u) => u.includes("client_manifest.json")), true);
+      check("the app module was fetched over HTTP, separately from the framework", window.__fetchedUrls.some((u) => u.includes("app.lua")), true);
+
+      const btn = document.getElementById("client-mount-btn");
+      check("real button mounted with the real initial prop value", btn && btn.textContent, "Count: 10");
+
+      btn.click();
+      btn.click();
+      check("real click events drove real state through the ordinary reconciler", btn.textContent, "Count: 12");
+
+      document.getElementById("status").textContent = "hydronium.client.mount proof complete.";
+      window.__mountDemoComplete = true;
+    }
+
+    main().catch((e) => {
+      document.getElementById("status").textContent = "FAILED: " + e.message;
+      const line = document.createElement("div");
+      line.className = "fail";
+      line.textContent = "FATAL: " + e.message + "\n" + (e.stack || "");
+      document.getElementById("log").appendChild(line);
+      window.__mountDemoComplete = true;
+      window.__mountDemoFatal = true;
+    });
+  </script>
+</body>
+</html>

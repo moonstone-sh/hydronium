@@ -1,6 +1,7 @@
 local runner = require("tests.runner")
 local H = require("hydronium")
-local server = require("hydronium.server")
+local server = require("hydronium_dom.server")
+local dom = require("hydronium_dom")
 local symbols = require("hydronium.core.symbols")
 
 describe("Hydronium Server Renderer (SSR)", function()
@@ -123,7 +124,7 @@ describe("Hydronium Server Renderer (SSR)", function()
     end)
 
     it("never serializes event handlers or other functions as HTML attributes", function()
-      local vnode = H.h(H.d.lua.island, nil, H.h("button", {
+      local vnode = H.h(dom.d.lua.island, nil, H.h("button", {
         onClick = function() end,
         onInput = function() end,
         on_change = function() end,

@@ -1,5 +1,8 @@
 -- Hydronium Test Harness and Runner
-package.path = "src/?.lua;src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
+-- The repository root is an orbits workspace, not a package.  Test the
+-- member source roots explicitly; external-consumer coverage below verifies
+-- Moonstone materialization separately.
+package.path = "core/src/?.lua;core/src/?/init.lua;luax/src/?.lua;luax/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;ink/src/?.lua;ink/src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
 
 local M = {}
 package.loaded["tests.runner"] = M
@@ -394,6 +397,12 @@ local function main()
       "tests/core/refresh_component_spec.lua",
       "tests/core/family_hmr_spec.lua",
       "tests/core/hydration_spec.lua",
+      "tests/core/family_identity_adversarial_spec.lua",
+      "tests/host/dom_spec.lua",
+      "tests/host/terminal_spec.lua",
+      "tests/core/lua_mount_spec.lua",
+      "tests/core/lazy_barrel_spec.lua",
+      "tests/luax/no_core_coupling_spec.lua",
       "tests/test_renderer/test_renderer_spec.lua",
       -- Server renderer specs
       "tests/server/ssr_spec.lua",

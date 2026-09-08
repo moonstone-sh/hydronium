@@ -2,12 +2,12 @@
 -- proof (docs/HMR_DOM_HOST.md). Same discovery mechanism as
 -- hmr_demo/family_counter.lua (require("app.components.counter"), no
 -- hand registration) but authored against the real DOM Host via
--- `hydronium.dom`'s `d.button` intrinsic, not the TestHost that proof
+-- `hydronium_dom`'s `d.button` intrinsic, not the TestHost that proof
 -- used -- this is the version that actually renders onto a real
 -- browser page. Edit the `+ 1` below to `+ 2` while the demo page is
 -- open to prove HMR flows through the real DOM Host for an arbitrary
 -- multi-component tree, not a single hand-wired island.
-local dom = require("hydronium.dom")
+local dom = require("hydronium_dom")
 local d = dom.d
 
 return function(props, scope)

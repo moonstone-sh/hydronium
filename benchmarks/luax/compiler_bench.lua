@@ -1,12 +1,12 @@
 -- Hydronium LUAX Compiler Benchmark Suite
 package.path = "src/?.lua;src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
 
-local luax = require("hydronium.luax")
-local lexer = require("hydronium.luax.lexer")
-local parser = require("hydronium.luax.parser")
-local compiler = require("hydronium.luax.compiler")
-local formatter = require("hydronium.luax.formatter")
-local plugin = require("hydronium.luax.plugin")
+local luax = require("hydronium_luax")
+local lexer = require("hydronium_luax.lexer")
+local parser = require("hydronium_luax.parser")
+local compiler = require("hydronium_luax.compiler")
+local formatter = require("hydronium_luax.formatter")
+local plugin = require("hydronium_luax.plugin")
 
 local function count_lines(s)
   local c = 1

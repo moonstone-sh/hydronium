@@ -6,12 +6,12 @@ end
 
 local function run_hostile_tests()
   package.path = "src/?.lua;src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
-  local lexer = require("hydronium.luax.lexer")
-  local parser = require("hydronium.luax.parser")
-  local compiler = require("hydronium.luax.compiler")
-  local formatter = require("hydronium.luax.formatter")
-  local sourcemap = require("hydronium.luax.sourcemap")
-  local virtual_source = require("hydronium.luax.luals.virtual_source")
+  local lexer = require("hydronium_luax.lexer")
+  local parser = require("hydronium_luax.parser")
+  local compiler = require("hydronium_luax.compiler")
+  local formatter = require("hydronium_luax.formatter")
+  local sourcemap = require("hydronium_luax.sourcemap")
+  local virtual_source = require("hydronium_luax.luals.virtual_source")
 
   print("Running hostile LUAX tests...")
 
@@ -63,7 +63,7 @@ local function run_hostile_tests()
   assert(res:find("Button"), "Should contain mapped component")
 
   -- 6. Zero hardcoded HTML tags in compiler core
-  local f = io.open("src/hydronium/luax/parser.lua", "r")
+  local f = io.open("luax/src/hydronium_luax/parser.lua", "r")
   local content = f:read("*a")
   f:close()
   local hardcoded = content:match("['\"]div['\"]")

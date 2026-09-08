@@ -1,0 +1,23 @@
+{
+  "files.associations": {
+    "*.luax": "lua"
+  },
+  "Lua.runtime.version": "LuaJIT",
+  "Lua.runtime.plugin": "${workspaceFolder}/luax/src/hydronium_luax/luals/init.lua",
+  "Lua.plugin.enable": true,
+  "Lua.plugin.path": "${workspaceFolder}/luax/src/hydronium_luax/luals/init.lua",
+  "Lua.workspace.library": [
+    "${workspaceFolder}/core/src",
+    "${workspaceFolder}/luax/src",
+    "${workspaceFolder}/luax/types",
+    "${workspaceFolder}/dom/src",
+    "${workspaceFolder}/dom/types",
+    "${workspaceFolder}/dom/ambient-types"
+  ],
+  "Lua.workspace.checkThirdParty": false,
+  "Lua.diagnostics.globals": [
+    "__luax",
+    "__luax_component",
+    "__luax_fragment"
+  ]
+}

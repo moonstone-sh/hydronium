@@ -1,6 +1,6 @@
 local runner = require("tests.runner")
-local compiler = require("hydronium.luax.compiler")
-local sourcemap = require("hydronium.luax.compiler.sourcemap")
+local compiler = require("hydronium_luax.compiler")
+local sourcemap = require("hydronium_luax.compiler.sourcemap")
 
 describe("LUAX Compiler & Lowering", function()
   it("compiles intrinsic tags and attributes to __luax.element", function()

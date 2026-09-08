@@ -1,15 +1,28 @@
 manifest_version = 2
 
 [package]
-name = "hydronium"
+name = "hydronium-workspace"
 version = "0.1.0"
 kind = "script"
-description = "A new Moonstone Lua project"
+description = "Hydronium workspace: core, DOM host/SSR, and LUAX compiler"
 
 [interpreter]
 name = "lua"
 version = "5.4"
 abi = "5.4"
 
-[scripts]
-dev = "lua ./src/main.lua \"$@\""
+[[orbits.member]]
+name = "core"
+path = "core"
+
+[[orbits.member]]
+name = "luax"
+path = "luax"
+
+[[orbits.member]]
+name = "dom"
+path = "dom"
+
+[[orbits.member]]
+name = "ink"
+path = "ink"

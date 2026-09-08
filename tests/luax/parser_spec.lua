@@ -1,7 +1,7 @@
 -- Parser Test Suite for Hydronium LUAX
 local runner = require("tests.runner")
 local describe, it, assert = runner.describe, runner.it, runner.assert
-local parser = require("hydronium.luax.parser")
+local parser = require("hydronium_luax.parser")
 
 describe("LUAX: Parser CST/AST Construction", function()
 

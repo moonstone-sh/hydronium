@@ -1,0 +1,18 @@
+manifest_version = 2
+
+[package]
+name = "hydronium-dom"
+version = "0.1.0"
+kind = "lib"
+description = "Hydronium DOM host, browser client, SSR renderer, and Meteorite adapter"
+
+[interpreter]
+name = "lua"
+version = "5.4"
+abi = "5.4"
+
+[[dependencies]]
+name = "hydronium"
+constraint = "path:../core"
+registry = "path"
+role = "runtime"

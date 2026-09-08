@@ -1,8 +1,8 @@
 -- SourceMap V3 and Base64 VLQ Test Suite
 local runner = require("tests.runner")
 local describe, it, assert = runner.describe, runner.it, runner.assert
-local sourcemap = require("hydronium.luax.sourcemap")
-local luax = require("hydronium.luax")
+local sourcemap = require("hydronium_luax.sourcemap")
+local luax = require("hydronium_luax")
 
 describe("LUAX: Source Map V3 & Base64 VLQ", function()
 

@@ -1,4 +1,4 @@
-// Tests for src/hydronium/client/boundary_registry.js.
+// Tests for dom/src/hydronium_dom/client/boundary_registry.js.
 //
 // Uses Node's built-in test runner (`node --test`) and a minimal
 // hand-rolled DOM stand-in -- no jsdom, no new dependency. This is the
@@ -198,5 +198,5 @@ test("a 'root' boundary (d.lua.mount) uses the same marker mechanism with a diff
 let counter = 0;
 async function freshRegistry() {
   counter += 1;
-  return import(`../../src/hydronium/client/boundary_registry.js?test=${counter}`);
+  return import(`../../dom/src/hydronium_dom/client/boundary_registry.js?test=${counter}`);
 }

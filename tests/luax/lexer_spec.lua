@@ -1,7 +1,7 @@
 -- Lexer Test Suite for Hydronium LUAX
 local runner = require("tests.runner")
 local describe, it, assert = runner.describe, runner.it, runner.assert
-local lexer = require("hydronium.luax.lexer")
+local lexer = require("hydronium_luax.lexer")
 local TOKEN = lexer.TOKEN
 
 describe("LUAX: Lexer Tokenization", function()

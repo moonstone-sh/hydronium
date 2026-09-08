@@ -1,5 +1,9 @@
 local runner = require("tests.runner")
 local H = require("hydronium")
+-- Server rendering is provided by the separate hydronium-dom package.
+-- Keep the existing H.server call sites focused on renderer behavior, not
+-- on the removed cross-package core barrel alias.
+H.server = require("hydronium_dom.server")
 
 describe("Hydronium Server-Side Rendering (SSR)", function()
   describe("render_to_string / renderToString basic output", function()

@@ -1,7 +1,7 @@
 -- Formatter Test Suite for Hydronium LUAX
 local runner = require("tests.runner")
 local describe, it, assert = runner.describe, runner.it, runner.assert
-local formatter = require("hydronium.luax.formatter")
+local formatter = require("hydronium_luax.formatter")
 
 describe("LUAX: Formatter & CST Pretty Printing", function()
 

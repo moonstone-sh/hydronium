@@ -5,7 +5,7 @@ local assert = _G.assert
 local hydronium = require("hydronium")
 local h = hydronium.createElement
 local useContext = hydronium.useContext
-local meteorite = require("hydronium.server.meteorite")
+local meteorite = require("hydronium_dom.server.meteorite")
 
 describe("Meteorite Integration Adapter", function()
   it("renders a simple vnode to standard response table", function()

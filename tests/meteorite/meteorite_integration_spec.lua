@@ -8,7 +8,7 @@ local runner = require("tests.runner")
 local describe, it, assert = runner.describe, runner.it, runner.assert
 
 local H = require("hydronium")
-local meteorite = require("hydronium.server.meteorite")
+local meteorite = require("hydronium_dom.server.meteorite")
 local RequestContext = meteorite.RequestContext
 
 describe("Meteorite + Hydronium Model A SSR Integration", function()

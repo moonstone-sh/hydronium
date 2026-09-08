@@ -5,7 +5,7 @@
 
 local H = require("hydronium")
 local h = H
-local meteorite = require("hydronium.server.meteorite")
+local meteorite = require("hydronium_dom.server.meteorite")
 local RequestContext = meteorite.RequestContext
 
 ---@class PageProps
@@ -55,7 +55,7 @@ local function AppView(props)
             </linearGradient>
             <path d="M12 2 L22 12 L12 22 L2 12 Z" fill="url(#logo-grad)" strokeWidth="0" />
           </svg>
-          <span>Hydronium + Meteorite</span>
+          <span >Hydronium + Meteorite</span>
         </div>
         <nav>
           <a href="/">Home</a>

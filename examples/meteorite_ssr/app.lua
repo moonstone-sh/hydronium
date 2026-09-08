@@ -23,12 +23,12 @@
 --]]
 
 -- Ensure hydronium and meteorite packages are in package.path
-package.path = "../hydronium/src/?.lua;../hydronium/src/?/init.lua;src/?.lua;src/?/init.lua;../meteorite/src/?.lua;../meteorite/src/?/init.lua;" .. package.path
+package.path = "../../core/src/?.lua;../../core/src/?/init.lua;../../dom/src/?.lua;../../dom/src/?/init.lua;../../luax/src/?.lua;../../luax/src/?/init.lua;src/?.lua;src/?/init.lua;../meteorite/src/?.lua;../meteorite/src/?/init.lua;" .. package.path
 
 local hydronium = require("hydronium")
 local h = hydronium.createElement
 local useContext = hydronium.useContext
-local meteorite = require("hydronium.server.meteorite")
+local meteorite = require("hydronium_dom.server.meteorite")
 local RequestContext = meteorite.RequestContext
 
 -- Attempt to load real meteorite, fall back to lightweight in-process mock if running standalone
