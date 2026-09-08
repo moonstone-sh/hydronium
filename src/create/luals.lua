@@ -16,7 +16,7 @@ function luals.configure(target_dir, opts)
   local lua_ver_str = interpreter:match("5%.%d") or "5.4"
   local runtime_version = "Lua " .. lua_ver_str
 
-  local plugin_rel_path = ".moonstone/env/share/lua/" .. lua_ver_str .. "/hydronium/luax/luals/init.lua"
+  local plugin_rel_path = ".moonstone/env/share/lua/" .. lua_ver_str .. "/hydronium_luax/luals/init.lua"
   local library_rel_path = ".moonstone/env/share/lua/" .. lua_ver_str
 
   if opts.dry_run then
