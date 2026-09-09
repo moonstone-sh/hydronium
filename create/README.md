@@ -14,14 +14,17 @@ Declarative scaffolding CLI tool for initializing new [Hydronium](https://moonst
 ## Usage
 
 ```bash
+# Install the generator
+moon add hydronium/create
+
 # Scaffold in current directory with default SSR template
-moon exec hydronium/create
+moon exec hydronium-create
 
 # Scaffold in a target directory with a specific template
-moon exec hydronium/create -- ./my-app --template ssr
+moon exec hydronium-create -- ./my-app --template ssr
 
 # Preview generated file tree without writing to disk
-moon exec hydronium/create -- ./my-app --template islands --dry-run
+moon exec hydronium-create -- ./my-app --template islands --dry-run
 ```
 
 ## Options

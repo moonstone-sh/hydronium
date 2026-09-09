@@ -16,7 +16,7 @@ moonstone dependency graph, and had generated projects resolve
 **That conclusion was wrong, verified two ways**:
 
 ```
-$ cd hydronium-create && moon exec -- lua -e 'print(type(require("alter")), type(require("clingy")))'
+$ cd hydronium/create && moon exec -- lua -e 'print(type(require("alter")), type(require("clingy")))'
 table   table
 ```
 

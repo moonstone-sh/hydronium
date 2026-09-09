@@ -40,7 +40,7 @@ Named, verified by reading the code and running it:
 
 ## Answers to the four investigation items
 
-### 1. `hydronium/create` — real path is `/Users/extrordinaire/Workbench/user/hydronium-create` (confirmed sibling)
+### 1. `hydronium/create` — workspace Orbit at `create/`
 
 - Templates: `ssr`, `islands`, `minimal` are live; **`spa` exists on disk but is deliberately disabled** — `src/create/init.lua:71` fails loudly with an explanation, and `templates/spa.lua`'s header lists exactly what's missing. Unusually honest scaffolding, worth preserving as a pattern.
 - **A `dev` script already exists.** `templates/ssr.lua:107` and `templates/islands.lua:62` emit `[scripts] dev = "moon exec --dev meteorite dev --mode hybrid_dev --backend fast_http --lua-root ..."`, and `src/main.lua:77` prints `moon run dev` as the next step. `hybrid_dev` is a real meteorite profile (`meteorite/src/core/profile.lua:98`). A real scaffolded project from this CLI exists at `/Users/extrordinaire/Workbench/user/hydronium-hmr-KoHP5G` with a populated `.meteorite/` and `dist/`.

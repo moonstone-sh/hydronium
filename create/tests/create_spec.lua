@@ -220,7 +220,7 @@ test("every template's generated content actually parses/compiles (content-valid
   -- The compiler is now an independent library package with its own top-level
   -- namespace, matching the module identity Moonstone materializes for
   -- generated projects.
-  package.path = package.path .. ";../hydronium/luax/src/?.lua;../hydronium/luax/src/?/init.lua"
+  package.path = package.path .. ";../luax/src/?.lua;../luax/src/?/init.lua"
   local luax = require("hydronium_luax")
   local load_fn = loadstring or load
 
