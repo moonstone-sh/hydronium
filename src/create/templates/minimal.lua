@@ -13,9 +13,9 @@ kind = "script"
 description = "Minimal Hydronium component"
 
 [interpreter]
-name = "lua"
-version = "5.4"
-abi = "5.4"
+name = "luajit"
+version = "2.1.0"
+abi = "5.1"
 
 [scripts]
 run = "lua src/main.lua"

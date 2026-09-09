@@ -54,13 +54,13 @@ kind = "bin"
 description = "Hydronium Islands architecture with SSR and real JS-island client hydration"
 
 [interpreter]
-name = "lua"
-version = "5.4"
-abi = "5.4"
+name = "luajit"
+version = "2.1.0"
+abi = "5.1"
 
 [scripts]
-dev = "meteorite dev"
-build = "meteorite build"
+dev = "moon exec --dev meteorite dev --mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit"
+build = "moon exec --dev meteorite build --mode release-hybrid --backend fast_http"
 
 [[dependencies]]
 name = "moonstone/meteorite"
@@ -111,6 +111,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     _ = meteorite.addService(b, .{
         .meteorite_root = ".moonstone/env/libexec/meteorite",
+        .lua_root = ".moonstone/env/libexec/luajit",
         .target = target,
         .optimize = optimize,
         .mode = b.option([]const u8, "mode", "Meteorite build mode") orelse "release-hybrid",
@@ -172,6 +173,7 @@ local function App(props)
 
           {H.h("script", { type = "module" },
             "import { activate } from '/js/bootstrap/bootstrap.js'; activate();")}
+          {H.h("script", { type = "module", src = "/js/bootstrap/dev_reload.js" })}
         </div>
       </body>
     </html>
@@ -225,8 +227,12 @@ meteorite.site(app, {
   },
 })
 
+-- `dev_reload.js` performs a full page reload when this bounded SSE handler
+-- observes an edit. This is intentionally live reload, not state-preserving HMR.
+app:get("/__hydronium/watch", meteorite.lua("dev_watch", { arg_mode = "lazy_context" }))
+
 app:get("/", function(c)
-  local meteorite_adapter = require("hydronium.server.meteorite")
+  local meteorite_adapter = require("hydronium_dom.server.meteorite")
   local AppView = require("views.App")
   local initial = tonumber(c:query("initial")) or 10
   return meteorite_adapter.render(c, AppView, {
@@ -237,6 +243,55 @@ end)
 
 return app
 ]], project_name)
+
+  files["src/dev_watch.lua"] = [[-- Full-page development reload transport for the generated app.
+-- The browser client is hydronium_dom/client/dev_reload.js. This bounded SSE
+-- poll remains safe on Meteorite's HTTP backends; the client reconnects after
+-- each `bye` event.
+return function(c)
+  local function query(name)
+    if type(c.query) == "function" then return c:query(name) end
+    if type(c.query) == "table" then return c.query[name] end
+    return nil
+  end
+
+  local function fingerprint(wait)
+    local command = {}
+    if wait then command[#command + 1] = "sleep 0.5;" end
+    command[#command + 1] = "find views src public -type f 2>/dev/null | sort | while IFS= read -r f; do stat -f '%Fm %z %N' \"$f\" 2>/dev/null || stat -c '%.9Y %s %n' \"$f\"; done"
+    local pipe = io.popen(table.concat(command, " "), "r")
+    if not pipe then return "" end
+    local value = (pipe:read("*a") or ""):gsub("\n", "|")
+    pipe:close()
+    return value
+  end
+
+  local function emit(kind, value)
+    stream_write("id: " .. value .. "\nevent: " .. kind .. "\ndata: " .. value .. "\n\n")
+  end
+
+  local current = fingerprint(false)
+  local since = c:header("Last-Event-ID") or query("since")
+  stream_begin(200, "text/event-stream")
+  stream_write("retry: 200\n\n")
+  if since and since ~= "" and since ~= current then
+    emit("reload", current)
+    stream_end()
+    return
+  end
+  emit("hello", current)
+  for _ = 1, 10 do
+    local next_value = fingerprint(true)
+    if next_value ~= current then
+      emit("reload", next_value)
+      stream_end()
+      return
+    end
+  end
+  emit("bye", current)
+  stream_end()
+end
+]]
 
   -- Real, self-contained copy of hydronium's own client bootstrap --
   -- reads the `__HYDRONIUM_CLIENT_PLAN__` script tag SSR emits and
@@ -494,6 +549,70 @@ export function dispose(id) {
 }
 ]]
 
+  -- The development transport is copied into the application's own static
+  -- root. Meteorite rejects dependency symlinks as static roots, so serving
+  -- it directly from `.moonstone/env` would weaken a deliberate safety rule.
+  files["public/js/bootstrap/dev_transport.js"] = [[export function createDevTransport(url) {
+  let closed = false;
+  let listeners = [];
+  let since = null;
+  let source = null;
+
+  function notify(type, fingerprint) {
+    for (const callback of listeners) callback({ type, fingerprint });
+  }
+
+  function reconnect() {
+    if (source) source.close();
+    if (closed) return;
+    // encodeURIComponent, not URLSearchParams: a fingerprint is `stat`
+    // output and contains spaces, which URLSearchParams serializes as
+    // `+`. Meteorite's query parser decodes `%20` but takes `+`
+    // literally, so the server never recognized the `since` it was sent,
+    // treated every reconnect as "changed while you were away", and
+    // answered with an immediate reload -- an unexplained periodic page
+    // refresh, easy to miss in a client whose whole job is reloading.
+    // Same fix as hydronium_dom/client/dev_transport.js.
+    const parts = [`_t=${Date.now()}`];
+    if (since) parts.push(`since=${encodeURIComponent(since)}`);
+    source = new EventSource(`${url}?${parts.join("&")}`);
+    source.addEventListener("hello", (event) => {
+      since = event.data;
+      notify("hello", event.data);
+    });
+    source.addEventListener("reload", (event) => {
+      since = event.data;
+      notify("reload", event.data);
+      reconnect();
+    });
+    source.addEventListener("bye", (event) => {
+      since = event.data;
+      reconnect();
+    });
+  }
+
+  reconnect();
+  return {
+    subscribe(callback) {
+      listeners.push(callback);
+      return () => { listeners = listeners.filter((item) => item !== callback); };
+    },
+    close() {
+      closed = true;
+      if (source) source.close();
+    },
+  };
+}
+]]
+
+  files["public/js/bootstrap/dev_reload.js"] = [[import { createDevTransport } from "./dev_transport.js";
+
+const transport = createDevTransport("/__hydronium/watch");
+transport.subscribe((event) => {
+  if (event.type === "reload") location.reload();
+});
+]]
+
   -- A real `d.js.island` module, hydrating a server-rendered <button>
   -- with vanilla JS -- no framework, no build step, no Lua or WASM
   -- anywhere in this file or its import graph. Adapted directly from
@@ -594,7 +713,7 @@ it for its interactive piece.
    moon sync
    ```
 
-2. **Start Dev Server (with HMR):**
+2. **Start Dev Server (with live reload):**
    ```bash
    moon run dev
    ```
@@ -606,7 +725,9 @@ it for its interactive piece.
    ```
 
 Then open the page in a real browser and click the counter -- the count
-increments client-side with no page reload.
+increments client-side with no page reload. Editing files under `views/`,
+`src/`, or `public/` triggers a full-page reload, so client state resets;
+state-preserving HMR is not implemented yet.
 ]], project_name, project_name)
 
   return files

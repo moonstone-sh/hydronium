@@ -1,7 +1,7 @@
 {
   "workspace": {
     "library": [
-      ".moonstone/env/share/lua/5.4"
+      ".moonstone/env/share/lua/5.1"
     ],
     "checkThirdParty": false,
     "useGitIgnore": false,

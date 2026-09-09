@@ -118,6 +118,8 @@ test("luals.configure uses alter to update .luarc.json with Hydronium LuaX plugi
 
   assert(content:find("hydronium_luax/luals/init.lua"), "missing hydronium_luax plugin in .luarc.json")
   assert(content:find("%.moonstone/env/share/lua/5.4"), "missing workspace library in .luarc.json")
+  assert(content:find("hydronium%-luax/types"), "missing packaged LUAX types in .luarc.json")
+  assert(content:find("hydronium%-dom/types"), "missing packaged DOM types in .luarc.json")
   assert(content:find("%*%.luax"), "missing *.luax association in .luarc.json")
 
   -- Idempotency check: running again should succeed without redundant duplicates
@@ -127,6 +129,66 @@ test("luals.configure uses alter to update .luarc.json with Hydronium LuaX plugi
   assert(res2 ~= nil, "idempotent luals.configure failed: " .. tostring(err2))
 
   os.execute(string.format('rm -rf "%s"', tmp_dir))
+end)
+
+test("luals.configure composes with commented user config idempotently", function()
+  local tmp_dir = os.tmpname()
+  os.remove(tmp_dir)
+  os.execute(string.format('mkdir -p "%s"', tmp_dir))
+
+  local config = assert(io.open(tmp_dir .. "/.luarc.json", "w"))
+  config:write([[// keep this project note
+{
+  "runtime": {
+    "plugin": "existing-plugin.lua",
+    "path": ["?.lua", "custom/?.lua"]
+  },
+  "workspace": { "library": ["existing-types"] }
+}
+]])
+  config:close()
+
+  local first, first_err = luals.configure(tmp_dir, {
+    interpreter = "luajit@2.1",
+    luax = true,
+    dom = true,
+    bare_dom = true,
+  })
+  assert(first ~= nil, "first configure failed: " .. tostring(first_err))
+  assert(first.changed == true, "first configure should mutate the user config")
+
+  local second, second_err = luals.configure(tmp_dir, {
+    interpreter = "luajit@2.1",
+    luax = true,
+    dom = true,
+    bare_dom = true,
+  })
+  assert(second ~= nil, "second configure failed: " .. tostring(second_err))
+  assert(second.changed == false, "second configure must be idempotent")
+
+  local configured = assert(io.open(tmp_dir .. "/.luarc.json", "r"))
+  local content = configured:read("*a")
+  configured:close()
+  assert(content:find("// keep this project note", 1, true), "Alter must preserve JSONC comments")
+  assert(content:find("existing%-plugin%.lua"), "Alter must preserve an existing plugin")
+  assert(content:find("custom/%?%.lua"), "Alter must preserve custom runtime search paths")
+  assert(content:find("%?%.luax"), "Alter must compose the LUAX runtime search path")
+  assert(content:find("hydronium_luax/luals/init.lua", 1, true), "Hydronium plugin was not composed")
+  assert(content:find("existing%-types"), "Alter must preserve existing workspace libraries")
+  assert(content:find("ambient%-types"), "bare DOM types were not composed")
+
+  os.execute(string.format('rm -rf "%s"', tmp_dir))
+end)
+
+test("CLI declarations and completion run on Clingy 0.4", function()
+  local handle = assert(io.popen([[lua ./src/main.lua --__clingy-complete bash hydronium-create --template '' --cword=3]]))
+  local output = handle:read("*a")
+  local closed = handle:close()
+  assert(closed, "hydronium-create completion process failed")
+  assert(output:find("V\t2", 1, true), "missing Clingy completion protocol header")
+  assert(output:find("C\tssr", 1, true), "missing ssr completion")
+  assert(output:find("C\tislands", 1, true), "missing islands completion")
+  assert(output:find("C\tminimal", 1, true), "missing minimal completion")
 end)
 
 --------------------------------------------------------------------------------
@@ -232,6 +294,19 @@ test("every template's generated content actually parses/compiles (content-valid
     if tmpl.id == "ssr" or tmpl.id == "islands" then
       assert(manifest:find('name = "hydronium-luax"', 1, true), "[" .. tmpl.id .. "] missing hydronium-luax dependency")
       assert(manifest:find('name = "hydronium-dom"', 1, true), "[" .. tmpl.id .. "] missing hydronium-dom dependency")
+    end
+
+    local luals_file = assert(io.open(dir .. "/.luarc.json", "r"))
+    local luals_config = luals_file:read("*a")
+    luals_file:close()
+    assert(luals_config:find("hydronium%-dom/types"), "[" .. tmpl.id .. "] missing packaged DOM types")
+    if tmpl.id == "minimal" then
+      assert(not luals_config:find("hydronium_luax", 1, true), "[minimal] must not configure an unavailable LUAX plugin")
+      assert(not luals_config:find("ambient%-types"), "[minimal] must not opt into bare DOM globals")
+    else
+      assert(luals_config:find("hydronium_luax/luals/init.lua", 1, true), "[" .. tmpl.id .. "] missing LUAX plugin")
+      assert(luals_config:find("hydronium%-luax/types"), "[" .. tmpl.id .. "] missing packaged LUAX types")
+      assert(luals_config:find("ambient%-types"), "[" .. tmpl.id .. "] missing bare DOM globals")
     end
 
     os.execute(string.format('rm -rf "%s"', dir))

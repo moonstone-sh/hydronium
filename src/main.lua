@@ -7,25 +7,25 @@ local create = require("create.init")
 local app
 app = c.create({
   name = "hydronium-create",
-  version = "0.1.0",
+  version = "0.2.0",
   description = "Scaffold and initialize new Hydronium reactive Lua projects",
 
   c.root(c.node({
-    c.inherit(
-      c.flag("-h", "--help"),
-      c.flag("-v", "--version")
-    ),
+    c.inherit({
+      c.flag({ key = "help", aliases = { "-h", "--help" } }),
+      c.flag({ key = "version", aliases = { "-v", "--version" } }),
+    }),
 
-    c.optional(c.arg("directory", v.string())),
-    c.complete(c.values("ssr", "islands", "spa", "minimal"), c.option("-t", "--template", v.string())),
-    c.option("-n", "--name", v.string()),
-    c.option("-i", "--interpreter", v.string()),
-    c.flag("-f", "--force"),
-    c.flag("--dry-run"),
+    c.arg({ key = "directory", schema = v.string(), occurs = { min = 0, max = 1 }, complete = c.directory() }),
+    c.option({ key = "template", aliases = { "-t", "--template" }, value = { schema = v.string() }, complete = c.values({ "ssr", "islands", "minimal" }) }),
+    c.option({ key = "name", aliases = { "-n", "--name" }, value = { schema = v.string() } }),
+    c.option({ key = "interpreter", aliases = { "-i", "--interpreter" }, value = { schema = v.string() }, complete = c.values({ "luajit@2.1", "lua@5.4" }) }),
+    c.flag({ key = "force", aliases = { "-f", "--force" } }),
+    c.flag({ key = "dry_run", aliases = { "--dry-run" } }),
 
     c.run(function(ctx)
       if ctx.args.version then
-        ctx:log("info", "hydronium-create v0.1.0")
+        ctx:log("info", "hydronium-create v0.2.0")
         return 0
       end
 
@@ -45,7 +45,7 @@ app = c.create({
         name = ctx.args.name,
         interpreter = ctx.args.interpreter,
         force = ctx.args.force,
-        dry_run = ctx.args["dry-run"],
+        dry_run = ctx.args.dry_run,
       }, ctx)
 
       if not result then

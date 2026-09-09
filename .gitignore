@@ -1,6 +1,13 @@
 # Moonstone
 .moonstone/
 
+# Ballad outputs
+.ballad/
+dist/
+
+# Local agent worktrees
+.claude/
+
 # Zig
 zig-cache/
 zig-out/
