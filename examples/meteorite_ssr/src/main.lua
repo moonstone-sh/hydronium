@@ -404,97 +404,31 @@ end)
 --    and Meteorite's hybrid runtime creates a fresh Lua state per
 --    request): the push notification is genuinely the only missing piece
 --    of a live-reload loop, not a proxy for one.
+--    The fingerprint + SSE protocol this route documents above is no
+--    longer written out here: it now lives in framework code as
+--    `hydronium_dom.dev.watch`, which was promoted verbatim out of this
+--    very handler. This example is that module's real consumer -- the
+--    body below is the entire route.
+--
+--    Two structural details are deliberate, both forced by Meteorite's
+--    hybrid build (see hydronium_dom/dev/watch.lua's own header):
+--      - the `app:get(...)` handler stays a literal inline function in
+--        this file. Meteorite lifts each inline handler by extracting
+--        ITS OWN source text and reloading it standalone per request, so
+--        a route registered indirectly (a `watch.mount(app, ...)` helper)
+--        would be invisible to the build.
+--      - the `require` happens INSIDE the handler body, not as a
+--        file-top local. A captured outer upvalue does not survive that
+--        per-request standalone reload; a `require` call made from
+--        inside the body is module-cache-backed and does.
 app:get("/__hydronium/watch", function(c)
-  local WATCHED = { "views/App.luax", "src/views/App.lua", "hmr_demo/click_increment.lua", "hmr_demo/family_counter.lua", "hmr_demo/arbitrary_tree_counter.lua" }
-  local POLL_INTERVAL = 0.5
-  local HEARTBEAT_EVERY = 2
-
-  local function get_query(key)
-    if type(c.query) == "function" then
-      return c:query(key)
-    elseif type(c.query) == "table" then
-      return c.query[key]
-    end
-    return nil
-  end
-
-  -- Snapshot every watched file's mtime/size/name into one sorted string;
-  -- any create/delete/modify changes it. `sleep_first` folds the poll
-  -- delay into the same `io.popen` call as the stat commands, so each
-  -- tick costs one subprocess, not two.
-  local function fingerprint(sleep_first)
-    local parts = {}
-    if sleep_first then
-      parts[#parts + 1] = "sleep " .. tostring(POLL_INTERVAL) .. ";"
-    end
-    for _, f in ipairs(WATCHED) do
-      parts[#parts + 1] = "stat -f '%Fm %z %N' '" .. f .. "' 2>/dev/null || stat -c '%.9Y %s %n' '" .. f .. "';"
-    end
-    parts[#parts + 1] = "true"
-    local p = io.popen(table.concat(parts, " "), "r")
-    if not p then return "" end
-    local out = p:read("*a") or ""
-    p:close()
-    -- Sort lines so the fingerprint doesn't depend on filesystem stat
-    -- ordering, only on content -- matches Ballad's own watcher, which
-    -- pipes its snapshot through `sort` for the same reason. Joined with
-    -- "|", not "\n": a raw newline round-tripped through a query string
-    -- (percent-encoded as %0A in `since=...`) is rejected by Meteorite's
-    -- router as a CRLF-injection guard -- found live, not assumed -- and
-    -- a literal embedded newline in an SSE `data:` line is malformed per
-    -- the SSE spec too (a multi-line payload needs one `data:` prefix per
-    -- line). "|" sidesteps both without needing any encoding at all,
-    -- since it never appears in a `stat` line's own content.
-    local lines = {}
-    for line in out:gmatch("[^\n]+") do
-      lines[#lines + 1] = line
-    end
-    table.sort(lines)
-    return table.concat(lines, "|")
-  end
-
-  -- `id:` is the fingerprint itself (no embedded newlines, per the "|"
-  -- delimiter above, so it's already a valid single-line field value) --
-  -- this is what the browser echoes back as Last-Event-ID.
-  local function emit(event, data)
-    stream_write("id: " .. tostring(data) .. "\nevent: " .. event .. "\ndata: " .. tostring(data) .. "\n\n")
-  end
-
-  local since = c:header("Last-Event-ID") or get_query("since")
-  local budget = tonumber(get_query("budget")) or 5
-
-  stream_begin(200, "text/event-stream")
-  stream_write("retry: 200\n\n")
-
-  local current = fingerprint(false)
-
-  if since and since ~= "" and since ~= current then
-    emit("reload", current)
-    stream_end()
-    return
-  end
-
-  emit("hello", current)
-
-  local elapsed = 0
-  local since_heartbeat = 0
-  while elapsed < budget do
-    local next_fp = fingerprint(true)
-    elapsed = elapsed + POLL_INTERVAL
-    since_heartbeat = since_heartbeat + POLL_INTERVAL
-    if next_fp ~= current then
-      emit("reload", next_fp)
-      stream_end()
-      return
-    end
-    if since_heartbeat >= HEARTBEAT_EVERY then
-      emit("ping", elapsed)
-      since_heartbeat = 0
-    end
-  end
-
-  emit("bye", current)
-  stream_end()
+  require("hydronium_dom.dev.watch").serve_sse(c, {
+    "views/App.luax",
+    "src/views/App.lua",
+    "hmr_demo/click_increment.lua",
+    "hmr_demo/family_counter.lua",
+    "hmr_demo/arbitrary_tree_counter.lua",
+  })
 end)
 
 -- 9. Serves hmr_demo/click_increment.lua's CURRENT content, fresh on

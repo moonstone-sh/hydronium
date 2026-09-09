@@ -1,16 +1,44 @@
 --[[
-  Hydronium HMR Refresh Registry -- design proof, v0.
+  Hydronium HMR Refresh Registry.
 
-  Proves the structural-matching resource-identity model from
+  Implements the structural-matching resource-identity model from
   docs/HYDRONIUM_SCHEDULER_HMR_FOUNDATION.md against the REAL
-  hydronium.signals primitives, using hand-written {kind, name,
-  block_path} descriptors standing in for what a future LUAX compiler
-  pass would attach automatically to each `scope:signal(...)`-shaped
-  call site. This is NOT wired into the LUAX compiler, the component
-  runtime, or any dev transport -- it is a standalone proof that the
-  matching algorithm itself is sound, run against real signals, before
-  committing to building the compiler pass that would make descriptor
-  attachment automatic.
+  hydronium.signals primitives, keyed on {kind, name, block_path}
+  descriptors attached to each `scope.refresh_registry:signal(...)`
+  call site.
+
+  Wiring status (verified against the code, not assumed -- keep this
+  block honest if any of the three changes):
+
+    * Component runtime -- WIRED, and load-bearing. Every
+      ComponentInstance owns one RefreshRegistry for its whole
+      lifetime (hydronium.core.component `.new()`, which sets both
+      `self.refresh_registry` and `self.scope.refresh_registry`), and
+      the runtime brackets each one-time setup call with
+      :begin_generation() / :finish_generation() around
+      `self.type(self.props, self.scope)`. `ComponentInstance:refresh()`
+      deliberately does NOT recreate the registry -- that persistence
+      is exactly what carries state across a hot swap. Component code
+      never calls begin/finish_generation itself.
+
+    * LUAX compiler -- WIRED. `hydronium_luax.transforms.refresh`
+      rewrites a recognized `local x, setX = hydronium.signal(v)` at the
+      top level of a component setup function into the descriptor-
+      carrying `scope.refresh_registry:signal(v, {...})` form, so
+      ordinary component source gets state preservation without hand-
+      written descriptors. The pass is deliberately conservative: any
+      call site it does not positively recognize is emitted unchanged
+      and simply never participates in refresh matching.
+
+    * Dev transport -- NOT wired. The shipped browser dev client
+      (hydronium_dom/client/dev_reload.js) responds to a file change
+      with `location.reload()`, which destroys the VM and every live
+      ComponentInstance, so no RefreshRegistry ever survives to be
+      matched against. State-preserving refresh over a real transport
+      exists today only in the bespoke proof pages under
+      examples/meteorite_ssr/hmr_demo/. A general client HMR runtime
+      that calls family_loader.reload() inside the surviving VM is
+      still unbuilt.
 
   Correction found while building this: earlier design language (this
   session's own prior document) referred to `scope:signal(initial)` as
