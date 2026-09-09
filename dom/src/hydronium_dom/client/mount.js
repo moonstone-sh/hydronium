@@ -21,7 +21,7 @@
   real app that's a genuine, known cost this doesn't try to hide; a
   bundler is real, separate, future work.
 
-  Usage:
+  Usage (unbundled -- fetches every runtime module as its own request):
 
     import { mount } from "hydronium/client/mount.js";
 
@@ -33,6 +33,20 @@
       container: "#app",
       props: { initial: 0 },
       hydrate: true,                            // claim real SSR-produced DOM instead of building fresh
+    });
+
+  Usage (bundled -- hydronium_ballad.plugins.client.bundle()'s real
+  output, see docs/HYDRONIUM_CLIENT_BUNDLER_MINIFIER_PLAN.md): each URL in
+  `chunkUrls` is real Lua source in "package_preload_v1" format -- loading
+  and calling it installs `package.preload[id]` for every module it
+  carries, INCLUDING the app's own entry module, so no separate
+  `hydroniumBaseUrl`/`manifestUrl`/`appModuleUrl` fetch is needed at all:
+
+    await mount({
+      chunkUrls: ["/dist/client/runtime-a1b2c3d4.lua"],
+      appModuleId: "App",
+      container: "#app",
+      props: { initial: 0 },
     });
 */
 
@@ -74,10 +88,16 @@ function toLuaLiteral(value) {
 
 /**
  * @param {object} options
- * @param {string} options.hydroniumBaseUrl Base URL a served copy of hydronium's `src/` is reachable at.
- * @param {string} options.manifestUrl URL of the JSON manifest (module id -> path relative to `hydroniumBaseUrl`) `tools/gen_client_manifest.lua` produces.
- * @param {string} options.appModuleId The `require()` id your app's root component module registers under.
- * @param {string} options.appModuleUrl URL of that module's real Lua source.
+ * @param {string[]} [options.chunkUrls] Bundled path: URLs of real
+ *   "package_preload_v1"-format Lua chunks (hydronium_ballad.plugins.client.bundle()'s
+ *   output), fetched and `load()`ed in order. Each chunk installs
+ *   `package.preload` for every module it carries, INCLUDING the app's
+ *   own entry module -- so no `hydroniumBaseUrl`/`manifestUrl`/`appModuleUrl`
+ *   is needed alongside this. Mutually exclusive with the unbundled options below.
+ * @param {string} [options.hydroniumBaseUrl] Unbundled path: base URL a served copy of hydronium's `src/` is reachable at.
+ * @param {string} [options.manifestUrl] Unbundled path: URL of the JSON manifest (module id -> path relative to `hydroniumBaseUrl`) `tools/gen_client_manifest.lua` produces.
+ * @param {string} [options.appModuleUrl] Unbundled path: URL of the app's own module's real Lua source.
+ * @param {string} options.appModuleId The `require()` id your app's root component module registers under (required in both paths).
  * @param {string|Element} options.container CSS selector or a real DOM element to mount/hydrate into.
  * @param {object} [options.props] Props passed to the root component.
  * @param {boolean} [options.hydrate] Claim real pre-existing DOM (via `Reconciler:hydrateRoot`) instead of building fresh (via `Reconciler:mount`).
@@ -86,6 +106,7 @@ function toLuaLiteral(value) {
  */
 export async function mount(options) {
   const {
+    chunkUrls,
     hydroniumBaseUrl,
     manifestUrl,
     appModuleId,
@@ -96,10 +117,13 @@ export async function mount(options) {
     wasmoonUrl = DEFAULT_WASMOON_URL,
   } = options;
 
-  if (!hydroniumBaseUrl) throw new Error("hydronium.client.mount: hydroniumBaseUrl is required");
-  if (!manifestUrl) throw new Error("hydronium.client.mount: manifestUrl is required");
+  const bundled = Array.isArray(chunkUrls) && chunkUrls.length > 0;
   if (!appModuleId) throw new Error("hydronium.client.mount: appModuleId is required");
-  if (!appModuleUrl) throw new Error("hydronium.client.mount: appModuleUrl is required");
+  if (!bundled) {
+    if (!hydroniumBaseUrl) throw new Error("hydronium.client.mount: hydroniumBaseUrl is required (or pass chunkUrls)");
+    if (!manifestUrl) throw new Error("hydronium.client.mount: manifestUrl is required (or pass chunkUrls)");
+    if (!appModuleUrl) throw new Error("hydronium.client.mount: appModuleUrl is required (or pass chunkUrls)");
+  }
 
   const containerEl = typeof container === "string" ? document.querySelector(container) : container;
   if (!containerEl) {
@@ -116,47 +140,85 @@ export async function mount(options) {
   }
   lua.global.set("__hydronium_container", containerEl);
 
-  const manifestRes = await fetch(manifestUrl);
-  if (!manifestRes.ok) {
-    throw new Error(`hydronium.client.mount: failed to fetch manifest ${manifestUrl}: ${manifestRes.status}`);
-  }
-  const manifest = await manifestRes.json();
-
-  const moduleEntries = await Promise.all(
-    Object.entries(manifest).map(async ([moduleId, relPath]) => {
-      const url = `${hydroniumBaseUrl.replace(/\/+$/, "")}/${relPath}`;
+  if (bundled) {
+    // Real chunk source is passed as a global string and `load()`ed
+    // Lua-side, never interpolated into a JS template literal -- a
+    // compiled Lua chunk routinely contains `]==]`/backtick/`${`-looking
+    // byte sequences that would corrupt a naive string interpolation.
+    // Same reasoning as toLuaLiteral()'s own doc comment above for props.
+    for (const url of chunkUrls) {
       const res = await fetch(url);
       if (!res.ok) {
-        throw new Error(`hydronium.client.mount: failed to fetch module '${moduleId}' from ${url}: ${res.status}`);
+        throw new Error(`hydronium.client.mount: failed to fetch chunk ${url}: ${res.status}`);
       }
-      return [moduleId, await res.text()];
-    })
-  );
+      const src = await res.text();
+      lua.global.set("__hydronium_chunk_src", src);
+      await lua.doString('assert(load(__hydronium_chunk_src, "@hydronium-chunk"))()');
+    }
+  } else {
+    const manifestRes = await fetch(manifestUrl);
+    if (!manifestRes.ok) {
+      throw new Error(`hydronium.client.mount: failed to fetch manifest ${manifestUrl}: ${manifestRes.status}`);
+    }
+    const manifest = await manifestRes.json();
 
-  const appRes = await fetch(appModuleUrl);
-  if (!appRes.ok) {
-    throw new Error(`hydronium.client.mount: failed to fetch app module from ${appModuleUrl}: ${appRes.status}`);
-  }
-  const appSource = await appRes.text();
+    const moduleEntries = await Promise.all(
+      Object.entries(manifest).map(async ([moduleId, relPath]) => {
+        const url = `${hydroniumBaseUrl.replace(/\/+$/, "")}/${relPath}`;
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(`hydronium.client.mount: failed to fetch module '${moduleId}' from ${url}: ${res.status}`);
+        }
+        return [moduleId, await res.text()];
+      })
+    );
 
-  for (const [moduleId, source] of moduleEntries) {
-    lua.global.set(luaModuleGlobalKey(moduleId), source);
+    const appRes = await fetch(appModuleUrl);
+    if (!appRes.ok) {
+      throw new Error(`hydronium.client.mount: failed to fetch app module from ${appModuleUrl}: ${appRes.status}`);
+    }
+    const appSource = await appRes.text();
+
+    for (const [moduleId, source] of moduleEntries) {
+      lua.global.set(luaModuleGlobalKey(moduleId), source);
+    }
+    lua.global.set("__hydronium_app_src", appSource);
+    lua.global.set("__hydronium_app_module_id_unbundled", appModuleId);
+
+    const preloadLua = moduleEntries
+      .map(([moduleId]) => {
+        const key = luaModuleGlobalKey(moduleId);
+        return `package.preload["${moduleId}"] = assert(load(${key}, "${moduleId}"))`;
+      })
+      .join("\n");
+    await lua.doString(preloadLua);
+    await lua.doString(
+      "package.preload[__hydronium_app_module_id_unbundled] = assert(load(__hydronium_app_src, __hydronium_app_module_id_unbundled))"
+    );
   }
-  lua.global.set("__hydronium_app_src", appSource);
+
   lua.global.set("__hydronium_app_module_id", appModuleId);
   lua.global.set("__hydronium_props_src", `return ${toLuaLiteral(props)}`);
   lua.global.set("__hydronium_hydrate", hydrate === true);
 
-  const preloadLua = moduleEntries
-    .map(([moduleId]) => {
-      const key = luaModuleGlobalKey(moduleId);
-      return `package.preload["${moduleId}"] = assert(load(${key}, "${moduleId}"))`;
-    })
-    .join("\n");
-  await lua.doString(preloadLua);
-
   await lua.doString(`
-    package.preload[__hydronium_app_module_id] = assert(load(__hydronium_app_src, __hydronium_app_module_id))
+    -- The "hydronium" luax compile target unconditionally emits
+    -- H.h(...) for every element regardless of bare vs. lexical tags (H
+    -- is the createElement factory reference; bare/lexical only changes
+    -- the TAG argument) -- see run.lua/run_luax.lua's own
+    -- shared_env = {H = hydronium, ...} pattern elsewhere in this
+    -- codebase. A module loaded via plain load() with no explicit env
+    -- (as both the bundled and unbundled preload loaders above are)
+    -- resolves H through the ambient globals, so it must be set as a
+    -- real global before requiring any .luax-compiled app entry.
+    -- pcall'd: an app entry that never needs H (hand-written Lua calling
+    -- hydronium_dom directly, e.g. examples/meteorite_ssr/client_mount_demo)
+    -- may not have the top-level "hydronium" barrel in its own module
+    -- set at all (found live: it broke that exact real, already-verified
+    -- demo when this was an unconditional require) -- only apps that
+    -- actually reference H.h(...) need this to have succeeded.
+    local __H_ok, __H_mod = pcall(require, "hydronium")
+    if __H_ok then H = __H_mod end
 
     local element = require("hydronium.core.element")
     local dom = require("hydronium_dom")

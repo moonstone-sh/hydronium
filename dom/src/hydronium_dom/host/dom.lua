@@ -89,6 +89,7 @@ local function default_bridge()
     is_text = _G.__dom_is_text,
     tag_of = _G.__dom_tag_of,
     hydration_mismatch = _G.__dom_hydration_mismatch,
+    is_comment = _G.__dom_is_comment,
   }
 end
 
@@ -266,6 +267,19 @@ function M.createDomHost(bridge)
 
   function host.tagOf(node)
     return bridge.tag_of(node)
+  end
+
+  -- Optional (mirrors hydrationMismatch's own pattern below): lets
+  -- Reconciler:hydrate's transparent-island branch skip real SSR-emitted
+  -- HTML comment island markers (<!--hy:i:...-->/<!--hy:/i:...-->)
+  -- instead of misreading one as a real content mismatch -- see that
+  -- branch's own doc comment (core/reconciler.lua) for the real bug this
+  -- closes, found via a live SSR-to-hydrate Playwright proof. A bridge
+  -- that doesn't provide `is_comment` degrades to the pre-fix behavior.
+  if bridge.is_comment then
+    function host.isCommentNode(node)
+      return bridge.is_comment(node) == true
+    end
   end
 
   host.mismatchLog = {}

@@ -51,6 +51,12 @@ meteorite.site(app, {
     ["/js/bootstrap/:path*"] = { dir = "../../dom/src/hydronium_dom/client", param = "path" },
     ["/__hydronium/hmr-demo/:path*"] = { dir = "hmr_demo", param = "path" },
     ["/__hydronium/client-mount-demo/:path*"] = { dir = "client_mount_demo", param = "path" },
+    -- The real hydronium-ballad build output (see ../partiture.lua --
+    -- `moon exec ballad -- play partiture.lua`, run BEFORE `zig build`,
+    -- since meteorite.site bakes file content at graph/build time, not
+    -- just the file list -- see route 9's own comment below for the
+    -- live-verified finding that drives this ordering requirement).
+    ["/dist/client/:path*"] = { dir = "dist/client", param = "path" },
   },
 })
 
@@ -542,6 +548,83 @@ app:get("/__hydronium/hmr-demo-arbitrary-tree-counter", function(c)
   local content = f:read("*a")
   f:close()
   return c:text(200, content)
+end)
+
+-- 12. The real hydronium-ballad M4/M5 proof: SSR-renders hydrate_demo/app.lua
+--     (a plain-Lua component, wrapped in d.lua.mount -- the same real
+--     root-mount API every hydronium-dom page uses) to real HTML via
+--     server.render_to_string, then hydrates it client-side against the
+--     REAL, separately-built bundled chunk under dist/client/ (built by
+--     ../partiture.lua's hydronium_ballad.plugins.client pipeline --
+--     run `moon exec ballad -- play partiture.lua` before `zig build`).
+--     Deliberately NOT routed through meteorite_adapter.render/AppView's
+--     shared page shell -- this route needs to inject its own <script
+--     type="module"> calling mount(), which that adapter's fixed
+--     "render one vnode as the whole page body" shape doesn't leave room
+--     for; every other real route in this file already demonstrates
+--     that shared-shell path, so this one demonstrates the other real,
+--     legitimate way to use hydronium_dom.server directly instead.
+--
+--     `suppress_client_plan_script = true` deliberately keeps the
+--     client-plan <script> tag OUT of `html` (which goes inside
+--     `<div id="app">`) -- that tag is real SSR metadata about the
+--     page's own islands, not part of any one island's own DOM output,
+--     and belongs alongside the mount() call below, not inside the
+--     container hydrate() will walk.
+--
+--     Finds the real, content-hashed chunk filename by listing
+--     dist/client/ at request time (io.popen, the same technique route
+--     9's own fingerprint() helper already uses in this file) rather
+--     than hardcoding a hash that changes on every real rebuild.
+app:get("/hydrate-demo", function(c)
+  local hydronium = require("hydronium")
+  local dom = require("hydronium_dom")
+  local server = require("hydronium_dom.server")
+
+  local App = dofile("hydrate_demo/app.lua")
+  local initial = 10
+  local html = server.render_to_string(dom.d.lua.mount(hydronium.h(App, { initial = initial })), {
+    suppress_client_plan_script = true,
+  })
+
+  local chunk_url = nil
+  local list_proc = io.popen("ls dist/client/*.lua 2>/dev/null")
+  if list_proc then
+    local path = list_proc:read("*l")
+    list_proc:close()
+    if path then
+      chunk_url = "/" .. path
+    end
+  end
+  if not chunk_url then
+    return c:text(500, "hydrate-demo: no built client bundle found under dist/client -- "
+      .. "run: moon exec ballad -- play partiture.lua")
+  end
+
+  local page = "<!doctype html>\n<html><head><meta charset=\"utf-8\">"
+    .. "<title>Hydronium SSR + real hydrate | Meteorite</title></head><body>"
+    .. "<h1>Real SSR + real client hydrate, over a real compiled Meteorite socket</h1>"
+    .. "<p>The button below was rendered server-side; clicking it is handled by the real "
+    .. "client-side reconciler after hydration claimed this exact DOM node (see "
+    .. "docs/HYDRONIUM_BALLAD_ARCHITECTURE_PLAN.md's M4 section for how that was verified).</p>"
+    .. "<div id=\"app\">" .. html .. "</div>"
+    .. "<script type=\"module\">"
+    .. "import { mount } from \"/js/bootstrap/mount.js\";"
+    .. "mount({ chunkUrls: [" .. string.format("%q", chunk_url) .. "], appModuleId: \"app\", "
+    .. "container: \"#app\", props: { initial: " .. initial .. " }, hydrate: true })"
+    .. ".then(() => { window.__hydrated = true; })"
+    .. ".catch((e) => { window.__hydrateError = String((e && e.stack) || e); window.__hydrated = true; "
+    .. "console.error(e); });"
+    .. "</script>"
+    .. "</body></html>"
+
+  -- A plain response table, NOT c:html(...) -- found live (a real
+  -- compiled-binary run, not assumed from meteorite_adapter.render's own
+  -- `if type(c.html) == "function"` defensive check, which is dead code
+  -- in practice): this context has no `html` method at all. `content_type`
+  -- must live here, top-level -- Meteorite reserves it out of `headers`
+  -- (see meteorite_adapter.render's own comment on this exact rule).
+  return { status = 200, content_type = "text/html; charset=utf-8", headers = {}, body = page }
 end)
 
 return app

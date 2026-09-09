@@ -26,3 +26,7 @@ path = "dom"
 [[orbits.member]]
 name = "ink"
 path = "ink"
+
+[[orbits.member]]
+name = "ballad"
+path = "build"

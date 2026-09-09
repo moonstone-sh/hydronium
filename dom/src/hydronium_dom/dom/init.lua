@@ -106,8 +106,30 @@ local js_script = create_script_descriptor("js")
 --- hydration machinery"). Not a JSX tag -- an ordinary function call,
 --- since it is always used as `return d.lua.mount(<App/>)`, not inside a
 --- LUAX tag position.
-local function lua_mount(vnode)
-  return elementModule.createElement(lua_island, { root = true }, vnode)
+--- @param vnode LuaxElement
+--- @param opts? { module: string, mode: string, hydrate: string } `module`
+---   is the app root component's own `require()` id -- OPTIONAL (nothing
+---   breaks if omitted, matching every existing call site), but without
+---   it `server/init.lua`'s `client_plan.islands` entry for this mount
+---   carries no way to know which Lua module actually renders it (the
+---   entry's own `raw_props.module` read is already real and unconditional
+---   -- it works for `<d.lua.island module="...">` today; `lua_mount`
+---   itself was the one gap, hardcoding `{root=true}` with no way to
+---   pass `module` alongside it). Real, current consumer:
+---   hydronium_ballad.plugins.client's M3 code-splitting, which needs a
+---   Lua module id per entry point and has nowhere else to get one for a
+---   root-mounted app (see docs/HYDRONIUM_CLIENT_BUNDLER_MINIFIER_PLAN.md's
+---   "Hazard" and M3 sections) -- deriving it via `debug.getinfo` on the
+---   component function was considered and rejected there, since
+---   amalgamation changes chunknames, breaking exactly that.
+local function lua_mount(vnode, opts)
+  opts = opts or {}
+  return elementModule.createElement(lua_island, {
+    root = true,
+    module = opts.module,
+    mode = opts.mode,
+    hydrate = opts.hydrate,
+  }, vnode)
 end
 
 -- Empty outer tables with all real values behind __index: unlike a table

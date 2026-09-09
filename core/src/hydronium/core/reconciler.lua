@@ -287,11 +287,49 @@ function Reconciler:hydrate(vnode, parentHostNode, domNode, boundaryNode, parent
     local firstHostNode = nil
     local raw, len = getChildrenList(vnode)
     local cursor = domNode
+
+    -- Real SSR output wraps EVERY island's content (including a
+    -- root-mounted app via d.lua.mount, which is a root-sized island --
+    -- see this file's own comment on that above) in real HTML comment
+    -- marker nodes: <!--hy:i:ID:interpreter-->...<!--hy:/i:ID--> (see
+    -- hydronium_dom.server's island rendering). Those exist purely for
+    -- CLIENT-SIDE DISCOVERY -- irrelevant here, since Lua hydration
+    -- already has the full vnode tree and never needs to "discover"
+    -- where an island starts/ends from raw markup at all. FOUND LIVE (a
+    -- real Playwright SSR-to-hydrate proof, not reasoned about): without
+    -- skipping these, the very first real child's hydrate call sees the
+    -- OPENING marker itself as `domNode`, fails `host.isElementNode`,
+    -- and silently falls back to a full remount of that child -- which
+    -- then orphans the real pre-existing element AND the closing marker
+    -- as "extra" siblings, both removed. Net effect: hydration APPEARED
+    -- to work (the page still rendered and updated correctly after a
+    -- click) while actually having thrown away and rebuilt the entire
+    -- DOM subtree every time -- for every real page, since d.lua.mount
+    -- is the only documented root-mount API and it is always
+    -- island-wrapped. `host.isCommentNode` is optional (mirrors
+    -- `host.hydrationMismatch`'s own pattern) so a host that never
+    -- provides it degrades to the old (broken-for-real-SSR-output, but
+    -- unchanged) behavior rather than erroring. `cursor ~= boundaryNode`
+    -- guards a bounded partial-island hydration whose own boundary
+    -- sentinel might itself be a comment node -- never skip past that.
+    local function skipCommentMarkers(node)
+      if not host.isCommentNode then
+        return node
+      end
+      while node and node ~= boundaryNode and host.isCommentNode(node) do
+        node = host.nextSibling(node)
+      end
+      return node
+    end
+
+    cursor = skipCommentMarkers(cursor)
     for i = 1, len do
       local childHost, nextCursor = self:hydrate(raw[i], parentHostNode, cursor, boundaryNode, parentComponent)
       if not firstHostNode and childHost then firstHostNode = childHost end
       cursor = nextCursor
     end
+    cursor = skipCommentMarkers(cursor)
+
     vnode.hostNode = firstHostNode
     return firstHostNode, cursor
   end

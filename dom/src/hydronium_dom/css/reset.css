@@ -1,0 +1,57 @@
+/*
+  hydronium_dom's own minimal CSS reset -- hand-written, ~30 real rules,
+  NOT a vendored copy of normalize.css/modern-normalize (this codebase
+  maintains a zero-external-dependency invariant, see docs/BUNDLING.md
+  section 1.1 -- a third-party reset file with its own license/version
+  churn would violate that for a cosmetic convenience). Opt-in per build
+  via hydronium_ballad.plugins.style's `reset` option (default true for
+  DOM targets; hydronium-ink has no CSS concept at all and never applies
+  this). Deliberately small and boring: border-box everywhere, zero the
+  handful of elements browsers give non-zero default margin/padding to,
+  make media elements not overflow their container, and normalize the
+  couple of form-control quirks that trip people up most.
+*/
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd {
+  margin: 0;
+}
+
+ul[role="list"], ol[role="list"] {
+  list-style: none;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  line-height: 1.5;
+}
+
+body {
+  min-height: 100vh;
+}
+
+img, picture, svg, video {
+  display: block;
+  max-width: 100%;
+}
+
+input, button, textarea, select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+a {
+  color: inherit;
+  text-decoration: inherit;
+}

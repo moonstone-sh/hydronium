@@ -13,6 +13,7 @@ abi = "5.4"
 
 [scripts]
 "graph" = "moon exec meteorite graph src/main.lua .meteorite/graph/current release-hybrid fast_http"
+"package" = "moon exec ballad -- play partiture.lua"
 
 [[dependencies]]
 name = "moonstone/meteorite"
@@ -23,6 +24,12 @@ role = "tool"
 name = "moonstone/ballad"
 constraint = "^0.3.0"
 role = "tool"
+
+[[dependencies]]
+name = "hydronium-ballad"
+constraint = "path:../../build"
+registry = "path"
+role = "runtime"
 
 [[dependencies]]
 name = "hydronium"

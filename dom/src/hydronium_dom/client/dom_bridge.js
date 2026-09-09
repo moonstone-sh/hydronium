@@ -115,6 +115,18 @@ export function createDomBridge() {
       return tagOf(node);
     },
     // Optional (hydronium.host.dom.createDomHost does not require this
+    // one to be present) -- lets Reconciler:hydrate's transparent-island
+    // branch skip real SSR-emitted HTML comment island markers
+    // (<!--hy:i:...-->/<!--hy:/i:...-->) instead of misreading one as a
+    // real content mismatch. Found live, via a real SSR-to-hydrate
+    // Playwright proof, that without this hydration silently fell back
+    // to a full remount for every real island-wrapped page (i.e. every
+    // real page using d.lua.mount, the only documented root-mount API) --
+    // see core/reconciler.lua's own doc comment on that branch.
+    is_comment(node) {
+      return node != null && node.nodeType === 8;
+    },
+    // Optional (hydronium.host.dom.createDomHost does not require this
     // one to be present) -- surfaces a real hydration mismatch to the
     // browser console instead of only an in-VM Lua table nothing else
     // reads.

@@ -140,6 +140,26 @@ local function makeFakeBridge()
     table.insert(bridge.mismatches, reason)
   end
 
+  function bridge.is_comment(node)
+    return node ~= nil and node.kind == "comment"
+  end
+
+  -- Test-only helper (not part of the real bridge contract) for building
+  -- real SSR-shaped island-marker comment nodes directly into a fake
+  -- PRE-EXISTING tree (bypassing bridge.append_child/its call log
+  -- entirely -- a real browser's own HTML parser creates these nodes
+  -- before any bridge call ever happens, exactly like the element/text
+  -- nodes a real hydrate test's "pre-existing tree" setup already builds
+  -- directly), so a hydrate test can exercise Reconciler:hydrate's
+  -- comment-marker-skipping (core/reconciler.lua) without a real browser DOM.
+  function bridge.append_comment_for_test(parent, text)
+    local n = newNode("comment")
+    n.text = text
+    n.parent = parent
+    table.insert(parent.children, n)
+    return n
+  end
+
   return bridge, function(tag) local n = newNode("element"); n.tag = tag; return n end
 end
 
@@ -325,5 +345,46 @@ describe("hydronium.host.dom -- integration with the real Reconciler", function(
     )
     reconciler:reconcile(nil, vnode1, vnode2, nil)
     assert.equal(rootNode.children[1].children[1].text, "Count: 1", "the SAME text node must have been updated in place")
+  end)
+
+  it("hydrates through real HTML comment island markers (d.lua.mount's own SSR output shape) "
+    .. "without falling back to a full remount -- regression test for a real bug found live via "
+    .. "Playwright (see core/reconciler.lua's own doc comment on the FRAGMENT/transparent-island "
+    .. "branch, and docs/HYDRONIUM_BALLAD_ARCHITECTURE_PLAN.md's M4 section)", function()
+    local H = require("hydronium")
+    local dom = require("hydronium_dom")
+    local bridge, make_root = makeFakeBridge()
+    local host = domHostModule.createDomHost(bridge)
+    local reconciler = H.Reconciler.new(host)
+
+    -- Build the exact real shape hydronium_dom.server emits for a
+    -- root-mounted app: <!--hy:i:ID:lua--><button>...</button><!--hy:/i:ID-->
+    local root = make_root("div")
+    bridge.append_comment_for_test(root, "hy:i:hy:i1:lua")
+    local realButton = make_root("button")
+    realButton.parent = root
+    table.insert(root.children, realButton)
+    local realText = { id = "t1", kind = "text", text = "Count: 10", children = {}, attrs = {}, listeners = {} }
+    realText.parent = realButton
+    table.insert(realButton.children, realText)
+    bridge.append_comment_for_test(root, "hy:/i:hy:i1")
+
+    local function App(props)
+      return dom.d.lua.mount(H.h("button", nil, "Count: " .. tostring(props.initial)))
+    end
+    local tree = H.h(App, { initial = 10 })
+
+    local hostNode = reconciler:hydrateRoot(tree, root)
+
+    assert.equal(hostNode, realButton, "must claim the real pre-existing button, not create a new one")
+    assert.equal(#bridge.mismatches, 0, "must report zero hydration mismatches: " .. table.concat(bridge.mismatches, ", "))
+    local created_new_element = false
+    for _, call in ipairs(bridge.calls) do
+      if call[1] == "create_element" then created_new_element = true end
+    end
+    assert.falsy(created_new_element, "must not create a new element when the real tree already matches")
+    -- The comment markers themselves must still be there, untouched --
+    -- skipping them for matching purposes is not the same as removing them.
+    assert.equal(#root.children, 3, "the two comment markers plus the real button must all still be present")
   end)
 end)

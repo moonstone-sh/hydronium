@@ -5,8 +5,12 @@ local describe, it, assert = runner.describe, runner.it, runner.assert
 
 describe("hydronium core barrel package boundary", function()
   it("requiring core does not load DOM or LUAX packages in a fresh process", function()
+    -- A bare `lua` binary isn't guaranteed to be on PATH (this workspace's
+    -- own toolchain is LuaJIT, materialized via `moon sync`/`moon exec`);
+    -- `luajit` is the one interpreter every environment running this
+    -- suite already has, since `tests/runner.lua` itself runs under it.
     local handle = io.popen(
-      "lua -e '" ..
+      "luajit -e '" ..
       "package.path = \"core/src/?.lua;core/src/?/init.lua;luax/src/?.lua;luax/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;\" .. package.path; " ..
       "require(\"hydronium\"); " ..
       "print(\"dom=\" .. tostring(package.loaded[\"hydronium_dom\"] ~= nil)); " ..

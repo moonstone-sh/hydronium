@@ -46,6 +46,19 @@ describe("Hydronium DOM Islands (d.lua / d.js)", function()
     assert.equal(mounted.kind, symbols.ISLAND)
     assert.equal(mounted.tag.interpreter, "lua")
     assert.equal(mounted.props.root, true)
+    assert.equal(mounted.props.module, nil)
+  end)
+
+  it("d.lua.mount(vnode, opts) accepts an optional module id alongside root=true -- needed by "
+    .. "hydronium_ballad.plugins.client's code-splitting (see docs/HYDRONIUM_CLIENT_BUNDLER_MINIFIER_PLAN.md), "
+    .. "which has no other way to learn a root-mounted app's own entry module id", function()
+    local App = function() return H.h("div", nil, "app") end
+    local mounted = d.lua.mount(H.h(App), { module = "app.client.root", mode = "replace", hydrate = "visible" })
+    assert.equal(mounted.kind, symbols.ISLAND)
+    assert.equal(mounted.props.root, true)
+    assert.equal(mounted.props.module, "app.client.root")
+    assert.equal(mounted.props.mode, "replace")
+    assert.equal(mounted.props.hydrate, "visible")
   end)
 end)
 
@@ -66,6 +79,15 @@ describe("Hydronium SSR Island Rendering (v1: buffered, SSR-only)", function()
     assert.equal(#plan.islands, 1)
     assert.equal(plan.islands[1].interpreter, "lua")
     assert.equal(plan.islands[1].hydrate, "visible")
+  end)
+
+  it("records a root-mounted d.lua.mount's module id in the ClientPlan, when given one", function()
+    local App = function() return H.h("div", nil, "app") end
+    local html, plan = server.render_to_string(d.lua.mount(H.h(App), { module = "app.client.root" }))
+    assert.truthy(html)
+    assert.equal(#plan.islands, 1)
+    assert.equal(plan.islands[1].root, true)
+    assert.equal(plan.islands[1].module, "app.client.root")
   end)
 
   it("assigns distinct, deterministic (non-random, non-pointer) IDs to multiple islands in tree order", function()
