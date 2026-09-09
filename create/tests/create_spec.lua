@@ -22,7 +22,7 @@ print("\n--- hydronium-create unit tests ---")
 
 test("available_templates lists all supported templates", function()
   local tmpls = create.available_templates()
-  assert(#tmpls == 3, "expected 3 templates, got " .. #tmpls)
+  assert(#tmpls == 4, "expected 4 templates, got " .. #tmpls)
   local ids = {}
   for _, t in ipairs(tmpls) do
     ids[t.id] = true
@@ -30,11 +30,47 @@ test("available_templates lists all supported templates", function()
   assert(ids.ssr, "missing ssr template")
   assert(ids.islands, "missing islands template")
   assert(ids.minimal, "missing minimal template")
+  assert(ids.ink, "missing ink template")
   -- `spa` is deliberately NOT listed -- see templates/spa.lua's own
   -- header comment and create.scaffold's explicit gate below. Nothing it
   -- promised (h.mount, a client bundler, a `hydronium` CLI binary) is
   -- real in the framework today.
   assert(not ids.spa, "spa should not be listed as an available template")
+end)
+
+test("scaffold dry-run produces a portable Ink terminal project", function()
+  local res, err = create.scaffold({
+    directory = "/tmp/test-hydronium-ink",
+    template = "ink",
+    name = "test-ink-app",
+    dry_run = true,
+  })
+  assert(res ~= nil, "scaffold returned nil: " .. tostring(err))
+  assert(res.next_script == "run", "ink should direct users to the run script")
+
+  local file_map = {}
+  for _, file in ipairs(res.created) do file_map[file.path] = true end
+  assert(file_map["moonstone.toml"], "missing moonstone.toml")
+  assert(file_map[".gitignore"], "missing .gitignore")
+  assert(file_map["run.lua"], "missing run.lua")
+  assert(file_map["src/App.luax"], "missing src/App.luax")
+  assert(file_map["README.md"], "missing README.md")
+  assert(file_map[".luarc.json"], "missing .luarc.json")
+end)
+
+test("Ink rejects non-LuaJIT interpreters before writing", function()
+  local target = "/tmp/test-hydronium-ink-wrong-runtime"
+  os.execute(string.format('rm -rf "%s"', target))
+  local res, err = create.scaffold({
+    directory = target,
+    template = "ink",
+    interpreter = "lua@5.4",
+  })
+  assert(res == nil, "expected Ink scaffold to reject PUC Lua")
+  assert(err:find("luajit@2.1", 1, true), "error should name the supported interpreter")
+  local exists = io.open(target .. "/moonstone.toml", "r")
+  assert(exists == nil, "runtime rejection must happen before files are written")
+  if exists then exists:close() end
 end)
 
 test("scaffold rejects the disabled spa template with a clear error", function()
@@ -188,7 +224,28 @@ test("CLI declarations and completion run on Clingy 0.4", function()
   assert(output:find("V\t2", 1, true), "missing Clingy completion protocol header")
   assert(output:find("C\tssr", 1, true), "missing ssr completion")
   assert(output:find("C\tislands", 1, true), "missing islands completion")
-  assert(output:find("C\tminimal", 1, true), "missing minimal completion")
+  assert(output:find("C\tink", 1, true), "missing ink completion")
+  assert(not output:find("C\tminimal", 1, true), "minimal must be exposed as --minimal, not a template value")
+end)
+
+test("CLI exposes minimal as an exclusive flag", function()
+  local minimal = assert(io.popen([[lua ./src/main.lua --minimal --dry-run 2>&1]]))
+  local minimal_output = minimal:read("*a")
+  assert(minimal:close(), "--minimal dry-run failed")
+  assert(minimal_output:find("src/main.lua", 1, true), "--minimal did not select the minimal scaffold")
+  assert(minimal_output:find("moon run run", 1, true), "--minimal printed the wrong next step")
+
+  local mixed = assert(io.popen([[lua ./src/main.lua --minimal --template ink --dry-run 2>&1; printf '\n__EXIT__%s\n' "$?"]]))
+  local mixed_output = mixed:read("*a")
+  mixed:close()
+  assert(mixed_output:find("__EXIT__1", 1, true), "--minimal with --template should fail")
+  assert(mixed_output:find("cannot be combined", 1, true), "mixed selector error is unclear")
+
+  local legacy = assert(io.popen([[lua ./src/main.lua --template minimal --dry-run 2>&1; printf '\n__EXIT__%s\n' "$?"]]))
+  local legacy_output = legacy:read("*a")
+  legacy:close()
+  assert(legacy_output:find("__EXIT__1", 1, true), "--template minimal should be rejected")
+  assert(legacy_output:find("selected with %-%-minimal"), "legacy selector error should direct users to --minimal")
 end)
 
 --------------------------------------------------------------------------------
@@ -294,19 +351,39 @@ test("every template's generated content actually parses/compiles (content-valid
     if tmpl.id == "ssr" or tmpl.id == "islands" then
       assert(manifest:find('name = "hydronium-luax"', 1, true), "[" .. tmpl.id .. "] missing hydronium-luax dependency")
       assert(manifest:find('name = "hydronium-dom"', 1, true), "[" .. tmpl.id .. "] missing hydronium-dom dependency")
+    elseif tmpl.id == "ink" then
+      assert(checked_luax > 0, "[ink] no .luax files were compiled")
+      assert(manifest:find('name = "hydronium%-ink"'), "[ink] missing hydronium-ink dependency")
+      assert(manifest:find('name = "hydronium%-ink".-constraint = "%^0%.1%.1"'), "[ink] must require the native-closure-aware hydronium-ink release")
+      assert(manifest:find('name = "hydronium%-luax"'), "[ink] missing hydronium-luax dependency")
+      assert(manifest:find('name = "luajit"', 1, true), "[ink] interpreter must be LuaJIT")
+      assert(manifest:find('version = "2.1.0"', 1, true), "[ink] must select LuaJIT 2.1.0")
+      assert(manifest:find('abi = "5.1"', 1, true), "[ink] must select Lua ABI 5.1")
+      assert(manifest:find('constraint = "%^0%.1%.0"'), "[ink] dependencies must use portable registry constraints")
+      assert(not manifest:find('registry = "path"', 1, true), "[ink] must not require a monorepo checkout")
+      assert(not manifest:find('path:', 1, true), "[ink] must not emit path constraints")
     end
 
     local luals_file = assert(io.open(dir .. "/.luarc.json", "r"))
     local luals_config = luals_file:read("*a")
     luals_file:close()
-    assert(luals_config:find("hydronium%-dom/types"), "[" .. tmpl.id .. "] missing packaged DOM types")
+    if tmpl.id ~= "ink" then
+      assert(luals_config:find("hydronium%-dom/types"), "[" .. tmpl.id .. "] missing packaged DOM types")
+    else
+      assert(luals_config:find("share/lua/5%.1"), "[ink] missing LuaJIT workspace library")
+      assert(not luals_config:find("hydronium%-dom/types"), "[ink] must not configure DOM types")
+    end
     if tmpl.id == "minimal" then
       assert(not luals_config:find("hydronium_luax", 1, true), "[minimal] must not configure an unavailable LUAX plugin")
       assert(not luals_config:find("ambient%-types"), "[minimal] must not opt into bare DOM globals")
     else
       assert(luals_config:find("hydronium_luax/luals/init.lua", 1, true), "[" .. tmpl.id .. "] missing LUAX plugin")
       assert(luals_config:find("hydronium%-luax/types"), "[" .. tmpl.id .. "] missing packaged LUAX types")
-      assert(luals_config:find("ambient%-types"), "[" .. tmpl.id .. "] missing bare DOM globals")
+      if tmpl.id == "ink" then
+        assert(not luals_config:find("ambient%-types"), "[ink] must not configure ambient DOM globals")
+      else
+        assert(luals_config:find("ambient%-types"), "[" .. tmpl.id .. "] missing bare DOM globals")
+      end
     end
 
     os.execute(string.format('rm -rf "%s"', dir))

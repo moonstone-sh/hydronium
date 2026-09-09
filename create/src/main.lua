@@ -7,7 +7,7 @@ local create = require("create.init")
 local app
 app = c.create({
   name = "hydronium-create",
-  version = "0.2.0",
+  version = "0.3.0",
   description = "Scaffold and initialize new Hydronium reactive Lua projects",
 
   c.root(c.node({
@@ -17,15 +17,16 @@ app = c.create({
     }),
 
     c.arg({ key = "directory", schema = v.string(), occurs = { min = 0, max = 1 }, complete = c.directory() }),
-    c.option({ key = "template", aliases = { "-t", "--template" }, value = { schema = v.string() }, complete = c.values({ "ssr", "islands", "minimal" }) }),
+    c.option({ key = "template", aliases = { "-t", "--template" }, value = { schema = v.string() }, complete = c.values(create.template_ids()) }),
     c.option({ key = "name", aliases = { "-n", "--name" }, value = { schema = v.string() } }),
     c.option({ key = "interpreter", aliases = { "-i", "--interpreter" }, value = { schema = v.string() }, complete = c.values({ "luajit@2.1", "lua@5.4" }) }),
+    c.flag({ key = "minimal", aliases = { "--minimal" } }),
     c.flag({ key = "force", aliases = { "-f", "--force" } }),
     c.flag({ key = "dry_run", aliases = { "--dry-run" } }),
 
     c.run(function(ctx)
       if ctx.args.version then
-        ctx:log("info", "hydronium-create v0.2.0")
+        ctx:log("info", "hydronium-create v0.3.0")
         return 0
       end
 
@@ -35,7 +36,15 @@ app = c.create({
       end
 
       local target_dir = ctx.args.directory or "."
-      local template_id = ctx.args.template or "ssr"
+      if ctx.args.minimal and ctx.args.template then
+        ctx:fail("--minimal cannot be combined with --template", 1)
+        return
+      end
+      if ctx.args.template == "minimal" then
+        ctx:fail("minimal is selected with --minimal, not --template minimal", 1)
+        return
+      end
+      local template_id = ctx.args.minimal and "minimal" or ctx.args.template or "ssr"
 
       ctx:log("info", string.format("Scaffolding Hydronium project in '%s' using template '%s'...", target_dir, template_id))
 
@@ -53,8 +62,8 @@ app = c.create({
           ctx:log("warn", "Operation cancelled.")
           return 0
         end
-        ctx:log("error", tostring(err))
-        return 1
+        ctx:fail(tostring(err), 1)
+        return
       end
 
       -- Render creation summary
@@ -74,7 +83,7 @@ app = c.create({
         io.stdout:write(string.format("  cd %s\n", result.target_dir))
       end
       io.stdout:write("  moon sync\n")
-      io.stdout:write("  moon run dev\n\n")
+      io.stdout:write("  moon run " .. result.next_script .. "\n\n")
 
       return 0
     end),

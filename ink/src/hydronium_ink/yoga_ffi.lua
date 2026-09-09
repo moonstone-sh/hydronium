@@ -23,16 +23,12 @@
   native/vendor/yoga/YGEnums.h's declaration order (plain sequential
   0-based C enums, no explicit values for any member used here).
 
-  LOADING: `ffi.load("yogacore")` first, which resolves purely through the
-  OS loader's normal search path -- this is what a real published package
-  would rely on via moonstone's native_lib provision projection (see
-  moonstone/docs/maintenance/native-library-projection-contract-2026-08-09.md),
-  which sets LD_LIBRARY_PATH/DYLD_FALLBACK_LIBRARY_PATH/PATH per host. That
-  mechanism only applies to registry/artifact-based dependencies, though,
-  and this repo's orbits members (core/dom/luax/ink) are ALL still pure
-  `path:` sibling dependencies today -- none of them has ever been
-  published (verified: no member has a partiture.lua yet). So for local
-  development right now, this file falls back to the specific
+  LOADING: `ffi.load("yogacore")` first, using Moonstone's native library
+  projection. A packaged dependency also gets a stable
+  `MOONSTONE_PACKAGE_ROOT_HYDRONIUM_INK` path; loading the collected library
+  from that root is the deterministic fallback when macOS strips or ignores a
+  DYLD_* search variable across a protected process boundary. For local path
+  development, this file finally falls back to the specific
   `native/dist/<triple>/libyogacore.<ext>` this repo's own build.zig
   produces, located relative to THIS FILE's own path via `debug.getinfo`
   (zero absolute/hardcoded paths, the same technique this repo's Neovim
@@ -170,6 +166,15 @@ local function load_yogacore()
   if ok then return lib end
 
   local triple, filename = local_dev_target()
+  local package_root = os.getenv("MOONSTONE_PACKAGE_ROOT_HYDRONIUM_INK")
+  local packaged_error
+  if package_root and package_root ~= "" then
+    local packaged = package_root .. "/" .. filename
+    local package_ok, package_lib = pcall(ffi.load, packaged)
+    if package_ok then return package_lib end
+    packaged_error = " or the packaged library at " .. packaged .. " (" .. tostring(package_lib) .. ")"
+  end
+
   -- this file lives at <pkg>/src/hydronium_ink/yoga_ffi.lua; native/ is two
   -- levels up from hydronium_ink/ (out of src/, into <pkg>/native/).
   local candidate = this_file_dir() .. "/../../native/dist/" .. triple .. "/" .. filename
@@ -178,7 +183,9 @@ local function load_yogacore()
 
   error(
     "hydronium_ink.yoga_ffi: could not load libyogacore via the OS loader search"
-      .. " (" .. tostring(lib) .. ") or the local-dev fallback at "
+      .. " (" .. tostring(lib) .. ")"
+      .. (packaged_error or "")
+      .. " or the local-dev fallback at "
       .. candidate .. " (" .. tostring(dev_lib) .. ")."
       .. " Run `zig build` in ink/native/ to produce the local-dev artifact.",
     0

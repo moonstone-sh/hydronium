@@ -1,20 +1,45 @@
 local writer = require("create.writer")
 local luals = require("create.luals")
 
-local templates = {
-  ssr = require("create.templates.ssr"),
-  islands = require("create.templates.islands"),
-  spa = require("create.templates.spa"),
-  minimal = require("create.templates.minimal"),
-}
-
 local create = {}
 
-local template_tooling = {
-  ssr = { luax = true, dom = true, bare_dom = true },
-  islands = { luax = true, dom = true, bare_dom = true },
-  minimal = { luax = false, dom = true, bare_dom = false },
+local template_order = { "ssr", "islands", "minimal", "ink" }
+local template_specs = {
+  ssr = {
+    module = require("create.templates.ssr"),
+    name = "SSR (Hydronium + Meteorite)",
+    description = "Full-stack server-side rendered application with reactive views",
+    tooling = { luax = true, dom = true, bare_dom = true },
+    next_script = "dev",
+  },
+  islands = {
+    module = require("create.templates.islands"),
+    name = "Islands Architecture",
+    description = "Server-rendered shell with a real, client-hydrated JS island",
+    tooling = { luax = true, dom = true, bare_dom = true },
+    next_script = "dev",
+  },
+  minimal = {
+    module = require("create.templates.minimal"),
+    name = "Minimal Component",
+    description = "Barebones reactive component for embedding or scripting",
+    tooling = { luax = false, dom = true, bare_dom = false },
+    next_script = "run",
+    cli_flag = true,
+  },
+  ink = {
+    module = require("create.templates.ink"),
+    name = "Ink Terminal App",
+    description = "Interactive terminal UI with Yoga layout and keyboard input",
+    tooling = { luax = true, dom = false, bare_dom = false },
+    interpreters = { "luajit@2.1" },
+    next_script = "run",
+  },
 }
+
+-- Load the disabled template so syntax regressions remain visible even though
+-- it is not advertised or scaffoldable yet.
+require("create.templates.spa")
 
 -- `spa` is intentionally excluded here (and from src/main.lua's
 -- `--template` completion list) -- see templates/spa.lua's own header
@@ -23,11 +48,20 @@ local template_tooling = {
 -- kept on disk (disabled) rather than deleted so the reasoning and the
 -- real prerequisites for bringing it back stay attached to the code.
 function create.available_templates()
-  return {
-    { id = "ssr", name = "SSR (Hydronium + Meteorite)", description = "Full-stack server-side rendered application with reactive views" },
-    { id = "islands", name = "Islands Architecture", description = "Server-rendered shell with a real, client-hydrated JS island" },
-    { id = "minimal", name = "Minimal Component", description = "Barebones reactive component for embedding or scripting" },
-  }
+  local result = {}
+  for _, id in ipairs(template_order) do
+    local spec = template_specs[id]
+    result[#result + 1] = { id = id, name = spec.name, description = spec.description }
+  end
+  return result
+end
+
+function create.template_ids()
+  local result = {}
+  for _, id in ipairs(template_order) do
+    if not template_specs[id].cli_flag then result[#result + 1] = id end
+  end
+  return result
 end
 
 local function shell_quote(str)
@@ -75,12 +109,27 @@ function create.scaffold(opts, ctx)
   -- must fail loudly with an explanation, not silently generate broken
   -- output (the bug this whole template set was audited for).
   if template_id == "spa" then
-    return nil, "Template 'spa' is not yet supported -- hydronium has no client-side SPA runtime yet. Use 'ssr', 'islands', or 'minimal'."
+    return nil, "Template 'spa' is not yet supported -- hydronium has no client-side SPA runtime yet. Use 'ssr', 'islands', 'minimal', or 'ink'."
   end
 
-  local template_mod = templates[template_id]
-  if not template_mod then
-    return nil, string.format("Unknown template '%s'. Available templates: ssr, islands, minimal", template_id)
+  local template_spec = template_specs[template_id]
+  if not template_spec then
+    return nil, string.format("Unknown template '%s'. Available templates: %s", template_id, table.concat(template_order, ", "))
+  end
+
+  local interpreter = opts.interpreter or "luajit@2.1"
+  if template_spec.interpreters then
+    local allowed = false
+    for _, candidate in ipairs(template_spec.interpreters) do
+      if interpreter == candidate then allowed = true break end
+    end
+    if not allowed then
+      return nil, string.format(
+        "Template '%s' requires one of: %s. hydronium-ink uses LuaJIT FFI for terminal layout.",
+        template_id,
+        table.concat(template_spec.interpreters, ", ")
+      )
+    end
   end
 
   local target_dir = opts.directory or "."
@@ -118,9 +167,9 @@ function create.scaffold(opts, ctx)
     end
   end
 
-  local files = template_mod.files({
+  local files = template_spec.module.files({
     name = project_name,
-    interpreter = opts.interpreter or "luajit@2.1",
+    interpreter = interpreter,
   })
 
   local results, err = writer.write_project(target_dir, files, {
@@ -132,11 +181,11 @@ function create.scaffold(opts, ctx)
 
   -- Configure LuaLS with Alter
   local luals_res, luals_err = luals.configure(target_dir, {
-    interpreter = opts.interpreter,
+    interpreter = interpreter,
     dry_run = opts.dry_run,
-    luax = template_tooling[template_id].luax,
-    dom = template_tooling[template_id].dom,
-    bare_dom = template_tooling[template_id].bare_dom,
+    luax = template_spec.tooling.luax,
+    dom = template_spec.tooling.dom,
+    bare_dom = template_spec.tooling.bare_dom,
   })
   if not luals_res then
     return nil, string.format("Scaffolding succeeded but LuaLS configuration failed: %s", tostring(luals_err))
@@ -159,6 +208,7 @@ function create.scaffold(opts, ctx)
     template = template_id,
     created = results.created,
     luals = luals_res,
+    next_script = template_spec.next_script,
     dry_run = opts.dry_run,
   }
 end

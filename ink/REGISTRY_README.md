@@ -8,4 +8,6 @@ moon add hydronium-ink
 ```
 
 It installs the `hydronium_ink` Lua namespace, resolves `hydronium`
-automatically, and ships prebuilt Yoga libraries under `native/dist/`.
+automatically, and projects the matching prebuilt Yoga library into the
+Moonstone runtime environment. Supported release targets are arm64 and x86-64
+macOS or glibc Linux; Windows is not supported yet.
