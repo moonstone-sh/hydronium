@@ -430,6 +430,7 @@ local function main()
       "tests/luax/isolation_spec.lua",
       "tests/luax/corpus_spec.lua",
       "tests/luax/environment_pragma_spec.lua",
+      "tests/luax/refresh_transform_spec.lua",
     }
   end
 

@@ -10,6 +10,9 @@
 local parser_mod = require("hydronium_luax.parser")
 local env_mod = require("hydronium_luax.environment")
 local sourcemap_mod = require("hydronium_luax.compiler.sourcemap")
+-- Only depends on hydronium_luax.ast, so this introduces no require cycle
+-- (loader.lua -> compiler -> transforms.refresh -> ast).
+local refresh_transform = require("hydronium_luax.transforms.refresh")
 
 local compiler = {}
 
@@ -776,6 +779,18 @@ function compiler.compile(source_or_ast, options)
     ast_root = source_or_ast
   end
 
+  -- HMR refresh-descriptor pass. Runs on the parsed AST, before codegen,
+  -- so it is a real compile-time transform rather than a runtime shim.
+  -- On by default: its whole point is that ordinary component source gets
+  -- state preservation without opting in. It is deliberately narrow --
+  -- anything it does not positively recognize is emitted byte-for-byte
+  -- unchanged (see hydronium_luax.transforms.refresh for the exact rules).
+  -- Pass `refresh_descriptors = false` to disable it entirely.
+  local refresh_stats = nil
+  if options.refresh_descriptors ~= false then
+    ast_root, refresh_stats = refresh_transform.transform(ast_root, { filename = filename })
+  end
+
   local env = options.env or env_mod.get_current()
   local emitter = CodeEmitter.new(filename, source_content, env, options)
 
@@ -796,6 +811,11 @@ function compiler.compile(source_or_ast, options)
     -- <alias>` pragma (resolved via the implicit default global instead).
     -- Empty when the file declares the pragma or uses only lexical/component tags.
     bare_tags_without_alias = emitter.bare_tags_without_alias,
+    -- { rewritten = <count>, descriptors = {{name, block_path}, ...},
+    --   setups = { block_path, ... } } from the HMR refresh pass, or nil
+    --   when that pass was disabled. `rewritten == 0` means the file had
+    --   no recognized signal declaration and was compiled unchanged.
+    refresh = refresh_stats,
   }
 end
 
