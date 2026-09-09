@@ -218,3 +218,264 @@ describe("Hydronium Suspense + Resource (v1: sequential/buffered SSR)", function
     assert.falsy(resource.isSuspension(err2))
   end)
 end)
+
+describe("Hydronium Suspense v2: coroutine-based resume-in-place", function()
+  it("onSuspend resolving synchronously produces real content in one call, with no fallback shown", function()
+    local res = resource.new()
+    local Profile = function()
+      return H.h("p", nil, res:get())
+    end
+    local vnode = H.h(H.Suspense, {
+      fallback = H.h("p", nil, "loading..."),
+      onSuspend = function(r) r:resolve("hello") end,
+    }, H.h(Profile))
+    local html = server.render_to_string(vnode)
+    assert.equal(html, "<p>hello</p>")
+    assert.falsy(html:find("loading", 1, true))
+  end)
+
+  it("preserves already-rendered sibling output across a resume instead of recomputing it", function()
+    local res = resource.new()
+    local render_count = 0
+    local Sibling = function()
+      render_count = render_count + 1
+      return H.h("span", nil, "before")
+    end
+    local Profile = function()
+      return H.h("span", nil, res:get())
+    end
+    local vnode = H.h(H.Suspense, {
+      fallback = H.h("p", nil, "loading..."),
+      onSuspend = function(r) r:resolve("after") end,
+    }, H.h(Sibling), H.h(Profile))
+    local html = server.render_to_string(vnode)
+    assert.equal(html, "<span>before</span><span>after</span>")
+    assert.equal(render_count, 1)
+  end)
+
+  it("a render error raised from onSuspend's own resolve still reaches the nearest ErrorBoundary", function()
+    local res = resource.new()
+    local Profile = function()
+      return H.h("p", nil, res:get())
+    end
+    local vnode = H.h(H.ErrorBoundary, {
+      fallback = function(err) return H.h("p", nil, "error: " .. tostring(err.message)) end,
+    }, H.h(H.Suspense, {
+      fallback = H.h("p", nil, "loading..."),
+      onSuspend = function() error("resolve failed", 0) end,
+    }, H.h(Profile)))
+    local ok, html = pcall(server.render_to_string, vnode)
+    assert.truthy(ok, tostring(html))
+    assert.truthy(html:find("error: resolve failed", 1, true))
+  end)
+
+  it("with no onSuspend, behavior is unchanged from v1 and a later resolve does not error", function()
+    local res = resource.new()
+    local Profile = function()
+      return H.h("p", nil, res:get())
+    end
+    local vnode = H.h(H.Suspense, { fallback = H.h("p", nil, "loading...") }, H.h(Profile))
+    local html = server.render_to_string(vnode)
+    assert.equal(html, "<p>loading...</p>")
+    -- Nothing declared intent to resume (no onSuspend), so no waiter was
+    -- registered -- resolving afterward is a harmless no-op from the
+    -- caller's point of view, exactly as in v1.
+    local ok = pcall(function() res:resolve("late") end)
+    assert.truthy(ok)
+  end)
+end)
+
+-- The specs above only ever exercise the SYNCHRONOUS resolve path, where
+-- onSuspend settles the resource during its own call and the boundary
+-- resumes in place. These cover the deferred path -- a resolve arriving
+-- after the boundary already committed its fallback -- which is where
+-- every serious v2 bug lived.
+describe("Hydronium Suspense v2: deferred (post-fallback) resolution", function()
+  -- Captures suspense diagnostics for the duration of `fn`, always
+  -- restoring the previous handler.
+  local function withDiagnostics(fn)
+    local seen = {}
+    local previous = resource.setSuspenseDiagnosticHandler(function(diag)
+      table.insert(seen, diag)
+    end)
+    local ok, err = pcall(fn, seen)
+    resource.setSuspenseDiagnosticHandler(previous)
+    if not ok then error(err, 0) end
+    return seen
+  end
+
+  local function findDiagnostic(seen, code)
+    for i = 1, #seen do
+      if seen[i].code == code then return seen[i] end
+    end
+    return nil
+  end
+
+  -- REGRESSION (CRITICAL): drive() returned false, the fallback was
+  -- written, then the registered waiter resumed the coroutine, which
+  -- flushed its buffer into the still-live write_fn. The output carried
+  -- BOTH the fallback and the real content, with the real content landing
+  -- wherever in tree order the resolve happened to occur.
+  it("does not duplicate output when a sibling resolves the resource mid-pass", function()
+    local seen = withDiagnostics(function()
+      local res = resource.new()
+      local stash = nil
+      local Profile = function() return H.h("p", nil, res:get()) end
+      local Later = function()
+        if stash then stash:resolve("LATE-REAL") end
+        return H.h("i", nil, "sibling")
+      end
+
+      local html = server.render_to_string(H.h("div", nil,
+        H.h(H.Suspense, {
+          fallback = H.h("p", nil, "loading..."),
+          onSuspend = function(r) stash = r end,
+        }, H.h(Profile)),
+        H.h(Later)
+      ))
+
+      -- The fallback, exactly once, in its correct position -- and the
+      -- resumed content nowhere at all.
+      assert.equal(html, "<div><p>loading...</p><i>sibling</i></div>")
+      assert.falsy(html:find("LATE-REAL", 1, true))
+    end)
+
+    -- Discarding it is deliberate, so it is reported rather than silent.
+    local diag = findDiagnostic(seen, "suspense.late_resolve")
+    assert.is_not_nil(diag)
+    -- The owning render was still in flight when the resolve arrived.
+    assert.falsy(diag.after_render)
+  end)
+
+  -- REGRESSION (MEDIUM): the resumed coroutine wrote real content into a
+  -- buffer table the caller had already concatenated and thrown away. No
+  -- error, no diagnostic -- the output simply vanished.
+  it("reports, rather than silently swallows, a resolve arriving after the render returned", function()
+    local stash = nil
+    local seen = withDiagnostics(function()
+      local res = resource.new()
+      local Profile = function() return H.h("p", nil, res:get()) end
+      local html = server.render_to_string(H.h(H.Suspense, {
+        fallback = H.h("p", nil, "loading..."),
+        onSuspend = function(r) stash = r end,
+      }, H.h(Profile)))
+      assert.equal(html, "<p>loading...</p>")
+
+      -- The render has returned its string to the caller. Now resolve.
+      local ok = pcall(function() stash:resolve("REAL") end)
+      assert.truthy(ok)
+    end)
+
+    local diag = findDiagnostic(seen, "suspense.late_resolve")
+    assert.is_not_nil(diag)
+    -- Distinguished from the mid-pass case above.
+    assert.truthy(diag.after_render)
+    assert.truthy(diag.message:find("already returned", 1, true))
+  end)
+
+  -- REGRESSION (CRITICAL): a genuine render error after a deferred resume
+  -- used to propagate out of Resource:resolve() at the resolver's own
+  -- call site -- arbitrary application code, nowhere near the
+  -- ErrorBoundary that should have handled it, and long after that
+  -- boundary had returned. Resource:resolve is a plain data setter and
+  -- must never throw a component's render error.
+  it("never throws a render error out of Resource:resolve() at the resolver's call site", function()
+    local stash = nil
+    withDiagnostics(function()
+      local res = resource.new()
+      local Bad = function()
+        local _ = res:get()
+        error("boom after resume", 0)
+      end
+      local html = server.render_to_string(H.h(H.ErrorBoundary, {
+        fallback = function(err) return H.h("p", nil, "caught: " .. tostring(err.message)) end,
+      }, H.h(H.Suspense, {
+        fallback = H.h("p", nil, "loading..."),
+        onSuspend = function(r) stash = r end,
+      }, H.h(Bad))))
+      assert.equal(html, "<p>loading...</p>")
+
+      local ok, err = pcall(function() stash:resolve("x") end)
+      assert.truthy(ok, "resolve() must not raise the subtree's render error: " .. tostring(err))
+    end)
+  end)
+
+  -- The ErrorBoundary reachability that IS preserved: a boundary inside
+  -- the Suspense subtree sits on the coroutine's own frozen stack, so it
+  -- still catches a render error raised after a synchronous resume.
+  it("an ErrorBoundary inside the Suspense subtree still catches an error raised after a resume", function()
+    local res = resource.new()
+    local Bad = function()
+      local _ = res:get()
+      error("boom after resume", 0)
+    end
+    local html = server.render_to_string(H.h(H.Suspense, {
+      fallback = H.h("p", nil, "loading..."),
+      onSuspend = function(r) r:resolve("ok") end,
+    }, H.h(H.ErrorBoundary, {
+      fallback = function(err) return H.h("p", nil, "caught: " .. tostring(err.message)) end,
+    }, H.h(Bad))))
+    assert.truthy(html:find("caught: boom after resume", 1, true))
+  end)
+
+  -- REGRESSION (HIGH): coroutine.isyieldable() is true inside ANY
+  -- coroutine, not only a Suspense-driven one. Resource:get() therefore
+  -- yielded the suspension straight past a resumable pcall to a driver
+  -- that had no idea what it was, leaving the coroutine suspended forever
+  -- with no diagnostic -- turning v1's catchable error into a silent
+  -- permanent hang for any coroutine-hosted renderer.
+  it("raises a catchable suspension inside a coroutine no Suspense boundary is driving", function()
+    local res = resource.new()
+    local co = coroutine.create(function()
+      local ok, err = pcall(function() return res:get() end)
+      return ok, err
+    end)
+
+    local resumed, ok, err = coroutine.resume(co)
+    assert.truthy(resumed)
+    -- The coroutine ran to completion rather than being left suspended.
+    assert.equal(coroutine.status(co), "dead")
+    -- pcall caught it, exactly as in v1.
+    assert.falsy(ok)
+    assert.truthy(resource.isSuspension(err))
+  end)
+
+  it("only yields inside a coroutine explicitly marked as Suspense-driven", function()
+    local res = resource.new()
+    local co = coroutine.create(function() return res:get() end)
+    resource.markDriven(co)
+    assert.truthy(resource.isDriven(co))
+
+    local resumed, yielded = coroutine.resume(co)
+    assert.truthy(resumed)
+    -- Marked: it suspends by yielding, and stays resumable.
+    assert.equal(coroutine.status(co), "suspended")
+    assert.truthy(resource.isSuspension(yielded))
+
+    resource.unmarkDriven(co)
+    assert.falsy(resource.isDriven(co))
+  end)
+
+  -- REGRESSION (MEDIUM): settle() cleared _waiters before iterating and
+  -- called each waiter unprotected, so the first waiter to throw both
+  -- escaped resolve() AND stranded every later waiter -- they had already
+  -- been detached from the list and were unreachable forever.
+  it("runs every waiter even when an earlier one throws, and contains the error", function()
+    local ran_second = false
+    local seen = withDiagnostics(function()
+      local res = resource.new()
+      res:_addWaiter(function() error("waiter exploded", 0) end)
+      res:_addWaiter(function() ran_second = true end)
+
+      local ok = pcall(function() res:resolve("value") end)
+      -- The failure did not escape the data setter...
+      assert.truthy(ok)
+      -- ...and the resource still settled correctly.
+      assert.equal(res:status(), "ready")
+    end)
+
+    -- ...and the sibling waiter still ran.
+    assert.truthy(ran_second)
+    assert.is_not_nil(findDiagnostic(seen, "suspense.waiter_error"))
+  end)
+end)

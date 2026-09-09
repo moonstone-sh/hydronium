@@ -20,10 +20,16 @@
 ---@field props table<string, any>
 ---@field children VNode[]
 ---@field key any
----@field ref table|fun(instance: any)
+---@field ref? table|fun(instance: any) # ELEMENT vnodes ONLY -- the only kind with a host node to bind. On every other kind (COMPONENT, BOUNDARY, FRAGMENT, SUSPENSE, ISLAND, SCRIPT) `ref` stays in `props.ref` as an ordinary prop, for the consumer to forward explicitly (see element.lua's createElement)
 ---@field text? string
 ---@field hostNode? any
 ---@field componentInstance? ComponentInstance
+--- Fine-grained reactive bindings (see docs/RECONCILIATION.md).
+---@field reactiveGetter? fun(): any # TEXT vnodes only: the bare signal/computed accessor or plain function child this text node's content comes from. Its presence is what makes the reconciler create a per-node binding effect instead of a static text node. `text` still holds the current resolved value, so SSR needs to know nothing about this field.
+---@field reactiveProps? table<string, fun(): any> # ELEMENT vnodes only: prop key -> the signal/computed accessor bound to it. Kept OFF `props`, which stays a fully-resolved plain snapshot; never populated for a COMPONENT, whose props must receive the accessor itself.
+---@field _bindingEffect? Effect # Internal. The live Effect patching this TEXT vnode's host node; carried across reconciles while the getter identity is unchanged AND the effect is not disposed.
+---@field _reactivePropEffects? table<string, Effect> # Internal. Per-prop-key binding effects for this ELEMENT vnode.
+---@field _reactivePropsCurrent? table<string, any> # Internal. The ONE mutable "complete current props" snapshot shared by all of this vnode's reactive-prop effects, so every host.commitUpdate call gets a full prop set rather than a per-key delta. Rebuilt (in place) whenever the underlying prop set changes, so removed props are not resurrected.
 
 ---@class Scope
 ---@field _typeof Symbol
@@ -146,6 +152,19 @@
 ---@class SuspenseProps
 ---@field fallback VNode
 ---@field children? any
+--- Called synchronously, during SSR only, the moment this boundary
+--- catches a suspension -- BEFORE it commits to `fallback`. If the
+--- handler resolves (or rejects) the resource during the call, the
+--- suspended subtree resumes exactly where `Resource:get()` left off,
+--- already-buffered sibling output intact, and no fallback is ever
+--- shown. If the resource is still pending when the handler returns,
+--- the fallback is committed and this boundary is CLOSED: a resolve
+--- arriving later can no longer contribute output (SSR writes a
+--- sequential stream) and is reported through the suspense diagnostic
+--- channel rather than written twice or silently dropped. So this is a
+--- hook for a synchronously-satisfiable source (a warm cache, a
+--- preloaded batch), not a general async escape hatch.
+---@field onSuspend? fun(resource: HydroniumResource<any>)
 
 ---@alias HydroniumResourceStatus "pending"|"ready"|"failed"
 

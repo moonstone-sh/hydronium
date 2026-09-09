@@ -184,4 +184,75 @@ describe("Core: Context & Refs", function()
     end)
   end)
 
+  describe("Refs on components (ref is an ordinary prop, not auto-forwarded)", function()
+    it("reaches a stateless component as props.ref, for the author to forward manually", function()
+      local nodeRef = H.create_ref()
+
+      local function Fancy(props)
+        return H.h("button", { ref = props.ref, id = "fancy-btn" }, "click")
+      end
+
+      local root = H.create_test_root()
+      root:render(H.h(Fancy, { ref = nodeRef }))
+
+      assert.is_not_nil(nodeRef.current)
+      assert.equal(nodeRef.current.tag, "button")
+      assert.equal(nodeRef.current.props.id, "fancy-btn")
+
+      root:unmount()
+      assert.is_nil(nodeRef.current)
+    end)
+
+    it("reaches a setup-shape component (returns a render function) as props.ref too", function()
+      local nodeRef = H.create_ref()
+
+      local function Fancy(props, scope)
+        return function()
+          return H.h("input", { ref = props.ref, id = "fancy-input" })
+        end
+      end
+
+      local root = H.create_test_root()
+      root:render(H.h(Fancy, { ref = nodeRef }))
+
+      assert.is_not_nil(nodeRef.current)
+      assert.equal(nodeRef.current.tag, "input")
+
+      root:unmount()
+      assert.is_nil(nodeRef.current)
+    end)
+
+    it("lets a component expose a synthesized imperative handle instead of a real host node", function()
+      local handleRef = H.create_ref()
+
+      local function Fancy(props)
+        if props.ref then
+          props.ref.current = {
+            focus = function() return "focused" end,
+          }
+        end
+        return H.h("div", nil, "fancy")
+      end
+
+      local root = H.create_test_root()
+      root:render(H.h(Fancy, { ref = handleRef }))
+
+      assert.is_not_nil(handleRef.current)
+      assert.equal(handleRef.current.focus(), "focused")
+    end)
+
+    it("does not error when no ref is passed to a component -- props.ref is simply nil", function()
+      local function Plain(props)
+        assert.is_nil(props.ref)
+        return H.h("div", nil, "plain")
+      end
+
+      local root = H.create_test_root()
+      local ok = pcall(function()
+        root:render(H.h(Plain, {}))
+      end)
+      assert.truthy(ok)
+    end)
+  end)
+
 end)

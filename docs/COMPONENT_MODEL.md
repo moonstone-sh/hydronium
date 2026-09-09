@@ -56,7 +56,7 @@ end
 - Props are passed as a Lua table to the component.
 - Special reserved props:
   - `key`: Used by the Reconciler to identify items across array diffs. Extracted onto `vnode.key` and stripped from element props.
-  - `ref`: Used to capture the underlying host instance. Extracted onto `vnode.ref` and stripped from element props.
+  - `ref`: Used to capture the underlying host instance. Extracted onto `vnode.ref` and stripped from props **for ELEMENT vnodes only** — on every other kind (COMPONENT, BOUNDARY, FRAGMENT, SUSPENSE, ISLAND, SCRIPT) it stays in `props.ref` as an ordinary prop instead (see §5.3).
   - `children`: Contains normalized child VNodes if passed via the props table instead of varargs.
 - **Immutability**: User code should treat `props` as read-only. Hydronium protects props tables from accidental runtime mutations.
 
@@ -153,6 +153,48 @@ local function CanvasComponent()
 end
 ```
 
+### 5.3 Refs on components — no `forwardRef`
+
+`ref` is only extracted onto `vnode.ref` for **ELEMENT** vnodes, since
+that is the only kind that produces a single real host node for the
+reconciler to bind to (see `docs/RECONCILIATION.md` §7). A component or
+ErrorBoundary has no such single node — its render may produce zero, one,
+or many host nodes, or a fragment — so `ref` passed to a component is
+left as an ordinary prop, `props.ref`, instead of being auto-forwarded.
+There is no `forwardRef` wrapper API; the component author forwards it
+explicitly:
+
+```lua
+local function Fancy(props)
+  return H.h("button", { ref = props.ref }, "click")
+end
+
+-- caller:
+H.h(Fancy, { ref = myRef })
+```
+
+This also covers the `useImperativeHandle` use case with no separate
+API — assign a synthesized handle instead of a real host node:
+
+```lua
+local function VideoPlayer(props)
+  if props.ref then
+    props.ref.current = { play = function() ... end, pause = function() ... end }
+  end
+  return H.h("video", nil)
+end
+```
+
+A component that never reads `props.ref` simply has an unused prop, not
+a silently dropped ref.
+
+FRAGMENT, SUSPENSE, ISLAND and SCRIPT vnodes keep `props.ref` the same
+way, but with a caveat worth stating plainly: no framework code consumes
+it for those kinds, and unlike a component there is no author-written
+body that could. A ref on one of them is **inert** — preserved and
+inspectable, never assigned. See `docs/RECONCILIATION.md` §7 for the
+correction note on what earlier revisions of these docs got wrong here.
+
 ---
 
 ## 6. Resilient Error Boundaries (`ErrorBoundary`)
@@ -182,3 +224,137 @@ end
 1. **Setup & Render Interception**: Catches errors in both setup and render phases of child components.
 2. **Fallback Cascading**: If an `ErrorBoundary`'s fallback function throws an error, the error bubbles to the nearest enclosing parent `ErrorBoundary`.
 3. **Transactional State**: The `retry` callback resets the boundary error state and safely re-attempts rendering.
+
+---
+
+## 7. Suspense & Resources (`H.Suspense`, `H.resource`)
+
+A `Resource` has exactly three states — `pending`, `ready`, `failed` —
+which are never conflated. A **failed** resource is an `ErrorBoundary`
+concern, not a Suspense one; Suspense is only about *"can this subtree
+render right now, and what shows while it can't"*.
+
+```lua
+local res = H.resource()               -- pending, no loader
+
+local function Profile()
+  return H.h("p", nil, res:get())      -- suspends while pending
+end
+
+H.h(H.Suspense, { fallback = H.h("p", nil, "loading...") }, H.h(Profile))
+--> "<p>loading...</p>"
+```
+
+### 7.1 How a suspension travels
+
+`Resource:get()` on a pending resource signals suspension with a tagged
+table (recognized by `resource.isSuspension`) in one of two ways:
+
+| Context | Mechanism |
+| --- | --- |
+| Inside a coroutine a Suspense boundary is **actively driving** | `coroutine.yield` — freezes the stack so it can be resumed in place |
+| **Everywhere else** — the main thread, *or any other coroutine* | `error()` — catchable, exactly as v1 always did |
+
+The second row is deliberately narrower than "am I in a coroutine".
+`coroutine.isyieldable()` is true inside *any* coroutine, including ones
+this framework knows nothing about — a per-request-coroutine server, a
+generator in user code, a test harness. Yielding there would send the
+suspension past the caller's own `pcall` (a yield crosses a resumable
+`pcall` rather than being caught by it) to a driver with no idea what it
+is, leaving that coroutine suspended forever with no diagnostic. So a
+suspension is only ever yielded to a driver that explicitly registered
+for it via `resource.markDriven(co)`; everyone else keeps the v1
+catchable-error contract.
+
+> **Fixed 2026-09-09.** The gate was previously `coroutine.isyieldable()`
+> alone, which regressed any coroutine-hosted renderer from "catchable
+> error" to "silent permanent hang".
+
+### 7.2 `onSuspend` — synchronous resume-in-place
+
+`Suspense` accepts an optional `onSuspend(resource)` prop, called
+**synchronously** the moment a suspension is caught, *before* the boundary
+commits to its fallback:
+
+```lua
+H.h(H.Suspense, {
+  fallback = H.h("p", nil, "loading..."),
+  onSuspend = function(r)
+    r:resolve(cache:lookup())          -- must resolve DURING this call
+  end,
+}, H.h(Profile))
+--> "<p>hello</p>"   -- no fallback ever shown
+```
+
+If the handler resolves (or rejects) the resource during that call, the
+suspended subtree resumes **exactly where `Resource:get()` yielded**, with
+already-buffered sibling output preserved rather than recomputed, and no
+fallback is rendered at all. This is what the coroutine buys over v1's
+`error()`, which destroyed the continuation.
+
+With no `onSuspend`, behavior is identical to v1 at zero extra cost.
+
+### 7.3 Limits — the boundary closes once it falls back
+
+If the resource is **still pending** when `onSuspend` returns, the
+fallback is committed and **that boundary is closed**. A resolve arriving
+later cannot contribute output, because SSR writes a sequential stream:
+once the fallback bytes are written, the position where the real content
+belonged is gone.
+
+Such a late resolve is a **reported no-op** — never a second write, never
+silently dropped. It is reported through the suspense diagnostic channel:
+
+```lua
+local resource = require("hydronium.core.resource")
+
+resource.setSuspenseDiagnosticHandler(function(diag)
+  log.warn(diag.code, diag.message)     -- "suspense.late_resolve", ...
+end)
+-- nil restores the default (one line to stderr); false silences.
+```
+
+`diag.after_render` distinguishes *"the owning render was still running"*
+from *"it had already returned its string to the caller"*.
+
+So `onSuspend` is a hook for a **synchronously satisfiable** source — a
+warm cache, a preloaded batch — not a general async escape hatch. True
+out-of-order streaming (placeholder plus later replacement) is separate,
+larger work at the meteorite integration layer and is not implemented.
+
+> **Fixed 2026-09-09.** A late resolve previously resumed the coroutine
+> anyway, flushing its buffer into the still-live sink so the output
+> contained **both** the fallback and the real content, the latter landing
+> wherever in tree order the resolve happened to occur.
+
+### 7.4 Errors and ErrorBoundary reachability
+
+`Resource:resolve()` / `:reject()` are plain data setters and **never**
+raise a subtree's render error. Concretely:
+
+- A render error on the **synchronous** resume path propagates normally to
+  the nearest enclosing `ErrorBoundary`.
+- An `ErrorBoundary` **inside** the Suspense subtree sits on the
+  coroutine's own frozen stack, so it still catches errors raised after a
+  resume.
+- An `ErrorBoundary` **outside** an already-fallen-back Suspense is
+  unreachable — not by choice, but because it has already produced its
+  own output and returned.
+
+Waiters are each invoked under `pcall`, so one failing waiter can neither
+escape `resolve()` nor prevent its siblings from running; failures are
+reported as `suspense.waiter_error`.
+
+> **Fixed 2026-09-09.** A render error after a deferred resume used to
+> propagate out of `Resource:resolve()` at the *resolver's* call site —
+> arbitrary application code, nowhere near the boundary that should have
+> handled it. Waiters were also invoked unprotected, and `_waiters` is
+> cleared before iterating, so the first waiter to throw permanently
+> stranded every later one.
+
+### 7.5 PUC Lua 5.1
+
+5.1 has no `coroutine.isyieldable`, so suspensions there always take the
+`error()` path and resume-in-place is unavailable. This is a real
+compatibility boundary, not a bug: 5.1 callers get exactly v1 behavior
+(discard and show the fallback).

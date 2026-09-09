@@ -190,6 +190,45 @@ Hydronium supports two forms of refs:
 
 All callback ref invocations are wrapped in `pcall` to prevent uncaught host errors during teardown.
 
+### Refs on non-element vnodes
+
+Everything above applies to **ELEMENT vnodes only** — the only kind that
+ever produces a real host node for a ref to point at. `createElement`
+strips `ref` onto `vnode.ref` for ELEMENT and for nothing else; on every
+other kind (COMPONENT, BOUNDARY, FRAGMENT, SUSPENSE, ISLAND, SCRIPT) it
+stays where the caller put it, as the ordinary prop `props.ref`.
+
+A COMPONENT or BOUNDARY has no single host node — its render may produce
+zero, one, or many, or a fragment — so there is no automatic forwarding
+step and no `forwardRef`-style wrapper API. The component author decides
+what to do with it:
+
+```lua
+local function Fancy(props)
+  return H.h("button", { ref = props.ref }, "click")
+end
+```
+
+A component that never reads `props.ref` simply has an unused prop — not
+a silently dropped ref. This also covers React's `useImperativeHandle`
+use case with no separate API: a component can assign a synthesized
+handle to `props.ref.current` instead of forwarding a real host node.
+
+FRAGMENT, SUSPENSE, ISLAND and SCRIPT are in the same position but with
+one honest caveat: nothing in the framework consumes `props.ref` on them,
+and unlike a component there is no author-written body that could. A ref
+on those kinds is therefore **inert** — it is preserved and inspectable
+rather than discarded, but nothing will ever assign `.current` for you.
+
+> **Corrected 2026-09-09.** Earlier revisions of this section claimed
+> refs were extracted "for ELEMENT/ISLAND vnodes only" and that an
+> unconsumed ref was "not a silently dropped ref". Both were false as
+> written: ISLAND (and FRAGMENT, SUSPENSE, SCRIPT) took the ELEMENT path,
+> so `ref` was moved onto `vnode.ref` and then read by no reconciler path
+> on any kind but ELEMENT — a genuinely silent drop. The code now does
+> what this section says: ELEMENT strips, everything else keeps
+> `props.ref`.
+
 ---
 
 ## 8. Disposal & Scope Hierarchy Invariants
@@ -207,3 +246,116 @@ flowchart TD
 1. **Children Before Parents**: Child component scopes and descendant host instances are disposed before parent cleanup callbacks run. This prevents parent cleanups from observing half-torn-down child hierarchies.
 2. **LIFO Cleanups**: Cleanup handlers registered via `scope:defer` or `onCleanup` run in reverse order of registration.
 3. **Resilient Execution**: If a cleanup callback throws an error, the error is recorded, and subsequent cleanups continue running to prevent memory leaks.
+
+---
+
+## 9. Fine-Grained Reactive Bindings
+
+A child or prop written as a **bare, uncalled** signal/computed accessor
+becomes a *fine-grained binding*: the reconciler creates one `Effect` for
+that single leaf, and a change patches only that text node or that one
+attribute — the owning component does **not** re-render and its subtree
+is **not** re-diffed.
+
+This is on by default. It is not an opt-in wrapper.
+
+### 9.1 The two forms, and how to choose
+
+```lua
+local count, setCount = H.signal(0)
+
+-- FINE-GRAINED: `count` is passed uncalled. The div is never re-rendered;
+-- only its text node is patched.
+H.h("div", nil, "Count: ", count)
+
+-- COARSE (unchanged, pre-existing behavior): `count()` is called during
+-- render, so the *component* subscribes and re-renders on change.
+H.h("div", nil, "Count: " .. tostring(count()))
+```
+
+The distinction is exactly "did you call it": `{count}` binds, `{count()}`
+collapses to a plain value at element-creation time and behaves as it
+always has. Both remain fully supported; neither is deprecated.
+
+### 9.2 What counts as a binding
+
+| Position | Binds when the value is | Does *not* bind |
+| --- | --- | --- |
+| **Child** | a signal/computed accessor, **or a plain function** | anything already evaluated |
+| **Prop on an ELEMENT** | a signal/computed accessor only | plain functions, `on*` event handlers |
+
+Props are deliberately narrower than children. A bare function child is
+never meaningfully anything else in this framework, but a function-valued
+*prop* is far more often an ordinary callback (`fallback`, `onError`, a
+callback ref) than a getter, and there is no marker to tell them apart —
+guessing wrong would silently invoke something never meant to be called.
+An accessor has no such ambiguity. `on*`-named props are excluded from
+binding outright.
+
+A function child is invoked with **zero arguments**, as a getter. It is
+**not** a render prop. A render prop that needs arguments must be invoked
+by whoever has them — `{renderRow(item)}`, not `{renderRow}`.
+
+### 9.3 Absent values
+
+A reactive value of `nil`, `false` or `true` renders as **nothing** (an
+empty text node) — the same three values a *static* child is discarded
+for. So `{maybeValue}` renders nothing when the value is absent, and
+`{cond and x}` renders nothing when `cond` is false, rather than the
+literal words `nil`/`false`/`true`. The text node itself stays in place
+so the value can be patched back in when it returns.
+
+### 9.4 Bindings on components — accessors pass through intact
+
+The reactive-prop split applies to **ELEMENT vnodes only**, because
+ELEMENT is the only kind the reconciler gives a host node and a
+`commitUpdate` to patch. An accessor passed to a *component* is delivered
+to that component **as the accessor**:
+
+```lua
+H.h(Child, { value = count })   -- Child receives the accessor itself
+
+local function Child(props)
+  -- props.value is callable; reading it here subscribes *Child*, and the
+  -- binding is fine-grained at whatever leaf Child puts it in.
+  return H.h("span", nil, "n=", props.value)
+end
+```
+
+This is the ordinary way to hand a child something reactive.
+
+> **Fixed 2026-09-09.** The split was previously applied to every vnode
+> kind while only ELEMENT ever bound it, so `H.h(Child, { value = count })`
+> delivered `props.value` already collapsed to a plain number — not
+> callable, never bound, and not subscribed by the parent either (the
+> split's read is untracked). The value silently froze at its first-render
+> snapshot with no error and no warning.
+
+### 9.5 Lifecycle
+
+- **Ownership.** A binding effect is created inside the owning
+  component's scope, so ordinary scope disposal tears it down.
+- **Carry-over.** Across a re-render, a binding is reused when the getter
+  identity is unchanged *and* the effect is not disposed. A disposed
+  effect is never carried forward — it is rebuilt and the plain text diff
+  is applied as a fallback. (This is what makes HMR safe:
+  `ComponentInstance:refresh` disposes the old scope *before* reconciling,
+  so every binding effect it owned is already dead by then. Carrying one
+  forward froze that text node permanently after a single hot reload.)
+- **Churn.** An inline-closure child (`{function() return v() end}`) is a
+  new function object every render, so its binding is disposed and rebuilt
+  each time. Disposal removes the effect's scope-cleanup entry as well as
+  disposing the effect, so a long-lived component does not accumulate dead
+  cleanups on a live scope.
+- **Prop snapshot.** All reactive props on one element share a single
+  mutable "complete current props" table, because `host.commitUpdate`'s
+  contract is a full prop set, not a per-key delta. That snapshot is
+  **rebuilt** whenever the underlying prop set changes, so a prop removed
+  by an ordinary re-render is not resurrected by the next reactive fire.
+
+### 9.6 SSR
+
+Bindings are a client-side concern. Under SSR no binding effects are
+created at all; the vnode's already-resolved `.text` / `.props[k]`
+(computed once at element-creation time) is what renders. Server output is
+byte-identical whether a value was passed as an accessor or pre-called.

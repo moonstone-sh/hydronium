@@ -35,12 +35,21 @@ local render_state = {
   -- prop with no enclosing d.lua.island/d.lua.mount boundary -- see
   -- html.serialize_attributes's caller below.
   island_stack = {},
+  -- Identity token for the render pass currently in flight: a fresh
+  -- table per render_to_string/render call, nil between calls. A Suspense
+  -- boundary captures it so a late resolve can tell "this render is still
+  -- running, my position in its stream has just gone by" from "the render
+  -- that owned me already returned and its output was concatenated and
+  -- handed to the caller" -- two different diagnostics, both of which
+  -- used to be silent. Compared by identity only; never read for content.
+  pass = nil,
 }
 
 local function reset_render_state()
   render_state.island_seq = 0
   render_state.client_plan = { version = "hydronium.client-plan.v1", islands = {}, scripts = {} }
   render_state.island_stack = {}
+  render_state.pass = {}
 end
 
 local function next_island_id()
@@ -236,36 +245,186 @@ render_node = function(node, write_fn, parent_scope, raw_text_mode)
 
   -- Suspense: "can this subtree render right now, and what shows while it
   -- can't" -- deliberately independent of ErrorBoundary (above) and of
-  -- island/client-ownership (below). v1: sequential/buffered only -- no
-  -- out-of-order streaming replacement yet (see
-  -- docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md). Isolates its subtree's writes
-  -- in an internal buffer (same trick as ErrorBoundary above) so a
-  -- suspension partway through never leaks partial bytes to the real sink.
+  -- island/client-ownership (below).
+  --
+  -- v2 (coroutine-based): the subtree renders inside a real Lua
+  -- coroutine instead of a plain pcall'd function. The difference matters
+  -- the moment a Resource suspends: `error()` (v1) unwinds the Lua stack,
+  -- destroying every local on it -- including `buffered` and the
+  -- position `render_children` had reached -- so the only option was
+  -- discard-and-show-fallback, full stop. `coroutine.yield` (this
+  -- version, see hydronium.core.resource) freezes that same stack in
+  -- place instead.
+  --
+  -- What that buys, precisely: an opt-in `onSuspend(resource)` prop,
+  -- called synchronously the moment a suspension is caught, before
+  -- committing to the fallback -- e.g. a cache-hit data source that can
+  -- resolve immediately. If it resolves the resource *during that call*,
+  -- `drive()` re-enters on the same stack and this boundary's real
+  -- content renders in this same pass, with already-buffered sibling
+  -- output preserved rather than recomputed -- no fallback is shown at
+  -- all. No `onSuspend`: zero behavior change, zero extra cost, exactly
+  -- v1 for every existing caller.
+  --
+  -- What it deliberately does NOT buy: resumption after this boundary has
+  -- already fallen back. `write_fn` is a sequential sink -- once the
+  -- fallback bytes are written, the position where the real content
+  -- belonged is gone, and there is no correct place to put it. A resolve
+  -- that arrives then is a reported no-op, not a second write; see
+  -- `report_late_resolve` below for the full reasoning and for what that
+  -- means for an enclosing ErrorBoundary. True out-of-order streaming
+  -- (placeholder + later replacement) is a separate, larger piece of work
+  -- at the meteorite integration layer -- not attempted here.
   if node.kind == symbols.SUSPENSE then
     local raw_props = (type(node.props) == "table" and node.props._store) or node.props or {}
     local children = raw_props.children or node.children or {}
+    local on_suspend = raw_props.onSuspend
     local buffered = {}
     local buffer_write = function(chunk)
       table.insert(buffered, chunk)
     end
 
-    local ok, err = pcall(function()
+    local co = coroutine.create(function()
       render_children(children, buffer_write, parent_scope, raw_text_mode)
     end)
+    -- Only a coroutine a Suspense boundary is actively driving may be
+    -- suspended by yielding; in every other coroutine Resource:get()
+    -- raises instead, preserving the v1 contract for coroutines this
+    -- framework does not own (see hydronium.core.resource's header).
+    resourceModule.markDriven(co)
 
-    if ok then
-      for _, chunk in ipairs(buffered) do
-        write_fn(chunk)
+    -- The render pass that owns this boundary's position in the stream.
+    local pass = render_state.pass
+    -- Set the instant this boundary has written its own bytes at that
+    -- position -- real content, fallback, or a propagating render error.
+    -- After that this boundary is CLOSED: nothing it does later can
+    -- affect the output.
+    local committed = false
+
+    --- Waiter registered on a resource this boundary is blocked on. It
+    --- exists to REPORT, not to resume.
+    ---
+    --- By construction a waiter can only ever fire after the fallback has
+    --- already been written: `drive()` registers one only on the path
+    --- that immediately returns false, and `drive()`'s sole caller
+    --- commits the fallback the moment it does, with no user code in
+    --- between. So there is no position left in the stream for resumed
+    --- content to occupy.
+    ---
+    --- Resuming anyway is what produced v2's two worst failures:
+    ---   * the resumed coroutine flushed `buffered` into the still-live
+    ---     `write_fn`, so the output carried BOTH the fallback and the
+    ---     real content, the latter landing wherever in tree order the
+    ---     resolve happened to occur;
+    ---   * a genuine render error after the resume propagated out of
+    ---     `Resource:resolve()` at the resolver's own call site --
+    ---     arbitrary application code, nowhere near the ErrorBoundary
+    ---     that should have handled it, and long after that boundary
+    ---     returned.
+    --- Resuming would additionally re-enter render_node against whatever
+    --- `render_state` is current, corrupting island-id sequencing for an
+    --- unrelated render that happens to be in flight.
+    ---
+    --- The ErrorBoundary story is not lost where it matters: a boundary
+    --- INSIDE the Suspense subtree lives on the coroutine's own frozen
+    --- stack, so it still catches errors raised on the synchronous
+    --- resume-in-place path in `drive()`. Only an ErrorBoundary OUTSIDE
+    --- an already-fallen-back Suspense is unreachable -- and it is
+    --- unreachable because it has already produced its own output and
+    --- returned, not because of anything this function chooses.
+    local function report_late_resolve()
+      resourceModule.unmarkDriven(co)
+
+      if not committed then
+        -- Defensive: the invariant argued above says this is impossible.
+        -- If it is ever reached the invariant has changed, and silently
+        -- discarding what may be genuinely placeable content would be
+        -- the wrong call -- so say so loudly rather than guess.
+        resourceModule.reportSuspenseDiagnostic({
+          code = "suspense.late_resolve_before_commit",
+          message = "Hydronium: a <h.Suspense> waiter fired before its boundary committed any "
+            .. "output. This breaks the invariant that a waiter can only run post-fallback, so "
+            .. "the resumed content was discarded rather than written at an unknown position. "
+            .. "This is a framework bug -- please report it.",
+        })
+        return
       end
-    elseif resourceModule.isSuspension(err) then
+
+      local after_render = (render_state.pass ~= pass)
+      resourceModule.reportSuspenseDiagnostic({
+        code = "suspense.late_resolve",
+        after_render = after_render,
+        message = "Hydronium: a Resource backing a <h.Suspense> boundary resolved after that "
+          .. "boundary had already committed its fallback"
+          .. (after_render
+            and ", and after the render that owned it had already returned its string to the "
+              .. "caller. The resumed content has nowhere to be written and is discarded."
+            or ". SSR output is a sequential stream, so the resumed content has no position "
+              .. "left to occupy and is discarded.")
+          .. " onSuspend(resource) must resolve the resource synchronously, during the call, "
+          .. "for its content to be rendered; deferred / out-of-order resolution is not "
+          .. "supported by render_to_string or render.",
+      })
+    end
+
+    --- Advances `co` one step. Returns true once this boundary has
+    --- produced its real content; false while it is still blocked on a
+    --- resource (the caller then commits the fallback).
+    local function drive()
+      local ok, err = coroutine.resume(co)
+
+      if coroutine.status(co) == "dead" then
+        resourceModule.unmarkDriven(co)
+        if ok then
+          committed = true
+          for _, chunk in ipairs(buffered) do
+            write_fn(chunk)
+          end
+          return true
+        end
+        if resourceModule.isSuspension(err) then
+          -- Only reachable when the suspension had to escape via error()
+          -- rather than yield -- i.e. no coroutine.isyieldable (PUC 5.1).
+          -- Same outcome as v1: fall back.
+          return false
+        end
+        -- A real render error (not a suspension) is not this boundary's
+        -- concern -- let it keep propagating toward the nearest
+        -- ErrorBoundary. This is the synchronous path, still on the
+        -- original render_node stack, so such a boundary's pcall is
+        -- genuinely live and does catch it.
+        committed = true
+        error(err, 0)
+      end
+
+      if resourceModule.isSuspension(err) and on_suspend then
+        local hookOk, hookErr = pcall(on_suspend, err.resource)
+        if not hookOk then
+          resourceModule.unmarkDriven(co)
+          committed = true
+          error(hookErr, 0)
+        end
+        if err.resource:status() ~= "pending" then
+          -- Resolved synchronously inside onSuspend: re-enter now, still
+          -- on the original stack. Resume-in-place, no fallback shown.
+          return drive()
+        end
+        -- Still pending after onSuspend had its chance. Register a waiter
+        -- solely so that a later resolve is diagnosed instead of silently
+        -- swallowed -- it does not resume. Without `onSuspend` there is no
+        -- declared intent to resume at all, so no waiter is registered and
+        -- the coroutine is abandoned exactly as v1 would, at zero cost.
+        err.resource:_addWaiter(report_late_resolve)
+      end
+      return false
+    end
+
+    if not drive() then
+      committed = true
       local fallback = raw_props.fallback
       if fallback ~= nil then
         render_node(fallback, write_fn, parent_scope, raw_text_mode)
       end
-    else
-      -- A real render error (not a suspension) is not this boundary's
-      -- concern -- let it keep propagating toward the nearest ErrorBoundary.
-      error(err, 0)
     end
     return
   end
@@ -516,6 +675,9 @@ function server.render_to_string(vnode, options)
   scopeModule.resetScopeStack(initial_scope_depth)
   contextModule.resetContextStack(initial_ctx_depth, initial_ctx_map)
   scheduler.setSSR(prev_ssr)
+  -- This pass is over: any Suspense waiter that fires from here on can
+  -- tell (by identity) that the render owning it has already returned.
+  render_state.pass = nil
 
   if not ok then
     if resourceModule.isSuspension(err) then
@@ -597,6 +759,9 @@ function server.render(vnode, sink, options)
   scopeModule.resetScopeStack(initial_scope_depth)
   contextModule.resetContextStack(initial_ctx_depth, initial_ctx_map)
   scheduler.setSSR(prev_ssr)
+  -- This pass is over: any Suspense waiter that fires from here on can
+  -- tell (by identity) that the render owning it has already returned.
+  render_state.pass = nil
 
   if normalized_sink then
     pcall(normalized_sink.close)

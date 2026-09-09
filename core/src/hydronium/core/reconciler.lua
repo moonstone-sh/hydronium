@@ -9,10 +9,103 @@ local symbols = require("hydronium.core.symbols")
 local errors = require("hydronium.core.errors")
 local refModule = require("hydronium.core.ref")
 local componentModule = require("hydronium.core.component")
+local effectModule = require("hydronium.signals.effect")
+local scopeModule = require("hydronium.core.scope")
+local scheduler = require("hydronium.core.scheduler")
+-- For reactiveText only: the single definition of how a reactive value
+-- renders as text, shared with element.lua's own vnode construction so a
+-- binding's updates can never disagree with its initial mount. Safe to
+-- require here -- element.lua does not depend on the reconciler.
+local elementModule = require("hydronium.core.element")
 
 local unpack = table.unpack or unpack
 
 local reconcilerModule = {}
+
+--- Frozen props tables (element.lua's freezeProps) expose their real
+--- keys through `_store`, plus a `__pairs` metamethod for iteration --
+--- but `__pairs` is a Lua 5.2-only, since-deprecated feature LuaJIT
+--- never honors, so `pairs()` on the proxy directly would silently
+--- iterate nothing but the `_store` field itself. Every other call site
+--- in this codebase that iterates a props table unwraps `_store` first
+--- (hydronium_dom/host/dom.lua's `rawProps`, hydronium.test.host) --
+--- this mirrors that same established convention.
+local function rawProps(props)
+  if type(props) ~= "table" then
+    return {}
+  end
+  return props._store or props
+end
+
+--- Creates a fine-grained binding Effect owned by `scope`, remembering
+--- which scope-cleanup entry it produced so `disposeBindingEffect` can
+--- take that entry back out again.
+---
+--- Why the bookkeeping is necessary: Effect.new unconditionally appends a
+--- `function() self:dispose() end` closure to the active scope's
+--- `cleanups` list, and nothing ever removes it -- disposing the effect
+--- only flips its own `isDisposed` flag, leaving a now-inert closure on
+--- the list forever. That is harmless for the framework's usual effects,
+--- which live exactly as long as their scope, but a binding effect is
+--- rebuilt whenever its getter identity changes -- and a getter written
+--- as an inline closure (`{function() return v() end}`, a documented and
+--- supported form) is a *different* function object on every single
+--- render. Without removal, one component re-rendering N times leaves N
+--- dead cleanups pinned on a scope that is still very much alive:
+--- unbounded memory growth plus an ever-slower teardown, on an entirely
+--- ordinary code path. Measured before this fix: 1 cleanup after mount,
+--- 101 after 100 re-renders.
+---
+--- Effect.new defers that closure BEFORE running the effect body, so it
+--- is always the first entry appended -- index `before + 1` -- even if
+--- the body itself registers further cleanups on the same scope.
+local function createBindingEffect(scope, fn)
+  if not scope then
+    -- No owning component (e.g. a root-level element): the effect has no
+    -- scope to be deferred onto, so there is nothing to track either.
+    return effectModule.createEffect(fn)
+  end
+
+  local before = #scope.cleanups
+  local eff = scopeModule.runWithScope(scope, function()
+    return effectModule.createEffect(fn)
+  end)
+
+  local entry = scope.cleanups[before + 1]
+  if entry then
+    eff._bindingScope = scope
+    eff._bindingScopeCleanup = entry
+  end
+  return eff
+end
+
+--- Disposes a binding effect created by `createBindingEffect` AND removes
+--- the scope cleanup entry it left behind (see above). Removal is by
+--- identity rather than by remembered index, because an earlier removal
+--- shifts every later index.
+local function disposeBindingEffect(eff)
+  if not eff then
+    return
+  end
+  eff:dispose()
+
+  local scope = eff._bindingScope
+  local entry = eff._bindingScopeCleanup
+  eff._bindingScope = nil
+  eff._bindingScopeCleanup = nil
+  -- A disposed scope has already emptied and run its cleanups list;
+  -- there is nothing to remove and nothing that could still fire.
+  if not scope or not entry or scope.isDisposed then
+    return
+  end
+  local cleanups = scope.cleanups
+  for i = #cleanups, 1, -1 do
+    if cleanups[i] == entry then
+      table.remove(cleanups, i)
+      return
+    end
+  end
+end
 
 local function getChildrenList(vnode)
   local c = vnode and vnode.children
@@ -29,6 +122,183 @@ function Reconciler.new(host)
   local self = setmetatable({}, Reconciler)
   self.host = host
   return self
+end
+
+--- Fine-grained DOM bindings (mandatory, not opt-in -- see element.lua's
+--- isReactiveAccessor/isReactiveChildValue): a TEXT vnode whose content
+--- came from a bare signal/computed accessor or plain function child, or
+--- an ELEMENT vnode with one or more reactive-accessor prop values, gets
+--- an Effect that patches only that text node / that one attribute
+--- directly on change -- bypassing the owning component's re-render and
+--- subtree diff entirely. Untouched by anything else in this file:
+--- structural changes (conditionals, list shape) still go through the
+--- ordinary reconcile/reconcileChildren path below exactly as before.
+---
+--- SSR is a no-op here (scheduler.isSSR() gate), matching the exact
+--- convention hydronium.signals.effect.Effect.new already uses for every
+--- other effect in the framework -- the vnode's own already-resolved
+--- `.text` / `.props[k]` (computed once at element-creation time) is
+--- what SSR renders, unchanged.
+---
+--- "Last committed value" is tracked as a closure-local upvalue, NOT a
+--- vnode field: a vnode is a fresh, disposable snapshot produced by
+--- every render pass, but the DOM node and its live binding effect
+--- persist across many such snapshots (see Reconciler:reconcile's TEXT/
+--- ELEMENT branches, which transfer `_bindingEffect`/
+--- `_reactivePropEffects` onto the newest vnode rather than recreating
+--- them when the same getter is still bound to the same position).
+function Reconciler:_bindReactiveText(vnode, textNode, parentComponent)
+  if scheduler.isSSR() then
+    return
+  end
+  local host = self.host
+  local getter = vnode.reactiveGetter
+  local lastText = vnode.text
+  local scope = parentComponent and parentComponent.scope
+
+  vnode._bindingEffect = createBindingEffect(scope, function()
+    -- elementModule.reactiveText, not a bare tostring(): a getter whose
+    -- current value is nil/false/true must render as nothing, exactly as
+    -- the equivalent static child does, rather than as the literal words
+    -- "nil"/"false"/"true". The same function produced this vnode's
+    -- initial `.text`, so mount and every later update agree.
+    local newText = elementModule.reactiveText(getter())
+    if newText ~= lastText then
+      host.commitTextUpdate(textNode, lastText, newText)
+      lastText = newText
+    end
+  end)
+end
+
+--- Builds the reactive-prop effects for `vnode`, all sharing ONE mutable
+--- "current full props" snapshot table. Sharing matters:
+--- host.commitUpdate's documented contract (every real Host, including
+--- hydronium.core.test's, and the type declaration in types/hydronium.d.lua)
+--- is that `newProps` is the COMPLETE current prop set, not a per-key
+--- delta -- the real DOM host happens to tolerate a delta because it
+--- applies attributes one at a time, but hydronium.core.test's host
+--- does `instance.props = newProps` wholesale, so a delta would silently
+--- erase every other prop. If two reactive props on the same element
+--- each kept their own private snapshot, whichever one's effect fired
+--- last would stomp the other's most recent value back to whatever it
+--- was when its effect was created -- sharing one table is what keeps
+--- every commitUpdate call complete and consistent.
+function Reconciler:_bindReactiveProps(vnode, hostNode, parentComponent)
+  if not vnode.reactiveProps or scheduler.isSSR() then
+    return
+  end
+  local host = self.host
+  local scope = parentComponent and parentComponent.scope
+  local current = {}
+  for pk, pv in pairs(rawProps(vnode.props)) do
+    current[pk] = pv
+  end
+
+  local effects = {}
+  for k, getter in pairs(vnode.reactiveProps) do
+    effects[k] = createBindingEffect(scope, function()
+      local newVal = getter()
+      if newVal ~= current[k] then
+        local old = {}
+        for pk, pv in pairs(current) do old[pk] = pv end
+        current[k] = newVal
+        host.commitUpdate(hostNode, old, current)
+      end
+    end)
+  end
+
+  vnode._reactivePropEffects = effects
+  vnode._reactivePropsCurrent = current
+end
+
+--- Reconcile-time counterpart to _bindReactiveProps. The common case (the
+--- exact same set of keys still bound to the exact same getter identities
+--- -- e.g. a re-render triggered by something unrelated to this element)
+--- keeps the running effects and their shared snapshot untouched, only
+--- refreshing the snapshot's non-reactive-key values from this render's
+--- freshly-resolved `newVNode.props` (which the plain commitUpdate call
+--- just above this one in Reconciler:reconcile already applied) so the
+--- shared snapshot never drifts from what the DOM actually shows. Any
+--- actual change to which keys/getters are reactive disposes the old
+--- effects and rebuilds fresh, seeded directly from `newVNode.props`
+--- (already the fully-resolved current snapshot -- see element.lua's
+--- createElement, which resolves every reactive prop's value via
+--- graph.untrack(v) at element-creation time) -- simpler and always
+--- correct, and rare enough not to be worth partial-reuse complexity.
+function Reconciler:_reconcileReactiveProps(oldVNode, newVNode, hostNode, parentComponent)
+  if scheduler.isSSR() then
+    return
+  end
+  local oldReactive = oldVNode.reactiveProps
+  local newReactive = newVNode.reactiveProps
+  local oldEffects = oldVNode._reactivePropEffects
+
+  if not oldReactive and not newReactive then
+    return
+  end
+
+  local sameBindingSet = oldReactive ~= nil and newReactive ~= nil
+  if sameBindingSet then
+    for k, getter in pairs(newReactive) do
+      if oldReactive[k] ~= getter then sameBindingSet = false break end
+    end
+    if sameBindingSet then
+      for k in pairs(oldReactive) do
+        if newReactive[k] == nil then sameBindingSet = false break end
+      end
+    end
+  end
+
+  if sameBindingSet and oldEffects then
+    local current = oldVNode._reactivePropsCurrent
+    -- REBUILD the shared snapshot, don't merge into it. Merging only ever
+    -- added and overwrote keys, so a prop that disappeared between
+    -- renders stayed in the snapshot after the ordinary re-render had
+    -- correctly removed it from the DOM -- and the next time ANY reactive
+    -- prop on this element fired, its effect called
+    -- commitUpdate(old, current) with that dead key still present and
+    -- resurrected it. Rebuilding from `newVNode.props`, which is this
+    -- render's complete resolved prop set (element.lua resolves every
+    -- reactive prop via graph.untrack at creation time, so reactive and
+    -- static keys alike are current), makes removals propagate.
+    --
+    -- Cleared in place rather than replaced: the running effects captured
+    -- THIS table as an upvalue, so handing the vnode a different table
+    -- would leave them writing to one nobody reads.
+    for pk in pairs(current) do
+      current[pk] = nil
+    end
+    for pk, pv in pairs(rawProps(newVNode.props)) do
+      current[pk] = pv
+    end
+    newVNode._reactivePropEffects = oldEffects
+    newVNode._reactivePropsCurrent = current
+    return
+  end
+
+  if oldEffects then
+    for _, eff in pairs(oldEffects) do
+      disposeBindingEffect(eff)
+    end
+  end
+  self:_bindReactiveProps(newVNode, hostNode, parentComponent)
+end
+
+--- Disposes every reactive binding attached to `vnode` (its own text
+--- binding, if any, and any per-prop bindings) -- called from
+--- Reconciler:unmount and from the reconcile paths below whenever a
+--- vnode's bindings are being replaced rather than carried forward.
+function Reconciler:_disposeBindings(vnode)
+  if vnode._bindingEffect then
+    disposeBindingEffect(vnode._bindingEffect)
+    vnode._bindingEffect = nil
+  end
+  if vnode._reactivePropEffects then
+    for _, eff in pairs(vnode._reactivePropEffects) do
+      disposeBindingEffect(eff)
+    end
+    vnode._reactivePropEffects = nil
+  end
 end
 
 local function unwrapTag(tag)
@@ -126,6 +396,7 @@ function Reconciler:mount(vnode, parentHostNode, beforeChild, parentComponent)
   if kind == symbols.ELEMENT then
     local hostNode = self.host.createInstance(unwrapTag(vnode.tag), vnode.props)
     vnode.hostNode = hostNode
+    self:_bindReactiveProps(vnode, hostNode, parentComponent)
 
     if vnode.ref then
       refModule.bindRef(vnode.ref, hostNode)
@@ -151,6 +422,9 @@ function Reconciler:mount(vnode, parentHostNode, beforeChild, parentComponent)
   elseif kind == symbols.TEXT then
     local textNode = self.host.createTextInstance(vnode.text)
     vnode.hostNode = textNode
+    if vnode.reactiveGetter then
+      self:_bindReactiveText(vnode, textNode, parentComponent)
+    end
 
     if parentHostNode then
       if beforeChild then
@@ -245,6 +519,7 @@ function Reconciler:hydrate(vnode, parentHostNode, domNode, boundaryNode, parent
     if host.hydrateProps then
       host.hydrateProps(domNode, vnode.props)
     end
+    self:_bindReactiveProps(vnode, domNode, parentComponent)
     if vnode.ref then
       refModule.bindRef(vnode.ref, domNode)
     end
@@ -274,6 +549,9 @@ function Reconciler:hydrate(vnode, parentHostNode, domNode, boundaryNode, parent
       return fallbackMount(domNode)
     end
     vnode.hostNode = domNode
+    if vnode.reactiveGetter then
+      self:_bindReactiveText(vnode, domNode, parentComponent)
+    end
     return domNode, host.nextSibling(domNode)
 
   elseif kind == symbols.COMPONENT or kind == symbols.BOUNDARY then
@@ -527,6 +805,7 @@ function Reconciler:reconcile(parentHostNode, oldVNode, newVNode, parentComponen
   if kind == symbols.ELEMENT then
     newVNode.hostNode = oldVNode.hostNode
     self.host.commitUpdate(oldVNode.hostNode, oldVNode.props, newVNode.props)
+    self:_reconcileReactiveProps(oldVNode, newVNode, oldVNode.hostNode, parentComponent)
 
     if oldVNode.ref ~= newVNode.ref then
       refModule.unbindRef(oldVNode.ref)
@@ -538,8 +817,36 @@ function Reconciler:reconcile(parentHostNode, oldVNode, newVNode, parentComponen
 
   elseif kind == symbols.TEXT then
     newVNode.hostNode = oldVNode.hostNode
-    if oldVNode.text ~= newVNode.text then
-      self.host.commitTextUpdate(oldVNode.hostNode, oldVNode.text, newVNode.text)
+    local carried = oldVNode._bindingEffect
+    if newVNode.reactiveGetter and oldVNode.reactiveGetter == newVNode.reactiveGetter
+      and carried and not carried.isDisposed then
+      -- Same binding, still LIVE: the running effect already owns this
+      -- text node going forward -- carry it over rather than recreate,
+      -- and skip the plain diff below (it would compare this render's
+      -- freshly-evaluated snapshot against a now-stale `oldVNode.text`;
+      -- the effect's own closure-local last-value, not this vnode field,
+      -- is what's actually kept current -- see _bindReactiveText).
+      --
+      -- The `isDisposed` check is what makes this safe, and it is not
+      -- theoretical. ComponentInstance:refresh (HMR) disposes the old
+      -- scope BEFORE calling update()/reconcile, which kills every
+      -- binding effect the scope owned. Getter identity is unchanged
+      -- across a refresh for any stable accessor -- the ordinary case,
+      -- `{count}` -- so without this check the branch carried a
+      -- guaranteed-dead effect onto the new vnode and skipped the plain
+      -- commitTextUpdate fallback as well, leaving that text node
+      -- permanently frozen at whatever it read before the hot reload:
+      -- no error, no subscriber, no way back. Falling through instead
+      -- rebinds against the fresh scope refresh has already installed.
+      newVNode._bindingEffect = carried
+    else
+      self:_disposeBindings(oldVNode)
+      if oldVNode.text ~= newVNode.text then
+        self.host.commitTextUpdate(oldVNode.hostNode, oldVNode.text, newVNode.text)
+      end
+      if newVNode.reactiveGetter then
+        self:_bindReactiveText(newVNode, newVNode.hostNode, parentComponent)
+      end
     end
     return newVNode
 
@@ -567,6 +874,7 @@ function Reconciler:unmount(vnode)
   local kind = vnode.kind
 
   if kind == symbols.ELEMENT then
+    self:_disposeBindings(vnode)
     if vnode.ref then
       refModule.unbindRef(vnode.ref)
     end
@@ -574,6 +882,9 @@ function Reconciler:unmount(vnode)
     for i = 1, len do
       self:unmount(raw[i])
     end
+
+  elseif kind == symbols.TEXT then
+    self:_disposeBindings(vnode)
 
   elseif kind == symbols.COMPONENT or kind == symbols.BOUNDARY then
     if vnode.componentInstance then
