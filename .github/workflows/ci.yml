@@ -42,7 +42,7 @@ jobs:
       - name: Synchronize Hydronium workspace and package locks
         run: |
           moon sync
-          for orbit in core dom luax ink router build create; do
+          for orbit in core dom luax ink build create; do
             (cd "$orbit" && moon sync)
           done
       - name: Prepare locked Ballad integration checkout

@@ -9,7 +9,7 @@ for the initial release line:
 | DOM | `moonstone/hydronium-dom` | `hydronium/hydronium-dom` |
 | LUAX | `moonstone/hydronium-luax` | `hydronium/hydronium-luax` |
 | Ink | `moonstone/hydronium-ink` | `hydronium/hydronium-ink` |
-| Router | `moonstone/hydronium-router` | `hydronium/hydronium-router` |
+| Router (reserved until it lands) | `moonstone/hydronium-router` | `hydronium/hydronium-router` |
 | Ballad plugins | `moonstone/hydronium-ballad` | `hydronium/hydronium-ballad` |
 | Generator | `moonstone/hydronium-create` | `hydronium/hydronium-create` |
 
