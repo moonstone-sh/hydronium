@@ -32,9 +32,10 @@ test("available_templates lists all supported templates", function()
   assert(ids.minimal, "missing minimal template")
   assert(ids.ink, "missing ink template")
   -- `spa` is deliberately NOT listed -- see templates/spa.lua's own
-  -- header comment and create.scaffold's explicit gate below. Nothing it
-  -- promised (h.mount, a client bundler, a `hydronium` CLI binary) is
-  -- real in the framework today.
+  -- header comment and create.scaffold's explicit gate below. Corrected
+  -- 2026-09-10: `mount()` and the client bundler ARE real now (the `ssr`
+  -- template uses both); what is still missing is a client-side router
+  -- and a way to serve a built app without a Meteorite process.
   assert(not ids.spa, "spa should not be listed as an available template")
 end)
 
@@ -163,6 +164,59 @@ test("luals.configure uses alter to update .luarc.json with Hydronium LuaX plugi
     interpreter = "lua@5.4",
   })
   assert(res2 ~= nil, "idempotent luals.configure failed: " .. tostring(err2))
+
+  os.execute(string.format('rm -rf "%s"', tmp_dir))
+end)
+
+-- Regression guard for a real, verified editor behaviour: Meteorite
+-- generates per-route LuaCATS classes into `.meteorite/aids/lua` on every
+-- graph/build, and `MeteoriteApp`'s path-literal overloads really do give
+-- `c` a specific type inside `app:get(path, function(c) ... end)` -- but
+-- ONLY if those files are on LuaLS's path. They were not, in every real
+-- scaffolded project checked. Measured with a real
+-- textDocument/completion request against lua-language-server 3.18.2-dev,
+-- at `c.params.` inside `app:get("/hydronium-src/:path*", function(c)`:
+-- 100 junk word-completions before, exactly one (`path`) after.
+test("luals.configure puts Meteorite's generated LuaCATS aids on the LuaLS path", function()
+  local tmp_dir = os.tmpname()
+  os.remove(tmp_dir)
+  os.execute(string.format('mkdir -p "%s"', tmp_dir))
+
+  local res, err = luals.configure(tmp_dir, { interpreter = "luajit@2.1", meteorite = true })
+  assert(res ~= nil, "luals.configure failed: " .. tostring(err))
+
+  local f = assert(io.open(tmp_dir .. "/.luarc.json", "r"))
+  local content = f:read("*a")
+  f:close()
+
+  -- workspace.library makes LuaLS load the generated classes at all...
+  assert(content:find("%.meteorite/aids/lua\""), "missing .meteorite/aids/lua workspace library entry")
+  -- ...and runtime.path is what lets `require("meteorite")` resolve to the
+  -- generated stub that declares those typed overloads.
+  assert(content:find("%.meteorite/aids/lua/%?%.lua"), "missing .meteorite/aids/lua/?.lua runtime path entry")
+  assert(content:find("%.meteorite/aids/lua/%?/init%.lua"), "missing .meteorite/aids/lua/?/init.lua runtime path entry")
+  -- Adding the Meteorite searchers must NOT clobber the LUAX one. Two
+  -- separate `runtime:at("path")` cursors silently did exactly that,
+  -- because the second cursor does not observe the first's pending set().
+  assert(content:find("%?%.luax"), "meteorite wiring clobbered the ?.luax searcher")
+
+  os.execute(string.format('rm -rf "%s"', tmp_dir))
+end)
+
+test("luals.configure leaves non-Meteorite templates free of Meteorite aids", function()
+  local tmp_dir = os.tmpname()
+  os.remove(tmp_dir)
+  os.execute(string.format('mkdir -p "%s"', tmp_dir))
+
+  -- The `minimal` template's tooling: no luax, no meteorite.
+  local res, err = luals.configure(tmp_dir, { interpreter = "lua@5.4", luax = false, meteorite = false })
+  assert(res ~= nil, "luals.configure failed: " .. tostring(err))
+
+  local f = assert(io.open(tmp_dir .. "/.luarc.json", "r"))
+  local content = f:read("*a")
+  f:close()
+
+  assert(not content:find("%.meteorite/aids"), "non-Meteorite template should not reference Meteorite aids")
 
   os.execute(string.format('rm -rf "%s"', tmp_dir))
 end)

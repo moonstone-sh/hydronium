@@ -5,7 +5,7 @@ local luals = {}
 
 ---Configures .luarc.json with Hydronium LuaX LSP plugin and workspace library paths.
 ---@param target_dir string Project destination directory
----@param opts? { interpreter?: string, dry_run?: boolean, luax?: boolean, dom?: boolean, bare_dom?: boolean }
+---@param opts? { interpreter?: string, dry_run?: boolean, luax?: boolean, dom?: boolean, bare_dom?: boolean, meteorite?: boolean }
 ---@return table|nil result, string|nil err
 function luals.configure(target_dir, opts)
   opts = opts or {}
@@ -19,6 +19,32 @@ function luals.configure(target_dir, opts)
   local enable_luax = opts.luax ~= false
   local enable_dom = opts.dom ~= false
   local enable_bare_dom = opts.bare_dom == true
+  local enable_meteorite = opts.meteorite == true
+
+  -- Meteorite generates real per-route LuaCATS classes into
+  -- `.meteorite/aids/lua` on every `meteorite graph`/`meteorite build`
+  -- (src/codegen/luals_aids.lua): `MeteoriteParams_<route_id>`,
+  -- `MeteoriteQuery_<route_id>`, `MeteoriteContext_<route_id>`, plus
+  -- path-literal `---@field get fun(self: MeteoriteApp, path: "/users/:id",
+  -- handler: fun(c: MeteoriteContext_get_user): any)` overloads on
+  -- `MeteoriteApp`. Those overloads really do give `c` a specific type
+  -- inside an ordinary `app:get(path, function(c) ... end)` -- but only
+  -- if the aids are on LuaLS's path, and Hydronium's scaffolded
+  -- `.luarc.json` never put them there.
+  --
+  -- Verified live (lua-language-server 3.18.2-dev, real
+  -- textDocument/completion against a real scaffolded project), asking
+  -- for completions at `c.params.` inside
+  -- `app:get("/hydronium-src/:path*", function(c)`:
+  --   before: 100 items, all buffer word-completions, zero type info
+  --   after:  exactly 1 item -- `path` -- i.e. MeteoriteParams_route_1
+  -- A route with no declared params correctly stays on the generic
+  -- `MeteoriteContext` instead of getting a wrong specific type.
+  --
+  -- Both entries are needed: `workspace.library` makes LuaLS load the
+  -- files, `runtime.path` lets `require("meteorite")` resolve to the
+  -- generated stub rather than to nothing.
+  local meteorite_aids_dir = ".meteorite/aids/lua"
 
   local plugin_rel_path = ".moonstone/env/share/lua/" .. lua_ver_str .. "/hydronium_luax/luals/init.lua"
   local library_paths = {
@@ -32,6 +58,9 @@ function luals.configure(target_dir, opts)
   end
   if enable_bare_dom then
     table.insert(library_paths, ".moonstone/env/libexec/hydronium-dom/ambient-types")
+  end
+  if enable_meteorite then
+    table.insert(library_paths, meteorite_aids_dir)
   end
 
   if opts.dry_run then
@@ -67,12 +96,37 @@ function luals.configure(target_dir, opts)
   -- loader.load, confirmed live against a real lua-language-server
   -- --check run. Keeps the two Lua searchers LuaLS ships by default,
   -- just adds `.luax` alongside them.
+  --
+  -- 1c. `.meteorite/aids/lua/?.lua` + `/?/init.lua` do the same job for
+  -- Meteorite's generated aids (see the comment on `meteorite_aids_dir`
+  -- above): they let `require("meteorite")` resolve to the generated
+  -- stub that declares `MeteoriteApp`'s typed per-route overloads.
+  --
+  -- Both searcher sets are applied through ONE cursor. They used to be
+  -- two `runtime:at("path")` blocks, which silently dropped `?.luax`:
+  -- a second `at("path")` cursor does not observe the first cursor's
+  -- pending `set()`, so it still reported kind "none", re-`set()` a
+  -- fresh two-element list, and clobbered the `.luax` searcher. Caught
+  -- by scaffolding a real project and reading the emitted .luarc.json,
+  -- not by the unit tests -- keep this as a single cursor.
+  local runtime_path_additions = {}
   if enable_luax then
+    table.insert(runtime_path_additions, "?.luax")
+  end
+  if enable_meteorite then
+    table.insert(runtime_path_additions, meteorite_aids_dir .. "/?.lua")
+    table.insert(runtime_path_additions, meteorite_aids_dir .. "/?/init.lua")
+  end
+  if #runtime_path_additions > 0 then
     local runtime_path = runtime:at("path")
     if runtime_path:kind() == "none" then
-      runtime_path:set({ "?.lua", "?/init.lua", "?.luax" })
-    else
-      runtime_path:ensure_array():append_unique("?.luax")
+      -- Preserve the two searchers LuaLS ships by default; they stop
+      -- being implicit the moment `runtime.path` is set at all.
+      runtime_path:set({ "?.lua", "?/init.lua" })
+    end
+    local entries = runtime_path:ensure_array()
+    for _, entry in ipairs(runtime_path_additions) do
+      entries:append_unique(entry)
     end
   end
 

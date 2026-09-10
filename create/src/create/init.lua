@@ -9,14 +9,18 @@ local template_specs = {
     module = require("create.templates.ssr"),
     name = "SSR (Hydronium + Meteorite)",
     description = "Full-stack server-side rendered application with reactive views",
-    tooling = { luax = true, dom = true, bare_dom = true },
+    -- `meteorite = true` puts Meteorite's generated LuaCATS aids
+    -- (.meteorite/aids/lua) on the LuaLS path. Without it those files are
+    -- generated on every `meteorite graph`/`build` but never reach the
+    -- editor -- see luals.lua's comment for the verified before/after.
+    tooling = { luax = true, dom = true, bare_dom = true, meteorite = true },
     next_script = "dev",
   },
   islands = {
     module = require("create.templates.islands"),
     name = "Islands Architecture",
     description = "Server-rendered shell with a real, client-hydrated JS island",
-    tooling = { luax = true, dom = true, bare_dom = true },
+    tooling = { luax = true, dom = true, bare_dom = true, meteorite = true },
     next_script = "dev",
   },
   minimal = {
@@ -109,7 +113,9 @@ function create.scaffold(opts, ctx)
   -- must fail loudly with an explanation, not silently generate broken
   -- output (the bug this whole template set was audited for).
   if template_id == "spa" then
-    return nil, "Template 'spa' is not yet supported -- hydronium has no client-side SPA runtime yet. Use 'ssr', 'islands', 'minimal', or 'ink'."
+    return nil, "Template 'spa' is not yet supported -- hydronium has a real client mount() and bundler, "
+      .. "but no client-side router and no server-less way to serve a built app. "
+      .. "Use 'ssr', 'islands', 'minimal', or 'ink'."
   end
 
   local template_spec = template_specs[template_id]
@@ -186,6 +192,7 @@ function create.scaffold(opts, ctx)
     luax = template_spec.tooling.luax,
     dom = template_spec.tooling.dom,
     bare_dom = template_spec.tooling.bare_dom,
+    meteorite = template_spec.tooling.meteorite,
   })
   if not luals_res then
     return nil, string.format("Scaffolding succeeded but LuaLS configuration failed: %s", tostring(luals_err))

@@ -1,44 +1,78 @@
 --[[
-  DISABLED (2026-09-07): this template is intentionally NOT reachable
-  through `create.scaffold`/`create.available_templates()` or the CLI's
+  DISABLED: this template is intentionally NOT reachable through
+  `create.scaffold`/`create.available_templates()` or the CLI's
   `--template` completion list -- see src/create/init.lua's
-  `create.scaffold` (it now returns a clear error for `--template spa`
+  `create.scaffold` (it returns a clear error for `--template spa`
   specifically) and src/main.lua's `c.complete(c.values(...))` list.
 
-  Why: nothing this template promised is real in Hydronium today, and
-  making it real is out of scope for hydronium-create (it needs
-  foundational work on the hydronium framework side, tracked separately,
-  not a scaffolding fix here). Concretely, as of this date:
-    - There is no `h.mount(component, selector)` API anywhere in
-      src/hydronium -- verified by reading the framework source, not
-      assumed. The framework has no notion of mounting a component tree
-      into a live browser DOM selector at all yet.
-    - There is no client-side bundler or dev-server story for `.luax`
-      files served directly to a browser (`<script type="module"
-      src="/src/main.luax">` was never going to work -- browsers don't
-      compile LUAX, and nothing in this ecosystem transforms it into
-      browser-runnable JS ahead of time).
-    - There is no `hydronium` CLI binary (the old template's
-      `dev`/`build` scripts invoked `hydronium dev`/`hydronium build`,
-      neither of which exist). Hydronium core is a `kind = "lib"`
-      package, not a `kind = "bin"` executable with subcommands.
+  ---------------------------------------------------------------------
+  CORRECTION (2026-09-10). The 2026-09-07 version of this comment gave
+  three reasons for the block. ALL THREE ARE NOW FALSE and have been
+  retracted. They were, verbatim, and what is actually true today:
 
-  What would need to be true in hydronium before this template could come
-  back for real:
-    1. A real client bootstrap entry point that can run an actual
-       Hydronium component tree in a browser from scratch (not just
-       hydrating server-rendered islands, which IS real today -- see the
-       `islands` template's JS-island path).
-    2. A real bundler/dev-server that can take `.luax` sources and ship
-       browser-runnable JS (or a documented, working alternative delivery
-       mechanism).
-    3. A working `h.mount`/`hydronium.client.mount`-shaped API, verified
-       against real framework source the same way every other template in
-       this project was fixed.
+    * "There is no `h.mount(component, selector)` API anywhere."
+      FALSE. `dom/src/hydronium_dom/client/mount.js` exports a real
+      `mount(options)` whose `options.container` is exactly "a CSS
+      selector or a real DOM element to mount/hydrate into".
 
-  Until then, `create.scaffold({template = "spa"})` returns a clear error
-  instead of silently generating code that cannot run -- see
-  src/create/init.lua.
+    * "There is no real client bootstrap entry point that can run an
+      actual Hydronium component tree in a browser from scratch (not
+      just hydrating server-rendered islands)."
+      FALSE. `mount()` takes `hydrate: false` (its default), which
+      routes to `Reconciler:mount` and builds the DOM fresh rather than
+      claiming SSR output. `templates/ssr.lua` (~L236-L261) already
+      issues exactly that from-scratch mount call.
+
+    * "There is no client-side bundler or dev-server story for `.luax`
+      files served directly to a browser."
+      FALSE on both halves. `hydronium_ballad.plugins.client` really
+      resolves, amalgamates, minifies and splits app+framework Lua into
+      `format = "package_preload_v1"` chunks (`M.bundle`, and
+      `mount()`'s `chunkUrls` option consumes them); and a real
+      on-demand `.luax` dev pipeline exists -- `templates/ssr.lua`
+      generates routes serving `/hydronium-src`,
+      `/__hydronium/client_manifest.json`, and
+      `/__hydronium/dev/module/:id` (compiled per request).
+
+  ---------------------------------------------------------------------
+  WHY IT IS STILL BLOCKED, accurately, as of 2026-09-10:
+
+  1. There is no client-side router. An SPA's defining property is
+     navigating between views without a server round-trip, and nothing
+     in this ecosystem does that today: there is no `hydronium/router`
+     package, and `core/src/hydronium/init.lua` exposes no routing
+     surface. (The only "router" strings under create/ are Meteorite's
+     *server-side* `router_dispatch` build option, which is unrelated.)
+     A template named `spa` that cannot navigate is a single-page app
+     only in the trivial sense of having one page.
+
+  2. There is no server-less delivery story, and no `hydronium` CLI to
+     provide one. Every real client mount that exists today is served
+     by a Meteorite app: the URLs `mount()` needs
+     (`hydroniumBaseUrl`, `manifestUrl`, `appModuleUrl`, or bundled
+     `chunkUrls`) are produced by generated Meteorite routes or by a
+     Ballad partiture build. The root package is `kind = "script"`, not
+     a `kind = "bin"` executable -- `hydronium dev` and
+     `hydronium build` still do not exist. So a scaffolded `spa`
+     project today would either ship a Meteorite server (making it the
+     `ssr` template with `hydrate = false`, not a distinct template) or
+     ship nothing runnable.
+
+  What would need to be true before this template comes back for real:
+
+    1. A real client-side router: history/hash-driven URL matching,
+       view swapping through the existing reconciler, and link
+       interception. This is the substantive gap.
+    2. Either a `kind = "bin"` `hydronium` CLI with real `dev`/`build`
+       subcommands, or a documented Ballad partiture recipe that emits
+       a static directory (bundled `chunkUrls` + `index.html`) a plain
+       static file server can host with no Meteorite process.
+
+  Until then, `create.scaffold({template = "spa"})` returns a clear
+  error instead of generating code that cannot run -- see
+  src/create/init.lua. Do not restore this template on the strength of
+  `mount()` existing alone; mount is necessary and no longer missing,
+  but it was never sufficient.
 ]]
 
 local spa = {}

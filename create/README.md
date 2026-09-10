@@ -10,7 +10,7 @@ Declarative scaffolding CLI tool for initializing new [Hydronium](https://moonst
 | `islands` | Mostly-static SSR shell with one real, client-hydrated JS island (server-rendered button, client-side click handling). |
 | `--minimal` | Lightweight standalone reactive component for scripting and embedding. Selected as a flag rather than through `--template`. |
 | `ink` | Interactive terminal counter using LUAX, Yoga layout, keyboard input, and the Hydronium Ink renderer. Requires LuaJIT 2.1 on macOS or glibc Linux. |
-| `spa` | **Not yet supported.** Hydronium has no client-side mount API, bundler, or CLI binary today; `--template spa` returns a clear error instead of generating broken output. See `src/create/templates/spa.lua`'s own comment for what would need to exist first. |
+| `spa` | **Not yet supported.** Blocked on a client-side router and a server-less delivery story, *not* on mounting — `hydronium_dom`'s client `mount()` and the Ballad client bundler are both real and are used by the `ssr` template. `--template spa` returns a clear error instead of generating broken output. See `src/create/templates/spa.lua`'s own comment for the exact remaining gaps. |
 
 ## Usage
 
