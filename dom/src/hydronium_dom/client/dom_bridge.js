@@ -73,6 +73,24 @@ export function createDomBridge() {
       if (key === "id") { el.id = ""; return; }
       el.removeAttribute(key);
     },
+    // Optional (hydronium.host.dom.createDomHost does not require these
+    // two to be present) -- per-property access to the element's inline
+    // style, which is what lets a re-render add, change or remove ONE
+    // declaration without rewriting the whole `style` attribute and
+    // clobbering declarations another code path set. When a bridge omits
+    // them, hydronium.host.dom falls back to regenerating the attribute
+    // wholesale, which is correct but not surgical.
+    //
+    // Property names arrive already normalized to kebab-case by
+    // hydronium_dom.style (the same normalization SSR uses), which is
+    // exactly what CSSStyleDeclaration.setProperty takes natively -- so
+    // no camelCase bridging is needed or wanted here.
+    set_style_property(el, name, value) {
+      el.style.setProperty(name, String(value));
+    },
+    remove_style_property(el, name) {
+      el.style.removeProperty(name);
+    },
     // REPLACES any previously-registered listener for this event name on
     // this element -- required by hydronium.host.dom's own contract (see
     // its doc comment on `set_listener`): this is what lets ordinary

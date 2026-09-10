@@ -399,6 +399,7 @@ local function main()
       "tests/core/hydration_spec.lua",
       "tests/core/family_identity_adversarial_spec.lua",
       "tests/host/dom_spec.lua",
+      "tests/host/style_spec.lua",
       "tests/host/css_spec.lua",
       "tests/host/assets_spec.lua",
       "tests/host/terminal_spec.lua",

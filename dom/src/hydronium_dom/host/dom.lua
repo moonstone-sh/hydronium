@@ -63,6 +63,16 @@
   even supposed to supply it.
 --]]
 
+-- The one and only normalization of a `style` prop into real CSS
+-- property names/values, shared verbatim with the SSR serializer
+-- (`hydronium_dom.server.html.serialize_style` calls the same functions).
+-- Sharing rather than reimplementing is what guarantees a styled element
+-- hydrates cleanly: the server and this module cannot compute different
+-- CSS for the same input, because there is only one implementation.
+-- `hydronium_dom.style` is itself a leaf module with no requires, so this
+-- does not compromise loading this host inside a browser Lua VM.
+local style_util = require("hydronium_dom.style")
+
 local M = {}
 
 local REQUIRED_BRIDGE_FNS = {
@@ -115,7 +125,115 @@ local function rawProps(props)
   return props._store or props
 end
 
-local function applyProp(bridge, handle, key, value)
+--- True when the bridge can address individual CSS properties.
+---
+--- `set_style_property`/`remove_style_property` are OPTIONAL bridge
+--- functions -- the same pattern `is_comment` and `hydration_mismatch`
+--- already use -- so every bridge written before style support existed
+--- keeps working unchanged instead of failing the required-function
+--- check. When they are absent, `applyStyle` falls back to rewriting the
+--- whole `style` attribute, which is correct but not surgical.
+local function hasStylePropertyFns(bridge)
+  return type(bridge.set_style_property) == "function"
+    and type(bridge.remove_style_property) == "function"
+end
+
+--- Applies a `style` prop, diffing it against the previous one.
+---
+--- A style prop may be authored two ways, matching what React and Solid
+--- both accept:
+---
+---   * a STRING of raw CSS text -- `style = "color: red; margin: 0"` --
+---     which is set as the ordinary `style` HTML attribute verbatim, and
+---   * a TABLE of property names to values -- `style = { color = "red" }`
+---     or `style = { ["background-color"] = "red" }` (camelCase and
+---     kebab-case are both accepted and normalize to the same CSS name).
+---
+--- The table form is applied per-property through the DOM's
+--- `CSSStyleDeclaration` rather than through `setAttribute`. That is the
+--- whole reason the table form exists: setting the attribute rewrites the
+--- element's entire inline style, clobbering any property some other code
+--- path set, whereas `setProperty`/`removeProperty` touch exactly the
+--- declarations that actually changed. It is also what makes an update
+--- correct -- a property present last render but absent now must be
+--- REMOVED, not merely left at its stale value, which is precisely the
+--- bug a "regenerate the whole string" approach hides until two sources
+--- write to the same element.
+---
+--- @param oldValue any the previous render's style prop (nil on mount)
+--- @param newValue any this render's style prop
+local function applyStyle(bridge, handle, oldValue, newValue)
+  -- Gone entirely: drop the whole inline style.
+  if newValue == nil or newValue == false then
+    bridge.remove_attr(handle, "style")
+    return
+  end
+
+  -- String form: raw CSS text straight onto the attribute. Note this is
+  -- the UNESCAPED text -- `set_attr` maps to `setAttribute`, which takes
+  -- raw text; only SSR escapes, because only SSR embeds it in markup.
+  if type(newValue) == "string" then
+    if newValue == "" then
+      bridge.remove_attr(handle, "style")
+    else
+      bridge.set_attr(handle, "style", newValue)
+    end
+    return
+  end
+
+  if type(newValue) ~= "table" then
+    -- Anything else (a number, a boolean true) is not a meaningful style.
+    bridge.remove_attr(handle, "style")
+    return
+  end
+
+  if not hasStylePropertyFns(bridge) then
+    -- Fallback path: no per-property access, so regenerate wholesale.
+    local css = style_util.serialize(newValue)
+    if css == "" then
+      bridge.remove_attr(handle, "style")
+    else
+      bridge.set_attr(handle, "style", css)
+    end
+    return
+  end
+
+  local newMap = style_util.to_map(newValue)
+
+  -- Switching FROM a string (or from any non-table) to a table means the
+  -- element currently carries an inline style this diff knows nothing
+  -- about. Clear it first so stale declarations cannot survive.
+  if type(oldValue) ~= "table" then
+    if oldValue ~= nil and oldValue ~= false then
+      bridge.remove_attr(handle, "style")
+    end
+    for name, value in pairs(newMap) do
+      bridge.set_style_property(handle, name, value)
+    end
+    return
+  end
+
+  local oldMap = style_util.to_map(oldValue)
+
+  -- Removed: present last render, gone now.
+  for name in pairs(oldMap) do
+    if newMap[name] == nil then
+      bridge.remove_style_property(handle, name)
+    end
+  end
+  -- Added or changed. Unchanged properties are skipped -- unlike a
+  -- listener, re-setting a CSS property is a real style recalculation, so
+  -- the equality check here is worth making.
+  for name, value in pairs(newMap) do
+    if oldMap[name] ~= value then
+      bridge.set_style_property(handle, name, value)
+    end
+  end
+end
+
+--- @param oldValue any previous value, used only by the `style` diff
+---   (every other prop type is applied without needing to know it).
+local function applyProp(bridge, handle, key, value, oldValue)
   if NON_DOM_PROPS[key] then return end
   if isEventPropName(key) then
     if type(value) == "function" then
@@ -123,6 +241,10 @@ local function applyProp(bridge, handle, key, value)
     else
       bridge.remove_listener(handle, eventNameFor(key))
     end
+    return
+  end
+  if key == "style" then
+    applyStyle(bridge, handle, oldValue, value)
     return
   end
   if value == nil or value == false then
@@ -137,6 +259,9 @@ local function removeProp(bridge, handle, key, oldValue)
   if isEventPropName(key) then
     bridge.remove_listener(handle, eventNameFor(key))
   else
+    -- `style` needs no special case: removing the attribute drops every
+    -- inline declaration at once, which is exactly what "the style prop
+    -- is gone" means.
     bridge.remove_attr(handle, key)
   end
 end
@@ -225,7 +350,12 @@ function M.createDomHost(bridge)
       -- -- set_listener's REPLACE semantics make re-applying it
       -- unconditionally both correct and cheap (a browser addEventListener
       -- call, not a DOM mutation).
-      applyProp(bridge, handle, k, newV)
+      --
+      -- The previous value is passed through purely for `style`, whose
+      -- table form must be DIFFED rather than re-applied: re-applying it
+      -- blind would add and update properties but never remove one that
+      -- disappeared between renders.
+      applyProp(bridge, handle, k, newV, oldSrc[k])
     end
   end
 

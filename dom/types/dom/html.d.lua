@@ -120,13 +120,39 @@
 ---@class HTMLDialogElement : HTMLElement
 ---@field open boolean?
 
+--- A single CSS declaration's value.
+---
+--- A number is given a unit automatically: `width = 200` serializes as
+--- `width: 200px`, except for the CSS properties that are genuinely
+--- unitless (`opacity`, `zIndex`, `flexGrow`, `lineHeight`, ...), which
+--- serialize bare. `false`, `nil` and `""` all mean "this property is not
+--- set" -- on a re-render, a property whose value becomes one of those is
+--- REMOVED from the element rather than left at its previous value.
+--- A signal or computed may be used directly and is read for its value.
+---@alias HydroniumStyleValue string | number | boolean | nil
+
+--- The `style` prop's accepted shape.
+---
+--- Either raw CSS text, or a table of CSS properties. The table form is
+--- preferred: it is applied one declaration at a time via the DOM's
+--- `CSSStyleDeclaration.setProperty`, so a re-render can add, change or
+--- remove individual properties without rewriting the whole inline style.
+---
+--- Property names may be written camelCase (`backgroundColor`) or
+--- kebab-case (`["background-color"]`); both normalize to the same real
+--- CSS property name, so `style = { backgroundColor = "red" }` and
+--- `style = { ["background-color"] = "red" }` are equivalent. Server-side
+--- rendering and client-side application share one normalizer
+--- (`hydronium_dom.style`), so the two always produce the same CSS.
+---@alias HydroniumStyleProp string | table<string, HydroniumStyleValue>
+
 --- Standard HTML attributes shared across all elements
 ---@class HTMLAttributes : LuaxProps, { [integer]: any }
 ---@field [integer] any
 ---@field id? string
 ---@field className? string
 ---@field class? string
----@field style? table<string, any> | string
+---@field style? HydroniumStyleProp
 ---@field title? string
 ---@field role? string
 ---@field tabIndex? integer

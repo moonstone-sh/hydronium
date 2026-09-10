@@ -1,6 +1,14 @@
 --- Hydronium HTML Utilities for SSR Serialization
 local M = {}
 
+-- The `style` prop's normalization (camelCase/kebab-case handling, the
+-- unitless-number list, ordering) is SHARED with the browser DOM host
+-- rather than implemented twice: `hydronium_dom.host.dom` applies the
+-- same declarations through `CSSStyleDeclaration.setProperty`, and the
+-- two must agree byte-for-byte or a styled element causes a hydration
+-- mismatch. See that module's doc comment for the full rationale.
+local style_util = require("hydronium_dom.style")
+
 --- Strict HTML5 Void Elements (area, base, br, col, embed, hr, img, input, link, meta, param, source, track, wbr)
 --- Must be serialized as `<tag attrs>` without self-closing slash or end tag.
 --- Any children passed to void elements must throw an error.
@@ -144,76 +152,10 @@ M.SVG_ATTRIBUTE_ALIASES = {
   spreadmethod = "spreadMethod",
 }
 
---- CSS Properties that remain unitless when numbers are provided
-M.UNITLESS_NUMBER_PROPS = {
-  animationiterationcount = true,
-  ["animation-iteration-count"] = true,
-  borderimageoutset = true,
-  ["border-image-outset"] = true,
-  borderimageslice = true,
-  ["border-image-slice"] = true,
-  borderimagewidth = true,
-  ["border-image-width"] = true,
-  boxflex = true,
-  ["box-flex"] = true,
-  boxflexgroup = true,
-  ["box-flex-group"] = true,
-  boxordinalgroup = true,
-  ["box-ordinal-group"] = true,
-  columncount = true,
-  ["column-count"] = true,
-  columns = true,
-  flex = true,
-  flexgrow = true,
-  ["flex-grow"] = true,
-  flexpositive = true,
-  ["flex-positive"] = true,
-  flexshrink = true,
-  ["flex-shrink"] = true,
-  flexnegative = true,
-  ["flex-negative"] = true,
-  flexorder = true,
-  ["flex-order"] = true,
-  gridrow = true,
-  ["grid-row"] = true,
-  gridrowend = true,
-  ["grid-row-end"] = true,
-  gridrowspan = true,
-  ["grid-row-span"] = true,
-  gridrowstart = true,
-  ["grid-row-start"] = true,
-  gridcolumn = true,
-  ["grid-column"] = true,
-  gridcolumnend = true,
-  ["grid-column-end"] = true,
-  gridcolumnspan = true,
-  ["grid-column-span"] = true,
-  gridcolumnstart = true,
-  ["grid-column-start"] = true,
-  fontweight = true,
-  ["font-weight"] = true,
-  lineclamp = true,
-  ["line-clamp"] = true,
-  lineheight = true,
-  ["line-height"] = true,
-  opacity = true,
-  order = true,
-  orphans = true,
-  tabsize = true,
-  ["tab-size"] = true,
-  widows = true,
-  zindex = true,
-  ["z-index"] = true,
-  zoom = true,
-  fillopacity = true,
-  ["fill-opacity"] = true,
-  floodopacity = true,
-  ["flood-opacity"] = true,
-  stopopacity = true,
-  ["stop-opacity"] = true,
-  strokeopacity = true,
-  ["stroke-opacity"] = true,
-}
+--- CSS Properties that remain unitless when numbers are provided.
+--- Re-exported from `hydronium_dom.style` so the SSR serializer and the
+--- browser DOM host cannot drift apart on which properties take "px".
+M.UNITLESS_NUMBER_PROPS = style_util.UNITLESS_NUMBER_PROPS
 
 --- HTML escaping: escapes '&' first, then '<', '>', '"', and '\''
 --- @param str string|any Input string or value
@@ -261,13 +203,10 @@ end
 --- e.g. "backgroundColor" -> "background-color"
 --- @param str string CamelCase property name
 --- @return string kebab-case property name
-function M.camel_to_kebab(str)
-  local s = str:gsub("(%u)", "-%1"):lower()
-  if s:sub(1, 1) == "-" then
-    s = s:sub(2)
-  end
-  return s
-end
+--- Re-exported from `hydronium_dom.style` (see the note at the top of
+--- this file): the client host derives CSS property names with the very
+--- same function, so the two can never disagree.
+M.camel_to_kebab = style_util.camel_to_kebab
 
 --- Evaluates reactive values (signals, computeds) if needed
 local function evaluate_value(val)
@@ -301,48 +240,19 @@ M.evaluate_value = evaluate_value
 --- Properties are sorted alphabetically; non-unitless numbers have "px" appended.
 --- @param style table|string CSS style table or string
 --- @return string Serialized CSS style string
+--- The CSS text itself comes from the shared normalizer -- byte-for-byte
+--- the same string `hydronium_dom.host.dom` applies on the client. The
+--- ONLY thing this function adds is HTML escaping, which is required here
+--- and only here, because this result is embedded inside a quoted HTML
+--- attribute rather than handed to a DOM API.
+---
+--- So the consistency invariant between SSR and client is exact and
+--- checkable: `escape_html(style.serialize(s))` is what SSR emits, and
+--- `style.serialize(s)` is what the client applies -- i.e. unescaping the
+--- SSR attribute yields the client's CSS text. `tests/host/style_spec.lua`
+--- asserts precisely that for every shape a style prop can take.
 function M.serialize_style(style)
-  if type(style) == "string" then
-    return M.escape_html(style)
-  end
-  if type(style) ~= "table" then
-    return ""
-  end
-
-  local raw_style = (type(style) == "table" and style._store) or style
-  local keys = {}
-  for k in pairs(raw_style) do
-    if k ~= "_store" then
-      table.insert(keys, k)
-    end
-  end
-  table.sort(keys)
-
-  local parts = {}
-  for _, k in ipairs(keys) do
-    local v = evaluate_value(raw_style[k])
-    if v ~= nil and v ~= false and v ~= "" then
-      local kebab = M.camel_to_kebab(k)
-      local val_str
-      if type(v) == "number" then
-        local lower_k = k:lower()
-        if M.UNITLESS_NUMBER_PROPS[lower_k] or M.UNITLESS_NUMBER_PROPS[kebab] then
-          val_str = tostring(v)
-        else
-          val_str = tostring(v) .. "px"
-        end
-      else
-        val_str = tostring(v)
-      end
-      table.insert(parts, kebab .. ": " .. val_str)
-    end
-  end
-
-  if #parts == 0 then
-    return ""
-  end
-
-  return M.escape_html(table.concat(parts, "; "))
+  return M.escape_html(style_util.serialize(style))
 end
 
 --- Deterministically serializes an attributes/props table to an HTML attribute string.
