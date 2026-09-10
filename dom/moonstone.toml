@@ -12,7 +12,7 @@ version = "5.4"
 abi = "5.4"
 
 [[dependencies]]
-name = "hydronium"
+name = "moonstone/hydronium"
 constraint = "path:../core"
 registry = "path"
 role = "runtime"

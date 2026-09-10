@@ -50,9 +50,9 @@ jobs:
         run: moon artifact create --help
       - name: Synchronize Hydronium workspace and package locks
         run: |
-          moon sync
+          moon sync --update
           for orbit in core dom luax ink build create; do
-            (cd "$orbit" && moon sync)
+            (cd "$orbit" && moon sync --update)
           done
       - name: Prepare locked Ballad integration checkout
         run: |
