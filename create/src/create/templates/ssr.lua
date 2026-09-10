@@ -300,14 +300,30 @@ meteorite.site(app, {
   root = ".",
   assets = {
     ["/public/:path*"] = { dir = "public", param = "path" },
-    -- The compiled client bootstrap (mount.js, dom_bridge.js,
-    -- dev_reload.js) lives in the sibling hydronium checkout, served
-    -- directly from its real source -- dev/example serving, same as the
-    -- /hydronium-src and /__hydronium/client routes below, not a
-    -- production asset pipeline (see hydronium/docs/BUNDLING.md).
-    ["/js/bootstrap/:path*"] = { dir = "../hydronium/dom/src/hydronium_dom/client", param = "path" },
   },
 })
+
+-- The compiled client bootstrap (mount.js, dom_bridge.js, hmr.js,
+-- dev_reload.js) lives in the sibling hydronium checkout, served directly
+-- from its real source -- dev/example serving, same as the /hydronium-src
+-- and /__hydronium/client routes below, not a production asset pipeline
+-- (see hydronium/docs/BUNDLING.md).
+--
+-- Declared as a plain app:get rather than as one more `assets` entry in
+-- m.site() above, because m.site()'s asset spec has no way to pass
+-- per-route `memory` -- and this directory needs it. It contains
+-- hydronium's self-hosted copy of wasmoon
+-- (dom/src/hydronium_dom/client/vendor/wasmoon/), which replaced two
+-- cross-origin CDN fetches on every page load; its glue.wasm is 271,581
+-- bytes, and Meteorite serves a dev `m.dir` file by reading it whole into
+-- the PER-REQUEST ARENA, sized 256kb (262,144 bytes) by the default
+-- profile. The binary overshoots by ~9kb, so without this override the
+-- request dies with a bare `OutOfMemory` -> HTTP 500 that shows up only in
+-- .meteorite/dev/server.log while the browser simply never boots the Lua
+-- VM. (It is the request arena, not the 1mb max_response_bytes cap.)
+app:get("/js/bootstrap/:path*", {
+  memory = { request_arena = "1mb" },
+}, meteorite.dir("../hydronium/dom/src/hydronium_dom/client", { param = "path" }))
 
 -- Serves hydronium's own runtime source for hydronium.client.mount to
 -- fetch over HTTP, exactly as hydronium/examples/meteorite_ssr does --
@@ -523,7 +539,8 @@ return Counter
   "hydronium.signals.batch": "hydronium/signals/batch.lua",
   "hydronium_dom": "hydronium_dom/init.lua",
   "hydronium_dom.dom.init": "hydronium_dom/dom/init.lua",
-  "hydronium_dom.host.dom": "hydronium_dom/host/dom.lua"
+  "hydronium_dom.host.dom": "hydronium_dom/host/dom.lua",
+  "hydronium_dom.style": "hydronium_dom/style.lua"
 }
 ]]
 
