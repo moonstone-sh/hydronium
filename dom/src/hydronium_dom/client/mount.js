@@ -52,7 +52,91 @@
 
 import { createDomBridge } from "./dom_bridge.js";
 
-const DEFAULT_WASMOON_URL = "https://cdn.jsdelivr.net/npm/wasmoon@1.16.0/+esm";
+/*
+  wasmoon is SELF-HOSTED, served from ./vendor/wasmoon/ next to this file,
+  rather than fetched from a public CDN. Both URLs are resolved against
+  `import.meta.url` -- this module's own real location -- and NOT against
+  the page, so they keep working no matter what base path an app mounts
+  the client bootstrap directory at (examples/quickstart serves it at
+  /js/bootstrap/, examples/meteorite_ssr at /client/; neither has to say
+  anything about wasmoon).
+
+  Why this was worth doing, measured rather than assumed: the previous
+  default pulled the ESM wrapper from cdn.jsdelivr.net (~118ms) and then
+  -- because a browser-side `new LuaFactory()` with no explicit URI
+  hardcodes `https://unpkg.com/wasmoon@<version>/dist/glue.wasm` inside
+  wasmoon itself -- the 265KB binary from unpkg.com (~154ms). Two
+  blocking round trips to two DIFFERENT third-party origins (two DNS
+  lookups, two TLS handshakes) before this module had even started
+  fetching the framework's own Lua sources.
+
+  DEFAULT_WASMOON_WASM_URL is passed to `new LuaFactory(...)` explicitly.
+  That is the documented, supported override ("You can pass the wasm
+  location as the first argument, useful if you are using wasmoon on a
+  web environment and want to host the file by yourself" -- wasmoon's
+  README) and the ONLY way to redirect that second fetch: wasmoon always
+  installs its own emscripten `locateFile` hook, so the binary's location
+  comes from this argument or from wasmoon's hardcoded unpkg fallback,
+  never from where index.js happens to sit on disk.
+*/
+const DEFAULT_WASMOON_URL = new URL("./vendor/wasmoon/wasmoon.esm.js", import.meta.url).href;
+const DEFAULT_WASMOON_WASM_URL = new URL("./vendor/wasmoon/glue.wasm", import.meta.url).href;
+
+/**
+ * Boots the Lua VM. Kept as its own function so mount() can start it as a
+ * promise and let it run CONCURRENTLY with the HTTP fetches of the Lua
+ * sources -- see mount()'s own comment at the Promise.all.
+ */
+async function createLuaEngine(wasmoonUrl, wasmoonWasmUrl) {
+  const { LuaFactory } = await import(/* @vite-ignore */ wasmoonUrl);
+  const factory = new LuaFactory(wasmoonWasmUrl);
+  return factory.createEngine();
+}
+
+async function fetchText(url, describe) {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`hydronium.client.mount: failed to fetch ${describe} from ${url}: ${res.status}`);
+  }
+  return res.text();
+}
+
+/**
+ * Bundled path: every chunk is fetched in parallel, but the resolved
+ * array preserves `chunkUrls` order because that order is real -- chunks
+ * are `load()`ed sequentially by the caller, and a later chunk may
+ * legitimately overwrite a `package.preload` entry an earlier one set.
+ * Only the network waiting is parallelized, never the evaluation.
+ */
+function fetchChunkSources(chunkUrls) {
+  return Promise.all(chunkUrls.map((url) => fetchText(url, `chunk ${url}`)));
+}
+
+/**
+ * Unbundled path. The app module's own source is fetched CONCURRENTLY
+ * with the manifest (nothing about it depends on the manifest's
+ * contents); the framework modules are the one genuinely dependent step,
+ * since their URLs are what the manifest lists.
+ */
+async function fetchUnbundledSources({ hydroniumBaseUrl, manifestUrl, appModuleUrl }) {
+  const appSourcePromise = fetchText(appModuleUrl, "app module");
+
+  const manifestRes = await fetch(manifestUrl);
+  if (!manifestRes.ok) {
+    throw new Error(`hydronium.client.mount: failed to fetch manifest ${manifestUrl}: ${manifestRes.status}`);
+  }
+  const manifest = await manifestRes.json();
+
+  const base = hydroniumBaseUrl.replace(/\/+$/, "");
+  const moduleEntries = await Promise.all(
+    Object.entries(manifest).map(async ([moduleId, relPath]) => [
+      moduleId,
+      await fetchText(`${base}/${relPath}`, `module '${moduleId}'`),
+    ])
+  );
+
+  return { moduleEntries, appSource: await appSourcePromise };
+}
 
 function luaModuleGlobalKey(moduleId) {
   return "__hydronium_src_" + moduleId.replace(/\./g, "_");
@@ -101,7 +185,29 @@ function toLuaLiteral(value) {
  * @param {string|Element} options.container CSS selector or a real DOM element to mount/hydrate into.
  * @param {object} [options.props] Props passed to the root component.
  * @param {boolean} [options.hydrate] Claim real pre-existing DOM (via `Reconciler:hydrateRoot`) instead of building fresh (via `Reconciler:mount`).
+ * @param {boolean} [options.hmr] Dev only: enable `hydronium.core.family_loader`
+ *   BEFORE the app module is required, so every component it exports is
+ *   discovered and can later be hot-swapped by `./hmr.js`. This has to
+ *   happen here rather than in hmr.js because family discovery hooks
+ *   `require` and only fires on a module's FIRST load, and because a
+ *   ComponentInstance binds to its family at construction
+ *   (core/component.lua's `familyLoader.lookup(self.type)`) -- both of
+ *   which are already past by the time mount() returns. Off by default:
+ *   family_loader is documented as opt-in precisely so production pays
+ *   nothing and sees no `require` wrapping.
  * @param {string} [options.wasmoonUrl] Override the wasmoon ESM import URL.
+ *   Defaults to the copy vendored next to this file
+ *   (`./vendor/wasmoon/wasmoon.esm.js`, resolved against `import.meta.url`).
+ *   Still a fully supported override -- point it at a CDN build or a
+ *   different wasmoon version if you would rather not serve your own.
+ * @param {string} [options.wasmoonWasmUrl] Override the URL wasmoon fetches
+ *   its `glue.wasm` binary from, passed straight to `new LuaFactory(...)`.
+ *   Defaults to `./vendor/wasmoon/glue.wasm`. Set this whenever you set
+ *   `wasmoonUrl`: the two are independent, and wasmoon does NOT derive the
+ *   binary's location from wherever its JS was loaded -- left unset it
+ *   falls back to wasmoon's own hardcoded `unpkg.com` URL, so overriding
+ *   only `wasmoonUrl` would quietly keep one cross-origin fetch (and could
+ *   pair a vendored binary with a mismatched build, or vice versa).
  * @returns {Promise<{ lua: unknown, containerEl: Element }>}
  */
 export async function mount(options) {
@@ -114,7 +220,9 @@ export async function mount(options) {
     container,
     props = {},
     hydrate = false,
+    hmr = false,
     wasmoonUrl = DEFAULT_WASMOON_URL,
+    wasmoonWasmUrl = DEFAULT_WASMOON_WASM_URL,
   } = options;
 
   const bundled = Array.isArray(chunkUrls) && chunkUrls.length > 0;
@@ -130,9 +238,29 @@ export async function mount(options) {
     throw new Error(`hydronium.client.mount: container not found: ${String(container)}`);
   }
 
-  const { LuaFactory } = await import(/* @vite-ignore */ wasmoonUrl);
-  const factory = new LuaFactory();
-  const lua = await factory.createEngine();
+  // Booting the Lua VM and fetching the Lua SOURCES are independent, and
+  // are started together here rather than one after the other.
+  //
+  // They used to be strictly sequential -- `import(wasmoon)` ->
+  // `createEngine()` -> and only THEN the first `fetch()` -- which cost a
+  // real, measured ~270ms of dead time on every page load: nothing about
+  // issuing an HTTP request for a `.lua` file needs a Lua VM to exist, yet
+  // every one of them waited behind the wasm download and instantiation.
+  //
+  // A live engine IS required before any `lua.global.set` / `lua.doString`
+  // below, so the two halves rejoin at this Promise.all and the ordering
+  // of everything after it is unchanged.
+  //
+  // Promise.all (not sequential awaits) also matters for failure
+  // behaviour: it subscribes to both promises immediately, so if the
+  // engine boot and a fetch both reject, neither becomes an unhandled
+  // rejection -- the first error is thrown and the other stays observed.
+  const [lua, sources] = await Promise.all([
+    createLuaEngine(wasmoonUrl, wasmoonWasmUrl),
+    bundled
+      ? fetchChunkSources(chunkUrls)
+      : fetchUnbundledSources({ hydroniumBaseUrl, manifestUrl, appModuleUrl }),
+  ]);
 
   const bridge = createDomBridge();
   for (const [name, fn] of Object.entries(bridge)) {
@@ -146,38 +274,15 @@ export async function mount(options) {
     // compiled Lua chunk routinely contains `]==]`/backtick/`${`-looking
     // byte sequences that would corrupt a naive string interpolation.
     // Same reasoning as toLuaLiteral()'s own doc comment above for props.
-    for (const url of chunkUrls) {
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error(`hydronium.client.mount: failed to fetch chunk ${url}: ${res.status}`);
-      }
-      const src = await res.text();
+    //
+    // Still strictly in `chunkUrls` order: only the fetching was
+    // parallelized (in fetchChunkSources), never the evaluation.
+    for (const src of sources) {
       lua.global.set("__hydronium_chunk_src", src);
       await lua.doString('assert(load(__hydronium_chunk_src, "@hydronium-chunk"))()');
     }
   } else {
-    const manifestRes = await fetch(manifestUrl);
-    if (!manifestRes.ok) {
-      throw new Error(`hydronium.client.mount: failed to fetch manifest ${manifestUrl}: ${manifestRes.status}`);
-    }
-    const manifest = await manifestRes.json();
-
-    const moduleEntries = await Promise.all(
-      Object.entries(manifest).map(async ([moduleId, relPath]) => {
-        const url = `${hydroniumBaseUrl.replace(/\/+$/, "")}/${relPath}`;
-        const res = await fetch(url);
-        if (!res.ok) {
-          throw new Error(`hydronium.client.mount: failed to fetch module '${moduleId}' from ${url}: ${res.status}`);
-        }
-        return [moduleId, await res.text()];
-      })
-    );
-
-    const appRes = await fetch(appModuleUrl);
-    if (!appRes.ok) {
-      throw new Error(`hydronium.client.mount: failed to fetch app module from ${appModuleUrl}: ${appRes.status}`);
-    }
-    const appSource = await appRes.text();
+    const { moduleEntries, appSource } = sources;
 
     for (const [moduleId, source] of moduleEntries) {
       lua.global.set(luaModuleGlobalKey(moduleId), source);
@@ -200,6 +305,7 @@ export async function mount(options) {
   lua.global.set("__hydronium_app_module_id", appModuleId);
   lua.global.set("__hydronium_props_src", `return ${toLuaLiteral(props)}`);
   lua.global.set("__hydronium_hydrate", hydrate === true);
+  lua.global.set("__hydronium_hmr_enabled", hmr === true);
 
   await lua.doString(`
     -- The "hydronium" luax compile target unconditionally emits
@@ -218,7 +324,40 @@ export async function mount(options) {
     -- demo when this was an unconditional require) -- only apps that
     -- actually reference H.h(...) need this to have succeeded.
     local __H_ok, __H_mod = pcall(require, "hydronium")
+    if not __H_ok then
+      -- The barrel is frequently NOT resolvable client-side: the module
+      -- manifest is generated from a component's REAL require graph
+      -- (dom/tools/gen_client_manifest.lua), and a component that pulls
+      -- in "hydronium.core.element" directly never causes the top-level
+      -- "hydronium" barrel to be listed -- so the pcall above fails and,
+      -- before this fallback existed, H stayed nil. That was invisible
+      -- for a LEXICAL-tag component (which declares its own module-level
+      -- local H = require("hydronium.core.element")) but fatal for a
+      -- BARE-tag one, whose codegen emits a bare H.h("div", ...) and
+      -- relies entirely on this global -- every bare-tag component died
+      -- on first render with "attempt to index a nil value (global 'H')".
+      --
+      -- The element module is the right substitute rather than a
+      -- convenience: .h and .Fragment are the ONLY members LUAX codegen
+      -- ever emits on H (compiler/init.lua's factory_name /
+      -- fragment_name), the barrel's own h/Fragment are literally these
+      -- same values re-exported (core/init.lua), and this module is
+      -- always present in the manifest because element.h is what every
+      -- compiled component calls.
+      __H_ok, __H_mod = pcall(require, "hydronium.core.element")
+    end
     if __H_ok then H = __H_mod end
+
+    -- Must precede the app require below: family_loader wraps the global
+    -- require and only scans a module's exports on its FIRST load, so
+    -- enabling it after the app module was already required would leave
+    -- that module's components permanently undiscoverable (and hmr.js
+    -- would then correctly, but uselessly, fall back to a full reload on
+    -- every save). See this function's options.hmr doc comment.
+    -- (No backticks in here: this whole block is a JS template literal.)
+    if __hydronium_hmr_enabled then
+      require("hydronium.core.family_loader").enable()
+    end
 
     local element = require("hydronium.core.element")
     local dom = require("hydronium_dom")
