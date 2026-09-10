@@ -1,7 +1,7 @@
 manifest_version = 2
 
 [package]
-name = "hydronium-ballad"
+name = "moonstone/hydronium-ballad"
 version = "0.1.0"
 kind = "lib"
 description = "Hydronium's ballad plugins: .luax compile, CSS/assets, and client bundling/minification"
@@ -20,19 +20,19 @@ constraint = "^0.3.7"
 role = "tool"
 
 [[dependencies]]
-name = "hydronium"
+name = "moonstone/hydronium"
 constraint = "path:../core"
 registry = "path"
 role = "runtime"
 
 [[dependencies]]
-name = "hydronium-luax"
+name = "moonstone/hydronium-luax"
 constraint = "path:../luax"
 registry = "path"
 role = "runtime"
 
 [[dependencies]]
-name = "hydronium-dom"
+name = "moonstone/hydronium-dom"
 constraint = "path:../dom"
 registry = "path"
 role = "runtime"

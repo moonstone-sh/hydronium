@@ -73,17 +73,17 @@ constraint = "^0.3.0"
 role = "tool"
 
 [[dependencies]]
-name = "hydronium"
+name = "moonstone/hydronium"
 constraint = "path:../hydronium/core"
 role = "runtime"
 
 [[dependencies]]
-name = "hydronium-luax"
+name = "moonstone/hydronium-luax"
 constraint = "path:../hydronium/luax"
 role = "runtime"
 
 [[dependencies]]
-name = "hydronium-dom"
+name = "moonstone/hydronium-dom"
 constraint = "path:../hydronium/dom"
 role = "runtime"
 ]=], project_name)

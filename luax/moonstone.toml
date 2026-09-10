@@ -1,7 +1,7 @@
 manifest_version = 2
 
 [package]
-name = "hydronium-luax"
+name = "moonstone/hydronium-luax"
 version = "0.1.0"
 kind = "lib"
 description = "Hydronium LUAX compiler, formatter, and editor integrations"

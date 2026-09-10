@@ -1,4 +1,4 @@
-# hydronium/create
+# moonstone/hydronium-create
 
 Declarative scaffolding CLI tool for initializing new [Hydronium](https://moonstone.sh/packages/hydronium) reactive applications and components, built with [Clingy](https://moonstone.sh/packages/moonstone/clingy).
 
@@ -16,7 +16,7 @@ Declarative scaffolding CLI tool for initializing new [Hydronium](https://moonst
 
 ```bash
 # Install the generator
-moon add hydronium/create
+moon add moonstone/hydronium-create
 
 # Scaffold in current directory with default SSR template
 moon exec hydronium-create

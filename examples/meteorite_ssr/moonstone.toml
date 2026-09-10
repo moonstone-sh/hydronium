@@ -26,25 +26,25 @@ constraint = "^0.3.0"
 role = "tool"
 
 [[dependencies]]
-name = "hydronium-ballad"
+name = "moonstone/hydronium-ballad"
 constraint = "path:../../build"
 registry = "path"
 role = "runtime"
 
 [[dependencies]]
-name = "hydronium"
+name = "moonstone/hydronium"
 constraint = "path:../../core"
 registry = "path"
 role = "runtime"
 
 [[dependencies]]
-name = "hydronium-luax"
+name = "moonstone/hydronium-luax"
 constraint = "path:../../luax"
 registry = "path"
 role = "runtime"
 
 [[dependencies]]
-name = "hydronium-dom"
+name = "moonstone/hydronium-dom"
 constraint = "path:../../dom"
 registry = "path"
 role = "runtime"

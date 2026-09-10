@@ -1,0 +1,57 @@
+name: Hydronium CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Test and package Hydronium
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: moonstone-sh/moonstone
+          # Includes `moon artifact create`, required by Ballad registry export.
+          ref: 8594a61de69798fd534d7d9e9c595f7f25ddb3f5
+          path: .ci/moonstone
+      - uses: actions/checkout@v4
+        with:
+          repository: moonstone-sh/ballad
+          path: .ci/ballad
+          fetch-depth: 0
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Install release tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y b3sum file jq libsqlite3-dev luajit pkg-config zstd
+      - name: Build Moonstone CLI
+        working-directory: .ci/moonstone
+        run: |
+          zig build
+          echo "$GITHUB_WORKSPACE/.ci/moonstone/zig-out/bin" >> "$GITHUB_PATH"
+      - name: Verify Moonstone artifact export support
+        run: moon artifact create --help
+      - name: Synchronize Hydronium workspace and package locks
+        run: |
+          moon sync
+          for orbit in core dom luax ink router build create; do
+            (cd "$orbit" && moon sync)
+          done
+      - name: Prepare locked Ballad integration checkout
+        run: |
+          ballad_version="$(moon lock package get moonstone/ballad --json | jq -er '.package.version')"
+          git -C .ci/ballad checkout --detach "v$ballad_version"
+          ln -s "$GITHUB_WORKSPACE/.ci/ballad" "$GITHUB_WORKSPACE/../ballad"
+          (cd .ci/ballad && moon sync --locked)
+      - name: Run Hydronium tests
+        run: moon exec luajit tests/runner.lua
+      - name: Export all registry packages
+        run: moon exec ballad play partiture.lua

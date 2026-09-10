@@ -1,7 +1,7 @@
 manifest_version = 2
 
 [package]
-name = "hydronium"
+name = "moonstone/hydronium"
 version = "0.1.0"
 kind = "lib"
 description = "Hydronium reactive UI core for Lua and LuaJIT"

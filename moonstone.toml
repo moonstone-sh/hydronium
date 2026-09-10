@@ -1,7 +1,7 @@
 manifest_version = 2
 
 [package]
-name = "hydronium-workspace"
+name = "moonstone/hydronium-workspace"
 version = "0.1.0"
 kind = "script"
 description = "Hydronium workspace: core, DOM host/SSR, and LUAX compiler"

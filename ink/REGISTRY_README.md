@@ -1,10 +1,10 @@
 # Hydronium Ink
 
-`hydronium-ink` is Hydronium's terminal host, with Box, Text, and Newline
+`moonstone/hydronium-ink` is Hydronium's terminal host, with Box, Text, and Newline
 intrinsics backed by Yoga layout.
 
 ```sh
-moon add hydronium-ink
+moon add moonstone/hydronium-ink
 ```
 
 It installs the `hydronium_ink` Lua namespace, resolves `hydronium`

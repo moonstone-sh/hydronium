@@ -1,7 +1,7 @@
 manifest_version = 2
 
 [package]
-name = "hydronium-ink"
+name = "moonstone/hydronium-ink"
 version = "0.1.1"
 kind = "lib"
 description = "Hydronium Ink: real terminal Host adapter and Box/Text/Newline intrinsics"
@@ -20,7 +20,7 @@ constraint = "^0.3.7"
 role = "tool"
 
 [[dependencies]]
-name = "hydronium"
+name = "moonstone/hydronium"
 constraint = "path:../core"
 registry = "path"
 role = "runtime"

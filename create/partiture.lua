@@ -14,7 +14,7 @@ return ballad.partiture(function(p)
 	})
 
 	local source_artifact = moonstone.registry.package(app, {
-		name = project.registry_name or "hydronium/create",
+		name = project.registry_name or "moonstone/hydronium-create",
 		readme = "README.md",
 		version = project.version,
 		target = "any",

@@ -1,0 +1,81 @@
+name: Publish Hydronium
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing v* tag to publish after a publish-only failure.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish Hydronium registry packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+      - uses: actions/checkout@v4
+        with:
+          repository: moonstone-sh/moonstone
+          # Includes `moon artifact create`, required by Ballad registry export.
+          ref: 8594a61de69798fd534d7d9e9c595f7f25ddb3f5
+          path: .ci/moonstone
+      - uses: actions/checkout@v4
+        with:
+          repository: moonstone-sh/ballad
+          path: .ci/ballad
+          fetch-depth: 0
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Install release tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y b3sum file jq libsqlite3-dev luajit pkg-config zstd
+      - name: Build Moonstone CLI
+        working-directory: .ci/moonstone
+        run: |
+          zig build
+          echo "$GITHUB_WORKSPACE/.ci/moonstone/zig-out/bin" >> "$GITHUB_PATH"
+      - name: Verify Moonstone artifact export support
+        run: moon artifact create --help
+      - name: Synchronize Hydronium workspace and package locks
+        run: |
+          moon sync
+          for orbit in core dom luax ink router build create; do
+            (cd "$orbit" && moon sync)
+          done
+      - name: Prepare locked Ballad integration checkout
+        run: |
+          ballad_version="$(moon lock package get moonstone/ballad --json | jq -er '.package.version')"
+          git -C .ci/ballad checkout --detach "v$ballad_version"
+          ln -s "$GITHUB_WORKSPACE/.ci/ballad" "$GITHUB_WORKSPACE/../ballad"
+          (cd .ci/ballad && moon sync --locked)
+      - name: Export all registry packages
+        run: moon exec ballad play partiture.lua
+      - name: Upload and publish every registry package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MOONSTONE_TOKEN: ${{ secrets.MOONSTONE_TOKEN }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          test -n "$MOONSTONE_TOKEN"
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "Hydronium $RELEASE_TAG" --generate-notes
+          while IFS= read -r -d '' publish_script; do
+            package_dir="$(dirname "$publish_script")"
+            asset="$(find "$package_dir" -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.tar.zst' \) -print -quit)"
+            test -n "$asset"
+            gh release upload "$RELEASE_TAG" "$asset" --clobber
+            export MOONSTONE_ARTIFACT_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/$(basename "$asset")"
+            sh "$publish_script"
+          done < <(find dist/orbit -type f -name publish.sh -print0 | sort -z)

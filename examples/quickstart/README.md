@@ -4,7 +4,7 @@ The "try this first" example: a small server-rendered page with a counter
 that runs as **real Lua in your browser**, and real state-preserving hot
 module replacement when you edit it.
 
-Scaffolded from the `ssr` template (`hydronium/create`), then polished into
+Scaffolded from the `ssr` template (`moonstone/hydronium-create`), then polished into
 an onboarding page in the spirit of `npm create vite@latest`.
 
 ## Run it

@@ -21,12 +21,12 @@ abi = "5.1"
 run = "lua src/main.lua"
 
 [[dependencies]]
-name = "hydronium"
+name = "moonstone/hydronium"
 constraint = "path:../hydronium/core"
 role = "runtime"
 
 [[dependencies]]
-name = "hydronium-dom"
+name = "moonstone/hydronium-dom"
 constraint = "path:../hydronium/dom"
 role = "runtime"
 ]=], project_name)

@@ -1,7 +1,7 @@
 manifest_version = 2
 
 [package]
-name = "hydronium-dom"
+name = "moonstone/hydronium-dom"
 version = "0.1.0"
 kind = "lib"
 description = "Hydronium DOM host, browser client, SSR renderer, and Meteorite adapter"
