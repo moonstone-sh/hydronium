@@ -418,6 +418,7 @@ local function main()
       -- LUAX compiler & tooling specs
       "tests/luax/lexer_spec.lua",
       "tests/luax/parser_spec.lua",
+      "tests/luax/jsx_text_spec.lua",
       "tests/luax/compiler_spec.lua",
       "tests/luax/spread_spec.lua",
       "tests/luax/lowerer_spec.lua",

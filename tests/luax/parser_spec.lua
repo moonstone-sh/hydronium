@@ -137,13 +137,36 @@ describe("LUAX: Parser CST/AST Construction", function()
     end)
 
     it("folds multiline JSX text and normalizes inter-tag indentation", function()
-      local raw = [[
+      -- NOTE the explicit leading "\n". Lua's long-string syntax swallows the
+      -- newline immediately after `[[`, so the original form of this fixture
+      -- built "        Hello\n..." -- a string whose FIRST line already
+      -- carried indentation. Real JSX never produces that: in
+      -- `<p>\n        Hello\n ... </p>` the text run begins right after `>`,
+      -- so its first line is empty and the indented "Hello" is line two.
+      -- Under the JSX text-cleaning algorithm leading whitespace on the
+      -- first line is deliberately significant (it is what preserves the
+      -- space in `<d.code>x</d.code> and`), so the old fixture only passed
+      -- because fold_text used to trim unconditionally. Verified against
+      -- the real @babel/types implementation: it returns
+      -- "        Hello wonderful World" for the un-prefixed string and
+      -- "Hello wonderful World" for this one.
+      local raw = "\n" .. [[
         Hello
         wonderful
         World
       ]]
       local folded = parser.fold_text(raw)
       assert.equal(folded, "Hello wonderful World")
+    end)
+
+    it("folds real multiline JSX source end-to-end the same way", function()
+      -- The same case as above, but going through the actual lexer+parser
+      -- instead of calling fold_text on a hand-built string.
+      local prog = parser.parse("<p>\n        Hello\n        wonderful\n        World\n      </p>")
+      local children = prog.body[1].expression.children
+      assert.equal(#children, 1)
+      assert.equal(children[1].type, "JSXText")
+      assert.equal(children[1].value, "Hello wonderful World")
     end)
 
     it("automatically decodes entities in parsed JSXText child nodes", function()

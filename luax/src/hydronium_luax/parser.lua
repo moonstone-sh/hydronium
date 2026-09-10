@@ -42,25 +42,77 @@ function parser_mod.decode_entities(text)
   return text
 end
 
+--- Folds a literal JSX text child (a run of source text between tags and/or
+--- embedded expressions) into the string that should actually be rendered.
+---
+--- This implements the same observable behavior as the JSX text-cleaning
+--- algorithm every JSX-descended toolchain uses (Babel's
+--- `cleanJSXElementLiteralChild` in `@babel/types`, which React, Preact,
+--- Vue-JSX and Solid's `babel-plugin-jsx-dom-expressions` all implement or
+--- mirror). Verified against the real `@babel/types` 8.0.4 source, and
+--- differentially tested against it -- see `tests/luax/jsx_text_spec.lua`.
+---
+--- The algorithm, precisely:
+---   * Split the run into lines on \r\n, \n or \r.
+---   * In every line, tabs become single spaces.
+---   * Strip leading spaces from every line EXCEPT the first.
+---   * Strip trailing spaces from every line EXCEPT the last.
+---   * Keep each line that is still non-empty; append one space after it
+---     unless it is the last line that contained a non-space/non-tab
+---     character (that single space is the collapsed newline+indentation).
+---
+--- Two consequences matter and are the whole point of this function:
+---
+---   1. A run containing NO newline is preserved completely verbatim,
+---      leading and trailing whitespace included -- because with a single
+---      line both "is first" and "is last" hold, so neither strip fires.
+---      This is what makes `<d.code>x</d.code> and` render as `x and`
+---      rather than `xand`. Internal runs of whitespace are NOT collapsed
+---      either; the reference algorithm leaves them alone.
+---
+---   2. A run that DOES span a newline has each line's edge whitespace
+---      trimmed and the lines joined by single spaces, so an
+---      indentation-only run between two sibling elements on separate
+---      source lines contributes nothing at all.
 function parser_mod.fold_text(text)
   if not text or #text == 0 then return "" end
-  if text:find("[\r\n]") then
-    local lines = {}
-    for line in text:gmatch("([^\r\n]*)[\r\n]?") do
-      local trimmed = line:match("^%s*(.-)%s*$")
-      if trimmed and #trimmed > 0 then
-        table.insert(lines, trimmed)
-      end
-    end
-    return table.concat(lines, " ")
-  else
-    local trimmed = text:match("^%s*(.-)%s*$")
-    if trimmed and #trimmed > 0 then
-      return trimmed:gsub("[ \t]+", " ")
-    else
-      return ""
+
+  -- Split on /\r\n|\n|\r/. Normalizing first is exactly equivalent to that
+  -- alternation and avoids the classic Lua-pattern trap where a naive
+  -- `[^\r\n]*[\r\n]?` gmatch turns a single \r\n into two line breaks.
+  local normalized = text:gsub("\r\n", "\n"):gsub("\r", "\n")
+  local lines = {}
+  for line in (normalized .. "\n"):gmatch("([^\n]*)\n") do
+    lines[#lines + 1] = line
+  end
+
+  -- The last line holding any non-space/non-tab character. Trailing lines
+  -- after it are pure indentation and never get a separating space.
+  local last_non_empty = 1
+  for idx = 1, #lines do
+    if lines[idx]:find("[^ \t]") then
+      last_non_empty = idx
     end
   end
+
+  local out = {}
+  for idx = 1, #lines do
+    local line = lines[idx]:gsub("\t", " ")
+    if idx ~= 1 then
+      line = line:gsub("^ +", "")
+    end
+    if idx ~= #lines then
+      line = line:gsub(" +$", "")
+    end
+    if #line > 0 then
+      if idx ~= last_non_empty then
+        line = line .. " "
+      end
+      out[#out + 1] = line
+    end
+  end
+
+  return table.concat(out)
 end
 
 local Parser = {}

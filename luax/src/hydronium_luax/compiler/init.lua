@@ -344,8 +344,16 @@ function CodeEmitter:filter_jsx_children(children)
     if child.type == "JSXComment" then
       -- Skip embedded comments in compiled output
     elseif child.type == "JSXText" then
-      -- Only include if text contains non-whitespace characters
-      if child.value and child.value:match("%S") then
+      -- Include any text child that survived JSX text folding.
+      --
+      -- Deliberately NOT a `%S` test. `parser_mod.fold_text` has already
+      -- applied the JSX text-cleaning algorithm, which is what decides
+      -- whether whitespace is meaningful: an indentation-only run between
+      -- two siblings on separate source lines has already folded to "",
+      -- while a genuine inline space (the run between `</d.code>` and
+      -- `and` on one source line) survives as " " and MUST be emitted --
+      -- dropping it here is what rendered `x and` as `xand`.
+      if child.value and #child.value > 0 then
         table.insert(filtered, child)
       end
     else
