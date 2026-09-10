@@ -1,0 +1,149 @@
+/* Quickstart page styling -- deliberately plain CSS, no framework.
+   Centered single card, in the spirit of a fresh Vite scaffold. */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #0f1117;
+  --card: #171a23;
+  --border: #262a36;
+  --text: #e8eaf0;
+  --muted: #8b90a0;
+  --accent: #4fc3f7;
+  --accent-2: #8b7cf6;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  width: 100%;
+  padding: 2rem;
+  display: flex;
+  justify-content: center;
+}
+
+.card {
+  width: 100%;
+  max-width: 30rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 2.75rem 2.5rem;
+  text-align: center;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 0.85rem;
+}
+
+.title {
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.2;
+  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 0.6rem;
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  margin-bottom: 2rem;
+}
+
+/* Reserves the counter's height so nothing jumps when the Lua VM
+   finishes booting and the real counter replaces the placeholder. */
+.app-slot {
+  min-height: 6.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.booting {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.counter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.counter-button {
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: #1f2430;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0.7rem 1.6rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.08s ease,
+    background-color 0.15s ease;
+}
+
+.counter-button:hover {
+  background: #252b3a;
+  border-color: var(--accent);
+}
+
+.counter-button:active {
+  transform: translateY(1px);
+}
+
+.counter-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.hint code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    monospace;
+  font-size: 0.84em;
+  color: var(--accent);
+  background: rgba(79, 195, 247, 0.1);
+  border: 1px solid rgba(79, 195, 247, 0.18);
+  border-radius: 5px;
+  padding: 0.13em 0.42em;
+}
+
+.docs {
+  margin-top: 2rem;
+  color: #5f6474;
+  font-size: 0.8rem;
+}

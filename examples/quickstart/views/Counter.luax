@@ -1,0 +1,52 @@
+-- The counter you edit.
+--
+-- This module runs IN YOUR BROWSER, as Lua: views/App.luax renders an
+-- empty container and boots a wasmoon VM into it, so the button's
+-- onClick below is a genuine Lua closure driving the ordinary Hydronium
+-- reconciler -- not a JS shim.
+--
+-- TRY IT: with `moon run dev` running, change `+ 1` to `+ 5` below and
+-- save. The page does NOT reload. The count you had already clicked up
+-- to stays exactly where it was, the button element is never remounted,
+-- and the very next click steps by 5.
+--
+-- Note what is NOT here: any HMR annotation. The state is a plain
+-- `signals.createSignal(...)`. Hydronium's LUAX compiler rewrites it
+-- into the descriptor the refresh registry matches on, so the value
+-- survives the swap automatically. Two conditions make that rewrite
+-- fire, and both are easy to break by accident:
+--   * the setup function takes a parameter literally named `scope`;
+--   * the signal is a two-name `local a, b = ...` destructure at the
+--     setup function's TOP level -- not inside the returned render
+--     function, an `if`, or a loop.
+-- Break either and nothing errors -- the counter just resets to 0 on
+-- each save, the way it would have before this feature existed.
+--
+-- `{count}` is passed BARE (not called as `{count()}`) on purpose: that
+-- makes each click patch only that one text node through a fine-grained
+-- binding, instead of re-running this whole component.
+--
+-- The `{" "}` spacers in the hint below are not noise: LUAX drops
+-- whitespace sitting directly against an element boundary, so writing
+-- `Edit <d.code>..</d.code> and save` renders as "Editviews/..and save".
+-- Explicit string children are the reliable way to keep those spaces.
+
+local H = require("hydronium.core.element")
+local dom = require("hydronium_dom")
+local signals = require("hydronium.signals")
+local d = dom.d
+
+local function Counter(props, scope)
+  local count, setCount = signals.createSignal(props.initial or 0)
+
+  return function()
+    return (
+      <d.div class="counter">
+      <d.button id="counter-button" class="counter-button" onClick={function() setCount(count() + 2) end}>{"Count: "}{count}</d.button>
+        <d.p class="hint">Edit this{" "}<d.code>views/Counter.luax</d.code>{" "}and save to test HMR</d.p>
+      </d.div>
+    )
+  end
+end
+
+return Counter

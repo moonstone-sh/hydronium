@@ -48,7 +48,9 @@ meteorite.site(app, {
   root = ".",
   assets = {
     ["/js/island/:path*"] = { dir = "../js_island", param = "path" },
-    ["/js/bootstrap/:path*"] = { dir = "../../dom/src/hydronium_dom/client", param = "path" },
+    -- NOTE: /js/bootstrap/:path* is NOT declared here with the others --
+    -- it needs a per-route memory override m.site()'s asset spec has no
+    -- way to express. See the app:get right below this block.
     ["/__hydronium/hmr-demo/:path*"] = { dir = "hmr_demo", param = "path" },
     ["/__hydronium/client-mount-demo/:path*"] = { dir = "client_mount_demo", param = "path" },
     -- The real hydronium-ballad build output (see ../partiture.lua --
@@ -59,6 +61,23 @@ meteorite.site(app, {
     ["/dist/client/:path*"] = { dir = "dist/client", param = "path" },
   },
 })
+
+-- The client bootstrap directory, declared separately from the m.site()
+-- assets above ONLY because it needs a per-route `memory` override, which
+-- m.site()'s asset spec cannot pass through.
+--
+-- That directory now also contains hydronium's self-hosted copy of wasmoon
+-- (dom/src/hydronium_dom/client/vendor/wasmoon/), replacing what used to be
+-- two cross-origin CDN fetches on every page load. Its glue.wasm is 271,581
+-- bytes, and Meteorite serves a dev `m.dir` file by reading it whole into
+-- the PER-REQUEST ARENA -- 256kb (262,144 bytes) on the default profile.
+-- The binary overshoots that by ~9kb, so without this override the request
+-- fails with a bare `OutOfMemory` -> HTTP 500 that is visible only in the
+-- dev server log, while the browser just sees the Lua VM never boot. (This
+-- is the request arena, not the 1mb max_response_bytes cap.)
+app:get("/js/bootstrap/:path*", {
+  memory = { request_arena = "1mb" },
+}, meteorite.dir("../../dom/src/hydronium_dom/client", { param = "path" }))
 
 -- Real, reusable hydronium.client.mount proof (docs/HMR_DOM_HOST.md's
 -- H1/H4 follow-up): serves individual real files out of hydronium's own
