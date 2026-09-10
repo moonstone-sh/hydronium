@@ -81,6 +81,39 @@ The equivalent LUAX is useful when the host has a natural tag vocabulary:
 return <d.button onClick={increment}>Count: {count()}</d.button>
 ```
 
+## Editor types and ambient DOM tags
+
+Hydronium ships LuaCATS declarations for LUAX and DOM descriptors. Adding the
+LUAX and DOM `types` directories to LuaLS gives `d.button`, event handlers,
+and HTML/SVG props completion and diagnostics. DOM also has an optional
+`ambient-types` directory for a DOM-only workspace that wants typed bare tags
+such as `<div>` and `<button>`.
+
+```json
+{
+  "runtime": {
+    "version": "LuaJIT",
+    "path": ["?.lua", "?/init.lua", "?.luax"],
+    "plugin": [
+      ".moonstone/env/share/lua/5.1/hydronium_luax/luals/init.lua"
+    ]
+  },
+  "workspace": {
+    "library": [
+      ".moonstone/env/libexec/hydronium-luax/types",
+      ".moonstone/env/libexec/hydronium-dom/types",
+      ".moonstone/env/libexec/hydronium-dom/ambient-types"
+    ]
+  },
+  "files": { "associations": { "*.luax": "lua" } }
+}
+```
+
+`ambient-types` is opt-in. It changes LuaLS's type environment, not Lua's
+runtime globals or LUAX lowering. Use `<d.table>` and `<d.select>` even when
+it is enabled because those names would collide with Lua's `table` and
+`select` globals.
+
 ## Development
 
 The workspace uses Moonstone and LuaJIT. From the repository root:
