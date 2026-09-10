@@ -31,7 +31,7 @@ jobs:
       - name: Install release tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y b3sum file jq libsqlite3-dev luajit pkg-config zstd
+          sudo apt-get install -y b3sum file jq libsqlite3-dev luajit neovim pkg-config zstd
       - name: Build Moonstone CLI
         working-directory: .ci/moonstone
         run: |
@@ -52,6 +52,16 @@ jobs:
           ln -s "$GITHUB_WORKSPACE/.ci/ballad" "$GITHUB_WORKSPACE/../ballad"
           (cd .ci/ballad && moon sync --locked)
       - name: Run Hydronium tests
-        run: moon exec luajit tests/runner.lua
+        run: |
+          parser_dir="$RUNNER_TEMP/hydronium-parser"
+          mkdir -p "$parser_dir"
+          cc -fPIC -shared \
+            -I luax/tree-sitter-luax/src \
+            luax/tree-sitter-luax/src/parser.c \
+            -o "$parser_dir/luax.so"
+          export XDG_DATA_HOME="$RUNNER_TEMP/hydronium-xdg-data"
+          mkdir -p "$XDG_DATA_HOME/nvim/site/parser"
+          cp "$parser_dir/luax.so" "$XDG_DATA_HOME/nvim/site/parser/luax.so"
+          moon exec luajit tests/runner.lua
       - name: Export all registry packages
         run: moon exec ballad play partiture.lua

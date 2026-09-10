@@ -52,7 +52,10 @@ function M.fingerprint(files, poll_interval, sleep_first)
     parts[#parts + 1] = "sleep " .. tostring(poll_interval) .. ";"
   end
   for _, f in ipairs(files) do
-    parts[#parts + 1] = "stat -f '%Fm %z %N' '" .. f .. "' 2>/dev/null || stat -c '%.9Y %s %n' '" .. f .. "';"
+    -- GNU `stat -f` is a successful *filesystem* report, not BSD stat's
+    -- formatting flag. Prefer GNU's `-c` spelling so Linux never accepts the
+    -- wrong command and folds changing free-block counts into the fingerprint.
+    parts[#parts + 1] = "stat -c '%.9Y %s %n' '" .. f .. "' 2>/dev/null || stat -f '%Fm %z %N' '" .. f .. "';"
   end
   parts[#parts + 1] = "true"
   local p = io.popen(table.concat(parts, " "), "r")

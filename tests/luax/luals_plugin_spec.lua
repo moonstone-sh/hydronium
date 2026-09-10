@@ -1,6 +1,13 @@
 local runner = require("tests.runner")
 local plugin = require("hydronium_luax.plugin")
 
+local function fixture_uri(name)
+  local info = debug.getinfo(1, "S")
+  local source = info and info.source and info.source:gsub("^@", "") or ""
+  local root = source:match("^(.*)/tests/luax/luals_plugin_spec%.lua$") or "."
+  return "file://" .. root .. "/tests/fixtures/" .. name
+end
+
 describe("LUAX LuaLS Plugin & Virtual Lowering", function()
   describe("virtual_lower", function()
     -- `virtual_lower` is byte-length-preserving (see the "1:1 line coordinate
@@ -149,7 +156,7 @@ return Counter
 
   describe("ResolveRequire hook", function()
     it("resolves .luax files relative to base URI", function()
-      local uri = "file:///Users/extrordinaire/Workbench/user/hydronium/tests/fixtures/fixture_runtime.lua"
+      local uri = fixture_uri("fixture_runtime.lua")
       local res = plugin.ResolveRequire(uri, "sample_component")
 
       assert.is_string(res, "Expected resolved URI string")
