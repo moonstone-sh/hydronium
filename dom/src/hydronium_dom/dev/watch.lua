@@ -69,6 +69,64 @@ function M.fingerprint(files, poll_interval, sleep_first)
   return table.concat(lines, "|")
 end
 
+--- Splits a fingerprint back into { [path] = "<mtime> <size>" }.
+---
+--- The fingerprint is not an opaque digest -- it is the concatenation of
+--- one `stat` line per watched file, so the identity of WHICH file moved
+--- is already carried in it and only needs to be read back out. That is
+--- what makes per-module change identity (M2) a pure addition here
+--- rather than a protocol redesign: no second stat pass, no per-file
+--- bookkeeping across requests, and the existing whole-set digest keeps
+--- its exact meaning and its exact role as the `since` token.
+---
+--- A path may legitimately contain spaces, so the name is everything
+--- after the second field, not the third whitespace-delimited token.
+--- @param fp string
+--- @return { [string]: string }
+function M.parse_fingerprint(fp)
+  local entries = {}
+  if type(fp) ~= "string" or fp == "" then
+    return entries
+  end
+  for line in fp:gmatch("[^|]+") do
+    local mtime, size, name = line:match("^(%S+)%s+(%S+)%s+(.+)$")
+    if name then
+      entries[name] = mtime .. " " .. size
+    end
+  end
+  return entries
+end
+
+--- Names which watched files actually differ between two fingerprints.
+--- Covers all three real cases: modified (stat line changed), created
+--- (absent from `prev`, `stat` having failed and printed nothing), and
+--- deleted (absent from `next`, same reason).
+---
+--- Returns a sorted array so the result is deterministic and does not
+--- depend on `pairs` iteration order -- the same reason `fingerprint`
+--- itself sorts.
+--- @param prev string|nil
+--- @param next_fp string|nil
+--- @return string[] changed paths, sorted
+function M.changed_files(prev, next_fp)
+  local a = M.parse_fingerprint(prev)
+  local b = M.parse_fingerprint(next_fp)
+  local seen, changed = {}, {}
+  for name, stamp in pairs(b) do
+    if a[name] ~= stamp then
+      seen[name] = true
+      changed[#changed + 1] = name
+    end
+  end
+  for name in pairs(a) do
+    if b[name] == nil and not seen[name] then
+      changed[#changed + 1] = name
+    end
+  end
+  table.sort(changed)
+  return changed
+end
+
 --- Drives one live-reload SSE request to completion.
 ---
 ---   app:get("/__hydronium/watch", function(c)
@@ -76,6 +134,23 @@ end
 ---       "views/App.luax",
 ---     })
 ---   end)
+---
+--- PROTOCOL. Unchanged for existing consumers: `hello`/`reload`/`ping`/
+--- `bye` still carry exactly what they always did, and `reload`'s data is
+--- still the whole-set fingerprint that doubles as the `since` token. M2
+--- adds ONE new frame, `changed`, emitted immediately before each
+--- `reload`, whose data is the "|"-joined list of the watched paths that
+--- actually moved. An EventSource never dispatches an event type nobody
+--- registered a listener for, so a consumer that only knows about
+--- `reload` (dev_reload.js through dev_transport.js) is unaffected.
+---
+--- `changed` deliberately carries NO `id:` field, unlike every other
+--- frame here. The browser's native EventSource records the last `id:`
+--- it saw and echoes it as `Last-Event-ID` on its own reconnects, and
+--- this route reads that header ahead of `?since=`. An `id:` holding a
+--- path list rather than a fingerprint would therefore come back as a
+--- bogus `since` value that can never equal the current fingerprint --
+--- an immediate, permanent reload loop.
 ---
 --- @param c table Meteorite request context (header/query methods)
 --- @param files string[] real file paths to watch (a literal list, not a
@@ -104,6 +179,12 @@ function M.serve_sse(c, files, opts)
     stream_write("id: " .. tostring(data) .. "\nevent: " .. event .. "\ndata: " .. tostring(data) .. "\n\n")
   end
 
+  -- No `id:` -- see the PROTOCOL note in this function's doc comment.
+  local function emit_changed(prev, next_fp)
+    local paths = M.changed_files(prev, next_fp)
+    stream_write("event: changed\ndata: " .. table.concat(paths, "|") .. "\n\n")
+  end
+
   local since = c:header("Last-Event-ID") or get_query("since")
   local budget = tonumber(get_query("budget")) or default_budget
 
@@ -113,6 +194,7 @@ function M.serve_sse(c, files, opts)
   local current = M.fingerprint(files, poll_interval, false)
 
   if since and since ~= "" and since ~= current then
+    emit_changed(since, current)
     emit("reload", current)
     stream_end()
     return
@@ -127,6 +209,7 @@ function M.serve_sse(c, files, opts)
     elapsed = elapsed + poll_interval
     since_heartbeat = since_heartbeat + poll_interval
     if next_fp ~= current then
+      emit_changed(current, next_fp)
       emit("reload", next_fp)
       stream_end()
       return

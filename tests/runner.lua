@@ -405,6 +405,7 @@ local function main()
       "tests/host/terminal_spec.lua",
       "tests/host/keys_spec.lua",
       "tests/host/render_spec.lua",
+      "tests/host/dev_watch_spec.lua",
       "tests/core/lua_mount_spec.lua",
       "tests/core/lazy_barrel_spec.lua",
       "tests/luax/no_core_coupling_spec.lua",

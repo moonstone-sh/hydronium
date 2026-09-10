@@ -35,17 +35,33 @@
  * transport-internal signal (drives the reconnect) a consumer has no
  * reason to see.
  *
+ * A `reload` event also carries `paths`: the watched files the server
+ * says actually moved, from the `changed` frame it emits immediately
+ * before each `reload` (see hydronium_dom/dev/watch.lua's PROTOCOL
+ * note). This is what lets a real HMR client (hmr.js) hot-swap one
+ * module instead of reloading the page. It is always an array, empty
+ * when the server is an older one that never sends `changed` at all --
+ * so a consumer treats "no paths" as "I don't know what changed", which
+ * hmr.js maps to its full-reload fallback rather than to "nothing
+ * changed".
+ *
  * @param {string} url
- * @returns {{ subscribe: (cb: (event: {type: "hello"|"reload", fingerprint: string}) => void) => (() => void), close: () => void }}
+ * @returns {{ subscribe: (cb: (event: {type: "hello"|"reload", fingerprint: string, paths: string[]}) => void) => (() => void), close: () => void }}
  */
 export function createDevTransport(url) {
   let closed = false;
   let listeners = [];
   let since = null;
   let source = null;
+  // Set by the `changed` frame that precedes each `reload`, consumed by
+  // that `reload` and immediately cleared -- SSE frames are delivered in
+  // order over one connection, so the pairing is safe, and clearing
+  // means a `reload` from a server that sent no `changed` can never
+  // inherit a stale path list from an earlier update.
+  let pendingPaths = [];
 
-  function notify(type, fingerprint) {
-    for (const cb of listeners) cb({ type, fingerprint });
+  function notify(type, fingerprint, paths) {
+    for (const cb of listeners) cb({ type, fingerprint, paths: paths || [] });
   }
 
   function reconnect() {
@@ -61,17 +77,42 @@ export function createDevTransport(url) {
     // seen by ANY subsequent connection. Pure curl/raw-socket testing
     // never exhibited this (no HTTP cache in the picture at all), which
     // is why it wasn't caught until testing through a real browser.
-    const params = new URLSearchParams({ _t: String(Date.now()) });
-    if (since) params.set("since", since);
-    const fullUrl = `${url}?${params.toString()}`;
+    // Built with encodeURIComponent, NOT URLSearchParams -- found live,
+    // and it silently broke the whole `since` mechanism. A fingerprint
+    // contains spaces (it is `stat` output), and
+    // URLSearchParams.toString() serializes a space as `+` per the
+    // application/x-www-form-urlencoded rules, while Meteorite's query
+    // parser decodes `%20` but treats `+` literally. So the server
+    // received a `since` that could never equal any fingerprint it
+    // computes, took its "changed while you were disconnected" branch on
+    // EVERY reconnect, and answered with an immediate `reload`.
+    //
+    // With dev_reload.js that surfaced only as an unexplained periodic
+    // page refresh -- easy to miss, since a reload is what that client
+    // does anyway. It is fatal for hmr.js: a bogus `since` also makes
+    // the server's per-file diff report every watched file as changed,
+    // which reads as "I can't tell what changed" and forces a full
+    // reload instead of a hot swap. Verified against the real route:
+    // percent-encoded `since` round-trips and names exactly the one file
+    // edited; plus-encoded `since` names all of them.
+    const parts = [`_t=${Date.now()}`];
+    if (since) parts.push(`since=${encodeURIComponent(since)}`);
+    const fullUrl = `${url}?${parts.join("&")}`;
     source = new EventSource(fullUrl);
     source.addEventListener("hello", (ev) => {
       since = ev.data;
       notify("hello", ev.data);
     });
+    source.addEventListener("changed", (ev) => {
+      pendingPaths = String(ev.data || "")
+        .split("|")
+        .filter((p) => p !== "");
+    });
     source.addEventListener("reload", (ev) => {
       since = ev.data;
-      notify("reload", ev.data);
+      const paths = pendingPaths;
+      pendingPaths = [];
+      notify("reload", ev.data, paths);
       reconnect();
     });
     source.addEventListener("bye", (ev) => {
