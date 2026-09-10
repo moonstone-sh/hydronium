@@ -286,6 +286,34 @@ function virtual_source.transform(source, filename, options)
       if n.type == "JSXElement" or n.type == "JSXFragment" then
         table.insert(jsx_nodes, n)
       end
+
+      -- IfStatement is special-cased (matching the `walk()` traversal
+      -- above): `node.clauses` is an array of {condition, body} wrapper
+      -- objects, not an array of typed AST nodes -- the generic fallback
+      -- below only recurses into an array element when it has its own
+      -- `.type` field, so a clause wrapper (which has none) is invisible
+      -- to it, and anything nested inside an `if`/`elseif` branch --
+      -- including a bare `return <JSX>` -- was silently never collected,
+      -- never lowered, and left as raw JSX text for LuaLS's real Lua
+      -- parser to choke on (verified: the real compiler's AST for such a
+      -- `return` is correct and compiles fine -- this was purely a gap
+      -- in this walker, not a parser bug). `else_body` doesn't need the
+      -- same treatment -- it's already a plain array of typed statements.
+      if n.type == "IfStatement" then
+        for _, clause in ipairs(n.clauses or {}) do
+          collect_jsx(clause.condition)
+          for _, s in ipairs(clause.body or {}) do
+            collect_jsx(s)
+          end
+        end
+        if n.else_body then
+          for _, s in ipairs(n.else_body) do
+            collect_jsx(s)
+          end
+        end
+        return
+      end
+
       -- Recurse into children / body
       for k, v in pairs(n) do
         if type(v) == "table" and k ~= "loc" then

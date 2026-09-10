@@ -11,9 +11,9 @@
 
 local info = debug.getinfo(1, "S")
 local src_path = info and info.source and info.source:gsub("^@", "") or ""
-local proj_root = src_path:match("^(.*)/src/hydronium_luax/luals/init%.lua$") or src_path:match("^(.*)/src/.*$")
-if proj_root and proj_root ~= "" then
-  package.path = proj_root .. "/src/?.lua;" .. proj_root .. "/src/?/init.lua;" .. package.path
+local module_root = src_path:match("^(.*)/hydronium_luax/luals/init%.lua$")
+if module_root and module_root ~= "" then
+  package.path = module_root .. "/?.lua;" .. module_root .. "/?/init.lua;" .. package.path
 else
   package.path = "src/?.lua;src/?/init.lua;" .. package.path
 end
@@ -38,16 +38,17 @@ function plugin.OnSetText(uri, text)
   end
 
   local virtual_code = plugin_mod.virtual_lower(text, uri)
+  -- An empty diff list means "this file needs no changes", which is exactly
+  -- right for a .luax file containing no JSX at all — its text is already
+  -- valid Lua. Do NOT substitute a whole-file {start=1, finish=#text} hunk
+  -- here: it is an identity rewrite, so it buys nothing, but its range covers
+  -- every byte and therefore collides with every other plugin's diff under
+  -- composition. Because LuaLS's string-merger sorts hunks with a non-stable
+  -- table.sort keyed only on `start`, such a hunk can sort ahead of another
+  -- plugin's insertion at the same offset, driving the merge cursor past
+  -- end-of-file and then back — silently duplicating the file (observed as
+  -- `Redefined local Cfg`). See LUALS-DESIGN.md §4.1.
   local diffs = compute_diff(text, virtual_code)
-  if #diffs == 0 then
-    diffs = {
-      {
-        start = 1,
-        finish = #text,
-        text = virtual_code,
-      }
-    }
-  end
   diffs.text = virtual_code
   return diffs
 end
