@@ -1,6 +1,7 @@
 {
   "runtime": {
     "version": "LuaJIT",
+    "path": ["?.lua", "?/init.lua", "?.luax"],
     "plugin": "luax/src/hydronium_luax/luals/init.lua"
   },
   "workspace": {
@@ -11,7 +12,7 @@
       "dom/src",
       "dom/types",
       "dom/ambient-types",
-      ".moonstone/env/share/lua/5.4"
+      ".moonstone/env/share/lua/5.1"
     ],
     "checkThirdParty": false,
     "useGitIgnore": false,

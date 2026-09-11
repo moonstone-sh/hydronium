@@ -24,8 +24,10 @@ moon run dev
 
 Open `http://localhost:8080/`, click the counter a few times, then edit
 `views/Counter.luax`. The next interaction uses the new code without resetting
-the counter. The [quickstart README](examples/quickstart/README.md) explains
-the example and its development workflow.
+the counter. `views/App.luax` and CSS update in place; only the stable
+`views/Document.luax` bootstrap boundary reloads the page. The
+[quickstart README](examples/quickstart/README.md) explains the example and
+its development workflow.
 
 For a terminal host, see [Ink](ink/REGISTRY_README.md). To create a fresh
 project, use the generator while working in this checkout:
@@ -44,7 +46,7 @@ moon run dev ssr my-app
 | [`dom`](dom/) | `moonstone/hydronium-dom` | Browser DOM host, SSR renderer, and Meteorite integration. |
 | [`luax`](luax/) | `moonstone/hydronium-luax` | LUAX compiler, formatter, Tree-sitter grammar, and editor integrations. |
 | [`ink`](ink/) | `moonstone/hydronium-ink` | Terminal host with `Box`, `Text`, and `Newline` intrinsics. |
-| Router | Reserved as `moonstone/hydronium-router` | Route patterns, matching, href construction, and history adapters. It joins the published workspace when its in-progress source lands. |
+| [`router`](router/) | `moonstone/hydronium-router` | Reactive Router/Outlet/hooks, typed hrefs, route matching, and memory/browser histories. |
 | [`build`](build/) | `moonstone/hydronium-ballad` | Ballad plugins for LUAX, CSS/assets, and browser bundles. |
 | [`create`](create/) | `moonstone/hydronium-create` | Project generator and editor bootstrapper. |
 
@@ -52,6 +54,13 @@ The current packages live in Moonstone's registry namespace. A future
 Hydronium organization will own the source and publish them as
 `hydronium/*`; that package-name migration is planned as a breaking change.
 See [the namespace plan](docs/PACKAGE_NAMESPACE.md) for the exact mapping.
+
+Browser and Ink applications share the host-neutral
+`hydronium.core.hmr` replacement primitive. Browser transports fetch changed
+modules; the generated Ink starter polls its LUAX source from the renderer's
+event loop. Both refresh component families inside the existing Lua VM.
+Minimal projects render once and exit, so there is no live process or state to
+hot-reload.
 
 ## A small component
 

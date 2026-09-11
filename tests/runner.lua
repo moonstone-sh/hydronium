@@ -2,7 +2,7 @@
 -- The repository root is an orbits workspace, not a package.  Test the
 -- member source roots explicitly; external-consumer coverage below verifies
 -- Moonstone materialization separately.
-package.path = "core/src/?.lua;core/src/?/init.lua;luax/src/?.lua;luax/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;ink/src/?.lua;ink/src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
+package.path = "core/src/?.lua;core/src/?/init.lua;luax/src/?.lua;luax/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;ink/src/?.lua;ink/src/?/init.lua;router/src/?.lua;router/src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
 
 local M = {}
 package.loaded["tests.runner"] = M
@@ -396,6 +396,7 @@ local function main()
       "tests/core/refresh_spec.lua",
       "tests/core/refresh_component_spec.lua",
       "tests/core/family_hmr_spec.lua",
+      "tests/core/hmr_spec.lua",
       "tests/core/hydration_spec.lua",
       "tests/core/family_identity_adversarial_spec.lua",
       "tests/host/dom_spec.lua",
@@ -405,6 +406,7 @@ local function main()
       "tests/host/terminal_spec.lua",
       "tests/host/keys_spec.lua",
       "tests/host/render_spec.lua",
+      "tests/host/ink_hmr_spec.lua",
       "tests/host/dev_watch_spec.lua",
       "tests/core/lua_mount_spec.lua",
       "tests/core/lazy_barrel_spec.lua",
@@ -429,11 +431,20 @@ local function main()
       "tests/luax/formatter_spec.lua",
       "tests/luax/luals_plugin_spec.lua",
       "tests/luax/virtual_source_spec.lua",
+      "tests/luax/luals_bootstrap_spec.lua",
       "tests/luax/type_declarations_spec.lua",
       "tests/luax/isolation_spec.lua",
       "tests/luax/corpus_spec.lua",
       "tests/luax/environment_pragma_spec.lua",
       "tests/luax/refresh_transform_spec.lua",
+      -- Router specs
+      "tests/router/pattern_spec.lua",
+      "tests/router/url_spec.lua",
+      "tests/router/matcher_spec.lua",
+      "tests/router/href_spec.lua",
+      "tests/router/history_memory_spec.lua",
+      "tests/router/history_browser_spec.lua",
+      "tests/router/router_spec.lua",
     }
   end
 

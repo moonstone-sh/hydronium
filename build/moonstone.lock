@@ -107,10 +107,117 @@ rockspec_payload = "sources/dkjson-2.11-1.rockspec"
 resolver = "rocks"
 roles = ["tool"]
 
+[[realization]]
+realization_hash = "b3:b273ed93742b3274d926ff850b47337909e6b900321e028fc78e053e95849002"
+name = "moonstone/luajit"
+version = "2.1.0"
+kind = "runtime"
+recipe_hash = "b3:70c7fe93b82adacad6514e980832201b4ae0d322a8ac51741fd7455232d755c0"
+artifact_hash = "b3:f4d32a967447c8d87a709c01fa5229748de4054e51dfa073e0ad1e61c2683bbf"
+replay_mode = "artifact_only"
+runtime = "moonstone/luajit"
+lua_abi = "5.1"
+target = "aarch64-macos"
+constellation = "default"
+source_kind = "runtime"
+resolver = "moonstone"
+
+[[realization]]
+realization_hash = "b3:e414ab10d8ab9fd7c28a63fc131422b9c36c14f2bfc5700f5d144297c0b1c032"
+name = "moonstone/hydronium-dom"
+version = "0.1.0"
+kind = "lib"
+recipe_hash = ""
+artifact_hash = "path"
+replay_mode = "artifact_only"
+runtime = "5.1"
+lua_abi = "5.1"
+target = "aarch64-macos"
+constellation = "default"
+source = "/Users/extrordinaire/Workbench/user/hydronium/build/../dom"
+source_kind = "local_path"
+resolver = "path"
+roles = ["runtime"]
+
+[[realization]]
+realization_hash = "b3:857dd059860d8a01b7b6398fc35b48b37f6bb669fe4e2e634bc879d915095c73"
+name = "moonstone/hydronium-luax"
+version = "0.1.0"
+kind = "lib"
+recipe_hash = ""
+artifact_hash = "path"
+replay_mode = "artifact_only"
+runtime = "5.1"
+lua_abi = "5.1"
+target = "aarch64-macos"
+constellation = "default"
+source = "/Users/extrordinaire/Workbench/user/hydronium/build/../luax"
+source_kind = "local_path"
+resolver = "path"
+roles = ["runtime"]
+
+[[realization]]
+realization_hash = "b3:d76e8d73b41e7c30087dbeee44cb27e2743589cd8416ff94668b5074d013f5b6"
+name = "moonstone/hydronium"
+version = "0.1.0"
+kind = "lib"
+recipe_hash = ""
+artifact_hash = "path"
+replay_mode = "artifact_only"
+runtime = "5.1"
+lua_abi = "5.1"
+target = "aarch64-macos"
+constellation = "default"
+source = "/Users/extrordinaire/Workbench/user/hydronium/build/../dom/../core"
+source_kind = "local_path"
+resolver = "path"
+roles = ["runtime"]
+
+[[realization]]
+realization_hash = "b3:07401549e2213640f78f759e8545b2f33f7804d5f6cc3417fa39f962500ce09d"
+name = "moonstone/ballad"
+version = "0.3.7"
+kind = "bin"
+source_hash = "b3:ff606883f3629edd39664ab299a91fe34136eb72ea72ac0ea78208d0dfd3ef42"
+recipe_hash = "b3:c1a79b1734e439e17445a131b73cc8a0bcafcb3ab81679f1297219e94b90387a"
+artifact_hash = "b3:ff606883f3629edd39664ab299a91fe34136eb72ea72ac0ea78208d0dfd3ef42"
+replay_mode = "artifact_only"
+runtime = "5.1"
+lua_abi = "5.1"
+target = "aarch64-macos"
+constellation = "default"
+source = "https://github.com/moonstone-sh/ballad/releases/download/v0.3.7/ballad-0.3.7-any.tar.gz"
+source_kind = "bin"
+source_payload = "sources/blob.tar.gz"
+resolver = "store"
+roles = ["tool"]
+
+[[realization]]
+realization_hash = "b3:8db16d679ac99eb5b7c3235a5a17011a0a988b1df39dc92b056cd02b6f851868"
+name = "dkjson"
+version = "2.11-1"
+kind = "lib"
+source_hash = "b3:736026c095d0d92f41d668c8bab1c02f58902d677326cbeca0fb592092b214a3"
+recipe_hash = "b3:25062268f0435d9199e4f33c2a4c7c3890c5eb1205496c228c5b08e4332e0c67"
+artifact_hash = "b3:feb66e31f1f5665b714ef3b9a67b387ea3e5560c7da91e01bf5c71e12fc93333"
+replay_mode = "portable_source"
+runtime = "5.1"
+lua_abi = "5.1"
+target = "aarch64-macos"
+constellation = "default"
+source = "https://luarocks.org/dkjson-2.11-1.src.rock"
+source_kind = "luarocks_src_rock"
+source_payload = "sources/dkjson-2.11-1.src.rock"
+rockspec = "https://luarocks.org/dkjson-2.11-1.rockspec"
+rockspec_hash = "b3:f435b6b2f3924979d1a69598935ee7de27f35dbaa5dfa6b36aeda2f5f7356c44"
+rockspec_payload = "sources/dkjson-2.11-1.rockspec"
+resolver = "rocks"
+roles = ["tool"]
+
 [[profile]]
 id = "aarch64-macos+moonstone/luajit+5.1"
 target = "aarch64-macos"
 runtime = "moonstone/luajit"
 lua_abi = "5.1"
-packages = [{ name = "moonstone/luajit", version = "2.1.0", realization_hash = "b3:b273ed93742b3274d926ff850b47337909e6b900321e028fc78e053e95849002" }, { name = "hydronium-dom", version = "0.1.0", realization_hash = "b3:bcc5247d7504c4c6aa7f2431f33174630dbf56362188fdbb535c1617ca8db35a" }, { name = "hydronium-luax", version = "0.1.0", realization_hash = "b3:15cfda5fc8c791c50fea77c09a438dc0dc3d8cd7f421e445aeb282b7cf9453cd" }, { name = "hydronium", version = "0.1.0", realization_hash = "b3:db2df32e6635805daebb7803a8686bd535166193e37bd885869e27e6d05c52d6" }, { name = "moonstone/ballad", version = "0.3.7", realization_hash = "b3:07401549e2213640f78f759e8545b2f33f7804d5f6cc3417fa39f962500ce09d" }, { name = "dkjson", version = "2.11-1", realization_hash = "b3:8db16d679ac99eb5b7c3235a5a17011a0a988b1df39dc92b056cd02b6f851868" }]
+packages = [{ name = "moonstone/luajit", version = "2.1.0", realization_hash = "b3:b273ed93742b3274d926ff850b47337909e6b900321e028fc78e053e95849002" }, { name = "moonstone/hydronium-dom", version = "0.1.0", realization_hash = "b3:e414ab10d8ab9fd7c28a63fc131422b9c36c14f2bfc5700f5d144297c0b1c032" }, { name = "moonstone/hydronium-luax", version = "0.1.0", realization_hash = "b3:857dd059860d8a01b7b6398fc35b48b37f6bb669fe4e2e634bc879d915095c73" }, { name = "moonstone/hydronium", version = "0.1.0", realization_hash = "b3:d76e8d73b41e7c30087dbeee44cb27e2743589cd8416ff94668b5074d013f5b6" }, { name = "moonstone/ballad", version = "0.3.7", realization_hash = "b3:07401549e2213640f78f759e8545b2f33f7804d5f6cc3417fa39f962500ce09d" }, { name = "dkjson", version = "2.11-1", realization_hash = "b3:8db16d679ac99eb5b7c3235a5a17011a0a988b1df39dc92b056cd02b6f851868" }]
 edges = []
