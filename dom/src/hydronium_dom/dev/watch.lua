@@ -29,7 +29,6 @@
 local M = {}
 
 local DEFAULT_POLL_INTERVAL = 0.5
-local DEFAULT_HEARTBEAT_EVERY = 2
 local DEFAULT_BUDGET = 5
 
 --- Snapshots every file in `files` (mtime/size/name) into one sorted,
@@ -163,14 +162,36 @@ end
 function M.serve_sse(c, files, opts)
   opts = opts or {}
   local poll_interval = opts.poll_interval or DEFAULT_POLL_INTERVAL
-  local heartbeat_every = opts.heartbeat_every or DEFAULT_HEARTBEAT_EVERY
+  -- A refresh closes its EventSource without another request-side callback.
+  -- Probe once per poll by default so an abandoned handler does not linger
+  -- for seconds while the replacement page is trying to render.
+  local heartbeat_every = opts.heartbeat_every or poll_interval
   local default_budget = opts.budget or DEFAULT_BUDGET
+
+  local disconnected = false
+  local function write(chunk)
+    local ok = pcall(stream_write, chunk)
+    if not ok then disconnected = true end
+    return ok
+  end
+
+  local function finish()
+    if not disconnected then pcall(stream_end) end
+  end
 
   local function get_query(key)
     if type(c.query) == "function" then
       return c:query(key)
     elseif type(c.query) == "table" then
-      return c.query[key]
+      local declared = c.query[key]
+      if declared ~= nil then return declared end
+      -- Meteorite exposes undeclared/raw values through the query table's
+      -- __call metamethod. The watch protocol deliberately keeps `since` and
+      -- `budget` out of the route schema, so both must use this fallback.
+      local mt = getmetatable(c.query)
+      if mt and type(mt.__call) == "function" then
+        return c.query(key)
+      end
     end
     return nil
   end
@@ -179,31 +200,32 @@ function M.serve_sse(c, files, opts)
   -- delimiter above, so it's already a valid single-line field value) --
   -- this is what the browser echoes back as Last-Event-ID.
   local function emit(event, data)
-    stream_write("id: " .. tostring(data) .. "\nevent: " .. event .. "\ndata: " .. tostring(data) .. "\n\n")
+    return write("id: " .. tostring(data) .. "\nevent: " .. event .. "\ndata: " .. tostring(data) .. "\n\n")
   end
 
   -- No `id:` -- see the PROTOCOL note in this function's doc comment.
   local function emit_changed(prev, next_fp)
     local paths = M.changed_files(prev, next_fp)
-    stream_write("event: changed\ndata: " .. table.concat(paths, "|") .. "\n\n")
+    return write("event: changed\ndata: " .. table.concat(paths, "|") .. "\n\n")
   end
 
   local since = c:header("Last-Event-ID") or get_query("since")
-  local budget = tonumber(get_query("budget")) or default_budget
+  local budget_value = get_query("budget")
+  local budget = tonumber(budget_value) or default_budget
 
-  stream_begin(200, "text/event-stream")
-  stream_write("retry: 200\n\n")
+  if not pcall(stream_begin, 200, "text/event-stream") then return end
+  if not write("retry: 200\n\n") then return end
 
   local current = M.fingerprint(files, poll_interval, false)
 
   if since and since ~= "" and since ~= current then
-    emit_changed(since, current)
-    emit("reload", current)
-    stream_end()
+    if not emit_changed(since, current) then return end
+    if not emit("reload", current) then return end
+    finish()
     return
   end
 
-  emit("hello", current)
+  if not emit("hello", current) then return end
 
   local elapsed = 0
   local since_heartbeat = 0
@@ -212,19 +234,19 @@ function M.serve_sse(c, files, opts)
     elapsed = elapsed + poll_interval
     since_heartbeat = since_heartbeat + poll_interval
     if next_fp ~= current then
-      emit_changed(current, next_fp)
-      emit("reload", next_fp)
-      stream_end()
+      if not emit_changed(current, next_fp) then return end
+      if not emit("reload", next_fp) then return end
+      finish()
       return
     end
     if since_heartbeat >= heartbeat_every then
-      emit("ping", elapsed)
+      if not emit("ping", elapsed) then return end
       since_heartbeat = 0
     end
   end
 
-  emit("bye", current)
-  stream_end()
+  if not emit("bye", current) then return end
+  finish()
 end
 
 return M

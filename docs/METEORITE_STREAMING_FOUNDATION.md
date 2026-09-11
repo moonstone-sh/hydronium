@@ -436,6 +436,25 @@ backends) were kept, since they are purely additive, compile cleanly, and
 introduce no regression to the default (`release-static`, no
 Lua/streaming) build.
 
+## Update (2026-09-11): refresh storms use client-paced polling
+
+The browser transport now requests `budget=0` and waits 500ms in the
+browser before reconnecting. Repeated refreshes abandon EventSource
+connections without giving Lua an immediate disconnect callback; keeping
+the old five-second polling loop inside each request allowed those stale
+handlers to accumulate and delay the replacement page's SSR request. The
+route still supports bounded long-polling for other clients, but Hydronium's
+own browser client no longer sleeps in a server worker.
+
+The existing `since=<fingerprint>` handoff preserves the important property:
+a change during the client-side gap is returned immediately by the next
+request. `serve_sse` also probes writes on every server-side poll and treats a
+failed write as a normal disconnect, so long-poll clients release abandoned
+handlers at the first observable socket failure. Lua regressions cover that
+disconnect path; `tests/client/dev_transport.test.mjs` covers the browser
+poll budget, reconnect delay, fingerprint handoff, reload payload, and close
+cleanup.
+
 ## What remains genuinely open (not just "more implementation")
 
 - **Header commitment enforcement** is implemented as a simple flag check

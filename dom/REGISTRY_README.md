@@ -66,6 +66,52 @@ data, headers, request state, and the Meteorite context available through
 `meteorite.make_stream_sink()` and call `meteorite.render_stream()` from the
 same inline handler.
 
+## Browser mount and HMR
+
+`mount()` starts one browser Lua VM and preloads the application modules it
+needs. Keep the server-rendered document as a stable bootstrap boundary, then
+mount the editable application beneath it:
+
+```js
+const { lua } = await mount({
+  hydroniumBaseUrl: "/hydronium-src",
+  manifestUrl: "/__hydronium/client_manifest.json",
+  appModuleId: "views.App",
+  appModuleUrl: "/__hydronium/dev/module/views.App",
+  moduleUrls: {
+    "views.Counter": "/__hydronium/dev/module/views.Counter",
+  },
+  container: "#app",
+  props: { initial: 0 },
+  hmr: true,
+});
+```
+
+`moduleUrls` maps additional application module IDs to their source URLs;
+framework modules still come from `manifestUrl`. When HMR is enabled before
+the application is required, `installHmr()` can refresh those component
+families inside the surviving VM:
+
+```js
+installHmr({
+  lua,
+  updates: {
+    "views/App.luax": { action: "hot", module: "views.App" },
+    "views/Counter.luax": { action: "hot", module: "views.Counter" },
+    "views/Document.luax": { action: "reload" },
+    "public/style.css": { action: "style", href: "/public/style.css" },
+    "generated/report.json": { action: "ignore" },
+  },
+});
+```
+
+The update policy is exhaustive by design. `hot` swaps a Lua component
+module, `style` replaces a linked stylesheet without navigation, `reload`
+marks a document or bootstrap boundary, and `ignore` acknowledges a watched
+file with no browser effect. An unlisted path is reported as `unhandled` and
+does not discard application state. A failed requested hot swap reloads as a
+safety fallback because the displayed tree can no longer be proven current.
+
 ## LuaLS types
 
 The package contains typed HTML and SVG descriptor catalogs. Add its `types`

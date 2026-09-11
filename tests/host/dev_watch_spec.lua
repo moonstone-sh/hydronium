@@ -4,10 +4,8 @@
   Covers the pure, testable half of the M2 protocol addition: reading a
   fingerprint back apart into its per-file stat entries, and naming
   exactly which watched paths moved between two fingerprints. The SSE
-  half (`serve_sse`) is not covered here -- it depends on Meteorite's
-  per-request `stream_begin`/`stream_write` globals and a real HTTP
-  client, and is verified end to end by the Playwright HMR proof
-  instead, which is where a transport bug would actually show up.
+  tests replace Meteorite's per-request stream globals with narrow fakes
+  so abandoned-connection behavior remains deterministic here.
 
   Fingerprint lines are the real output shape of the `stat` commands
   `M.fingerprint` runs: "<mtime> <size> <name>", "|"-joined and sorted.
@@ -17,6 +15,16 @@ local runner = require("tests.runner")
 local describe, it, assert = runner.describe, runner.it, runner.assert
 
 local watch = require("hydronium_dom.dev.watch")
+
+local function with_fake_streams(write, fn)
+  local old_begin, old_write, old_end = stream_begin, stream_write, stream_end
+  stream_begin = function() end
+  stream_write = write
+  stream_end = function() end
+  local ok, err = pcall(fn)
+  stream_begin, stream_write, stream_end = old_begin, old_write, old_end
+  if not ok then error(err, 0) end
+end
 
 describe("hydronium_dom.dev.watch -- per-file change identity", function()
   describe("parse_fingerprint", function()
@@ -110,5 +118,76 @@ describe("hydronium_dom.dev.watch -- per-file change identity", function()
 
       os.remove(path)
     end)
+  end)
+end)
+
+describe("hydronium_dom.dev.watch -- abandoned connections", function()
+  it("reads protocol controls from Meteorite's callable query table", function()
+    local old_fingerprint = watch.fingerprint
+    watch.fingerprint = function() return "current" end
+    local frames = {}
+    local query = setmetatable({}, {
+      __call = function(_, key)
+        if key == "budget" then return "0" end
+        if key == "since" then return "previous" end
+      end,
+    })
+    local ok, err = pcall(function()
+      with_fake_streams(function(chunk)
+        frames[#frames + 1] = chunk
+      end, function()
+        watch.serve_sse({ header = function() end, query = query }, { "unused" })
+      end)
+    end)
+    watch.fingerprint = old_fingerprint
+    assert.truthy(ok, err)
+    local output = table.concat(frames)
+    assert.truthy(output:find("event: changed", 1, true))
+    assert.truthy(output:find("event: reload", 1, true))
+    assert.falsy(output:find("event: ping", 1, true))
+    assert.falsy(output:find("event: bye", 1, true))
+  end)
+
+  it("treats a failed heartbeat write as a normal disconnect", function()
+    local old_fingerprint = watch.fingerprint
+    watch.fingerprint = function() return "same" end
+    local writes = 0
+    local ok, err = pcall(function()
+      with_fake_streams(function()
+        writes = writes + 1
+        if writes == 3 then error("WriteFailed", 0) end
+      end, function()
+        watch.serve_sse({ header = function() end, query = function() end }, { "unused" }, {
+          poll_interval = 0.5,
+          budget = 5,
+        })
+      end)
+    end)
+    watch.fingerprint = old_fingerprint
+    assert.truthy(ok, err)
+    assert.equal(writes, 3, "retry, hello, then the first heartbeat")
+  end)
+
+  it("heartbeats every poll by default", function()
+    local old_fingerprint = watch.fingerprint
+    watch.fingerprint = function() return "same" end
+    local frames = {}
+    local ok, err = pcall(function()
+      with_fake_streams(function(chunk)
+        frames[#frames + 1] = chunk
+      end, function()
+        watch.serve_sse({ header = function() end, query = function() end }, { "unused" }, {
+          poll_interval = 0.5,
+          budget = 1,
+        })
+      end)
+    end)
+    watch.fingerprint = old_fingerprint
+    assert.truthy(ok, err)
+    local pings = 0
+    for _, frame in ipairs(frames) do
+      if frame:find("event: ping", 1, true) then pings = pings + 1 end
+    end
+    assert.equal(pings, 2)
   end)
 end)

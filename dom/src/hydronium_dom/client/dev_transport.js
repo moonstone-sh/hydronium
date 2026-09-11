@@ -23,13 +23,13 @@
  * the old EventSource before opening the new one means the server's
  * own `retry:` directive never gets a chance to race with it.
  *
- * `/__hydronium/watch` (examples/meteorite_ssr/src/main.lua) is a
- * bounded long-poll -- not an indefinite stream -- shaped like SSE.
- * Verified live end to end: an edit landing while a connection is open
- * mid-poll delivers `reload` within one poll tick; an edit landing in
- * the gap between connections (nothing connected at all) is caught by
- * the very next connection's `since` check. See
- * docs/METEORITE_STREAMING_FOUNDATION.md.
+ * `/__hydronium/watch` speaks SSE, but this transport asks it for an
+ * immediate poll (`budget=0`) and waits in the browser before reconnecting.
+ * Sleeping inside a request used to leave several Lua handlers alive when a
+ * page was refreshed repeatedly; enough abandoned EventSources could delay
+ * the replacement page's SSR request for seconds. The `since` token makes
+ * client-paced polling lossless: an edit in the gap is reported by the next
+ * request. See docs/METEORITE_STREAMING_FOUNDATION.md.
  *
  * Only `hello` and `reload` are surfaced to subscribers -- `bye` is a
  * transport-internal signal (drives the reconnect) a consumer has no
@@ -49,10 +49,12 @@
  * @returns {{ subscribe: (cb: (event: {type: "hello"|"reload", fingerprint: string, paths: string[]}) => void) => (() => void), close: () => void }}
  */
 export function createDevTransport(url) {
+  const pollDelayMs = 500;
   let closed = false;
   let listeners = [];
   let since = null;
   let source = null;
+  let reconnectTimer = null;
   // Set by the `changed` frame that precedes each `reload`, consumed by
   // that `reload` and immediately cleared -- SSE frames are delivered in
   // order over one connection, so the pairing is safe, and clearing
@@ -64,9 +66,21 @@ export function createDevTransport(url) {
     for (const cb of listeners) cb({ type, fingerprint, paths: paths || [] });
   }
 
-  function reconnect() {
+  function reconnect(delayMs = 0) {
     if (source) source.close();
+    source = null;
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
     if (closed) return;
+    if (delayMs > 0) {
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        reconnect();
+      }, delayMs);
+      return;
+    }
     // A cache-busting `_t` param on every connection, not just a
     // Cache-Control response header, because Meteorite's
     // stream_begin(status, content_type) has no options argument to set
@@ -95,7 +109,7 @@ export function createDevTransport(url) {
     // reload instead of a hot swap. Verified against the real route:
     // percent-encoded `since` round-trips and names exactly the one file
     // edited; plus-encoded `since` names all of them.
-    const parts = [`_t=${Date.now()}`];
+    const parts = [`_t=${Date.now()}`, "budget=0"];
     if (since) parts.push(`since=${encodeURIComponent(since)}`);
     const fullUrl = `${url}?${parts.join("&")}`;
     source = new EventSource(fullUrl);
@@ -117,7 +131,7 @@ export function createDevTransport(url) {
     });
     source.addEventListener("bye", (ev) => {
       since = ev.data;
-      reconnect();
+      reconnect(pollDelayMs);
     });
   }
 
@@ -133,6 +147,9 @@ export function createDevTransport(url) {
     close() {
       closed = true;
       if (source) source.close();
+      source = null;
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      reconnectTimer = null;
     },
   };
 }

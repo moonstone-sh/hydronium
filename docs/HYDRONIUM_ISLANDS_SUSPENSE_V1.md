@@ -157,10 +157,12 @@ and agreeing with it.
   connected. Out-of-order segment replacement, stable per-boundary
   streaming IDs distinct from island IDs, and a client-side patcher do not
   exist.
-- **No hydration policies beyond a stored string.** `hydrate = "visible"`
-  is recorded verbatim in the client plan; nothing reads or acts on it.
-  `load`/`idle`/`interaction`/`manual` are not implemented or
-  distinguished at all.
+- **Hydration policies are real for `load`/`visible`/`idle`.**
+  `hydrate = "visible"`/`"idle"` genuinely defer fetching and mounting an
+  island via `IntersectionObserver`/`requestIdleCallback` respectively
+  (`priority.js`, shared by `mount.js` and `bootstrap.js`); `"load"`
+  activates eagerly as before. `interaction`/`manual` remain reserved,
+  not yet implemented as distinct modes.
 - **No JS bridge, no `d.js.value`/`d.js.dom`/`d.js.callback` capability
   primitives, no foreign-module ABI.** `d.js.island`'s `module`/`props`
   are recorded in the client plan as plain data; nothing imports or calls
@@ -171,10 +173,21 @@ and agreeing with it.
   hydration to mismatch against yet.
 - **No dehydrated-resource transfer to a client.** `h.resource`'s state
   lives only in the Lua state that rendered it.
-- **Root Lua mount (`d.lua.mount`) is implemented as a data shape only**
-  (`{kind = ISLAND, props = {root = true}}`) -- there is no runtime that
-  does anything different for a root-mounted island versus a partial one,
-  since neither hydrates yet.
+- **Superseded**: Root Lua mount (`d.lua.mount`) is no longer a data
+  shape only. `core/reconciler.lua`'s `Reconciler:mount`/`:hydrate`/
+  `:reconcile`/`:unmount` now treat any ISLAND-kind vnode whose
+  descriptor has `interpreter == "lua"` transparently (like a Fragment)
+  instead of unconditionally `error()`ing -- there is no cross-language
+  boundary left to cross once already inside the Lua VM running the
+  reconciler itself. Real, native test coverage:
+  `tests/core/lua_mount_spec.lua` (mount, hydrate, an actual state
+  update reaching the DOM, and unmount/disposal, plus a control case
+  confirming a `d.js.island` is correctly UNCHANGED and still refused).
+  A "js" island is deliberately NOT given this treatment -- js-island
+  hydration remains a completely different code path (`bootstrap.js`'s
+  dynamic `import()` against SSR-produced markers), never this
+  reconciler. See `docs/HMR_DOM_HOST.md` for the fuller client-DOM-host
+  context this fix was part of.
 - **Nvim/Tree-sitter**: no new headless-Neovim completion proof was run
   this session for `<d.lua.|`/`<d.js.|` specifically (the kind done for
   bare/lexical DOM tags in an earlier session). The type declarations

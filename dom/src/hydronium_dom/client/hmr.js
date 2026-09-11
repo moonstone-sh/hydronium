@@ -33,17 +33,18 @@
   when it called `package.preload[...]`, which is an application
   decision, not a filesystem fact.
 
-  So the mapping is explicit and supplied by the app, as `modules`:
+  So update policy is explicit and supplied by the app, as `updates`:
 
-      modules: { "views/Counter.luax": "app" }
+      updates: {
+        "views/App.luax": { action: "hot", module: "views.App" },
+        "views/Document.luax": { action: "reload" },
+        "public/style.css": { action: "style", href: "/public/style.css" },
+      }
 
-  keyed by the exact watched path string the server reports (the same
-  string that appears in the watch route's own file list -- these two
-  lists must agree, and the app owns both). A changed path with no entry
-  is not an error and not silently ignored: it triggers the full-reload
-  fallback, which is the correct answer for a file this runtime cannot
-  reason about (a stylesheet, a server route, a module nothing has
-  registered a component from).
+  keyed by the exact watched path string the server reports. Missing rules
+  are reported and ignored rather than silently destroying application
+  state. A watched file must say whether it is a hot Lua module, a document
+  boundary requiring reload, a stylesheet to replace in place, or ignored.
 
   ---------------------------------------------------------------------
   FALLBACK -- Vite's "graceful degradation to a full reload"
@@ -52,9 +53,6 @@
   documented, correct behavior whenever a hot swap cannot be PROVEN to
   have worked. This runtime falls back when:
 
-    - the server reported no changed paths at all (an older server with
-      no `changed` frame, so "something changed" is all we know);
-    - a changed path has no `modules` entry;
     - fetching or compiling the new module source failed;
     - `family_loader.reload(id)` matched zero families -- the module
       never registered a component, so no live instance can be
@@ -71,31 +69,10 @@ import { createDevTransport } from "./dev_transport.js";
 
 const SWAP_LUA = `
   local id = __hydronium_hmr_id
-  local chunk, err = load(__hydronium_hmr_src, "@" .. id)
-  if not chunk then
-    error("hydronium.client.hmr: could not load new source for '" .. id .. "': " .. tostring(err), 0)
-  end
-
-  -- Install the NEW source as this id's loader before asking the family
-  -- loader to reload it. family_loader.reload() clears
-  -- package.loaded[id] and re-requires, and require consults
-  -- package.preload first -- which is exactly how mount() installed the
-  -- module in the first place, so this is the same mechanism, not a
-  -- parallel one.
-  package.preload[id] = chunk
-
-  local family_loader = require("hydronium.core.family_loader")
-  local results = family_loader.reload(id)
-
-  local families, refreshed, failed = 0, 0, 0
-  for _, r in pairs(results) do
-    families = families + 1
-    refreshed = refreshed + (r.refreshed or 0)
-    failed = failed + (r.failed or 0)
-  end
-  __hydronium_hmr_families = families
-  __hydronium_hmr_refreshed = refreshed
-  __hydronium_hmr_failed = failed
+  local result = require("hydronium.core.hmr").replace(id, __hydronium_hmr_src)
+  __hydronium_hmr_families = result.families
+  __hydronium_hmr_refreshed = result.refreshed
+  __hydronium_hmr_failed = result.failed
 `;
 
 /**
@@ -104,8 +81,8 @@ const SWAP_LUA = `
  *   `mount({ hmr: true, ... })` is required: that flag is what enables
  *   `family_loader` BEFORE the app module is first required, which is
  *   the only moment its components can be discovered.
- * @param {{ [watchedPath: string]: string }} options.modules Watched file
- *   path -> `require()` module id. See CHANGE IDENTITY above.
+ * @param {{ [watchedPath: string]: { action: "hot", module: string }|{ action: "reload" }|{ action: "style", href: string }|{ action: "ignore" } }} options.updates
+ *   Explicit policy for every path named by the watch endpoint.
  * @param {string} [options.watchUrl] SSE endpoint (default `/__hydronium/watch`).
  * @param {string} [options.moduleUrl] Base URL serving one compiled module's
  *   source per id, fetched as `<moduleUrl>/<id>` (default
@@ -119,7 +96,7 @@ const SWAP_LUA = `
 export function installHmr(options) {
   const {
     lua,
-    modules = {},
+    updates = {},
     watchUrl = "/__hydronium/watch",
     moduleUrl = "/__hydronium/dev/module",
     onUpdate,
@@ -148,21 +125,38 @@ export function installHmr(options) {
     else location.reload();
   }
 
-  /**
-   * Resolves the changed paths to module ids, preserving order and
-   * dropping duplicates (two watched files can map to one module).
-   * Returns null when any path is unmapped -- one unknown change is
-   * enough to make a partial update dishonest, so the whole batch
-   * degrades to a full reload.
-   */
-  function resolveIds(paths) {
-    const ids = [];
-    for (const p of paths) {
-      const id = modules[p];
-      if (!id) return null;
-      if (!ids.includes(id)) ids.push(id);
+  function classify(paths) {
+    const rules = [];
+    const missing = [];
+    for (const path of paths) {
+      const rule = updates[path];
+      if (!rule) missing.push(path);
+      else rules.push({ path, ...rule });
     }
-    return ids;
+    return { rules, missing };
+  }
+
+  function replaceStylesheet(href) {
+    const wanted = new URL(href, location.href).pathname;
+    const current = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+      .find((link) => new URL(link.href, location.href).pathname === wanted);
+    if (!current) throw new Error(`stylesheet ${href} is not linked by the document`);
+
+    return new Promise((resolve, reject) => {
+      const next = current.cloneNode();
+      const url = new URL(current.href, location.href);
+      url.searchParams.set("_t", Date.now());
+      next.href = url.href;
+      next.addEventListener("load", () => {
+        current.remove();
+        resolve();
+      }, { once: true });
+      next.addEventListener("error", () => {
+        next.remove();
+        reject(new Error(`stylesheet ${href} failed to reload`));
+      }, { once: true });
+      current.after(next);
+    });
   }
 
   async function swap(id) {
@@ -198,14 +192,43 @@ export function installHmr(options) {
 
     const paths = event.paths || [];
     if (paths.length === 0) {
-      fullReload({ reason: "server reported no changed paths", paths });
+      report({ status: "unhandled", reason: "server reported no changed paths", paths });
       return;
     }
 
-    const ids = resolveIds(paths);
-    if (!ids) {
-      fullReload({ reason: "a changed path has no module mapping", paths });
+    const { rules, missing } = classify(paths);
+    if (missing.length > 0) {
+      const reason = `no update policy for: ${missing.join(", ")}`;
+      console.warn(`hydronium.client.hmr: ${reason}`);
+      report({ status: "unhandled", reason, paths, missing });
       return;
+    }
+
+    const reloadRule = rules.find((rule) => rule.action === "reload");
+    if (reloadRule) {
+      fullReload({ reason: `explicit reload boundary: ${reloadRule.path}`, paths });
+      return;
+    }
+
+    for (const rule of rules) {
+      if (rule.action === "ignore") {
+        report({ status: "ignored", path: rule.path, paths });
+      } else if (rule.action === "style") {
+        try {
+          await replaceStylesheet(rule.href);
+          report({ status: "style-updated", path: rule.path, href: rule.href, paths });
+        } catch (err) {
+          report({ status: "update-failed", path: rule.path, paths, error: String(err && err.message ? err.message : err) });
+        }
+      } else if (rule.action !== "hot") {
+        report({ status: "unhandled", reason: `unknown action '${rule.action}' for ${rule.path}`, paths });
+        return;
+      }
+    }
+
+    const ids = [];
+    for (const rule of rules) {
+      if (rule.action === "hot" && rule.module && !ids.includes(rule.module)) ids.push(rule.module);
     }
 
     for (const id of ids) {

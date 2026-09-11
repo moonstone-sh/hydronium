@@ -9,6 +9,11 @@
       ES module and calls its `hydrate(context)` (default) or
       `mount(context)` (when `mode: "mount"`) export -- the small foreign-
       module ABI documented in docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md.
+      WHEN that happens is now the island's own `hydrate` priority
+      ("load" | "idle" | "visible"), resolved through ./priority.js. That
+      field was already being emitted by the server for every island and
+      had no consumer here until now -- see activate()'s doc comment.
+      A deferred island's module is not even fetched until it triggers.
     - islands with interpreter "lua": deliberately NOT handled here. This
       file has no `import` of any Lua/WASM runtime anywhere in it -- a
       page with zero `d.js.island`s never executes the dynamic-import
@@ -48,6 +53,7 @@
 */
 
 import * as registry from "./boundary_registry.js";
+import { whenPriority } from "./priority.js";
 
 const OWNER = "js-bootstrap";
 
@@ -60,15 +66,110 @@ function readClientPlan(doc) {
 const disposers = new Map();
 
 /**
- * Activates every `interpreter: "js"` island in the page's client plan.
+ * Imports an island's module and runs its hydrate()/mount() export.
+ *
+ * Split out of activate() so the identical sequence can run either
+ * immediately (priority "load") or arbitrarily later (a deferred
+ * priority). Nothing in here depends on WHEN it runs -- the dynamic
+ * import is deliberately part of it, so a deferred island costs no
+ * network at all until its trigger fires.
+ */
+async function activateIsland(island, context, result) {
+  let mod;
+  try {
+    mod = await import(/* @vite-ignore */ island.module);
+  } catch (err) {
+    result.errors.push(`failed to import module ${island.module} for island ${island.id}: ${err.message}`);
+    return;
+  }
+
+  try {
+    registry.claim(island.id, OWNER);
+  } catch (err) {
+    result.errors.push(err.message);
+    return;
+  }
+
+  if (island.mode === "mount" && typeof mod.mount === "function") {
+    mod.mount(context);
+  } else if (typeof mod.hydrate === "function") {
+    mod.hydrate(context);
+  } else {
+    result.errors.push(`module ${island.module} exports neither hydrate() nor mount() for island ${island.id}`);
+    registry.release(island.id, OWNER);
+    return;
+  }
+  registry.markFinalized(island.id);
+
+  if (typeof mod.dispose === "function") {
+    disposers.set(island.id, () => mod.dispose(context));
+  }
+  result.activatedJsIslands++;
+
+  // Lets a page (or a test) observe the exact moment a DEFERRED island
+  // came alive, which is otherwise unobservable from outside: activate()
+  // has long since resolved by then. Bubbles, so one document-level
+  // listener covers every island.
+  const el = Array.isArray(context.root) ? context.root[0] : context.root;
+  if (el && typeof CustomEvent === "function" && typeof el.dispatchEvent === "function") {
+    try {
+      el.dispatchEvent(
+        new CustomEvent("hydronium:island", {
+          detail: { id: island.id, module: island.module, hydrate: island.hydrate || "load" },
+          bubbles: true,
+        })
+      );
+    } catch (_) {
+      /* nothing to notify in a non-DOM host */
+    }
+  }
+}
+
+/**
+ * Activates every `interpreter: "js"` island in the page's client plan,
+ * each at the time its own `hydrate` priority asks for.
+ *
+ * PRIORITY, newly honoured. The server has emitted a per-island `hydrate`
+ * field into the client plan since islands v1 (server/init.lua's
+ * `hydrate = raw_props.hydrate or "load"`), and real pages have been
+ * declaring `hydrate = "visible"` on real islands the whole time -- but
+ * nothing here read it, so every island activated immediately regardless.
+ * That is now wired through ./priority.js:
+ *
+ *   "load" (and the default, and anything unrecognized) is awaited inline,
+ *   exactly as before -- so a page that declares no priority behaves
+ *   byte-for-byte as it did, including the `activatedJsIslands` count it
+ *   gets back.
+ *
+ *   "idle" / "visible" islands are SCHEDULED, not activated: this function
+ *   returns without importing their modules at all. They are counted in
+ *   `deferredJsIslands`, and `settled` resolves once every one of them has
+ *   finished (for "visible", possibly never -- if the user never scrolls
+ *   there, which is the entire point). `errors` and `activatedJsIslands`
+ *   keep being updated in place as they land, so awaiting `settled` and
+ *   re-reading the same result object gives the final tally.
+ *
+ * Boundary discovery stays EAGER for every island regardless of priority:
+ * a missing/duplicate island boundary is a page-structure bug, and it
+ * should be reported by the time this resolves rather than surfacing
+ * minutes later when somebody happens to scroll.
+ *
  * @param {Document} [doc] Defaults to the global `document` -- overridable for testing.
  * @param {Element} [root] Subtree to search for island markers. Defaults to `doc.body`.
- * @returns {Promise<{activatedJsIslands: number, skippedLuaIslands: number, errors: string[]}>}
+ * @returns {Promise<{activatedJsIslands: number, deferredJsIslands: number, skippedLuaIslands: number, errors: string[], settled: Promise<void>}>}
  */
 export async function activate(doc = document, root = doc.body) {
   const plan = readClientPlan(doc);
-  const result = { activatedJsIslands: 0, skippedLuaIslands: 0, errors: [] };
+  const result = {
+    activatedJsIslands: 0,
+    deferredJsIslands: 0,
+    skippedLuaIslands: 0,
+    errors: [],
+    settled: Promise.resolve(),
+  };
   if (!plan) return result;
+
+  const pending = [];
 
   for (const island of plan.islands || []) {
     if (island.interpreter === "lua") {
@@ -99,36 +200,26 @@ export async function activate(doc = document, root = doc.body) {
       props: island.props || {},
     };
 
-    let mod;
-    try {
-      mod = await import(/* @vite-ignore */ island.module);
-    } catch (err) {
-      result.errors.push(`failed to import module ${island.module} for island ${island.id}: ${err.message}`);
+    const priority = island.hydrate || "load";
+    if (priority === "load") {
+      await activateIsland(island, context, result);
       continue;
     }
 
-    try {
-      registry.claim(island.id, OWNER);
-    } catch (err) {
-      result.errors.push(err.message);
-      continue;
-    }
+    result.deferredJsIslands++;
+    pending.push(
+      whenPriority(priority, els[0], (bad) => {
+        result.errors.push(
+          `island ${island.id}: unknown hydrate priority ${JSON.stringify(bad)} -- activating immediately`
+        );
+      }).then(() => activateIsland(island, context, result))
+    );
+  }
 
-    if (island.mode === "mount" && typeof mod.mount === "function") {
-      mod.mount(context);
-    } else if (typeof mod.hydrate === "function") {
-      mod.hydrate(context);
-    } else {
-      result.errors.push(`module ${island.module} exports neither hydrate() nor mount() for island ${island.id}`);
-      registry.release(island.id, OWNER);
-      continue;
-    }
-    registry.markFinalized(island.id);
-
-    if (typeof mod.dispose === "function") {
-      disposers.set(island.id, () => mod.dispose(context));
-    }
-    result.activatedJsIslands++;
+  if (pending.length > 0) {
+    // Never rejects: activateIsland records failures in `errors` rather
+    // than throwing, so one broken island cannot hide the others.
+    result.settled = Promise.all(pending).then(() => undefined);
   }
 
   return result;

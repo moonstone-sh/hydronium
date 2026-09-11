@@ -143,15 +143,16 @@ empty object in Lua. Consumers must tolerate both.
 
 ### Honesty note on `hydrate`
 
-`hydrate` is **recorded and transported, but not yet honored.** The
-current `bootstrap.js` iterates the plan and activates every
-`interpreter: "js"` island eagerly; there is no `requestIdleCallback` or
-`IntersectionObserver` scheduling anywhere in it. `"load"`, `"visible"`,
-`"idle"` and `"interaction"` are today a stored string that a future
-scheduler will read. This matches
-`docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md`'s own statement ("No hydration
-policies beyond a stored string"). Do not read the table above as a
-description of runtime behavior for this field.
+`hydrate` is **recorded, transported, and honored.** `bootstrap.js` and
+`priority.js` (shared with `mount.js` so the vocabularies can't drift)
+read this field per island: `"load"` still activates eagerly (unchanged
+default), while `"visible"` (real `IntersectionObserver`) and `"idle"`
+(real `requestIdleCallback`) genuinely defer both fetching the island's
+module and mounting it until the trigger fires. `"interaction"` is not
+yet a distinct scheduling mode -- treat it as reserved. This closed the
+gap `docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md` previously described; that
+document's own "No hydration policies beyond a stored string" line is
+stale for the same reason and is corrected there.
 
 ---
 
@@ -265,7 +266,9 @@ decision — the reconciler only reports. A host that provides no
 
 Stated here so no reader mistakes this document for a completeness claim:
 
-- **`hydrate` priorities are inert** (§3). Everything activates on load.
+- **`hydrate` priorities are honored for `"load"`/`"visible"`/`"idle"`**
+  (§3.x, "Honesty note on `hydrate`"); `"interaction"` is reserved and not
+  yet a distinct scheduling mode.
 - **No streaming Suspense.** Suspense isolates writes into an in-memory
   buffer; it is not a chunked-transfer segment sent early and replaced
   later. There is no client-side out-of-order segment patcher, and
