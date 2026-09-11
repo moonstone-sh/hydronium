@@ -20,6 +20,7 @@ return ballad.partiture(function(p)
                 "README.md",
                 "REGISTRY_README.md",
                 "src/**",
+                "client/**",
                 "native/**",
                 "nvim/**",
             },
@@ -31,6 +32,7 @@ return ballad.partiture(function(p)
         { from = package_orbit("dom"), to = "hydronium-dom" },
         { from = package_orbit("luax"), to = "hydronium-luax" },
         { from = package_orbit("ink"), to = "hydronium-ink" },
+        { from = package_orbit("router"), to = "hydronium-router" },
         { from = package_orbit("ballad"), to = "hydronium-ballad" },
         { from = package_orbit("create"), to = "hydronium-create" },
     })
