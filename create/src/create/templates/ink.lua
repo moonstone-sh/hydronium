@@ -21,17 +21,17 @@ abi = "5.1"
 run = "luajit run.lua"
 
 [[dependencies]]
-name = "hydronium"
+name = "moonstone/hydronium"
 constraint = "^0.1.0"
 role = "runtime"
 
 [[dependencies]]
-name = "hydronium-ink"
+name = "moonstone/hydronium-ink"
 constraint = "^0.1.1"
 role = "runtime"
 
 [[dependencies]]
-name = "hydronium-luax"
+name = "moonstone/hydronium-luax"
 constraint = "^0.1.0"
 role = "runtime"
 ]=], project_name)
@@ -45,6 +45,8 @@ role = "runtime"
 local hydronium = require("hydronium")
 local luax = require("hydronium_luax")
 local render = require("hydronium_ink.render")
+local hmr = require("hydronium.core.hmr")
+local family_loader = require("hydronium.core.family_loader")
 
 local function read_file(path)
   local file, err = io.open(path, "r")
@@ -59,25 +61,53 @@ end
 local info = debug.getinfo(1, "S")
 local root = info.source:gsub("^@", ""):match("^(.*)[/\\][^/\\]+$") or "."
 local filename = root .. "/src/App.luax"
-local compiled = luax.compile(read_file(filename), {
-  filename = filename,
-  runtime = "hydronium",
-  sourcemap = true,
-})
-
-local environment = setmetatable({
-  H = hydronium,
-  hydronium = hydronium,
-  __luax = require("hydronium_luax.runtime"),
-}, { __index = _G })
-
-local chunk, load_err = load(compiled.code, "@" .. filename, "t", environment)
-if not chunk then
-  error("Failed to load compiled App.luax: " .. tostring(load_err))
+local function compile_app()
+  return luax.compile(read_file(filename), {
+    filename = filename,
+    runtime = "hydronium",
+    sourcemap = true,
+  }).code
 end
 
-local App = chunk()
-local result = render.render(hydronium.h(App))
+-- LUAX's hydronium target emits these runtime names. Modules still import
+-- their explicit dependencies normally; these globals are compiler ABI.
+_G.H = hydronium
+_G.__luax = require("hydronium_luax.runtime")
+
+local module_id = "app"
+family_loader.enable()
+local source = compile_app()
+hmr.install(module_id, source)
+local App = require(module_id)
+
+local last_source = read_file(filename)
+local next_poll = 0
+local function poll_hmr()
+  local now = require("hydronium_ink.clock").nowMs()
+  if now < next_poll then return end
+  next_poll = now + 150
+
+  local current = read_file(filename)
+  if current == last_source then return end
+  -- Attempt each saved source once. A syntax error remains on screen while
+  -- the previous component keeps running; the next edit gets a fresh try.
+  last_source = current
+
+  local ok, compiled_or_error = pcall(compile_app)
+  if not ok then
+    io.stderr:write("\nHydronium Ink: refresh compile failed: " .. tostring(compiled_or_error) .. "\n")
+    return
+  end
+
+  local replaced, result_or_error = pcall(hmr.replace, module_id, compiled_or_error)
+  if not replaced or result_or_error.failed > 0 then
+    io.stderr:write("\nHydronium Ink: refresh failed: " .. tostring(result_or_error) .. "\n")
+    return
+  end
+
+end
+
+local result = render.render(hydronium.h(App), { onTick = poll_hmr })
 io.stdout:write("\nExited: " .. tostring(result.exitReason) .. "\n")
 ]]
 
@@ -85,7 +115,9 @@ io.stdout:write("\nExited: " .. tostring(result.exitReason) .. "\n")
 local ink = require("hydronium_ink")
 local hooks = require("hydronium_ink.hooks")
 
-return function()
+-- `scope` is explicit so the LUAX refresh transform can route the signal
+-- through this component instance's persistent RefreshRegistry.
+return function(_, scope)
   local count, setCount = hydronium.signal(0)
   local exit = hooks.useApp().exit
 
@@ -116,7 +148,8 @@ end
   files["README.md"] = string.format([[# %s
 
 An interactive terminal counter built with Hydronium Ink, LUAX, and the real
-terminal renderer.
+terminal renderer. While it is running, edits to `src/App.luax` are compiled
+and hot-swapped in the existing LuaJIT VM, preserving compatible signal state.
 
 ## Run
 

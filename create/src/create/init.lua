@@ -8,7 +8,7 @@ local template_specs = {
   ssr = {
     module = require("create.templates.ssr"),
     name = "SSR (Hydronium + Meteorite)",
-    description = "Full-stack server-side rendered application with reactive views",
+    description = "SSR document with a persistent browser Lua VM and component HMR",
     -- `meteorite = true` puts Meteorite's generated LuaCATS aids
     -- (.meteorite/aids/lua) on the LuaLS path. Without it those files are
     -- generated on every `meteorite graph`/`build` but never reach the
@@ -47,10 +47,9 @@ require("create.templates.spa")
 
 -- `spa` is intentionally excluded here (and from src/main.lua's
 -- `--template` completion list) -- see templates/spa.lua's own header
--- comment for why: nothing it promises (h.mount, a client bundler, a
--- `hydronium` CLI binary) exists in the framework today, and the file is
--- kept on disk (disabled) rather than deleted so the reasoning and the
--- real prerequisites for bringing it back stay attached to the code.
+-- comment for why. Root mounting and client bundling now exist; routing and
+-- a server-less delivery contract remain the blockers. The file stays on disk
+-- so those prerequisites remain attached to the disabled template.
 function create.available_templates()
   local result = {}
   for _, id in ipairs(template_order) do
@@ -113,8 +112,8 @@ function create.scaffold(opts, ctx)
   -- must fail loudly with an explanation, not silently generate broken
   -- output (the bug this whole template set was audited for).
   if template_id == "spa" then
-    return nil, "Template 'spa' is not yet supported -- hydronium has a real client mount() and bundler, "
-      .. "but no client-side router and no server-less way to serve a built app. "
+    return nil, "Template 'spa' is not yet supported -- hydronium has client mounting, bundling, and routing, "
+      .. "but no complete server-less build and delivery recipe. "
       .. "Use 'ssr', 'islands', 'minimal', or 'ink'."
   end
 

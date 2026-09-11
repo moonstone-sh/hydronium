@@ -35,18 +35,14 @@
       `/__hydronium/dev/module/:id` (compiled per request).
 
   ---------------------------------------------------------------------
-  WHY IT IS STILL BLOCKED, accurately, as of 2026-09-10:
+  WHY IT IS STILL BLOCKED, accurately, as of 2026-09-11:
 
-  1. There is no client-side router. An SPA's defining property is
-     navigating between views without a server round-trip, and nothing
-     in this ecosystem does that today: there is no `hydronium/router`
-     package, and `core/src/hydronium/init.lua` exposes no routing
-     surface. (The only "router" strings under create/ are Meteorite's
-     *server-side* `router_dispatch` build option, which is unrelated.)
-     A template named `spa` that cannot navigate is a single-page app
-     only in the trivial sense of having one page.
+  `moonstone/hydronium-router` now supplies route declarations, reactive
+  Router/Outlet/hooks, and memory/browser History adapters. Its browser
+  bridge composes through mount({ luaGlobals = ... }), so client-side
+  view navigation is no longer the blocker.
 
-  2. There is no server-less delivery story, and no `hydronium` CLI to
+  There is still no complete server-less delivery story, and no `hydronium` CLI to
      provide one. Every real client mount that exists today is served
      by a Meteorite app: the URLs `mount()` needs
      (`hydroniumBaseUrl`, `manifestUrl`, `appModuleUrl`, or bundled
@@ -60,10 +56,7 @@
 
   What would need to be true before this template comes back for real:
 
-    1. A real client-side router: history/hash-driven URL matching,
-       view swapping through the existing reconciler, and link
-       interception. This is the substantive gap.
-    2. Either a `kind = "bin"` `hydronium` CLI with real `dev`/`build`
+    1. Either a `kind = "bin"` `hydronium` CLI with real `dev`/`build`
        subcommands, or a documented Ballad partiture recipe that emits
        a static directory (bundled `chunkUrls` + `index.html`) a plain
        static file server can host with no Meteorite process.
@@ -71,8 +64,8 @@
   Until then, `create.scaffold({template = "spa"})` returns a clear
   error instead of generating code that cannot run -- see
   src/create/init.lua. Do not restore this template on the strength of
-  `mount()` existing alone; mount is necessary and no longer missing,
-  but it was never sufficient.
+  `mount()` and routing existing alone; both are necessary, but neither
+  supplies the static output and development-server contract.
 ]]
 
 local spa = {}

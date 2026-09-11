@@ -19,12 +19,12 @@ local islands = {}
     (meteorite.site's `assets` table).
   - hydronium/examples/js_island/counter.js: the real hydrate(context)/
     dispose(context) ABI this template's own counter.js implements.
-  - hydronium/src/hydronium/client/bootstrap.js and its sibling
-    boundary_registry.js: the real client bootstrap that reads
+  - hydronium/dom/src/hydronium_dom/client/bootstrap.js and its siblings
+    boundary_registry.js and priority.js: the real client bootstrap that reads
     `__HYDRONIUM_CLIENT_PLAN__` and dynamically imports a JS island's
     module. Both files are shipped here as real, self-contained copies
     under public/js/bootstrap/ -- this template does NOT reach back into
-    the hydronium checkout's own src/hydronium/client/ directory the way
+    the hydronium checkout's own client directory the way
     the internal example does (that example deliberately serves its own
     framework source for a "look, no build step" proof; a generated
     project resolves its Hydronium modules through Moonstone dependencies).
@@ -124,7 +124,7 @@ pub fn build(b: *std.Build) void {
 }
 ]]
 
-  files["views/App.luax"] = string.format([[-- Server-Rendered Shell with a real JS-hydrated island
+  files["views/Document.luax"] = string.format([[-- Server-rendered document boundary with a real JS-hydrated island
 local H = require("hydronium")
 local d = require("hydronium_dom").d
 
@@ -139,7 +139,7 @@ local function JsCounter(props)
   return <button class="btn btn-primary" data-testid="js-counter-btn">Count: {tostring(props.initial or 0)}</button>
 end
 
-local function App(props)
+local function Document(props)
   local initial = props.initial or 10
 
   return (
@@ -180,34 +180,15 @@ local function App(props)
   )
 end
 
-return App
+return Document
 ]], project_name, project_name)
 
-  -- Compiles views/App.luax on demand -- same reasoning and structure as
-  -- ssr.lua's src/views/App.lua (Meteorite's hybrid build lifts inline
+  -- Compiles views/Document.luax on demand -- same reasoning and structure as
+  -- ssr.lua's src/views/Document.lua (Meteorite's hybrid build lifts inline
   -- route handlers, so this can't be a `main.lua` upvalue).
-  files["src/views/App.lua"] = [[local luax = require("hydronium_luax")
+  files["src/views/Document.lua"] = [[local loader = require("hydronium_luax").loader
 
-local function load_luax(filepath)
-  local f = assert(io.open(filepath, "r"), "Cannot open .luax file: " .. filepath)
-  local source = f:read("*a")
-  f:close()
-
-  local compiled = luax.compile(source, {
-    filename = filepath,
-    runtime = "hydronium",
-    development = false,
-  })
-
-  local load_fn = loadstring or load
-  local chunk, err = load_fn(compiled.code, "@" .. filepath)
-  if not chunk then
-    error("Syntax error loading compiled .luax [" .. filepath .. "]: " .. tostring(err))
-  end
-  return chunk()
-end
-
-return load_luax("views/App.luax")
+return loader.load("views/Document.luax")
 ]]
 
   files["src/main.lua"] = string.format([[local meteorite = require("meteorite")
@@ -233,9 +214,9 @@ app:get("/__hydronium/watch", meteorite.lua("dev_watch", { arg_mode = "lazy_cont
 
 app:get("/", function(c)
   local meteorite_adapter = require("hydronium_dom.server.meteorite")
-  local AppView = require("views.App")
+  local Document = require("views.Document")
   local initial = tonumber(c:query("initial")) or 10
-  return meteorite_adapter.render(c, AppView, {
+  return meteorite_adapter.render(c, Document, {
     status = 200,
     props = { initial = initial },
   })
@@ -245,63 +226,33 @@ return app
 ]], project_name)
 
   files["src/dev_watch.lua"] = [[-- Full-page development reload transport for the generated app.
--- The browser client is hydronium_dom/client/dev_reload.js. This bounded SSE
--- poll remains safe on Meteorite's HTTP backends; the client reconnects after
--- each `bye` event.
+local watch = require("hydronium_dom.dev.watch")
+
 return function(c)
-  local function query(name)
-    if type(c.query) == "function" then return c:query(name) end
-    if type(c.query) == "table" then return c.query[name] end
-    return nil
-  end
-
-  local function fingerprint(wait)
-    local command = {}
-    if wait then command[#command + 1] = "sleep 0.5;" end
-    command[#command + 1] = "find views src public -type f 2>/dev/null | sort | while IFS= read -r f; do stat -f '%Fm %z %N' \"$f\" 2>/dev/null || stat -c '%.9Y %s %n' \"$f\"; done"
-    local pipe = io.popen(table.concat(command, " "), "r")
-    if not pipe then return "" end
-    local value = (pipe:read("*a") or ""):gsub("\n", "|")
-    pipe:close()
-    return value
-  end
-
-  local function emit(kind, value)
-    stream_write("id: " .. value .. "\nevent: " .. kind .. "\ndata: " .. value .. "\n\n")
-  end
-
-  local current = fingerprint(false)
-  local since = c:header("Last-Event-ID") or query("since")
-  stream_begin(200, "text/event-stream")
-  stream_write("retry: 200\n\n")
-  if since and since ~= "" and since ~= current then
-    emit("reload", current)
-    stream_end()
-    return
-  end
-  emit("hello", current)
-  for _ = 1, 10 do
-    local next_value = fingerprint(true)
-    if next_value ~= current then
-      emit("reload", next_value)
-      stream_end()
-      return
-    end
-  end
-  emit("bye", current)
-  stream_end()
+  watch.serve_sse(c, {
+    "views/Document.luax",
+    "src/main.lua",
+    "src/dev_watch.lua",
+    "public/style.css",
+    "public/js/bootstrap/bootstrap.js",
+    "public/js/bootstrap/boundary_registry.js",
+    "public/js/bootstrap/priority.js",
+    "public/js/bootstrap/dev_transport.js",
+    "public/js/bootstrap/dev_reload.js",
+    "public/js/island/counter.js",
+  })
 end
 ]]
 
   -- Real, self-contained copy of hydronium's own client bootstrap --
   -- reads the `__HYDRONIUM_CLIENT_PLAN__` script tag SSR emits and
   -- dynamically imports each `interpreter: "js"` island's module, calling
-  -- its `hydrate(context)` export. Verbatim from
-  -- hydronium/src/hydronium/client/bootstrap.js (v1) -- see that file for
-  -- the full design rationale; do not fork its behavior here.
+  -- its `hydrate(context)` export. Kept contract-compatible with
+  -- hydronium_dom/client/bootstrap.js (v1); see that file for the full
+  -- design rationale.
   files["public/js/bootstrap/bootstrap.js"] = [[/*
   Hydronium Client Bootstrap (v1) -- real, self-contained copy shipped by
-  hydronium-create's `islands` template (see hydronium/src/hydronium/client/bootstrap.js
+  hydronium-create's `islands` template (see hydronium_dom/client/bootstrap.js
   in the framework repo for the canonical source and full design rationale).
 
   Reads the `__HYDRONIUM_CLIENT_PLAN__` script tag a real SSR render emits
@@ -310,11 +261,11 @@ end
   `hydrate(context)` (default) or `mount(context)` (when `mode: "mount"`)
   export called -- the small foreign-module ABI documented in hydronium's
   docs/HYDRONIUM_ISLANDS_SUSPENSE_V1.md. Islands with interpreter "lua" are
-  deliberately skipped: there is no real Lua client-runtime hydration in
-  this framework yet.
+  deliberately skipped by this JS-island bootstrap; Lua root mounting uses
+  the separate mount.js runtime generated by the SSR template.
 
-  No build step, no dependencies beyond ./boundary_registry.js (shipped
-  alongside this file): load with
+  No build step; ./boundary_registry.js and ./priority.js ship alongside
+  this file. Load with
   `<script type="module">import { activate } from "/js/bootstrap/bootstrap.js"; activate();</script>`
   on any page that used `d.js.island`. `activate()` is idempotent-safe to
   call once on load; it does not poll or retry -- island DOM is assumed to
@@ -327,6 +278,7 @@ end
 */
 
 import * as registry from "./boundary_registry.js";
+import { whenPriority } from "./priority.js";
 
 const OWNER = "js-bootstrap";
 
@@ -338,16 +290,58 @@ function readClientPlan(doc) {
 
 const disposers = new Map();
 
+async function activateIsland(island, context, result) {
+  let mod;
+  try {
+    mod = await import(/* @vite-ignore */ island.module);
+  } catch (err) {
+    result.errors.push(`failed to import module ${island.module} for island ${island.id}: ${err.message}`);
+    return;
+  }
+
+  try {
+    registry.claim(island.id, OWNER);
+  } catch (err) {
+    result.errors.push(err.message);
+    return;
+  }
+
+  if (island.mode === "mount" && typeof mod.mount === "function") {
+    mod.mount(context);
+  } else if (typeof mod.hydrate === "function") {
+    mod.hydrate(context);
+  } else {
+    result.errors.push(`module ${island.module} exports neither hydrate() nor mount() for island ${island.id}`);
+    registry.release(island.id, OWNER);
+    return;
+  }
+  registry.markFinalized(island.id);
+
+  if (typeof mod.dispose === "function") {
+    disposers.set(island.id, () => mod.dispose(context));
+  }
+  result.activatedJsIslands++;
+}
+
 /**
- * Activates every `interpreter: "js"` island in the page's client plan.
+ * Discovers every JS island immediately, then activates it according to its
+ * `hydrate` priority: load, idle, or visible.
  * @param {Document} [doc] Defaults to the global `document` -- overridable for testing.
  * @param {Element} [root] Subtree to search for island markers. Defaults to `doc.body`.
- * @returns {Promise<{activatedJsIslands: number, skippedLuaIslands: number, errors: string[]}>}
+ * @returns {Promise<{activatedJsIslands: number, deferredJsIslands: number, skippedLuaIslands: number, errors: string[], settled: Promise<void>}>}
  */
 export async function activate(doc = document, root = doc.body) {
   const plan = readClientPlan(doc);
-  const result = { activatedJsIslands: 0, skippedLuaIslands: 0, errors: [] };
+  const result = {
+    activatedJsIslands: 0,
+    deferredJsIslands: 0,
+    skippedLuaIslands: 0,
+    errors: [],
+    settled: Promise.resolve(),
+  };
   if (!plan) return result;
+
+  const pending = [];
 
   for (const island of plan.islands || []) {
     if (island.interpreter === "lua") {
@@ -378,36 +372,24 @@ export async function activate(doc = document, root = doc.body) {
       props: island.props || {},
     };
 
-    let mod;
-    try {
-      mod = await import(/* @vite-ignore */ island.module);
-    } catch (err) {
-      result.errors.push(`failed to import module ${island.module} for island ${island.id}: ${err.message}`);
+    const priority = island.hydrate || "load";
+    if (priority === "load") {
+      await activateIsland(island, context, result);
       continue;
     }
 
-    try {
-      registry.claim(island.id, OWNER);
-    } catch (err) {
-      result.errors.push(err.message);
-      continue;
-    }
+    result.deferredJsIslands++;
+    pending.push(
+      whenPriority(priority, els[0], (bad) => {
+        result.errors.push(
+          `island ${island.id}: unknown hydrate priority ${JSON.stringify(bad)} -- activating immediately`
+        );
+      }).then(() => activateIsland(island, context, result))
+    );
+  }
 
-    if (island.mode === "mount" && typeof mod.mount === "function") {
-      mod.mount(context);
-    } else if (typeof mod.hydrate === "function") {
-      mod.hydrate(context);
-    } else {
-      result.errors.push(`module ${island.module} exports neither hydrate() nor mount() for island ${island.id}`);
-      registry.release(island.id, OWNER);
-      continue;
-    }
-    registry.markFinalized(island.id);
-
-    if (typeof mod.dispose === "function") {
-      disposers.set(island.id, () => mod.dispose(context));
-    }
-    result.activatedJsIslands++;
+  if (pending.length > 0) {
+    result.settled = Promise.all(pending).then(() => undefined);
   }
 
   return result;
@@ -424,14 +406,55 @@ export function disposeIsland(id) {
 }
 ]]
 
+  -- Shared scheduling vocabulary for both island hydration and root mounts.
+  files["public/js/bootstrap/priority.js"] = [[export const PRIORITIES = ["load", "idle", "visible"];
+
+const IDLE_TIMEOUT_MS = 2000;
+const VISIBLE_ROOT_MARGIN = "200px";
+
+function whenIdle() {
+  return new Promise((resolve) => {
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(() => resolve(), { timeout: IDLE_TIMEOUT_MS });
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
+function whenVisible(element) {
+  if (typeof IntersectionObserver !== "function" || !element) return Promise.resolve();
+  return new Promise((resolve) => {
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          observer.disconnect();
+          resolve();
+          return;
+        }
+      }
+    }, { rootMargin: VISIBLE_ROOT_MARGIN });
+    observer.observe(element);
+  });
+}
+
+export function whenPriority(priority, element, onUnknown) {
+  if (typeof priority === "function") return Promise.resolve(priority(element));
+  if (priority === "idle") return whenIdle();
+  if (priority === "visible") return whenVisible(element);
+  if (priority !== "load" && priority != null && onUnknown) onUnknown(String(priority));
+  return Promise.resolve();
+}
+]]
+
   -- Real, self-contained copy of hydronium's boundary registry --
   -- bootstrap.js imports this as a relative sibling module, so it must
-  -- ship alongside it. Verbatim from
-  -- hydronium/src/hydronium/client/boundary_registry.js.
+  -- ship alongside it. Mirrors
+  -- hydronium_dom/client/boundary_registry.js.
   files["public/js/bootstrap/boundary_registry.js"] = [[/*
   ClientBoundaryRegistry -- real, self-contained copy shipped by
   hydronium-create's `islands` template (see
-  hydronium/src/hydronium/client/boundary_registry.js in the framework
+  hydronium_dom/client/boundary_registry.js in the framework
   repo for the canonical source and full design rationale). The one place
   that knows how a Hydronium boundary is represented in the DOM.
 
@@ -553,41 +576,56 @@ export function dispose(id) {
   -- root. Meteorite rejects dependency symlinks as static roots, so serving
   -- it directly from `.moonstone/env` would weaken a deliberate safety rule.
   files["public/js/bootstrap/dev_transport.js"] = [[export function createDevTransport(url) {
+  const pollDelayMs = 500;
   let closed = false;
   let listeners = [];
   let since = null;
   let source = null;
+  let reconnectTimer = null;
+  let pendingPaths = [];
 
-  function notify(type, fingerprint) {
-    for (const callback of listeners) callback({ type, fingerprint });
+  function notify(type, fingerprint, paths) {
+    for (const callback of listeners) callback({ type, fingerprint, paths: paths || [] });
   }
 
-  function reconnect() {
+  function reconnect(delayMs = 0) {
     if (source) source.close();
+    source = null;
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
     if (closed) return;
-    // encodeURIComponent, not URLSearchParams: a fingerprint is `stat`
-    // output and contains spaces, which URLSearchParams serializes as
-    // `+`. Meteorite's query parser decodes `%20` but takes `+`
-    // literally, so the server never recognized the `since` it was sent,
-    // treated every reconnect as "changed while you were away", and
-    // answered with an immediate reload -- an unexplained periodic page
-    // refresh, easy to miss in a client whose whole job is reloading.
-    // Same fix as hydronium_dom/client/dev_transport.js.
-    const parts = [`_t=${Date.now()}`];
+    if (delayMs > 0) {
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        reconnect();
+      }, delayMs);
+      return;
+    }
+    // Immediate server polls keep abandoned refresh requests from occupying
+    // Meteorite handlers. The browser owns the quiet-period delay instead.
+    // encodeURIComponent is required because Meteorite treats `+` literally.
+    const parts = [`_t=${Date.now()}`, "budget=0"];
     if (since) parts.push(`since=${encodeURIComponent(since)}`);
     source = new EventSource(`${url}?${parts.join("&")}`);
     source.addEventListener("hello", (event) => {
       since = event.data;
       notify("hello", event.data);
     });
+    source.addEventListener("changed", (event) => {
+      pendingPaths = String(event.data || "").split("|").filter((path) => path !== "");
+    });
     source.addEventListener("reload", (event) => {
       since = event.data;
-      notify("reload", event.data);
+      const paths = pendingPaths;
+      pendingPaths = [];
+      notify("reload", event.data, paths);
       reconnect();
     });
     source.addEventListener("bye", (event) => {
       since = event.data;
-      reconnect();
+      reconnect(pollDelayMs);
     });
   }
 
@@ -600,6 +638,9 @@ export function dispose(id) {
     close() {
       closed = true;
       if (source) source.close();
+      source = null;
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      reconnectTimer = null;
     },
   };
 }
@@ -701,10 +742,15 @@ server-rendered `<button>` and wires up a real click handler. Everything
 else on the page is plain static SSR output with zero client JavaScript.
 
 This is the ONE hydration path genuinely proven end-to-end in Hydronium
-today. Lua-island hydration (`<d.lua.island>`, used by the `ssr` template's
-counter) only emits SSR markers right now -- no client Lua runtime exists
-to actually make it interactive, which is why this template does not use
-it for its interactive piece.
+today. The SSR template uses a different mechanism: it mounts a Lua
+application root into a stable `Document.luax` shell. This template keeps the
+static shell in its own `views/Document.luax` too, but its interactive leaf is
+a deliberately small JavaScript hydration boundary rather than a browser VM.
+
+The island declares `hydrate="visible"`, so its JavaScript module is not
+fetched until the boundary approaches the viewport. The generated
+`priority.js` implements the same `load`, `idle`, and `visible` vocabulary as
+Hydronium's current client bootstrap.
 
 ## Getting Started
 
@@ -727,7 +773,7 @@ it for its interactive piece.
 Then open the page in a real browser and click the counter -- the count
 increments client-side with no page reload. Editing files under `views/`,
 `src/`, or `public/` triggers a full-page reload, so client state resets;
-state-preserving HMR is not implemented yet.
+state-preserving JavaScript-island HMR is not implemented yet.
 ]], project_name, project_name)
 
   return files

@@ -6,11 +6,11 @@ Declarative scaffolding CLI tool for initializing new [Hydronium](https://moonst
 
 | Template | Description |
 | :--- | :--- |
-| `ssr` (Default) | Full-stack server-side rendered application powered by Hydronium & Meteorite with reactive signal views. |
+| `ssr` (Default) | Meteorite SSR shell with a persistent browser Lua VM, state-preserving component HMR, and in-place CSS updates. |
 | `islands` | Mostly-static SSR shell with one real, client-hydrated JS island (server-rendered button, client-side click handling). |
-| `--minimal` | Lightweight standalone reactive component for scripting and embedding. Selected as a flag rather than through `--template`. |
-| `ink` | Interactive terminal counter using LUAX, Yoga layout, keyboard input, and the Hydronium Ink renderer. Requires LuaJIT 2.1 on macOS or glibc Linux. |
-| `spa` | **Not yet supported.** Blocked on a client-side router and a server-less delivery story, *not* on mounting — `hydronium_dom`'s client `mount()` and the Ballad client bundler are both real and are used by the `ssr` template. `--template spa` returns a clear error instead of generating broken output. See `src/create/templates/spa.lua`'s own comment for the exact remaining gaps. |
+| `--minimal` | One-shot plain-Lua server rendering for scripting and embedding. It exits after printing HTML, so it intentionally has no HMR process. |
+| `ink` | Interactive terminal counter with state-preserving LUAX HMR, Yoga layout, and keyboard input. Requires LuaJIT 2.1 on macOS or glibc Linux. |
+| `spa` | **Not yet supported.** Reactive client routing now exists in `hydronium-router`; the remaining blocker is a complete server-less build and delivery recipe. |
 
 ## Usage
 

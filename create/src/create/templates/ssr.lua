@@ -6,7 +6,7 @@ local ssr = {}
   build -Dmode=release-hybrid -Dbackend=std_http, ./dist/server, curl).
 
   Ground truth for every API shape below is
-  hydronium/examples/meteorite_ssr/{src/main.lua, src/views/App.lua,
+  hydronium/examples/quickstart/{src/main.lua, src/views/Document.lua,
   moonstone.toml} in the sibling hydronium checkout -- read those first if
   changing this file. Key facts that are NOT obvious from guessing at the
   API:
@@ -19,10 +19,10 @@ local ssr = {}
     handler body. Meteorite's hybrid build "lifts" each inline Lua handler
     (extracts its own source text, reloads it standalone per request) --
     closing over an outer local fails the build with "inline Lua handler
-    captures outer local". This is why views/App.lua exists as its own
+    captures outer local". This is why views/Document.lua exists as its own
     requirable module instead of a `main.lua` upvalue.
   - Rendering goes through `require("hydronium_dom.server.meteorite").render(c,
-    AppView, {status=200, props={...}})` -- takes the COMPONENT (not a
+    Document, {status=200, props={...}})` -- takes the COMPONENT (not a
     pre-built vnode) plus an options table with `props`; there is no
     `hydronium.render_to_string(...)` + `res:header()`/`res:send()` (that
     response API doesn't exist anywhere in this framework).
@@ -53,8 +53,8 @@ local ssr = {}
     hydronium/examples/meteorite_ssr/client_mount_demo (two real browser
     clicks drive two real Lua-closure `onClick` calls through the ordinary
     reconciler, with zero JS interactivity layer). This template now uses
-    exactly that mechanism for its counter (views/Counter.luax, mounted
-    into the `<div id="app">` in views/App.luax) instead of the
+    exactly that mechanism for its client application (views/App.luax,
+    mounted into the `<div id="app">` in views/Document.luax) instead of the
     non-hydrating `<d.lua.island>` pattern -- clicking the button in a
     browser really does call Lua running client-side. The counter also
     uses a BARE `{count}` binding (not `{count()}`) as its text child, so
@@ -65,7 +65,7 @@ local ssr = {}
     now serves hydronium's own client runtime source (`/hydronium-src`),
     the compiled client bootstrap (`/js/bootstrap`, from
     hydronium/dom/src/hydronium_dom/client), this project's own client
-    component compiled on demand (`/__hydronium/dev/module/views.Counter`),
+    components compiled on demand (`/__hydronium/dev/module/views.App`),
     and a static module manifest (`/__hydronium/client_manifest.json`) the
     client fetches to know which framework files to load. This is
     dev/example serving (plain `io.open` per request), not a production
@@ -79,20 +79,20 @@ local ssr = {}
     module's freshly compiled source, installs it as `package.preload[id]`
     in the SURVIVING wasmoon VM, and calls `family_loader.reload(id)` --
     so the counter keeps its value and its DOM nodes across an edit, with
-    no page navigation. `dev_reload.js` (whole-page reload) is what hmr.js
-    falls back to whenever a hot swap cannot be proven to have worked, and
-    is still the right client for a page with no Lua VM at all.
+    no page navigation. A full page reload is the explicit safety fallback
+    when a requested hot swap cannot be proven to have worked.
+    `dev_reload.js` remains the simpler client for a page with no Lua VM.
 
-  - Two files must agree, and nothing enforces it automatically: the watch
-    list in `src/main.lua` and the `modules` map in `views/App.luax`. A
-    watched file with no entry in that map is not an error -- it just
-    triggers the full-reload fallback.
+  - Two declarations must agree: the watch list in `src/main.lua` and the
+    explicit `updates` policy in `views/Document.luax`. Application modules
+    use `hot`, the document uses `reload`, and CSS uses `style`; an omitted
+    policy is reported and ignored instead of silently destroying state.
 
-  - `views/App.luax` and `views/Counter.luax` live at the project ROOT,
-    not under `src/`. `meteorite dev` watches `src/` and rebuilds and
-    restarts the server on any change there, which would destroy the page
-    HMR exists to preserve. Both are recompiled per request by
-    `hydronium_luax.loader`, so neither needs a rebuild anyway.
+  - `views/Document.luax`, `views/App.luax`, and `views/Counter.luax` live
+    at the project root, not under `src/`. `meteorite dev` watches `src/`
+    and restarts the server on changes there, which would destroy the page
+    HMR exists to preserve. The document loader and dev-module route compile
+    these files on demand, so none of them needs a rebuild.
 ]]
 
 function ssr.files(opts)
@@ -133,17 +133,17 @@ constraint = "^0.3.0"
 role = "tool"
 
 [[dependencies]]
-name = "hydronium"
+name = "moonstone/hydronium"
 constraint = "path:../hydronium/core"
 role = "runtime"
 
 [[dependencies]]
-name = "hydronium-luax"
+name = "moonstone/hydronium-luax"
 constraint = "path:../hydronium/luax"
 role = "runtime"
 
 [[dependencies]]
-name = "hydronium-dom"
+name = "moonstone/hydronium-dom"
 constraint = "path:../hydronium/dom"
 role = "runtime"
 ]=], project_name)
@@ -187,19 +187,13 @@ pub fn build(b: *std.Build) void {
 }
 ]]
 
-  files["views/App.luax"] = string.format([=[-- Root View Component
---
--- The counter is NOT rendered here as a Hydronium component -- it is a
--- separate module (src/client/counter.lua) mounted entirely client-side
--- via hydronium.client.mount, so its onClick handlers really do run as
--- Lua in the browser (wasmoon), not SSR-rendered markup. This page only
--- renders the `<div id="app">` container and bootstraps that mount --
--- see src/main.lua's routes for what serves the framework/client files
--- the bootstrap script below fetches.
+  files["views/Document.luax"] = string.format([=[-- Stable server document boundary, analogous to Vite's index.html.
+-- Application UI belongs in views/App.luax and refreshes inside the
+-- surviving browser Lua VM. Editing this file intentionally reloads the page.
 
 local H = require("hydronium")
 
-local function App(props)
+local function Document(props)
   return (
     <html lang="en">
       <head>
@@ -209,55 +203,38 @@ local function App(props)
         <link rel="stylesheet" href="/public/style.css" />
       </head>
       <body>
-        <main class="container">
-          <header class="hero">
-            <h1>Welcome to %s</h1>
-            <p class="subtitle">Deterministic Reactive UI for Lua</p>
-          </header>
-
-          <section class="card">
-            <h2>Reactive Signal Counter</h2>
-            <p class="mount-note">Mounted client-side -- real Lua, running in your browser.</p>
-            <div id="app">Loading...</div>
-          </section>
-
-          <footer>
-            <p>Powered by <strong>Hydronium</strong> &amp; <strong>Meteorite</strong></p>
-          </footer>
-        </main>
+        <div id="app">
+          <span data-hydronium-placeholder>Loading...</span>
+        </div>
 
         <script type="module">{[[
           import { mount } from "/js/bootstrap/mount.js";
           import { installHmr } from "/js/bootstrap/hmr.js";
 
-          // Dev-only: an identity minted once per real page load. A hot
-          // swap leaves it alone; a full page reload replaces it. It is
-          // the one thing that tells genuine HMR apart from a live
-          // reload that merely looks fast, so it is worth the one line.
           window.__bootId = Math.random().toString(36).slice(2);
 
           const { lua } = await mount({
             hydroniumBaseUrl: "/hydronium-src",
             manifestUrl: "/__hydronium/client_manifest.json",
-            appModuleId: "views.Counter",
-            appModuleUrl: "/__hydronium/dev/module/views.Counter",
+            appModuleId: "views.App",
+            appModuleUrl: "/__hydronium/dev/module/views.App",
+            moduleUrls: {
+              "views.Counter": "/__hydronium/dev/module/views.Counter",
+            },
             container: "#app",
-            props: { initial: 0 },
+            props: { title: "%s", initial: 0 },
             hydrate: false,
-            // Discovers this app's components so they can be hot-swapped
-            // later. Must be set HERE, not on installHmr: component
-            // families are bound at first require, which happens inside
-            // mount(). Dev only -- drop it for a production build.
             hmr: true,
           });
 
-          // `modules` maps each watched file (same list as src/main.lua's
-          // /__hydronium/watch route -- keep the two in step) to the
-          // require() id it is loaded under. Anything changed that is not
-          // in this map falls back to a full page reload, by design.
           installHmr({
-            lua: lua,
-            modules: { "views/Counter.luax": "views.Counter" },
+            lua,
+            updates: {
+              "views/App.luax": { action: "hot", module: "views.App" },
+              "views/Counter.luax": { action: "hot", module: "views.Counter" },
+              "views/Document.luax": { action: "reload" },
+              "public/style.css": { action: "style", href: "/public/style.css" },
+            },
           });
         ]]}</script>
       </body>
@@ -265,26 +242,26 @@ local function App(props)
   )
 end
 
-return App
+return Document
 ]=], project_name, project_name)
 
-  -- Compiles views/App.luax on demand and returns the component function.
+  -- Compiles views/Document.luax on demand and returns the component function.
   -- Lives in its own requirable module (not a main.lua upvalue) for
   -- exactly the reason explained in this file's header comment and in
-  -- hydronium/examples/meteorite_ssr/src/views/App.lua, which this
+  -- hydronium/examples/quickstart/src/views/Document.lua, which this
   -- mirrors structurally: Meteorite's hybrid build lifts inline route
   -- handlers, so a handler cannot close over a `local App = require(...)`
   -- declared above it.
-  files["src/views/App.lua"] = [[-- Compiles views/App.luax on demand via hydronium_luax's serve-time
--- loader, cached by mtime -- editing and saving views/App.luax needs no
+  files["src/views/Document.lua"] = [[-- Compiles views/Document.luax on demand via hydronium_luax's serve-time
+-- loader, cached by mtime -- editing and saving views/Document.luax needs no
 -- rebuild. Lives in its own requirable module (not a main.lua upvalue):
 -- Meteorite's hybrid build mode lifts each inline route handler
 -- (extracts its own source text, reloads it standalone per request), so
 -- a handler cannot close over a `local App = require(...)` declared
--- above it -- `require("views.App")` from INSIDE a handler body is fine.
+-- above it -- `require("views.Document")` from inside a handler is fine.
 local loader = require("hydronium_luax").loader
 
-return loader.load("views/App.luax")
+return loader.load("views/Document.luax")
 ]]
 
   files["src/main.lua"] = string.format([[-- Server entrypoint
@@ -321,9 +298,48 @@ meteorite.site(app, {
 -- request dies with a bare `OutOfMemory` -> HTTP 500 that shows up only in
 -- .meteorite/dev/server.log while the browser simply never boots the Lua
 -- VM. (It is the request arena, not the 1mb max_response_bytes cap.)
+-- VENDOR SPLIT, declared BEFORE the general /js/bootstrap route below.
+-- That order is load-bearing, not cosmetic: Meteorite's router is a
+-- first-match-wins linear scan in DECLARATION order, with no
+-- longest-prefix or specificity rule, and both routes match
+-- /js/bootstrap/vendor/... . Swapping them silently reverts the caching
+-- below instead of raising an error.
+--
+-- m.dir's cache lifetime is PER-ROUTE, and this one directory holds two
+-- things with opposite needs: hydronium's own client JS (mount.js,
+-- hmr.js, dom_bridge.js), edited constantly while you develop, and the
+-- vendored, version-pinned wasmoon build under vendor/ (glue.wasm plus
+-- index.js, ~423KB of the ~462KB total), which only changes when
+-- somebody deliberately re-vendors a new wasmoon release.
+--
+-- m.dir defaults every file to `cache-control: no-cache`, which does not
+-- mean "do not cache" -- it means "revalidate before every reuse". That
+-- cost a conditional round trip for all six files on every repeat visit
+-- before the Lua VM could even start.
+--
+-- NOT `immutable`, deliberately: that emits a year-long unconditional
+-- promise on a URL with no content hash in it, so re-vendoring wasmoon
+-- would strand every warm client on the old binary. A bounded lifetime
+-- strands nobody -- Meteorite already sends a real content-derived b3
+-- ETag per file and answers If-None-Match with a 304, so a client
+-- self-heals as soon as the day expires.
+app:get("/js/bootstrap/vendor/:path*", {
+  memory = { request_arena = "1mb" },
+}, meteorite.dir("../hydronium/dom/src/hydronium_dom/client/vendor", {
+  param = "path",
+  cache = "public, max-age=86400, must-revalidate",
+}))
+
+-- Hydronium's own client JS. Stays revalidate-every-time on purpose:
+-- these files change as you develop, and a stale mount.js/hmr.js served
+-- out of a browser cache is a genuinely confusing failure. They are also
+-- small (~35KB combined) -- the caching win was never here.
 app:get("/js/bootstrap/:path*", {
   memory = { request_arena = "1mb" },
-}, meteorite.dir("../hydronium/dom/src/hydronium_dom/client", { param = "path" }))
+}, meteorite.dir("../hydronium/dom/src/hydronium_dom/client", {
+  param = "path",
+  cache = "no-cache",
+}))
 
 -- Serves hydronium's own runtime source for hydronium.client.mount to
 -- fetch over HTTP, exactly as hydronium/examples/meteorite_ssr does --
@@ -369,8 +385,8 @@ end)
 -- build step) and returned as text -- never executed here, because it is
 -- the browser's Lua VM that runs it, not the server's.
 --
--- Both the FIRST load and every hot update go through this one route:
--- src/views/App.luax's mount() passes it as `appModuleUrl`, and
+-- Both the first load and every hot update go through this one route:
+-- views/Document.luax passes these URLs to mount(), and
 -- hydronium_dom/client/hmr.js re-fetches the same URL on each change. One
 -- source of truth, so the two can never drift apart.
 --
@@ -396,7 +412,7 @@ app:get("/__hydronium/dev/module/:id", function(c)
     local ok, code = pcall(loader.source, luax_path)
     if not ok then
       -- 500 with the real compiler message in the body: hmr.js treats a
-      -- non-200 as "hot swap failed" and falls back to a full reload,
+      -- non-200 as "hot swap failed" and performs the safety reload,
       -- and the message is then readable in the network panel rather
       -- than swallowed. (A real error overlay is roadmap M5.)
       return c:text(500, "-- hydronium dev: compile failed for " .. id .. "\n-- " .. tostring(code))
@@ -415,8 +431,8 @@ end)
 
 app:get("/", function(c)
   local meteorite_adapter = require("hydronium_dom.server.meteorite")
-  local AppView = require("views.App")
-  return meteorite_adapter.render(c, AppView, {
+  local Document = require("views.Document")
+  return meteorite_adapter.render(c, Document, {
     status = 200,
     props = { title = "%s" },
   })
@@ -427,15 +443,14 @@ app:get("/api/health", function(c)
 end)
 
 -- Dev update endpoint: the browser's hmr.js (served above) connects here
--- and is told, per change, exactly WHICH of these files moved -- so a
--- change to views/Counter.luax is hot-swapped inside the live Lua VM
--- with no page reload, while a change to anything it has no mapping for
--- falls back to reloading the page. See hydronium_dom.dev.watch's own
+-- and is told exactly which file moved. App and Counter are hot modules,
+-- Document is an explicit reload boundary, and CSS is replaced in place.
+-- See hydronium_dom.dev.watch's own
 -- doc comment for why this route must stay written inline here rather
 -- than behind a one-line library call (Meteorite's hybrid build can only
 -- lift an inline handler it can see the literal source of).
 --
--- Keep this list in step with the `modules` map in views/App.luax: this
+-- Keep this list in step with the `updates` map in views/Document.luax: this
 -- side decides what is watched, that side decides what a watched file
 -- means to the running VM.
 --
@@ -445,11 +460,47 @@ end)
 -- page HMR is trying to preserve.
 app:get("/__hydronium/watch", function(c)
   local watch = require("hydronium_dom.dev.watch")
-  watch.serve_sse(c, { "views/App.luax", "views/Counter.luax" })
+  watch.serve_sse(c, {
+    "views/App.luax",
+    "views/Counter.luax",
+    "views/Document.luax",
+    "public/style.css",
+  })
 end)
 
 return app
 ]], project_name, project_name)
+
+  -- The client application root. Keeping it separate from Document.luax
+  -- makes normal layout edits hot-swappable instead of page reloads.
+  files["views/App.luax"] = string.format([[local H = require("hydronium.core.element")
+local dom = require("hydronium_dom")
+local Counter = require("views.Counter")
+local d = dom.d
+
+local function App(props)
+  return (
+    <d.main class="container">
+      <d.header class="hero">
+        <d.h1>{"Welcome to "}{props.title or "%s"}</d.h1>
+        <d.p class="subtitle">Deterministic Reactive UI for Lua</d.p>
+      </d.header>
+
+      <d.section class="card">
+        <d.h2>Reactive Signal Counter</d.h2>
+        <d.p class="mount-note">Real Lua, running in your browser.</d.p>
+        <Counter initial={props.initial or 0} />
+      </d.section>
+
+      <d.footer>
+        <d.p>Powered by <d.strong>Hydronium</d.strong>{" & "}<d.strong>Meteorite</d.strong></d.p>
+      </d.footer>
+    </d.main>
+  )
+end
+
+return App
+]], project_name)
 
   -- The real, client-executed component -- compiled on demand by
   -- src/main.lua's /__hydronium/dev/module route, fetched over HTTP by
@@ -530,6 +581,7 @@ return Counter
   "hydronium.core.suspense": "hydronium/core/suspense.lua",
   "hydronium.signals.graph": "hydronium/signals/graph.lua",
   "hydronium.core.family_loader": "hydronium/core/family_loader.lua",
+  "hydronium.core.hmr": "hydronium/core/hmr.lua",
   "hydronium.core.family": "hydronium/core/family.lua",
   "hydronium.core.refresh": "hydronium/core/refresh.lua",
   "hydronium.signals": "hydronium/signals/init.lua",
@@ -675,10 +727,10 @@ some-parent-dir/
 
 ## The counter, and hot reloading
 
-`views/Counter.luax` is a real Hydronium component that runs **in your
-browser**, as Lua: `views/App.luax` renders an empty `<div id="app">` and
-boots a wasmoon VM into it, so the button's `onClick` is a genuine Lua
-closure, not a JS shim.
+`views/App.luax` is the hot application root and `views/Counter.luax` is
+its child. Both run **in your browser**, as Lua. `views/Document.luax` is
+the stable server-rendered shell that boots the VM, analogous to Vite's
+`index.html`.
 
 With `moon run dev` running, edit `views/Counter.luax` -- change `+ 1` to
 `+ 5` -- and save. The page does **not** reload. The counter keeps the
@@ -697,9 +749,9 @@ for it to be recognized, and both are easy to break by accident:
 Break either and nothing errors: that signal simply resets to its initial
 value on each edit, exactly as it would have before this feature existed.
 
-Changing anything the page has no module mapping for -- `views/App.luax`,
-a stylesheet, a route -- falls back to a full page reload, which is the
-correct answer for a change that cannot be applied in place.
+Edit `views/App.luax` and the counter state survives while the application
+layout refreshes. Editing `public/style.css` replaces the stylesheet in
+place. Only `views/Document.luax` is an explicit page-reload boundary.
 
 ## Getting Started
 
