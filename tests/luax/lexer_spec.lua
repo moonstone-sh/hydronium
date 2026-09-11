@@ -237,6 +237,50 @@ describe("LUAX: Lexer Tokenization", function()
       end
       assert.equal(comment_count, 2)
     end)
+
+    -- Regression: Lexer:read_comment()'s long-bracket detection used to
+    -- call self:match("^%[(=*)%[") -- but Lexer:match() already prepends
+    -- its own "^" internally, so this was really matching "^^%[(=*)%[",
+    -- a pattern that can never match (a lone "^" outside anchor position
+    -- is not magic in Lua patterns, but doubling it here broke the
+    -- anchor entirely). That silently made every --[[ ... ]] comment
+    -- fall through to the single-line-comment branch instead, which
+    -- reads only up to the first "\n" -- so a MULTI-LINE long comment
+    -- had only its opening line actually treated as a comment, and the
+    -- rest of its own text got tokenized as real code. Single-line
+    -- --[[ ... ]] comments (and any multi-line one whose content never
+    -- happened to fail to parse as valid code) masked this for years.
+    it("treats an entire multi-line --[[ ]] comment as one token, not just its first line", function()
+      local src = "--[[\nline two, with a comma\nline three with a `backtick`\n--]]\nreturn 1\n"
+      local tokens = lexer.tokenize(src, "test.luax", { include_comments = true })
+
+      assert.equal(tokens[1].type, TOKEN.COMMENT, "the whole block must lex as one COMMENT token")
+      assert.truthy(
+        tokens[1].value:find("backtick", 1, true) ~= nil,
+        "the comment token's value must span all the way to the real closer, including the backtick line"
+      )
+
+      -- Real code (a genuine PUNCT/PUNCT/PUNCT `return 1` sequence) must
+      -- follow, not stray tokens re-parsed out of the comment's own body.
+      local saw_return = false
+      for _, t in ipairs(tokens) do
+        if t.type == TOKEN.KEYWORD and t.value == "return" then
+          saw_return = true
+        end
+      end
+      assert.truthy(saw_return, "expected a real 'return' keyword token after the comment closes")
+    end)
+
+    it("closes a --[=[ ]=] comment at the matching level, not at an inner ]] of a lower level", function()
+      local src = "--[=[\nhas ]] inside but that is not the real closer, a, b\n]=]\nreturn 1\n"
+      local tokens = lexer.tokenize(src, "test.luax", { include_comments = true })
+
+      assert.equal(tokens[1].type, TOKEN.COMMENT)
+      assert.truthy(
+        tokens[1].value:find("not the real closer", 1, true) ~= nil,
+        "the comment must not have closed early at the inner ]]"
+      )
+    end)
   end)
 
   describe("Source Coordinates", function()

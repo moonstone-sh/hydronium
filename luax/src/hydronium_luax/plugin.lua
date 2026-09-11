@@ -1,8 +1,8 @@
 local info = debug.getinfo(1, "S")
 local src_path = info and info.source and info.source:gsub("^@", "") or ""
-local proj_root = src_path:match("^(.*)/src/hydronium_luax/plugin%.lua$") or src_path:match("^(.*)/src/.*$")
-if proj_root and proj_root ~= "" then
-  package.path = proj_root .. "/src/?.lua;" .. proj_root .. "/src/?/init.lua;" .. package.path
+local module_root = src_path:match("^(.*)/hydronium_luax/plugin%.lua$")
+if module_root and module_root ~= "" then
+  package.path = module_root .. "/?.lua;" .. module_root .. "/?/init.lua;" .. package.path
 else
   package.path = "src/?.lua;src/?/init.lua;" .. package.path
 end
@@ -135,16 +135,11 @@ function M.OnSetText(uri, text)
   end
 
   local virtual_code = M.virtual_lower(text, uri)
+  -- See the identical note in luals/init.lua: an empty diff list is the correct
+  -- answer for a JSX-free .luax file. Substituting a whole-file identity hunk
+  -- changes nothing but claims every byte, which corrupts the merge when any
+  -- other OnSetText plugin is composed alongside this one.
   local diffs = compute_diff(text, virtual_code)
-  if #diffs == 0 then
-    diffs = {
-      {
-        start = 1,
-        finish = #text,
-        text = virtual_code,
-      }
-    }
-  end
   diffs.text = virtual_code
   return diffs
 end

@@ -18,6 +18,7 @@ local runtime = require("hydronium_luax.runtime")
 local formatter = require("hydronium_luax.formatter")
 local sourcemap = require("hydronium_luax.compiler.sourcemap")
 local luals = require("hydronium_luax.luals")
+local loader = require("hydronium_luax.loader")
 
 local Luax = {
   _VERSION = "0.1.0",
@@ -49,6 +50,11 @@ local Luax = {
   format = formatter.format,
   luals = luals,
   virtual_source = luals.virtual_source,
+
+  -- Serve-time loading: compile-and-run a `.luax` file on demand,
+  -- cached by mtime (see hydronium_luax.loader's own doc comment).
+  loader = loader,
+  load_luax = loader.load,
 }
 
 return Luax

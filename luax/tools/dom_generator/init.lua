@@ -5,7 +5,10 @@
   - types/dom/html.d.lua
   - types/dom/svg.d.lua
   - types/dom/intrinsics.d.lua
-  - types/luax.d.lua
+
+  Does NOT generate types/luax.d.lua (that file lives at
+  luax/types/luax.d.lua, hand-owned -- see generator.run()'s doc
+  comment and docs/LUAX_HOST_TYPE_AUTHORING.md for why).
 --]]
 
 local webref = require("tools.dom_generator.webref_data")
@@ -215,68 +218,28 @@ function generator.generate_intrinsics()
   return table.concat(lines, "\n")
 end
 
--- =========================================================================
--- 5. Generate types/luax.d.lua
--- =========================================================================
-function generator.generate_luax()
-  local lines = {
-    "---@meta",
-    "--[[",
-    "  Hydronium LUAX Core Type Definitions & JSX/LuaCATS declarations",
-    "--]]",
-    "",
-    "--- Virtual DOM element produced by LUAX elements and fragments",
-    "---@class LuaxElement",
-    "---@field tag string|function|table",
-    "---@field props table<string, any>",
-    "---@field children any[]",
-    "---@field key any",
-    "---@field ref any",
-    "",
-    "--- Valid child nodes in LUAX templates",
-    "---@alias LuaxNode LuaxElement | string | number | boolean | nil | LuaxNode[]",
-    "",
-    "--- Base component props dictionary",
-    "---@class LuaxProps",
-    "---@field key? any",
-    "---@field ref? any",
-    "---@field children? LuaxNode",
-    "",
-    "--- Functional component type receiving props and returning a LuaxNode",
-    "---@alias LuaxComponent<P> fun(props: P): LuaxNode",
-    "",
-    "--- Helper for component prop verification in virtual source lowering",
-    "---@generic TProps",
-    "---@param component fun(props: TProps): any",
-    "---@param props TProps",
-    "---@return any",
-    "function __luax_component(component, props, ...) end",
-    "",
-    "--- Runtime merge helper for JSX spread attributes",
-    "--- Evaluates left-to-right with later keys overwriting earlier keys",
-    "---@param ... table|nil",
-    "---@return table",
-    "function __luax.spread(...) end",
-    "",
-    "--- Fragment creation helper",
-    "---@param props table?",
-    "---@param ... any",
-    "---@return LuaxElement",
-    "function __luax.fragment(props, ...) end",
-    "",
-    "--- Element creation helper",
-    "---@param tag any",
-    "---@param props table?",
-    "---@param ... any",
-    "---@return LuaxElement",
-    "function __luax.element(tag, props, ...) end",
-    "",
-  }
+-- Note: this generator no longer writes types/luax.d.lua. That file
+-- (luax/types/luax.d.lua) is the host-agnostic core LuaCATS catalog
+-- (LuaxElement, hydronium.Intrinsic<P,H>, hydronium.ElementType<P,H>,
+-- the __luax_* helpers) every host's own type catalog builds on -- see
+-- docs/LUAX_HOST_TYPE_AUTHORING.md. It used to be (re-)generated from a
+-- hardcoded string literal here that had no actual dependency on this
+-- generator's webref/DOM data (verified: the removed `generate_luax()`
+-- never referenced `webref` at all), which was pure incidental coupling
+-- -- and had drifted stale enough that re-running it would have silently
+-- deleted real, hand-added content (`hydronium.Intrinsic`/
+-- `hydronium.ElementType` do not appear anywhere in the version this
+-- function used to emit). `luax/types/luax.d.lua` is hand-owned directly
+-- from here on; this generator only ever produces DOM's own spec-derived
+-- catalog (events/html/svg/intrinsics below).
 
-  return table.concat(lines, "\n")
-end
-
---- Generates all DOM and LUAX typing files into target directory
+--- Generates DOM's own spec-derived typing files into target directory.
+--- Does NOT touch types/luax.d.lua -- see the doc comment above
+--- generate_luax()'s removal, further up this file, for why: it used to
+--- write a hardcoded copy that had already drifted stale relative to the
+--- real, hand-maintained file (missing hydronium.Intrinsic/
+--- hydronium.ElementType entirely), so calling this used to risk
+--- silently deleting real content on every re-run.
 function generator.run(out_dir)
   out_dir = out_dir or "types"
   local dom_dir = out_dir .. "/dom"
@@ -288,9 +251,8 @@ function generator.run(out_dir)
   write_file(dom_dir .. "/html.d.lua", generator.generate_html())
   write_file(dom_dir .. "/svg.d.lua", generator.generate_svg())
   write_file(dom_dir .. "/intrinsics.d.lua", generator.generate_intrinsics())
-  write_file(out_dir .. "/luax.d.lua", generator.generate_luax())
 
-  print("Generated DOM and LUAX types in " .. out_dir)
+  print("Generated DOM types in " .. out_dir)
 end
 
 return generator

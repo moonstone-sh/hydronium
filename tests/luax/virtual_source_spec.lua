@@ -168,5 +168,37 @@ end
       assert.truthy(orig_idx)
       assert.equal(orig_idx, virt_idx)
     end)
+
+    it("lowers a bare `return <JSX>` nested inside an if/elseif/else branch, not just at the top level", function()
+      -- Regression test: collect_jsx's generic pairs()/ipairs() walk
+      -- recurses into an array element only when the element itself has
+      -- a `.type` field. IfStatement.clauses is an array of
+      -- {condition, body} wrapper objects with no `.type` of their own
+      -- (unlike every other statement's `.body`, which is a plain array
+      -- of typed statement nodes) -- so anything nested inside an
+      -- if/elseif branch, including a `return <JSX>`, was invisible to
+      -- it and never lowered, left as raw JSX for LuaLS's real Lua
+      -- parser to choke on, even though the real compiler's own AST for
+      -- the exact same construct is correct and compiles fine (this was
+      -- a virtual-source walker gap, not a parser bug). Found live via
+      -- examples/ink_todo/todo.luax's `if #rows == 0 then return
+      -- <ink.Text>...</ink.Text> end`.
+      local src = [[
+local function f(cond)
+  if cond == 1 then
+    return <ink.Text>one</ink.Text>
+  elseif cond == 2 then
+    return <ink.Text>two</ink.Text>
+  else
+    return <ink.Text>other</ink.Text>
+  end
+end
+]]
+      local virt = virtual_source.transform(src)
+      assert.equal(#src, #virt)
+      assert.falsy(virt:find("<", 1, true), "no raw '<' should survive lowering:\n" .. virt)
+      local chunk, err = loadstring and loadstring(virt) or load(virt)
+      assert.truthy(chunk, "virtual code for an if/elseif/else-nested JSX return must still be valid Lua: " .. tostring(err) .. "\n" .. virt)
+    end)
   end)
 end)

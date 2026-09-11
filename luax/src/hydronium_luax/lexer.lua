@@ -212,7 +212,19 @@ function Lexer:read_comment()
     self:advance(2)
 
     -- Check for long bracket comment --[=[ ... ]=]
-    local eq = self:match("^%[(=*)%[")
+    -- NOTE: no leading "^" here -- Lexer:match() (above) already
+    -- anchors its pattern to self.pos internally (`"^" .. pattern`).
+    -- Passing a second leading "^" produced the literal two-character
+    -- pattern "^^%[..." (a lone "^" not in anchor position is not
+    -- magic in Lua patterns, but doubling it here made the whole
+    -- pattern never match beginning-of-subject text), which silently
+    -- made this branch dead: every --[[ ... ]] comment was
+    -- misdetected as a single-line comment, consuming only its
+    -- opening line before the lexer started tokenizing the comment's
+    -- own remaining lines as real code. Confirmed via a minimal
+    -- repro before this fix: `("[["):find("^^%[(=*)%[")` -> nil,
+    -- `("[["):find("%[(=*)%[")` -> a real match.
+    local eq = self:match("%[(=*)%[")
     if eq then
       local num_eq = #eq:match("^%[(=*)%[")
       local close_pat = "%]" .. string.rep("=", num_eq) .. "%]"
