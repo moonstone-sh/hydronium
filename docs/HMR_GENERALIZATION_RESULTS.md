@@ -1,5 +1,24 @@
 # HMR Generalization: Results, Hard Gates, and Honest Gaps
 
+**Status, corrected per a later counter-agent audit (see this doc's own
+final "Counter-Agent Audit Response" section below for the full
+re-scoring):**
+
+```
+RUNTIME COMPONENT-FAMILY HMR GENERALIZATION:  VERIFIED
+END-TO-END AUTOMATIC HYDRONIUM HMR:           NOT YET COMPLETE
+```
+
+Nothing below originally claimed "HMR COMPLETE" as a single status --
+this file already scored itself 9/15 hard gates and named "no real
+browser DOM Host adapter" as an open gap in plain language. The
+correction is narrower: this file's own evidence section described the
+prior proof as running in "a real browser (Chromium via Playwright)",
+which was true for the transport/event layer and the WASM VM but
+invited reading "real DOM" into the render layer, which was actually
+`TestHost` (in-memory). That gap is now closed for real — see
+`docs/HMR_DOM_HOST.md` and the final section of this document.
+
 This is the closing report for the "Generalize Hydronium HMR from a
 Counter Proof into a Real Component/Module Refresh System" mission.
 It follows this whole engagement's rule: report what was verified
@@ -157,3 +176,74 @@ evidence does and doesn't cover.
 - Observability/dev diagnostics tooling for HMR (mission Part XIX) — not attempted
 - Performance measurement of the refresh path (mission Part XXVII) — not attempted
 - Proof-matrix scenarios A/B/C/E/F from the mission's Part XVIII (only scenario D, the mandatory multi-instance case, was built) — not attempted
+
+## Counter-Agent Audit Response
+
+A later adversarial audit challenged this document's implied next step
+(module dependency graph) and asked for a priority re-score before any
+graph work: is a dependency graph premature if refreshed
+`ComponentInstance`s still can't reach a real production browser Host?
+That challenge was correct — see `docs/HMR_DOM_HOST.md` for the full
+account of what was built in response: a real `hydronium.host.dom` Host
+adapter (all 7 Reconciler contract methods, against real DOM), general
+hydration (`Reconciler:hydrate`/`:hydrateRoot`, new methods, host-
+agnostic), and a real-browser arbitrary-tree proof (5 real DOM nodes,
+22/22 assertions, real click events, real HMR with verified DOM-identity
+preservation and verified old-listener replacement). Also added:
+`tests/core/family_identity_adversarial_spec.lua`, proving FamilyID's
+behavior under adversarial edits (comments/reformatting/unrelated-code/
+local-rename/reorder all PRESERVE identity; a table-export rename or a
+module move each RESET SAFELY — the old instance keeps working under
+its old family, a new empty family is created for the new name/path,
+and state is never misidentified or cross-wired).
+
+### Required final scorecard (counter-audit Part XVIII)
+
+| Layer | Status |
+|---|---|
+| Dev change detection | VERIFIED — real `stat`-fingerprint long-poll, re-confirmed live again this round |
+| Browser notification | VERIFIED — same real `/__hydronium/watch` transport, reused unchanged |
+| WASM Lua module reload | VERIFIED — `family_loader.reload()`, real `package.loaded` clear + re-require |
+| ComponentFamily runtime | VERIFIED — `require()`-based identity, automatic discovery, native + browser proof |
+| General ComponentInstance integration | VERIFIED — `ComponentInstance:refresh()` reuses ordinary `:update()`, no bespoke diff engine |
+| Real browser DOM Host | VERIFIED — `hydronium.host.dom`, all 7 contract methods, real DOM, real events, real 5-node tree, 22/22 real-browser assertions |
+| General hydration | VERIFIED for the claim/mismatch-fallback algorithm (native + real-browser mismatch fixture); PARTIAL overall — real, documented whitespace-sensitivity limitation (see `docs/HMR_DOM_HOST.md` Part IV), no compiler-assisted hydration markers beyond the existing SSR comment convention |
+| Compatible state preservation | VERIFIED — native + real-browser, single- and multi-instance |
+| Incompatible remount | NOT IMPLEMENTED — no compatibility classification above the existing per-signal kind check; no remount ladder |
+| Compiler component identity | NOT IMPLEMENTED — identity is `require()`-based (runtime), not compiler-emitted; adversarially tested and found to fail safe (reset, never misidentify) rather than fully correct under a file move/export rename |
+| Direct component update | VERIFIED |
+| Indirect dependency propagation | NOT IMPLEMENTED |
+| Module graph | NOT IMPLEMENTED |
+| Environment separation | NOT IMPLEMENTED — one global family registry; separation today is incidental (separate Lua VM instances), not designed |
+| Arbitrary-tree HMR | VERIFIED — real browser, 5-node tree, 2 independent instances of one family, 3 untouched siblings |
+| Suspense/HMR integration | NOT IMPLEMENTED / NOT DESIGNED |
+| JS-island HMR | NOT IMPLEMENTED — explicitly out of scope, unchanged |
+
+### Required final architectural verdict
+
+**What does Hydronium HMR genuinely support after this pass?** Editing
+a component module that is reachable via a real `require()` call,
+whose export is a bare function or a named table entry, refreshes every
+currently-mounted instance of it in place — preserving per-instance
+compatible signal state, replacing its event handlers correctly (no
+double-firing), and doing so through the SAME reconciler/Host machinery
+an ordinary render already uses, all the way to a real browser DOM, for
+an arbitrary small tree with multiple independent instances and
+untouched siblings. This is proven, not designed-only, both natively
+and in a real browser.
+
+**What is the narrowest remaining boundary before "edit an arbitrary
+Hydronium application module and the framework automatically performs
+the smallest safe live update"?** Two things, in order: (1) a changed
+module that is NOT itself a component (a shared utility, a helper) has
+no path to the component families that depend on it — there is no
+module dependency graph, so only editing a component's own file
+triggers anything; and (2) there is no compatibility classification
+above the individual-signal level, so a structurally incompatible edit
+is not detected and routed to a remount/reload fallback — it is simply
+attempted as an ordinary refresh, which the adversarial identity tests
+show fails *safely* (inert, not corrupting) for identity changes, but
+was never tested for a signal-shape change large enough to make refresh
+itself misbehave rather than just decline to help. Both remain real,
+unstarted work, not designed-only fictions — this document does not
+claim otherwise.

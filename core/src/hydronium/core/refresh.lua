@@ -30,15 +30,12 @@
       call site it does not positively recognize is emitted unchanged
       and simply never participates in refresh matching.
 
-    * Dev transport -- NOT wired. The shipped browser dev client
-      (hydronium_dom/client/dev_reload.js) responds to a file change
-      with `location.reload()`, which destroys the VM and every live
-      ComponentInstance, so no RefreshRegistry ever survives to be
-      matched against. State-preserving refresh over a real transport
-      exists today only in the bespoke proof pages under
-      examples/meteorite_ssr/hmr_demo/. A general client HMR runtime
-      that calls family_loader.reload() inside the surviving VM is
-      still unbuilt.
+    * Dev transports -- WIRED for declared component modules. The browser
+      client maps changed paths through explicit update policies and calls
+      `hydronium.core.hmr.replace` inside the surviving Wasmoon VM. The Ink
+      create template uses the same primitive from its terminal event loop.
+      Shared non-component dependency propagation still has no module graph;
+      those edits require a broader fallback rather than a guessed refresh.
 
   Correction found while building this: earlier design language (this
   session's own prior document) referred to `scope:signal(initial)` as

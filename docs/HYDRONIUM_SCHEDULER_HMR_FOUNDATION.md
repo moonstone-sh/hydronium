@@ -577,3 +577,18 @@ through `TestHost`, not real DOM nodes. See
 this is flagged as a separate, sizeable, still-unstarted piece of
 foundational work, not something this round's proof should be read as
 having covered.
+
+## Update — superseded: the real DOM Host gap above is closed
+
+A later counter-agent audit challenged exactly this gap as the correct
+next priority (ahead of a module dependency graph) and it's now built:
+`src/hydronium/host/dom.lua`, a real Host adapter implementing the full
+Reconciler contract against real DOM, plus general hydration
+(`Reconciler:hydrate`/`:hydrateRoot`, new reconciler methods, host-
+agnostic). Verified live in a real browser: a 5-node arbitrary tree (2
+independent component instances plus 3 untouched siblings), real click
+events, real HMR with DOM-identity preservation and event-listener
+replacement, and a real hydration-mismatch fallback fixture — 22/22
+assertions. Full record: `docs/HMR_DOM_HOST.md`. This does not change
+anything else this document already flagged as open (compiler
+descriptors, module graph, propagation, environment separation).

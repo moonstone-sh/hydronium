@@ -15,6 +15,8 @@ local component = require("hydronium.core.component")
 local reconciler = require("hydronium.core.reconciler")
 local suspense = require("hydronium.core.suspense")
 local resource = require("hydronium.core.resource")
+local hmr = require("hydronium.core.hmr")
+local family_loader = require("hydronium.core.family_loader")
 
 return {
   symbols = symbols,
@@ -42,6 +44,11 @@ return {
   Suspense = suspense.Suspense,
   resource = resource.new,
   isSuspension = resource.isSuspension,
+
+  -- Host-neutral live module replacement. Opt-in: callers explicitly
+  -- enable family_loader before the application's first require.
+  hmr = hmr,
+  family_loader = family_loader,
 
   -- Context & Refs
   createContext = context.createContext,

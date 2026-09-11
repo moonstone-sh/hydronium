@@ -162,14 +162,12 @@ specifically to keep this invariant honest going forward).
   dependency (a shared utility module) has no path to the components
   that use it — there is no graph tracking that relationship at all.
   See `docs/HMR_GENERALIZATION_RESULTS.md`.
-- **No compiler-emitted descriptors.** Family identity comes from
-  `require()`'s own module id, which is real and already stable, but
-  it is not what the generalization mission's Part III describes
-  (`ModuleDescriptor`/`ComponentDescriptor` emitted by the LUAX
-  compiler). Signal-level identity (`{kind, name, block_path}`) is
-  still 100% hand-written in every consumer, exactly as it was before
-  this session — the still-open compiler pass this whole HMR effort has
-  named since its first foundation document.
+- **No compiler-emitted component identity.** Family identity still comes
+  from `require()`'s module id plus export name, not a compiler-emitted
+  `ModuleDescriptor`/`ComponentDescriptor`. Signal identity is different:
+  the LUAX refresh transform now emits `{kind, name, block_path}` calls for
+  conservative, recognized setup-level signal declarations. Plain Lua can
+  still write those descriptors manually.
 - **Local/anonymous components are not discovered.** A component
   defined inside another function (never itself a module's top-level
   return value or a named table export) never appears in
@@ -206,14 +204,20 @@ specifically to keep this invariant honest going forward).
   a real `family_loader.reload()`, the new logic genuinely executing
   (not a stale closure), and correct `instance_count` bookkeeping on
   unmount.
-- **Real browser (Chromium via Playwright), same mandatory case**:
+- **Real browser (Chromium via Playwright), same mandatory case, via `TestHost`**:
   `examples/meteorite_ssr/hmr_demo/family_proof.html`, driven by a real
   WASM Lua VM (wasmoon), a real file edit to
   `hmr_demo/family_counter.lua` on disk, the real
   `/__hydronium/watch` dev transport, and `family_loader.reload()`
   inside that VM. 11/11 assertions pass. Uses `hydronium.test.createTestHost`
   (the same fake host the native test and this whole codebase's
-  reconciler-level tests already use), not real DOM elements — see
-  "Real DOM host: a newly-surfaced, separate gap" in
-  `docs/HMR_GENERALIZATION_RESULTS.md` for why, and what that does and
-  does not mean for this evidence.
+  reconciler-level tests already use), not real DOM elements.
+- **Real browser, real DOM (superseding the gap above)**:
+  `examples/meteorite_ssr/hmr_demo/dom_host_proof.html`, the identical
+  proof shape but through `hydronium.host.dom` (a real Host adapter,
+  see `docs/HMR_DOM_HOST.md`) against 5 real DOM nodes with 2
+  independent Counter instances — 22/22 assertions, including real
+  click events, real DOM-identity preservation across HMR, and real
+  event-listener replacement. The "no real DOM host" gap this doc
+  previously flagged is closed; `docs/HMR_DOM_HOST.md` is the full
+  record.

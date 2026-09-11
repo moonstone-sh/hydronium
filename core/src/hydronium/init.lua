@@ -65,6 +65,8 @@ local Hydronium = {
   mount = core.mount,
   reconcile = core.reconcile,
   unmount = core.unmount,
+  hmr = core.hmr,
+  family_loader = core.family_loader,
 
   -- Testing & Test Host
   test = testModule,
