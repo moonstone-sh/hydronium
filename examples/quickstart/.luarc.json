@@ -1,0 +1,27 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime": {
+    "version": "LuaJIT",
+    "path": [
+      "?.lua",
+      "?/init.lua",
+      "?.luax"
+    ],
+    "plugin": [
+      ".moonstone/env/share/lua/5.1/hydronium_luax/luals/init.lua"
+    ]
+  },
+  "workspace": {
+    "library": [
+      ".moonstone/env/share/lua/5.1",
+      ".moonstone/env/libexec/hydronium-luax/types",
+      ".moonstone/env/libexec/hydronium-dom/types",
+      ".moonstone/env/libexec/hydronium-dom/ambient-types"
+    ]
+  },
+  "files": {
+    "associations": {
+      "*.luax": "lua"
+    }
+  }
+}

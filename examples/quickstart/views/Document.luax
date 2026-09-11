@@ -1,0 +1,59 @@
+-- Stable server-rendered document boundary.
+--
+-- This is Hydronium's equivalent of Vite's index.html: it owns the document,
+-- stylesheet, mount point, and bootstrap. Editing it intentionally reloads the
+-- page. Application UI belongs in views/App.luax, which is mounted inside the
+-- surviving browser Lua VM and can be hot-swapped without losing state.
+
+local H = require("hydronium")
+
+local function Document(props)
+  return (
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{props.title or "Hydronium + Meteorite"}</title>
+        <link rel="stylesheet" href="/public/style.css" />
+      </head>
+      <body>
+        <div id="app">
+          <span class="booting" data-hydronium-placeholder>Booting Lua VM...</span>
+        </div>
+
+        <script type="module">{[[
+          import { mount } from "/js/bootstrap/mount.js";
+          import { installHmr } from "/js/bootstrap/hmr.js";
+
+          window.__bootId = Math.random().toString(36).slice(2);
+
+          const { lua } = await mount({
+            hydroniumBaseUrl: "/hydronium-src",
+            manifestUrl: "/__hydronium/client_manifest.json",
+            appModuleId: "views.App",
+            appModuleUrl: "/__hydronium/dev/module/views.App",
+            moduleUrls: {
+              "views.Counter": "/__hydronium/dev/module/views.Counter",
+            },
+            container: "#app",
+            props: { title: "Hydronium + Meteorite", initial: 0 },
+            hydrate: false,
+            hmr: true,
+          });
+
+          installHmr({
+            lua,
+            updates: {
+              "views/App.luax": { action: "hot", module: "views.App" },
+              "views/Counter.luax": { action: "hot", module: "views.Counter" },
+              "views/Document.luax": { action: "reload" },
+              "public/style.css": { action: "style", href: "/public/style.css" },
+            },
+          });
+        ]]}</script>
+      </body>
+    </html>
+  )
+end
+
+return Document

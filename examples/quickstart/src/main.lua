@@ -37,9 +37,68 @@ meteorite.site(app, {
 --
 -- 1mb of arena leaves real headroom for wasmoon to grow across versions
 -- without this failing again in the same confusing way. Dev-only cost.
+-- VENDOR SPLIT, declared BEFORE the general /js/bootstrap route below --
+-- that order is load-bearing, not cosmetic. Meteorite's router is a
+-- first-match-wins linear scan in DECLARATION order (zig/server/route_dispatch.zig's
+-- `inline for (routes)`); there is no longest-prefix or specificity rule.
+-- Both this route and the one below match /js/bootstrap/vendor/..., so
+-- whichever is declared first wins. Moving this below the other silently
+-- reverts the caching fix rather than erroring.
+--
+-- Why it needs its own route at all: `m.dir`'s cache lifetime is
+-- PER-ROUTE, and this one directory holds two things with opposite
+-- caching needs -- hydronium's own client JS (mount.js, hmr.js,
+-- dom_bridge.js), edited constantly during development, and the
+-- vendored, version-pinned wasmoon build under vendor/ (glue.wasm +
+-- index.js = ~423KB of the ~462KB total), which changes only when
+-- somebody deliberately re-vendors a new wasmoon release.
+--
+-- Before this split every one of those files was served
+-- `cache-control: no-cache` (Meteorite's `m.dir` default, see
+-- src/core/handler_factories.lua), which does NOT mean "don't cache" --
+-- it means "revalidate before every reuse". Measured with Playwright
+-- against this running server: a repeat visit made a conditional round
+-- trip for all six files (transferSize 300 bytes each, 304 Not
+-- Modified) before the Lua VM could start. Cheap over localhost,
+-- six serial RTTs on a real network.
+--
+-- NOT `immutable`, deliberately. `opts.immutable` would emit
+-- `public, max-age=31536000, immutable` -- a year-long, unconditional,
+-- un-revalidatable promise on a URL with NO content hash in it, so
+-- re-vendoring wasmoon would strand every already-warm client on the
+-- old binary with no way for the server to correct them. Real content
+-- hashing (hydronium_ballad.plugins.assets' b3sum scheme) is what makes
+-- `immutable` safe, and it does not apply here: that plugin rewrites
+-- Ballad build-graph AssetSets, while these URLs are resolved at runtime
+-- by mount.js against its own `import.meta.url` and by hand-written
+-- <script type="module"> tags in views/Document.luax. Hashing them means a
+-- real asset pipeline rewriting those references -- the separate,
+-- still-open bundler work (hydronium/docs/BUNDLING.md).
+--
+-- A bounded lifetime needs none of that and cannot strand anyone:
+-- Meteorite already emits a real content-derived b3 ETag per file and
+-- honours If-None-Match with a 304, so once the day expires the client
+-- revalidates and self-heals automatically. 24h of zero round trips for
+-- a repeat visitor, 24h worst-case staleness -- instead of a year.
+app:get("/js/bootstrap/vendor/:path*", {
+	memory = { request_arena = "1mb" },
+}, meteorite.dir("../../dom/src/hydronium_dom/client/vendor", {
+	param = "path",
+	cache = "public, max-age=86400, must-revalidate",
+}))
+
+-- Hydronium's own client JS. Stays revalidate-every-time (`no-cache`),
+-- and that is the right answer rather than an oversight: these files are
+-- edited during development, and a stale mount.js/hmr.js served out of
+-- a browser cache is a genuinely confusing failure. Stated explicitly
+-- rather than left to the factory default so it reads as a decision.
+-- They are also small (~35KB combined) -- the caching win was never here.
 app:get("/js/bootstrap/:path*", {
 	memory = { request_arena = "1mb" },
-}, meteorite.dir("../../dom/src/hydronium_dom/client", { param = "path" }))
+}, meteorite.dir("../../dom/src/hydronium_dom/client", {
+	param = "path",
+	cache = "no-cache",
+}))
 
 -- Serves hydronium's own runtime source for hydronium.client.mount to
 -- fetch over HTTP, exactly as hydronium/examples/meteorite_ssr does --
@@ -85,8 +144,8 @@ end)
 -- build step) and returned as text -- never executed here, because it is
 -- the browser's Lua VM that runs it, not the server's.
 --
--- Both the FIRST load and every hot update go through this one route:
--- src/views/App.luax's mount() passes it as `appModuleUrl`, and
+-- Both the first load and every hot update go through this one route:
+-- views/Document.luax passes these URLs to mount(), and
 -- hydronium_dom/client/hmr.js re-fetches the same URL on each change. One
 -- source of truth, so the two can never drift apart.
 --
@@ -131,8 +190,8 @@ end)
 
 app:get("/", function(c)
 	local meteorite_adapter = require("hydronium_dom.server.meteorite")
-	local AppView = require("views.App")
-	return meteorite_adapter.render(c, AppView, {
+	local Document = require("views.Document")
+	return meteorite_adapter.render(c, Document, {
 		status = 200,
 		props = { title = "hydronium-quickstart" },
 	})
@@ -143,15 +202,15 @@ app:get("/api/health", function(c)
 end)
 
 -- Dev update endpoint: the browser's hmr.js (served above) connects here
--- and is told, per change, exactly WHICH of these files moved -- so a
--- change to views/Counter.luax is hot-swapped inside the live Lua VM
--- with no page reload, while a change to anything it has no mapping for
--- falls back to reloading the page. See hydronium_dom.dev.watch's own
+-- and is told exactly which file moved. views/App.luax and
+-- views/Counter.luax are hot Lua modules, views/Document.luax is an
+-- explicit page-reload boundary, and style.css is replaced in place. See
+-- hydronium_dom.dev.watch's own
 -- doc comment for why this route must stay written inline here rather
 -- than behind a one-line library call (Meteorite's hybrid build can only
 -- lift an inline handler it can see the literal source of).
 --
--- Keep this list in step with the `modules` map in views/App.luax: this
+-- Keep this list in step with the `updates` map in views/Document.luax: this
 -- side decides what is watched, that side decides what a watched file
 -- means to the running VM.
 --
@@ -161,7 +220,12 @@ end)
 -- page HMR is trying to preserve.
 app:get("/__hydronium/watch", function(c)
 	local watch = require("hydronium_dom.dev.watch")
-	watch.serve_sse(c, { "views/App.luax", "views/Counter.luax" })
+	watch.serve_sse(c, {
+		"views/App.luax",
+		"views/Counter.luax",
+		"views/Document.luax",
+		"public/style.css",
+	})
 end)
 
 return app

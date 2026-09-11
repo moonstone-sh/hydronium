@@ -89,6 +89,32 @@ body {
   font-size: 0.9rem;
 }
 
+/* The loading state's only styling hook, and it is a standard one:
+   mount() sets aria-busy="true" on the container while the Lua VM boots
+   and removes it once the component is really in the DOM. So no
+   framework-supplied class is needed here -- and a screen reader gets
+   told the region is updating for free, which a class could not do. */
+#app[aria-busy="true"] .booting {
+  animation: hy-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes hy-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Respects a real user preference rather than animating regardless. */
+@media (prefers-reduced-motion: reduce) {
+  #app[aria-busy="true"] .booting {
+    animation: none;
+  }
+}
+
 .counter {
   display: flex;
   flex-direction: column;

@@ -30,12 +30,12 @@ moon run build
 ./dist/server
 ```
 
-## Try the hot reload
+## Try state-preserving HMR
 
 With `moon run dev` running:
 
 1. Click the button a few times so it reads something like `Count: 3`.
-2. Open `views/Counter.luax` and change `+ 1` to `+ 5`. Save.
+2. Open `views/Counter.luax` and change `+ 2` to `+ 5`. Save.
 3. The page does **not** reload. The counter still reads `Count: 3`, the
    button element is never remounted, and the next click makes it `Count: 8`.
 
@@ -52,20 +52,22 @@ that rewrite to fire, and both are easy to break by accident:
 Break either and nothing errors: that signal simply resets to its initial
 value on each edit, exactly as it would have before this feature existed.
 
-Changing anything the page has no module mapping for -- `views/App.luax`, a
-stylesheet, a route -- falls back to a full page reload, which is the correct
-answer for a change that cannot be applied in place.
+`views/App.luax` is also a hot boundary. Change its title or layout and the
+counter state survives because the application root is refreshed inside the
+same Lua VM. Stylesheets are replaced in place. Only `views/Document.luax` --
+the equivalent of Vite's `index.html` -- is an explicit page-reload boundary.
 
 ## Layout
 
 ```
-views/Counter.luax   the component you edit -- runs client-side, in Lua
-views/App.luax       the server-rendered page shell + client bootstrap
-public/style.css     plain CSS, no framework
-src/main.lua         Meteorite routes (page, dev module, watch stream)
-src/views/App.lua    compiles views/App.luax on demand
-dev.sh               prints the startup banner, then execs `meteorite dev`
-client_manifest.json which framework modules the browser VM loads
+views/Document.luax       stable server document + client bootstrap
+views/App.luax            hot client application root
+views/Counter.luax        hot nested component with preserved signal state
+public/style.css          replaced in place without unloading the Lua VM
+src/main.lua              Meteorite routes and explicit update policy
+src/views/Document.lua    compiles the document shell on demand
+dev.sh                    startup banner, then `meteorite dev`
+client_manifest.json      framework modules loaded by the browser VM
 ```
 
 `views/*.luax` deliberately live at the project **root**, not under `src/`:

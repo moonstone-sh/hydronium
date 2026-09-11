@@ -1,81 +1,25 @@
--- The page shell, server-rendered by Meteorite.
---
--- The counter itself is NOT rendered here. It is a separate module
--- (views/Counter.luax) mounted entirely client-side via
--- hydronium_dom's client mount, so its onClick handlers really do run as
--- Lua in the browser (wasmoon) rather than as SSR-only markup. This file
--- renders the shell plus the empty container the VM mounts into -- see
--- src/main.lua for the routes that serve the framework files, this
--- project's compiled component, and the dev watch stream.
+-- Client application root. This module and its child components execute in
+-- the browser's persistent Lua VM, so edits refresh them without remounting
+-- the document or resetting compatible signal state.
 
-local H = require("hydronium")
+local H = require("hydronium.core.element")
+local dom = require("hydronium_dom")
+local Counter = require("views.Counter")
+local d = dom.d
 
 local function App(props)
   return (
-    <html lang="en">
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>{props.title or "Hydronium + Meteorite"}</title>
-        <link rel="stylesheet" href="/public/style.css" />
-      </head>
-      <body>
-        <main class="page">
-          <div class="card">
-            <p class="eyebrow">Quickstart</p>
-            <h1 class="title">Hydronium + Meteorite</h1>
-            <p class="subtitle">Fine-grained reactive UI for Lua, server-rendered and hot-reloaded.</p>
-
-            <div id="app" class="app-slot"><span class="booting">Booting Lua VM...</span></div>
-
-            <p class="docs">Real Lua, running in your browser.</p>
-          </div>
-        </main>
-
-        <script type="module">{[[
-          import { mount } from "/js/bootstrap/mount.js";
-          import { installHmr } from "/js/bootstrap/hmr.js";
-
-          // Dev-only: an identity minted once per real page load. A hot
-          // swap leaves it alone; a full page reload replaces it. It is
-          // the one thing that tells genuine HMR apart from a live
-          // reload that merely looks fast, so it is worth the one line.
-          window.__bootId = Math.random().toString(36).slice(2);
-
-          // Held so it can be removed at the exact moment the VM mounts:
-          // the reconciler APPENDS its tree to the container rather than
-          // clearing it, so a placeholder left as a child would otherwise
-          // sit above the mounted counter forever.
-          const booting = document.querySelector("#app .booting");
-
-          const { lua } = await mount({
-            hydroniumBaseUrl: "/hydronium-src",
-            manifestUrl: "/__hydronium/client_manifest.json",
-            appModuleId: "views.Counter",
-            appModuleUrl: "/__hydronium/dev/module/views.Counter",
-            container: "#app",
-            props: { initial: 0 },
-            hydrate: false,
-            // Discovers this app's components so they can be hot-swapped
-            // later. Must be set HERE, not on installHmr: component
-            // families are bound at first require, which happens inside
-            // mount(). Dev only -- drop it for a production build.
-            hmr: true,
-          });
-
-          if (booting) booting.remove();
-
-          // `modules` maps each watched file (same list as src/main.lua's
-          // /__hydronium/watch route -- keep the two in step) to the
-          // require() id it is loaded under. Anything changed that is not
-          // in this map falls back to a full page reload, by design.
-          installHmr({
-            lua: lua,
-            modules: { "views/Counter.luax": "views.Counter" },
-          });
-        ]]}</script>
-      </body>
-    </html>
+    <d.main class="page">
+      <d.div class="card">
+        <d.p class="eyebrow">Quickstart</d.p>
+        <d.h1 class="title">{props.title or "Hydronium + Meteorite"}</d.h1>
+        <d.p class="subtitle">Fine-grained reactive UI for Lua, server-rendered and hot-reloaded.</d.p>
+        <d.div class="app-slot">
+          <Counter initial={props.initial or 0} />
+        </d.div>
+        <d.p class="docs">Real Lua, running in your browser.</d.p>
+      </d.div>
+    </d.main>
   )
 end
 

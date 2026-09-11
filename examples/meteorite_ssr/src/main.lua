@@ -75,9 +75,58 @@ meteorite.site(app, {
 -- fails with a bare `OutOfMemory` -> HTTP 500 that is visible only in the
 -- dev server log, while the browser just sees the Lua VM never boot. (This
 -- is the request arena, not the 1mb max_response_bytes cap.)
+-- VENDOR SPLIT, declared BEFORE the general /js/bootstrap route below.
+-- That order is load-bearing: Meteorite's router is a first-match-wins
+-- linear scan in DECLARATION order (zig/server/route_dispatch.zig's
+-- `inline for (routes)`) with no longest-prefix or specificity rule, and
+-- both routes match /js/bootstrap/vendor/... . Swapping them silently
+-- reverts the caching fix instead of erroring -- the same class of
+-- silent-shadowing hazard route 9 below documents for m.site().
+--
+-- `m.dir`'s cache lifetime is PER-ROUTE, and this one directory holds
+-- two things with opposite caching needs: hydronium's own client JS
+-- (mount.js, hmr.js, dom_bridge.js), edited constantly during
+-- development, and the vendored, version-pinned wasmoon build under
+-- vendor/ (glue.wasm + index.js = ~423KB of the ~462KB total), which
+-- changes only when somebody deliberately re-vendors a wasmoon release.
+--
+-- Every file here used to be served `cache-control: no-cache` (m.dir's
+-- default, src/core/handler_factories.lua), which does not mean "don't
+-- cache" -- it means "revalidate before every reuse". Measured with
+-- Playwright against a real running dev server: a repeat visit made a
+-- conditional round trip for all six files (transferSize 300 bytes, 304
+-- Not Modified) before the Lua VM could start. Cheap over localhost, six
+-- serial RTTs on a real network.
+--
+-- NOT `immutable`, deliberately: that emits a year-long unconditional
+-- promise on a URL with no content hash in it, so re-vendoring wasmoon
+-- would strand every warm client on the old binary with no way to
+-- correct them. Real content hashing (hydronium_ballad.plugins.assets'
+-- b3sum scheme) is what makes `immutable` safe, and it does not reach
+-- these URLs: that plugin rewrites Ballad build-graph AssetSets, while
+-- these are resolved at runtime by mount.js against its own
+-- `import.meta.url`. A bounded lifetime needs none of that and strands
+-- nobody -- Meteorite already emits a real content-derived b3 ETag per
+-- file and honours If-None-Match with a 304, so the client self-heals
+-- once the day expires.
+app:get("/js/bootstrap/vendor/:path*", {
+  memory = { request_arena = "1mb" },
+}, meteorite.dir("../../dom/src/hydronium_dom/client/vendor", {
+  param = "path",
+  cache = "public, max-age=86400, must-revalidate",
+}))
+
+-- Hydronium's own client JS. Stays revalidate-every-time, and that is a
+-- decision rather than an oversight: these files are edited during
+-- development, and a stale mount.js/hmr.js served from a browser cache
+-- is a genuinely confusing failure. They are also small (~35KB
+-- combined) -- the caching win was never here.
 app:get("/js/bootstrap/:path*", {
   memory = { request_arena = "1mb" },
-}, meteorite.dir("../../dom/src/hydronium_dom/client", { param = "path" }))
+}, meteorite.dir("../../dom/src/hydronium_dom/client", {
+  param = "path",
+  cache = "no-cache",
+}))
 
 -- Real, reusable hydronium.client.mount proof (docs/HMR_DOM_HOST.md's
 -- H1/H4 follow-up): serves individual real files out of hydronium's own
@@ -311,7 +360,13 @@ end)
 --    registered above) -- this is the first time either has been fetched
 --    over a real socket rather than read from disk in a Node/jsdom test.
 --    A real browser opening this page runs the bootstrap script at the
---    bottom, which hydrates the JS island for real; the Lua island's
+--    bottom, which hydrates the JS island for real -- WHEN that happens is
+--    now governed by the island's own `hydrate = "visible"` prop below.
+--    bootstrap.js used to ignore that field and activate every island
+--    immediately; it now resolves it through
+--    hydronium_dom/client/priority.js, so this island's module is not even
+--    fetched until it scrolls into view. Pass `hydrate = "load"` (or drop
+--    the prop) to get the old, immediate behaviour. The Lua island's
 --    markers exist (see the client plan in the page source) but nothing
 --    on this page hydrates it, since that requires the WASM Lua runtime
 --    this bootstrap deliberately never loads (see bootstrap.js's own doc

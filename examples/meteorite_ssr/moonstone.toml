@@ -7,12 +7,12 @@ kind = "script"
 description = "Real, compiled Meteorite SSR vertical slice for Hydronium"
 
 [interpreter]
-name = "lua"
-version = "5.4"
-abi = "5.4"
+name = "luajit"
+version = "2.1.0"
+abi = "5.1"
 
 [scripts]
-"graph" = "moon exec meteorite graph src/main.lua .meteorite/graph/current release-hybrid fast_http"
+"graph" = "moon exec --dev meteorite graph src/main.lua .meteorite/graph/current release-hybrid fast_http"
 "package" = "moon exec ballad -- play partiture.lua"
 
 [[dependencies]]

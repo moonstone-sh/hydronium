@@ -1,0 +1,49 @@
+manifest_version = 2
+
+[package]
+name = "hydronium-quickstart"
+version = "0.1.0"
+kind = "bin"
+description = "Full-stack SSR application powered by Hydronium and Meteorite"
+
+[interpreter]
+name = "luajit"
+version = "2.1.0"
+abi = "5.1"
+
+[scripts]
+build = "moon exec --dev meteorite build --mode release-hybrid --backend fast_http"
+dev = "sh dev.sh"
+
+[[dependencies]]
+name = "moonstone/ballad"
+constraint = "^0.3.0"
+role = "tool"
+
+[[dependencies]]
+name = "moonstone/clingy"
+constraint = "^0.6.2"
+role = "tool"
+
+[[dependencies]]
+name = "moonstone/meteorite"
+constraint = "path:../../../meteorite"
+role = "tool"
+
+[[dependencies]]
+name = "moonstone/hydronium"
+constraint = "path:../../core"
+registry = "path"
+role = "runtime"
+
+[[dependencies]]
+name = "moonstone/hydronium-dom"
+constraint = "path:../../dom"
+registry = "path"
+role = "runtime"
+
+[[dependencies]]
+name = "moonstone/hydronium-luax"
+constraint = "path:../../luax"
+registry = "path"
+role = "runtime"

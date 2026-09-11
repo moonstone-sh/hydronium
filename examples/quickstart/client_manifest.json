@@ -11,6 +11,7 @@
   "hydronium.core.suspense": "hydronium/core/suspense.lua",
   "hydronium.signals.graph": "hydronium/signals/graph.lua",
   "hydronium.core.family_loader": "hydronium/core/family_loader.lua",
+  "hydronium.core.hmr": "hydronium/core/hmr.lua",
   "hydronium.core.family": "hydronium/core/family.lua",
   "hydronium.core.refresh": "hydronium/core/refresh.lua",
   "hydronium.signals": "hydronium/signals/init.lua",
