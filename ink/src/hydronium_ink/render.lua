@@ -66,6 +66,9 @@ local POLL_INTERVAL_MS = 33
 --- @class hydronium_ink.RenderOptions
 --- @field exitOnCtrlC? boolean Default true, matching real Ink's own option name/default.
 --- @field writeFn? fun(s: string) Byte-string sink, defaults to `io.write`. Passed straight through to the terminal host (see host/terminal.lua) AND reused for useCursor's own direct escape-sequence writes below, so both go through one real sink -- injectable for tests the same way host/terminal.lua's own `writeFn` already is.
+--- @field onTick? fun() Called once per event-loop turn, before the host
+---   flushes. Development tools can use this host-neutral seam to poll for
+---   module updates; render itself does not know about files or compilers.
 
 --- @class hydronium_ink.RenderResult
 --- @field exitReason any Whatever `useApp().exit(err)` was called with, or `nil` for a normal exit.
@@ -405,6 +408,10 @@ function M.render(element, opts)
             ticker.tick(now)
           end
         end
+      end
+
+      if opts.onTick then
+        opts.onTick()
       end
 
       host.flush()

@@ -76,3 +76,23 @@ describe("hydronium_ink.render -- useCursor", function()
     assert.truthy(all:find("\27[?25l", 1, true), "expected a hide-cursor sequence")
   end)
 end)
+
+describe("hydronium_ink.render -- host extensions", function()
+  it("runs onTick inside the live loop before flushing", function()
+    local stop
+    local ticks = 0
+    local function App()
+      stop = hooks.useApp().exit
+      return function() return hydronium.h(ink.Text, {}, "live") end
+    end
+
+    render.render(hydronium.h(App), {
+      writeFn = function() end,
+      onTick = function()
+        ticks = ticks + 1
+        stop()
+      end,
+    })
+    assert.equal(ticks, 1)
+  end)
+end)

@@ -76,3 +76,9 @@ truncation with `width` plus `wrap = "truncate"`, `"truncate-start"`,
 Hooks belong in the setup call of a component, before it returns its render
 function. `useInput` and focus activation options are read at setup time.
 They do not rerun reactively when those options change.
+
+`render` also accepts `onTick`, a host-extension callback invoked before each
+flush. The `hydronium-create --template ink` starter uses it to watch and
+compile `src/App.luax`, then calls `hydronium.core.hmr.replace`. Compatible
+component state stays in the same LuaJIT VM. Compile errors leave the previous
+component running and are retried after the next edit.
