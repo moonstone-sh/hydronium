@@ -35,6 +35,7 @@ return ballad.partiture(function(p)
         { from = package_orbit("router"), to = "hydronium-router" },
         { from = package_orbit("ballad"), to = "hydronium-ballad" },
         { from = package_orbit("create"), to = "hydronium-create" },
+        { from = package_orbit("cli"), to = "hydronium-cli" },
     })
 
     p.sink.directory(release, { out = "dist/orbit", file_graph = true, product = "release" })

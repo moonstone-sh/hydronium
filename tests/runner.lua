@@ -2,7 +2,7 @@
 -- The repository root is an orbits workspace, not a package.  Test the
 -- member source roots explicitly; external-consumer coverage below verifies
 -- Moonstone materialization separately.
-package.path = "core/src/?.lua;core/src/?/init.lua;luax/src/?.lua;luax/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;ink/src/?.lua;ink/src/?/init.lua;router/src/?.lua;router/src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
+package.path = "core/src/?.lua;core/src/?/init.lua;luax/src/?.lua;luax/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;ink/src/?.lua;ink/src/?/init.lua;router/src/?.lua;router/src/?/init.lua;cli/src/?.lua;cli/src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
 
 local M = {}
 package.loaded["tests.runner"] = M
@@ -410,7 +410,9 @@ local function main()
       "tests/host/dev_watch_spec.lua",
       "tests/core/lua_mount_spec.lua",
       "tests/core/lazy_barrel_spec.lua",
+      "tests/core/action_form_spec.lua",
       "tests/luax/no_core_coupling_spec.lua",
+      "tests/luax/loader_spec.lua",
       "tests/test_renderer/test_renderer_spec.lua",
       -- Server renderer specs
       "tests/server/ssr_spec.lua",
@@ -445,6 +447,14 @@ local function main()
       "tests/router/history_memory_spec.lua",
       "tests/router/history_browser_spec.lua",
       "tests/router/router_spec.lua",
+      "tests/router/http_spec.lua",
+      "tests/router/site_spec.lua",
+      "tests/router/meteorite_adapter_spec.lua",
+      -- Developer CLI specs (orbit member `cli/`, whose src is on
+      -- package.path above -- these live beside their own package rather
+      -- than under tests/, matching ink/'s and create/'s own layout).
+      "cli/tests/event_model_spec.lua",
+      "cli/tests/dev_supervisor_spec.lua",
     }
   end
 

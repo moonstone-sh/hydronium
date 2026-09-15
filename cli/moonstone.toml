@@ -1,0 +1,45 @@
+manifest_version = 2
+
+[package]
+name = "moonstone/hydronium-cli"
+version = "0.1.0"
+kind = "bin"
+description = "Hydronium developer CLI: `hydronium dev` wraps a Meteorite dev server with a live Hydronium Ink status view"
+
+[interpreter]
+name = "luajit"
+version = "2.1.0"
+abi = "5.1"
+
+[scripts]
+dev = "luajit ./src/main.lua \"$@\""
+package = "moon exec ballad -- play partiture.lua"
+
+[[dependencies]]
+name = "moonstone/ballad"
+constraint = "^0.3.7"
+role = "tool"
+
+[[dependencies]]
+name = "moonstone/hydronium"
+constraint = "path:../core"
+registry = "path"
+role = "runtime"
+
+[[dependencies]]
+name = "moonstone/hydronium-ink"
+constraint = "path:../ink"
+registry = "path"
+role = "runtime"
+
+# JSON. This repo's only real JSON *decoder* lives in the router package
+# (`hydronium_router.history.state` -- despite the name, its own doc
+# comment calls it a "JSON-shaped ... codec", and it is a zero-require
+# leaf module, so depending on it pulls in no router machinery at
+# runtime). Reused rather than duplicating a 200-line strict parser into
+# this package; see src/event_model.lua's own note.
+[[dependencies]]
+name = "moonstone/hydronium-router"
+constraint = "path:../router"
+registry = "path"
+role = "runtime"

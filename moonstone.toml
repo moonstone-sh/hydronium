@@ -46,3 +46,7 @@ path = "build"
 [[orbits.member]]
 name = "create"
 path = "create"
+
+[[orbits.member]]
+name = "cli"
+path = "cli"
