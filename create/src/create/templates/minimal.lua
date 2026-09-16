@@ -22,12 +22,12 @@ run = "lua src/main.lua"
 
 [[dependencies]]
 name = "moonstone/hydronium"
-constraint = "path:../hydronium/core"
+constraint = "^0.1.0"
 role = "runtime"
 
 [[dependencies]]
 name = "moonstone/hydronium-dom"
-constraint = "path:../hydronium/dom"
+constraint = "^0.1.0"
 role = "runtime"
 ]=], project_name)
 
@@ -66,16 +66,9 @@ moon sync
 moon run run
 ```
 
-The core runtime is declared as a Moonstone path dependency. During local
-development this template assumes your project sits next to a `hydronium`
-clone, e.g.:
-
-```
-some-parent-dir/
-  hydronium/
-  %s/   <- this project
-```
-]], project_name, project_name)
+The core and DOM runtime are installed from the Moonstone registry. For
+unreleased development packages, add your local registry before `moon sync`.
+]], project_name)
 
   return files
 end

@@ -10,7 +10,7 @@ app = c.create({
   version = "0.3.0",
   description = "Scaffold and initialize new Hydronium reactive Lua projects",
 
-  c.root(c.node({
+  root = c.node({
     c.inherit({
       c.flag({ key = "help", aliases = { "-h", "--help" } }),
       c.flag({ key = "version", aliases = { "-v", "--version" } }),
@@ -87,7 +87,7 @@ app = c.create({
 
       return 0
     end),
-  })),
+  }),
 })
 
 local exit_code = app:run(arg)

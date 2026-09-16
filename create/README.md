@@ -6,11 +6,17 @@ Declarative scaffolding CLI tool for initializing new [Hydronium](https://moonst
 
 | Template | Description |
 | :--- | :--- |
-| `ssr` (Default) | Meteorite SSR shell with a persistent browser Lua VM, state-preserving component HMR, and in-place CSS updates. |
+| `ssr` (Default) | Meteorite SSR app with a shared Hydronium route manifest, progressive actions, a persistent browser Lua VM, state-preserving component HMR, and in-place CSS updates. |
 | `islands` | Mostly-static SSR shell with one real, client-hydrated JS island (server-rendered button, client-side click handling). |
 | `--minimal` | One-shot plain-Lua server rendering for scripting and embedding. It exits after printing HTML, so it intentionally has no HMR process. |
 | `ink` | Interactive terminal counter with state-preserving LUAX HMR, Yoga layout, and keyboard input. Requires LuaJIT 2.1 on macOS or glibc Linux. |
 | `spa` | **Not yet supported.** Reactive client routing now exists in `hydronium-router`; the remaining blocker is a complete server-less build and delivery recipe. |
+
+The SSR template is the complete browser example. `views/Site.lua` owns page
+ids, paths, and component module ids. Hydronium Router uses it in the browser;
+the Meteorite adapter lowers it to explicit server routes. `views/Actions.lua`
+defines shared action descriptors, and `src/app/contact_action.lua` handles the
+same action as JSON-enhanced or native HTML form submission.
 
 ## Usage
 

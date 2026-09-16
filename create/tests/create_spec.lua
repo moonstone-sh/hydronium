@@ -111,6 +111,20 @@ test("scaffold dry-run produces expected files for ssr template", function()
   assert(file_map["public/style.css"], "missing public/style.css")
   assert(file_map["build.zig"], "missing build.zig")
   assert(not file_map["src/hydronium"], "generated projects must resolve Hydronium through dependencies, not a source symlink")
+
+  local generated = require("create.templates.ssr").files({ name = "test-ssr-app" })
+  local manifest = generated["client_manifest.json"]
+  assert(manifest:find('"hydronium_router.history.state"', 1, true),
+    "SSR client manifest must include browser history state decoding")
+  assert(not generated["moonstone.toml"]:find("path:../", 1, true), "SSR dependencies must install without sibling checkouts")
+  assert(generated["build.zig"]:find("meteorite/meteorite/zig/build_api.zig", 1, true),
+    "SSR build must use the installed Meteorite package layout")
+  assert(generated["src/main.lua"]:find("libexec/hydronium-router/hydronium_router/client/history.js", 1, true),
+    "SSR must serve the packaged router client assets")
+  assert(generated["src/main.lua"]:find('id:match("^loaders%.', 1, true),
+    "SSR must serve route loader modules to the browser")
+  assert(generated["src/main.lua"]:find('"src/" .. rel .. ".lua"', 1, true),
+    "SSR loader modules must resolve from src/loaders")
 end)
 
 test("scaffold dry-run produces expected files for islands template", function()
@@ -131,6 +145,86 @@ test("scaffold dry-run produces expected files for islands template", function()
   assert(file_map["public/js/bootstrap/boundary_registry.js"], "missing public/js/bootstrap/boundary_registry.js")
   assert(file_map["public/js/bootstrap/priority.js"], "missing public/js/bootstrap/priority.js")
   assert(file_map["public/js/island/counter.js"], "missing public/js/island/counter.js")
+  local generated = require("create.templates.islands").files({ name = "test-islands-app" })
+  assert(not generated["moonstone.toml"]:find("path:../", 1, true), "Islands dependencies must install without sibling checkouts")
+  assert(generated["build.zig"]:find("meteorite/meteorite/zig/build_api.zig", 1, true),
+    "Islands build must use the installed Meteorite package layout")
+end)
+
+-- The `dev` script is the one line in a generated project a user runs on
+-- day one, and it has two independent ways to be silently wrong: naming a
+-- binary the project does not depend on, and passing meteorite's flags in
+-- a shape that does not survive `moon exec`'s own argument handling
+-- ("One '--' after <command> is treated as an argument delimiter and is
+-- not forwarded" -- `moon exec --help`). Both are asserted here, for both
+-- Meteorite-backed templates.
+for _, template_id in ipairs({ "ssr", "islands" }) do
+  test(template_id .. " dev script runs `hydronium dev` with this project's real meteorite flags", function()
+    local generated = require("create.templates." .. template_id).files({ name = "test-" .. template_id })
+    local manifest = generated["moonstone.toml"]
+
+    local dev = manifest:match("\ndev = \"([^\"]+)\"")
+    assert(dev, "[" .. template_id .. "] no dev script in the generated moonstone.toml")
+
+    assert(dev:find("hydronium dev", 1, true),
+      "[" .. template_id .. "] dev script must run `hydronium dev`, got: " .. dev)
+    assert(not dev:find("meteorite dev", 1, true),
+      "[" .. template_id .. "] dev script must not invoke `meteorite dev` directly any more, got: " .. dev)
+
+    -- The flags meteorite dev has no defaults for. It errors without
+    -- --mode/--backend, so a generated project that omits them is broken
+    -- on first run.
+    local args = dev:match("%-%-meteorite%-args='([^']+)'")
+    assert(args, "[" .. template_id .. "] meteorite flags must travel in a single quoted --meteorite-args value, got: " .. dev)
+    assert(args:find("--mode hybrid_dev", 1, true), "[" .. template_id .. "] missing --mode: " .. args)
+    assert(args:find("--backend fast_http", 1, true), "[" .. template_id .. "] missing --backend: " .. args)
+    assert(args:find("--lua-root .moonstone/env/libexec/luajit", 1, true),
+      "[" .. template_id .. "] missing --lua-root: " .. args)
+
+    -- A bare `--` here would be eaten by `moon exec` itself and the flags
+    -- would reach `hydronium dev` as unknown arguments.
+    assert(not dev:find(" -- ", 1, true),
+      "[" .. template_id .. "] dev script must not rely on a `--` delimiter `moon exec` swallows: " .. dev)
+
+    -- ...and the binary that script calls has to actually be in the
+    -- project's environment, which means a declared dependency.
+    assert(manifest:find('name = "moonstone/hydronium%-cli"'),
+      "[" .. template_id .. "] dev script calls `hydronium` but nothing declares moonstone/hydronium-cli")
+    assert(manifest:match('name = "moonstone/hydronium%-cli"%s*\nconstraint = "[^"]+"%s*\nrole = "tool"'),
+      "[" .. template_id .. "] hydronium-cli must be a tool dependency (it is a dev-time binary, not a runtime library)")
+    assert(not manifest:find("path:", 1, true),
+      "[" .. template_id .. "] dependencies must install without a sibling checkout")
+
+    -- `build` is untouched: this CLI wraps the dev server only.
+    local build = manifest:match("\nbuild = \"([^\"]+)\"")
+    assert(build and build:find("meteorite build", 1, true),
+      "[" .. template_id .. "] build script must still call meteorite build directly, got: " .. tostring(build))
+
+    -- The generated README has to tell the user what `moon run dev` now
+    -- shows them, including how to reach the fullscreen view.
+    local readme = generated["README.md"]
+    assert(readme:find("hydronium dev", 1, true), "[" .. template_id .. "] README does not mention hydronium dev")
+    assert(readme:find("fullscreen", 1, true), "[" .. template_id .. "] README does not document the fullscreen view")
+
+    assert(generated[".gitignore"]:find(".hydronium/", 1, true),
+      "[" .. template_id .. "] .hydronium/ (the CLI's own dev log) must be gitignored")
+  end)
+end
+
+test("minimal template has no dev server to wrap", function()
+  -- Deliberate: `minimal` is a `kind = "script"` project with no
+  -- Meteorite, no server and a `run` script -- there is no dev server for
+  -- `hydronium dev` to supervise, so it must NOT gain the CLI dependency.
+  local generated = require("create.templates.minimal").files({ name = "test-minimal-app" })
+  local manifest = generated["moonstone.toml"]
+  assert(not manifest:find("hydronium%-cli"), "minimal must not depend on the dev CLI")
+  assert(not manifest:find("\ndev = ", 1, true), "minimal has no dev script")
+  assert(manifest:find('run = "lua src/main.lua"', 1, true), "minimal still runs its script directly")
+end)
+
+test("minimal template uses registry dependencies", function()
+  local generated = require("create.templates.minimal").files({ name = "test-minimal-app" })
+  assert(not generated["moonstone.toml"]:find("path:../", 1, true), "Minimal dependencies must install without sibling checkouts")
 end)
 
 test("scaffold rejects invalid template name", function()
@@ -276,7 +370,7 @@ test("luals.configure composes with commented user config idempotently", functio
   os.execute(string.format('rm -rf "%s"', tmp_dir))
 end)
 
-test("CLI declarations and completion run on Clingy 0.4", function()
+test("CLI declarations and completion run on Clingy 0.6", function()
   local handle = assert(io.popen([[lua ./src/main.lua --__clingy-complete bash hydronium-create --template '' --cword=3]]))
   local output = handle:read("*a")
   local closed = handle:close()

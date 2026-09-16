@@ -29,6 +29,13 @@ local islands = {}
     framework source for a "look, no build step" proof; a generated
     project resolves its Hydronium modules through Moonstone dependencies).
 
+  The `dev` script runs `hydronium dev` (moonstone/hydronium-cli) around
+  the same `meteorite dev` invocation it used to run inline, passing the
+  meteorite flags through one `--meteorite-args` value -- see ssr.lua's own
+  header comment for the full reasoning (short version: `moon exec` eats a
+  bare `--`, and the CLI adds a live status view plus a fullscreen
+  request-debug view over meteorite's dev-event stream).
+
   Same base fixes as ssr.lua also apply here (see that file's own header
   comment for exhaustive detail): meteorite.app/meteorite.site/app:get
   real API, requires inside handler bodies only, dependency-based module
@@ -59,58 +66,61 @@ version = "2.1.0"
 abi = "5.1"
 
 [scripts]
-dev = "moon exec --dev meteorite dev --mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit"
+dev = "moon exec --dev hydronium dev --meteorite-args='--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit'"
 build = "moon exec --dev meteorite build --mode release-hybrid --backend fast_http"
 
 [[dependencies]]
 name = "moonstone/meteorite"
-constraint = "path:../meteorite"
+constraint = "^0.2.5"
+role = "tool"
+
+[[dependencies]]
+name = "moonstone/hydronium-cli"
+constraint = "^0.1.0"
 role = "tool"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.3.0"
+constraint = "^0.3.7"
 role = "tool"
 
 [[dependencies]]
 name = "moonstone/hydronium"
-constraint = "path:../hydronium/core"
+constraint = "^0.1.0"
 role = "runtime"
 
 [[dependencies]]
 name = "moonstone/hydronium-luax"
-constraint = "path:../hydronium/luax"
+constraint = "^0.1.0"
 role = "runtime"
 
 [[dependencies]]
 name = "moonstone/hydronium-dom"
-constraint = "path:../hydronium/dom"
+constraint = "^0.1.0"
 role = "runtime"
 ]=], project_name)
 
+  -- `.hydronium/` holds `hydronium dev`'s own durable dev log and the
+  -- spawned server's captured output -- local run artifacts, like
+  -- `.meteorite/`.
   files[".gitignore"] = [[.moonstone/
 dist/
 .zig-cache/
 zig-out/
 .meteorite/
+.hydronium/
 *.log
 ]]
 
-  -- Same build.zig as ssr.lua -- see that template's own comment for why
-  -- `.moonstone/env/libexec/meteorite/zig/build_api.zig` (not the deeper
-  -- `.../files/meteorite/zig/build_api.zig` path meteorite's own `init`
-  -- scaffolder generates) is the real path when `moonstone/meteorite` is
-  -- resolved as a `path:../meteorite` dependency -- verified live: that
-  -- dependency materializes `.moonstone/env/libexec/meteorite` as a plain
-  -- symlink straight to the sibling checkout's own root.
+  -- Registry package layout matches the SSR template.
   files["build.zig"] = [[const std = @import("std");
-const meteorite = @import(".moonstone/env/libexec/meteorite/zig/build_api.zig");
+const meteorite = @import(".moonstone/env/libexec/meteorite/meteorite/zig/build_api.zig");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     _ = meteorite.addService(b, .{
-        .meteorite_root = ".moonstone/env/libexec/meteorite",
+        .meteorite_root = ".moonstone/env/libexec/meteorite/meteorite",
         .lua_root = ".moonstone/env/libexec/luajit",
         .target = target,
         .optimize = optimize,
@@ -763,6 +773,12 @@ Hydronium's current client bootstrap.
    ```bash
    moon run dev
    ```
+
+   This runs `hydronium dev`, which starts the Meteorite dev server with
+   this project's own `--mode`/`--backend`/`--lua-root` flags (they live in
+   the `dev` script in `moonstone.toml`) and renders its dev-event stream
+   live. Keys: `f` opens a fullscreen request inspector, `esc` leaves it,
+   `q` quits. Every event is also appended to `.hydronium/dev.log`.
 
 3. **Build for Production:**
    ```bash

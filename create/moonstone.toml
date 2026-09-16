@@ -33,5 +33,5 @@ role = "runtime"
 
 [[dependencies]]
 name = "moonstone/clingy"
-constraint = "^0.4.0"
+constraint = "^0.6.3"
 role = "runtime"

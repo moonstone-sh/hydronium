@@ -88,6 +88,28 @@ local ssr = {}
     use `hot`, the document uses `reload`, and CSS uses `style`; an omitted
     policy is reported and ignored instead of silently destroying state.
 
+  - THE `dev` SCRIPT RUNS `hydronium dev`, NOT `meteorite dev` DIRECTLY.
+    `hydronium dev` (moonstone/hydronium-cli, declared as a `tool`
+    dependency above alongside meteorite itself) spawns exactly the same
+    `meteorite dev` invocation this template used to run inline, tails the
+    structured dev-event stream meteorite writes to
+    `.meteorite/dev/events.log`, mirrors it into a durable
+    `.hydronium/dev.log`, and renders a live status view (plus a
+    fullscreen request-debug view on `f`). `moon run dev` is unchanged for
+    the user.
+
+    The meteorite flags travel in ONE `--meteorite-args` value rather than
+    as trailing arguments: `moon exec` swallows the first `--` after the
+    command it runs (see `moon exec --help`: "One '--' after <command> is
+    treated as an argument delimiter and is not forwarded"), so a
+    `hydronium dev -- --mode ...` script would need a second `--` to work
+    -- an invisible trap the first person to tidy that line up would
+    break. `moon run` hands the script body to the host shell, so the
+    single-quoted value arrives as one argument. The environment variable
+    `HYDRONIUM_METEORITE_ARGS` still overrides it for a one-off run
+    without editing this file (its words are appended after the flag's,
+    and meteorite takes the last occurrence of a flag).
+
   - `views/Document.luax`, `views/App.luax`, and `views/Counter.luax` live
     at the project root, not under `src/`. `meteorite dev` watches `src/`
     and restarts the server on changes there, which would destroy the page
@@ -119,61 +141,67 @@ version = "2.1.0"
 abi = "5.1"
 
 [scripts]
-dev = "moon exec --dev meteorite dev --mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit"
+dev = "moon exec --dev hydronium dev --meteorite-args='--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit'"
 build = "moon exec --dev meteorite build --mode release-hybrid --backend fast_http"
 
 [[dependencies]]
 name = "moonstone/meteorite"
-constraint = "path:../meteorite"
+constraint = "^0.2.5"
+role = "tool"
+
+[[dependencies]]
+name = "moonstone/hydronium-cli"
+constraint = "^0.1.0"
 role = "tool"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.3.0"
+constraint = "^0.3.7"
 role = "tool"
 
 [[dependencies]]
 name = "moonstone/hydronium"
-constraint = "path:../hydronium/core"
+constraint = "^0.1.0"
 role = "runtime"
 
 [[dependencies]]
 name = "moonstone/hydronium-luax"
-constraint = "path:../hydronium/luax"
+constraint = "^0.1.0"
 role = "runtime"
 
 [[dependencies]]
 name = "moonstone/hydronium-dom"
-constraint = "path:../hydronium/dom"
+constraint = "^0.1.0"
+role = "runtime"
+
+[[dependencies]]
+name = "moonstone/hydronium-router"
+constraint = "^0.1.0"
 role = "runtime"
 ]=], project_name)
 
+  -- `.hydronium/` holds `hydronium dev`'s own durable dev log and the
+  -- spawned server's captured output -- local run artifacts, like
+  -- `.meteorite/`.
   files[".gitignore"] = [[.moonstone/
 dist/
 .zig-cache/
 zig-out/
 .meteorite/
+.hydronium/
 *.log
 ]]
 
-  -- Verified live: with `moonstone/meteorite` resolved as a `path:../meteorite`
-  -- dependency (not a registry package), `.moonstone/env/libexec/meteorite`
-  -- materializes as a plain symlink straight to that sibling checkout's own
-  -- root -- so `build_api.zig` really is at
-  -- `.moonstone/env/libexec/meteorite/zig/build_api.zig`, exactly matching
-  -- hydronium/examples/meteorite_ssr/build.zig (NOT the deeper
-  -- `.../meteorite/files/meteorite/zig/build_api.zig` path meteorite's own
-  -- `meteorite init` scaffolder generates for a registry-installed
-  -- dependency -- that shape assumes a different on-disk layout that a
-  -- path dependency doesn't produce).
+  -- Registry packages materialize under `.moonstone/env/libexec/<package>`.
+  -- Meteorite's collected Zig sources live one level below that root.
   files["build.zig"] = [[const std = @import("std");
-const meteorite = @import(".moonstone/env/libexec/meteorite/zig/build_api.zig");
+const meteorite = @import(".moonstone/env/libexec/meteorite/meteorite/zig/build_api.zig");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     _ = meteorite.addService(b, .{
-        .meteorite_root = ".moonstone/env/libexec/meteorite",
+        .meteorite_root = ".moonstone/env/libexec/meteorite/meteorite",
         .lua_root = ".moonstone/env/libexec/luajit",
         .target = target,
         .optimize = optimize,
@@ -203,15 +231,20 @@ local function Document(props)
         <link rel="stylesheet" href="/public/style.css" />
       </head>
       <body>
-        <div id="app">
-          <span data-hydronium-placeholder>Loading...</span>
-        </div>
+        <div id="app">{props.app}</div>
 
         <script type="module">{[[
           import { mount } from "/js/bootstrap/mount.js";
           import { installHmr } from "/js/bootstrap/hmr.js";
+          import { createHistoryGlobals } from "/js/router/history.js";
+          import { createHttpGlobals } from "/js/router/http.js";
+          import { createFormGlobals } from "/js/bootstrap/forms.js";
 
           window.__bootId = Math.random().toString(36).slice(2);
+          const pageStateText = document.getElementById("__HYDRONIUM_STATE__")?.textContent;
+          const routerState = pageStateText
+            ? JSON.stringify(JSON.parse(pageStateText).hydronium_router)
+            : undefined;
 
           const { lua } = await mount({
             hydroniumBaseUrl: "/hydronium-src",
@@ -220,11 +253,21 @@ local function Document(props)
             appModuleUrl: "/__hydronium/dev/module/views.App",
             moduleUrls: {
               "views.Counter": "/__hydronium/dev/module/views.Counter",
+              "views.Home": "/__hydronium/dev/module/views.Home",
+              "views.About": "/__hydronium/dev/module/views.About",
+              "views.Site": "/__hydronium/dev/module/views.Site",
+              "views.Actions": "/__hydronium/dev/module/views.Actions",
             },
             container: "#app",
             props: { title: "%s", initial: 0 },
-            hydrate: false,
+            hydrate: true,
             hmr: true,
+            luaGlobals: {
+              ...createHistoryGlobals(),
+              ...createHttpGlobals(),
+              ...createFormGlobals(),
+              __hydronium_router_state: routerState || undefined,
+            },
           });
 
           installHmr({
@@ -232,6 +275,10 @@ local function Document(props)
             updates: {
               "views/App.luax": { action: "hot", module: "views.App" },
               "views/Counter.luax": { action: "hot", module: "views.Counter" },
+              "views/Home.luax": { action: "hot", module: "views.Home" },
+              "views/About.luax": { action: "hot", module: "views.About" },
+              "views/Site.lua": { action: "reload" },
+              "views/Actions.lua": { action: "reload" },
               "views/Document.luax": { action: "reload" },
               "public/style.css": { action: "style", href: "/public/style.css" },
             },
@@ -253,7 +300,7 @@ return Document
   -- handlers, so a handler cannot close over a `local App = require(...)`
   -- declared above it.
   files["src/views/Document.lua"] = [[-- Compiles views/Document.luax on demand via hydronium_luax's serve-time
--- loader, cached by mtime -- editing and saving views/Document.luax needs no
+-- loader, cached by content -- editing and saving views/Document.luax needs no
 -- rebuild. Lives in its own requirable module (not a main.lua upvalue):
 -- Meteorite's hybrid build mode lifts each inline route handler
 -- (extracts its own source text, reloads it standalone per request), so
@@ -262,6 +309,74 @@ return Document
 local loader = require("hydronium_luax").loader
 
 return loader.load("views/Document.luax")
+]]
+
+  files["src/views/Home.lua"] = [[return require("hydronium_luax").loader.load("views/Home.luax")
+]]
+  files["src/views/About.lua"] = [[return require("hydronium_luax").loader.load("views/About.luax")
+]]
+  files["src/views/Counter.lua"] = [[return require("hydronium_luax").loader.load("views/Counter.luax")
+]]
+
+  files["src/app/page_handler.lua"] = string.format([[local adapter = require("hydronium_router.meteorite")
+local dom = require("hydronium_dom.server.meteorite")
+local site = require("views.Site")
+
+return adapter.handler(site, {
+  resolve = require,
+  resolve_loader = require,
+  render = function(c, page, opts)
+    local Document = require("views.Document")
+    local d = require("hydronium_dom").d
+    return dom.render(c, Document, {
+      status = opts.status,
+      state = opts.state,
+      props = { title = "%s", app = d.lua.mount(page, { module = "views.App" }) },
+    })
+  end,
+})
+]], project_name)
+
+  files["src/app/contact_action.lua"] = [[local H = require("hydronium.core")
+local action = require("views.Actions").contact
+
+return function(ctx)
+  local valid, errors, output = action:check(ctx.values)
+  if not valid then
+    return H.action_fail({ values = ctx.values, errors = errors })
+  end
+  return H.action_ok({
+    status = 201,
+    data = { greeting = "Hello, " .. output.name },
+  })
+end
+]]
+
+  files["src/app/action_handler.lua"] = [[local adapter = require("hydronium_router.meteorite")
+local site = require("views.Site")
+
+return adapter.action_handler(site, {
+  resolve_action = require,
+})
+]]
+
+  files["views/Site.lua"] = [[local r = require("hydronium_router")
+
+return r.createSite({
+  root = r.node({
+    id = "root",
+    path = "/",
+    children = {
+      r.node({
+        id = "home",
+        path = "",
+        screen = "views.Home",
+        actions = { contact = { id = "contact.submit", ref = "app.contact_action", path = "/actions/contact" } },
+      }),
+      r.node({ id = "about", path = "about", screen = "views.About" }),
+    },
+  }),
+})
 ]]
 
   files["src/main.lua"] = string.format([[-- Server entrypoint
@@ -280,9 +395,9 @@ meteorite.site(app, {
   },
 })
 
--- The compiled client bootstrap (mount.js, dom_bridge.js, hmr.js,
--- dev_reload.js) lives in the sibling hydronium checkout, served directly
--- from its real source -- dev/example serving, same as the /hydronium-src
+-- The client bootstrap (mount.js, dom_bridge.js, hmr.js,
+-- dev_reload.js) is served from the installed Hydronium DOM package,
+-- same as the /hydronium-src
 -- and /__hydronium/client routes below, not a production asset pipeline
 -- (see hydronium/docs/BUNDLING.md).
 --
@@ -325,7 +440,7 @@ meteorite.site(app, {
 -- self-heals as soon as the day expires.
 app:get("/js/bootstrap/vendor/:path*", {
   memory = { request_arena = "1mb" },
-}, meteorite.dir("../hydronium/dom/src/hydronium_dom/client/vendor", {
+}, meteorite.dir(".moonstone/env/libexec/hydronium-dom/hydronium_dom/client/vendor", {
   param = "path",
   cache = "public, max-age=86400, must-revalidate",
 }))
@@ -336,8 +451,16 @@ app:get("/js/bootstrap/vendor/:path*", {
 -- small (~35KB combined) -- the caching win was never here.
 app:get("/js/bootstrap/:path*", {
   memory = { request_arena = "1mb" },
-}, meteorite.dir("../hydronium/dom/src/hydronium_dom/client", {
+}, meteorite.dir(".moonstone/env/libexec/hydronium-dom/hydronium_dom/client", {
   param = "path",
+  cache = "no-cache",
+}))
+
+app:get("/js/router/history.js", meteorite.file(".moonstone/env/libexec/hydronium-router/hydronium_router/client/history.js", {
+  cache = "no-cache",
+}))
+
+app:get("/js/router/http.js", meteorite.file(".moonstone/env/libexec/hydronium-router/hydronium_router/client/http.js", {
   cache = "no-cache",
 }))
 
@@ -352,9 +475,11 @@ app:get("/hydronium-src/:path*", function(c)
   end
   local source_root
   if rel:match("^hydronium/") then
-    source_root = "../hydronium/core/src/"
+    source_root = ".moonstone/env/libexec/hydronium/"
   elseif rel:match("^hydronium_dom/") then
-    source_root = "../hydronium/dom/src/"
+    source_root = ".moonstone/env/libexec/hydronium-dom/"
+  elseif rel:match("^hydronium_router/") then
+    source_root = ".moonstone/env/libexec/hydronium-router/"
   else
     return c:text(404, "not found")
   end
@@ -381,7 +506,7 @@ end)
 
 -- Serves ONE of this project's own view modules, by require() id, as
 -- compiled Lua source. `views.Counter` -> `views/Counter.luax`, compiled
--- on demand by hydronium_luax's serve-time loader (mtime-cached, no
+-- on demand by hydronium_luax's serve-time loader (content-cached, no
 -- build step) and returned as text -- never executed here, because it is
 -- the browser's Lua VM that runs it, not the server's.
 --
@@ -390,7 +515,7 @@ end)
 -- hydronium_dom/client/hmr.js re-fetches the same URL on each change. One
 -- source of truth, so the two can never drift apart.
 --
--- SCOPE, deliberately: `views.*` only. This is not the general
+-- SCOPE, deliberately: `views.*` and `loaders.*` only. This is not the general
 -- `/__hydronium/dev/module/:id` route with a `loader.install()` package
 -- searcher behind it that the roadmap's M3 describes -- it resolves no
 -- framework modules (those still come from the manifest + /hydronium-src)
@@ -399,8 +524,8 @@ end)
 -- a dev convenience has no business doing.
 app:get("/__hydronium/dev/module/:id", function(c)
   local id = c:param("id") or ""
-  if not id:match("^views%%.[%%w_]+$") then
-    return c:text(400, "invalid module id (expected views.<Name>)")
+  if not id:match("^views%%.[%%w_]+$") and not id:match("^loaders%%.[%%w_]+$") then
+    return c:text(400, "invalid module id (expected views.<Name> or loaders.<Name>)")
   end
 
   local rel = id:gsub("%%.", "/")
@@ -420,7 +545,8 @@ app:get("/__hydronium/dev/module/:id", function(c)
     return c:text(200, code)
   end
 
-  local f = io.open(rel .. ".lua", "r")
+  local lua_path = id:match("^loaders%%.") and ("src/" .. rel .. ".lua") or (rel .. ".lua")
+  local f = io.open(lua_path, "r")
   if not f then
     return c:text(404, "not found")
   end
@@ -429,14 +555,12 @@ app:get("/__hydronium/dev/module/:id", function(c)
   return c:text(200, content)
 end)
 
-app:get("/", function(c)
-  local meteorite_adapter = require("hydronium_dom.server.meteorite")
-  local Document = require("views.Document")
-  return meteorite_adapter.render(c, Document, {
-    status = 200,
-    props = { title = "%s" },
-  })
-end)
+local pages = require("views.Site")
+local router_adapter = require("hydronium_router.meteorite")
+router_adapter.mount(app, pages, {
+  handler = meteorite.lua("app.page_handler", { arg_mode = "lazy_context" }),
+  action_handler = meteorite.lua("app.action_handler", { arg_mode = "lazy_context" }),
+})
 
 app:get("/api/health", function(c)
   return c:json({ status = "ok", timestamp = os.time() })
@@ -463,44 +587,141 @@ app:get("/__hydronium/watch", function(c)
   watch.serve_sse(c, {
     "views/App.luax",
     "views/Counter.luax",
+    "views/Home.luax",
+    "views/About.luax",
+    "views/Site.lua",
+    "views/Actions.lua",
     "views/Document.luax",
     "public/style.css",
   })
 end)
 
+router_adapter.validate_final(app, pages)
+
 return app
-]], project_name, project_name)
+]], project_name)
 
   -- The client application root. Keeping it separate from Document.luax
   -- makes normal layout edits hot-swappable instead of page reloads.
-  files["views/App.luax"] = string.format([[local H = require("hydronium.core.element")
+  files["views/App.luax"] = [[local H = require("hydronium.core.element")
+local r = require("hydronium_router")
+local site = require("views.Site")
+local d = require("hydronium_dom").d
+
+local function App()
+  local router = site:createRouter({
+    history = r.createBrowserHistory(),
+    resolve = require,
+    resolve_loader = require,
+  })
+
+  return function()
+    return d.lua.mount(H.h(router.Provider, nil, H.h(r.Outlet)), { module = "views.App" })
+  end
+end
+
+return App
+]]
+
+  files["views/Home.luax"] = string.format([[local H = require("hydronium.core.element")
 local dom = require("hydronium_dom")
 local Counter = require("views.Counter")
+local actions = require("views.Actions")
 local d = dom.d
 
-local function App(props)
+local function Home()
+  local navigate = require("hydronium_router").useNavigate()
+  local form = require("hydronium.core.form").useForm(actions.contact, { enhance = true })
+
+  local go_about = nil
+  if _G.__dom_set_listener then
+    go_about = function()
+      navigate("/about")
+    end
+  end
+
+  return function()
+    return (
+      <d.main class="container">
+        <d.header class="hero">
+          <d.h1>Welcome to %s</d.h1>
+          <d.p class="subtitle">One route manifest, used by Hydronium and Meteorite.</d.p>
+          <d.a href="/about" onNavigate={go_about}>About this app</d.a>
+        </d.header>
+
+        <d.section class="card">
+          <d.h2>Reactive Signal Counter</d.h2>
+          <Counter initial={0} />
+        </d.section>
+
+        <d.section class="card">
+          <d.h2>Progressive action</d.h2>
+          <d.form method={form.props.method} action={form.props.action} onSubmit={form.props.onSubmit}>
+            <d.label for="name">Name</d.label>
+            <d.input id="name" name="name" />
+            <d.button type="submit" disabled={form:pending()}>Send</d.button>
+            <d.p class="form-error">{function() return form:error("name") or form:error("_form") or "" end}</d.p>
+            <d.p class="form-result">{function()
+              local result = form:data()
+              return result and result.greeting or ""
+            end}</d.p>
+          </d.form>
+        </d.section>
+      </d.main>
+    )
+  end
+end
+
+return Home
+]], project_name)
+
+  files["views/About.luax"] = [[local H = require("hydronium.core.element")
+local d = require("hydronium_dom").d
+
+local function About()
+  local navigate = require("hydronium_router").useNavigate()
+  local go_home = nil
+  if _G.__dom_set_listener then
+    go_home = function()
+      navigate("/")
+    end
+  end
   return (
     <d.main class="container">
       <d.header class="hero">
-        <d.h1>{"Welcome to "}{props.title or "%s"}</d.h1>
-        <d.p class="subtitle">Deterministic Reactive UI for Lua</d.p>
+        <d.h1>About</d.h1>
+        <d.p class="subtitle">This page is selected by the shared site declaration.</d.p>
+        <d.a href="/" onNavigate={go_home}>Back home</d.a>
       </d.header>
-
-      <d.section class="card">
-        <d.h2>Reactive Signal Counter</d.h2>
-        <d.p class="mount-note">Real Lua, running in your browser.</d.p>
-        <Counter initial={props.initial or 0} />
-      </d.section>
-
-      <d.footer>
-        <d.p>Powered by <d.strong>Hydronium</d.strong>{" & "}<d.strong>Meteorite</d.strong></d.p>
-      </d.footer>
     </d.main>
   )
 end
 
-return App
-]], project_name)
+return About
+]]
+
+  files["views/Actions.lua"] = [[local H = require("hydronium.core")
+
+local name_schema = {
+  ["~standard"] = {
+    validate = function(values)
+      if type(values.name) ~= "string" or values.name:match("^%s*$") then
+        return { issues = { { path = { { key = "name" } }, message = "Enter your name" } } }
+      end
+      return { value = values }
+    end,
+  },
+}
+
+return {
+  contact = H.action({
+    id = "contact.submit",
+    path = "/actions/contact",
+    method = "POST",
+    schema = name_schema,
+  }),
+}
+]]
 
   -- The real, client-executed component -- compiled on demand by
   -- src/main.lua's /__hydronium/dev/module route, fetched over HTTP by
@@ -589,10 +810,31 @@ return Counter
   "hydronium.signals.computed": "hydronium/signals/computed.lua",
   "hydronium.signals.effect": "hydronium/signals/effect.lua",
   "hydronium.signals.batch": "hydronium/signals/batch.lua",
+  "hydronium.core": "hydronium/core/init.lua",
+  "hydronium.core.resource": "hydronium/core/resource.lua",
+  "hydronium.core.action": "hydronium/core/action.lua",
+  "hydronium.core.form": "hydronium/core/form.lua",
   "hydronium_dom": "hydronium_dom/init.lua",
   "hydronium_dom.dom.init": "hydronium_dom/dom/init.lua",
   "hydronium_dom.host.dom": "hydronium_dom/host/dom.lua",
-  "hydronium_dom.style": "hydronium_dom/style.lua"
+  "hydronium_dom.style": "hydronium_dom/style.lua",
+  "hydronium_router": "hydronium_router/init.lua",
+  "hydronium_router.pattern": "hydronium_router/pattern.lua",
+  "hydronium_router.url": "hydronium_router/url.lua",
+  "hydronium_router.matcher": "hydronium_router/matcher.lua",
+  "hydronium_router.resource": "hydronium_router/resource.lua",
+  "hydronium_router.result": "hydronium_router/result.lua",
+  "hydronium_router.state": "hydronium_router/state.lua",
+  "hydronium_router.http": "hydronium_router/http.lua",
+  "hydronium_router.href": "hydronium_router/href.lua",
+  "hydronium_router.history": "hydronium_router/history/init.lua",
+  "hydronium_router.history.state": "hydronium_router/history/state.lua",
+  "hydronium_router.history.memory": "hydronium_router/history/memory.lua",
+  "hydronium_router.history.browser": "hydronium_router/history/browser.lua",
+  "hydronium_router.router": "hydronium_router/router.lua",
+  "hydronium_router.outlet": "hydronium_router/outlet.lua",
+  "hydronium_router.hooks": "hydronium_router/hooks.lua",
+  "hydronium_router.site": "hydronium_router/site.lua"
 }
 ]]
 
@@ -714,16 +956,22 @@ footer {
 
 Full-stack SSR application built with [Hydronium](https://moonstone.sh/packages/hydronium) and [Meteorite](https://moonstone.sh/packages/meteorite).
 
-This template uses Moonstone path dependencies for Hydronium's core, LuaX,
-and DOM packages. For local development it assumes your project sits next to
-the `hydronium` workspace and a `meteorite` clone, e.g.:
+The generated manifest uses registry packages. No sibling source checkout is
+required. If you are testing unreleased packages, add a local Moonstone
+registry before running `moon sync`.
 
-```
-some-parent-dir/
-  hydronium/
-  meteorite/
-  %s/   <- this project
-```
+## Routes and actions
+
+`views/Site.lua` is the page manifest. The browser creates a reactive router
+from it; `hydronium_router.meteorite` lowers the same route leaves to explicit
+Meteorite GET routes. Add backend-only endpoints directly to `src/main.lua`.
+
+`views/Actions.lua` defines the shared `contact.submit` action. The form in
+`views/Home.luax` works as a normal HTML POST before hydration. Once the browser
+Lua VM is ready, the same form validates through its Standard Schema contract,
+submits in the background, consumes a JSON action result without navigation,
+and exposes pending,
+field-error, and result state through `useForm`.
 
 ## The counter, and hot reloading
 
@@ -765,12 +1013,19 @@ place. Only `views/Document.luax` is an explicit page-reload boundary.
    moon run dev
    ```
 
+   This runs `hydronium dev`, which starts the Meteorite dev server with
+   this project's own `--mode`/`--backend`/`--lua-root` flags (they live in
+   the `dev` script in `moonstone.toml`) and renders its dev-event stream
+   live. Keys: `f` opens a fullscreen request inspector (every request,
+   with status, duration and remote address), `esc` leaves it, `q` quits.
+   Every event is also appended to `.hydronium/dev.log`.
+
 3. **Build for Production:**
    ```bash
    moon run build
    ./dist/server
    ```
-]], project_name, project_name)
+]], project_name)
 
   return files
 end
