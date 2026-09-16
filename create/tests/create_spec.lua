@@ -188,9 +188,9 @@ for _, template_id in ipairs({ "ssr", "islands" }) do
 
     -- ...and the binary that script calls has to actually be in the
     -- project's environment, which means a declared dependency.
-    assert(manifest:find('name = "moonstone/hydronium%-cli"'),
-      "[" .. template_id .. "] dev script calls `hydronium` but nothing declares moonstone/hydronium-cli")
-    assert(manifest:match('name = "moonstone/hydronium%-cli"%s*\nconstraint = "[^"]+"%s*\nrole = "tool"'),
+    assert(manifest:find('name = "hydronium/cli"'),
+      "[" .. template_id .. "] dev script calls `hydronium` but nothing declares hydronium/cli")
+    assert(manifest:match('name = "hydronium/cli"%s*\nconstraint = "[^"]+"%s*\nrole = "tool"'),
       "[" .. template_id .. "] hydronium-cli must be a tool dependency (it is a dev-time binary, not a runtime library)")
     assert(not manifest:find("path:", 1, true),
       "[" .. template_id .. "] dependencies must install without a sibling checkout")
@@ -509,19 +509,19 @@ test("every template's generated content actually parses/compiles (content-valid
     local manifest = manifest_file:read("*a")
     manifest_file:close()
     assert(not manifest:find("symlink_to", 1, true), "[" .. tmpl.id .. "] manifest must not use source symlinks")
-    assert(manifest:find('name = "moonstone/hydronium"', 1, true), "[" .. tmpl.id .. "] missing hydronium core dependency")
+    assert(manifest:find('name = "hydronium/core"', 1, true), "[" .. tmpl.id .. "] missing hydronium core dependency")
     if tmpl.id == "ssr" or tmpl.id == "islands" then
-      assert(manifest:find('name = "moonstone/hydronium-luax"', 1, true), "[" .. tmpl.id .. "] missing hydronium-luax dependency")
-      assert(manifest:find('name = "moonstone/hydronium-dom"', 1, true), "[" .. tmpl.id .. "] missing hydronium-dom dependency")
+      assert(manifest:find('name = "hydronium/luax"', 1, true), "[" .. tmpl.id .. "] missing hydronium/luax dependency")
+      assert(manifest:find('name = "hydronium/dom"', 1, true), "[" .. tmpl.id .. "] missing hydronium/dom dependency")
       if tmpl.id == "islands" then
         assert(checked_js > 0, "[islands] no generated browser JavaScript was syntax-checked")
       end
     elseif tmpl.id == "ink" then
       assert(checked_luax > 0, "[ink] no .luax files were compiled")
       assert(ink_refresh_descriptors > 0, "[ink] App signal is not eligible for state-preserving HMR")
-      assert(manifest:find('name = "moonstone/hydronium%-ink"'), "[ink] missing hydronium-ink dependency")
-      assert(manifest:find('name = "moonstone/hydronium%-ink".-constraint = "%^0%.1%.1"'), "[ink] must require the native-closure-aware hydronium-ink release")
-      assert(manifest:find('name = "moonstone/hydronium%-luax"'), "[ink] missing hydronium-luax dependency")
+      assert(manifest:find('name = "hydronium/ink"', 1, true), "[ink] missing hydronium/ink dependency")
+      assert(manifest:find('name = "hydronium/ink".-constraint = "%^0%.1%.1"'), "[ink] must require the native-closure-aware hydronium/ink release")
+      assert(manifest:find('name = "hydronium/luax"', 1, true), "[ink] missing hydronium/luax dependency")
       assert(manifest:find('name = "luajit"', 1, true), "[ink] interpreter must be LuaJIT")
       assert(manifest:find('version = "2.1.0"', 1, true), "[ink] must select LuaJIT 2.1.0")
       assert(manifest:find('abi = "5.1"', 1, true), "[ink] must select Lua ABI 5.1")

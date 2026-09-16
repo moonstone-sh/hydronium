@@ -1,0 +1,23 @@
+local H = require("hydronium.core.element")
+local r = require("hydronium_router")
+local d = require("hydronium_dom").d
+
+local function About()
+	local navigate = r.useNavigate()
+	local go_home = nil
+	if _G.__dom_set_listener then
+		go_home = function() navigate("/") end
+	end
+	return (
+		<d.main class="page">
+			<d.div class="card">
+				<d.p class="eyebrow">Hydronium Router</d.p>
+				<d.h1 class="title">One route tree</d.h1>
+				<d.p class="subtitle">Hydronium selects the page in the browser; Meteorite selects it on the server.</d.p>
+				<d.a href="/" onNavigate={go_home}>Back home</d.a>
+			</d.div>
+		</d.main>
+	)
+end
+
+return About

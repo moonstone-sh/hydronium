@@ -17,15 +17,20 @@ local function Document(props)
         <link rel="stylesheet" href="/public/style.css" />
       </head>
       <body>
-        <div id="app">
-          <span class="booting" data-hydronium-placeholder>Booting Lua VM...</span>
-        </div>
+        <div id="app">{props.app}</div>
 
         <script type="module">{[[
           import { mount } from "/js/bootstrap/mount.js";
           import { installHmr } from "/js/bootstrap/hmr.js";
+          import { createHistoryGlobals } from "/js/router/history.js";
+          import { createHttpGlobals } from "/js/router/http.js";
+          import { createFormGlobals } from "/js/bootstrap/forms.js";
 
           window.__bootId = Math.random().toString(36).slice(2);
+          const pageStateText = document.getElementById("__HYDRONIUM_STATE__")?.textContent;
+          const routerState = pageStateText
+            ? JSON.stringify(JSON.parse(pageStateText).hydronium_router)
+            : undefined;
 
           const { lua } = await mount({
             hydroniumBaseUrl: "/hydronium-src",
@@ -34,11 +39,21 @@ local function Document(props)
             appModuleUrl: "/__hydronium/dev/module/views.App",
             moduleUrls: {
               "views.Counter": "/__hydronium/dev/module/views.Counter",
+              "views.Home": "/__hydronium/dev/module/views.Home",
+              "views.About": "/__hydronium/dev/module/views.About",
+              "views.Site": "/__hydronium/dev/module/views.Site",
+              "views.Actions": "/__hydronium/dev/module/views.Actions",
             },
             container: "#app",
             props: { title: "Hydronium + Meteorite", initial: 0 },
-            hydrate: false,
+            hydrate: true,
             hmr: true,
+            luaGlobals: {
+              ...createHistoryGlobals(),
+              ...createHttpGlobals(),
+              ...createFormGlobals(),
+              __hydronium_router_state: routerState || undefined,
+            },
           });
 
           installHmr({
@@ -46,6 +61,10 @@ local function Document(props)
             updates: {
               "views/App.luax": { action: "hot", module: "views.App" },
               "views/Counter.luax": { action: "hot", module: "views.Counter" },
+              "views/Home.luax": { action: "hot", module: "views.Home" },
+              "views/About.luax": { action: "hot", module: "views.About" },
+              "views/Site.lua": { action: "reload" },
+              "views/Actions.lua": { action: "reload" },
               "views/Document.luax": { action: "reload" },
               "public/style.css": { action: "style", href: "/public/style.css" },
             },

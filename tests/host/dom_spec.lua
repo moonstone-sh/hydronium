@@ -387,4 +387,24 @@ describe("hydronium.host.dom -- integration with the real Reconciler", function(
     -- skipping them for matching purposes is not the same as removing them.
     assert.equal(#root.children, 3, "the two comment markers plus the real button must all still be present")
   end)
+
+  it("keeps server-rendered raw HTML as an opaque subtree during hydration", function()
+    local H = require("hydronium")
+    local bridge, make_root = makeFakeBridge()
+    local host = domHostModule.createDomHost(bridge)
+    local reconciler = H.Reconciler.new(host)
+    local root = make_root("div")
+    local article = make_root("article")
+    article.parent = root
+    table.insert(root.children, article)
+    local strong = make_root("strong")
+    strong.parent = article
+    table.insert(article.children, strong)
+
+    reconciler:hydrateRoot(H.h("article", { unsafe_raw_html = "<strong>README</strong>" }), root)
+
+    assert.equal(root.children[1], article)
+    assert.equal(article.children[1], strong)
+    assert.equal(#bridge.mismatches, 0)
+  end)
 end)

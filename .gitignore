@@ -12,3 +12,9 @@ examples/meteorite_ssr/dist/
 
 # OS
 .DS_Store
+
+# Ballad run/export cache and packaging output
+.ballad/
+dist/
+*.vsix
+nvim.log

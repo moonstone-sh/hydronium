@@ -1,22 +1,26 @@
 # Package namespace
 
-Hydronium is published from this repository under Moonstone's registry namespace
-for the initial release line:
+Hydronium is published under its own Hydronium organization's `hydronium/*`
+registry namespace.
 
-| Package | Current registry name | Future registry name |
+| Package | Former registry name | Current registry name |
 | --- | --- | --- |
-| Core | `moonstone/hydronium` | `hydronium/hydronium` |
-| DOM | `moonstone/hydronium-dom` | `hydronium/hydronium-dom` |
-| LUAX | `moonstone/hydronium-luax` | `hydronium/hydronium-luax` |
-| Ink | `moonstone/hydronium-ink` | `hydronium/hydronium-ink` |
-| Router (reserved until it lands) | `moonstone/hydronium-router` | `hydronium/hydronium-router` |
-| Ballad plugins | `moonstone/hydronium-ballad` | `hydronium/hydronium-ballad` |
-| Generator | `moonstone/hydronium-create` | `hydronium/hydronium-create` |
+| Core | `moonstone/hydronium` | `hydronium/core` |
+| DOM | `moonstone/hydronium-dom` | `hydronium/dom` |
+| LUAX | `moonstone/hydronium-luax` | `hydronium/luax` |
+| Ink | `moonstone/hydronium-ink` | `hydronium/ink` |
+| Router | `moonstone/hydronium-router` | `hydronium/router` |
+| Ballad plugins | `moonstone/hydronium-ballad` | `hydronium/ballad` |
+| Generator | `moonstone/hydronium-create` | `hydronium/create` |
+| Developer CLI | `moonstone/hydronium-cli` | `hydronium/cli` |
 
-The source repository is `moonstone-sh/hydronium`. A future Hydronium
-organization will own both the source repository and the `hydronium/*` registry
-namespace. That move is a deliberate breaking package-name migration: it will
-be announced with compatibility guidance rather than hidden behind aliases.
+The source repository is `moonstone-sh/hydronium`; the Hydronium organization
+owns the `hydronium/*` registry namespace independently of that repo's own
+location. This was a deliberate breaking package-name migration from the
+earlier `moonstone/hydronium-*` names (note: local names are trimmed rather
+than repeating `hydronium-` under the new namespace, e.g. `hydronium/dom`,
+not `hydronium/hydronium-dom`, and core is `hydronium/core` rather than the
+self-referential `hydronium/hydronium`).
 
-Lua module names such as `hydronium`, `hydronium_dom`, and `hydronium_luax` are
-not changing.
+Lua module names such as `hydronium`, `hydronium_dom`, and `hydronium_luax`
+are not changing.

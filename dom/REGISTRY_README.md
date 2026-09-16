@@ -1,15 +1,15 @@
 # Hydronium DOM
 
-`moonstone/hydronium-dom` is Hydronium's HTML/SVG host. It provides immutable
+`hydronium/dom` is Hydronium's HTML/SVG host. It provides immutable
 DOM descriptors, HTML rendering, browser mounting code, and a Meteorite
 adapter for server-rendered applications.
 
 ```sh
-moon add moonstone/hydronium-dom
+moon add hydronium/dom
 ```
 
 It installs the `hydronium_dom` Lua namespace and resolves
-`moonstone/hydronium` automatically.
+`hydronium/core` automatically.
 
 ## Build a DOM tree
 
@@ -73,6 +73,10 @@ needs. Keep the server-rendered document as a stable bootstrap boundary, then
 mount the editable application beneath it:
 
 ```js
+import { mount } from "/js/bootstrap/mount.js";
+import { createFormGlobals } from "/js/bootstrap/forms.js";
+import { createHistoryGlobals } from "/js/router/history.js";
+
 const { lua } = await mount({
   hydroniumBaseUrl: "/hydronium-src",
   manifestUrl: "/__hydronium/client_manifest.json",
@@ -83,7 +87,12 @@ const { lua } = await mount({
   },
   container: "#app",
   props: { initial: 0 },
+  hydrate: true,
   hmr: true,
+  luaGlobals: {
+    ...createHistoryGlobals(),
+    ...createFormGlobals(),
+  },
 });
 ```
 
@@ -111,6 +120,11 @@ marks a document or bootstrap boundary, and `ignore` acknowledges a watched
 file with no browser effect. An unlisted path is reported as `unhandled` and
 does not discard application state. A failed requested hot swap reloads as a
 safety fallback because the displayed tree can no longer be proven current.
+
+`createFormGlobals()` supplies progressive action transport. The DOM host
+captures form values during the native submit event, before the browser clears
+`currentTarget`, and passes a Lua-safe snapshot to `useForm`. Native POST still
+works when JavaScript or the browser Lua VM is unavailable.
 
 ## LuaLS types
 

@@ -89,7 +89,7 @@ local ssr = {}
     policy is reported and ignored instead of silently destroying state.
 
   - THE `dev` SCRIPT RUNS `hydronium dev`, NOT `meteorite dev` DIRECTLY.
-    `hydronium dev` (moonstone/hydronium-cli, declared as a `tool`
+    `hydronium dev` (hydronium/cli, declared as a `tool`
     dependency above alongside meteorite itself) spawns exactly the same
     `meteorite dev` invocation this template used to run inline, tails the
     structured dev-event stream meteorite writes to
@@ -150,7 +150,7 @@ constraint = "^0.2.5"
 role = "tool"
 
 [[dependencies]]
-name = "moonstone/hydronium-cli"
+name = "hydronium/cli"
 constraint = "^0.1.0"
 role = "tool"
 
@@ -160,22 +160,22 @@ constraint = "^0.3.7"
 role = "tool"
 
 [[dependencies]]
-name = "moonstone/hydronium"
+name = "hydronium/core"
 constraint = "^0.1.0"
 role = "runtime"
 
 [[dependencies]]
-name = "moonstone/hydronium-luax"
+name = "hydronium/luax"
 constraint = "^0.1.0"
 role = "runtime"
 
 [[dependencies]]
-name = "moonstone/hydronium-dom"
+name = "hydronium/dom"
 constraint = "^0.1.0"
 role = "runtime"
 
 [[dependencies]]
-name = "moonstone/hydronium-router"
+name = "hydronium/router"
 constraint = "^0.1.0"
 role = "runtime"
 ]=], project_name)

@@ -13,6 +13,9 @@ return ballad.partiture(function(p)
                     prefix = "hydronium_router",
                     strip_prefix = "hydronium_router/",
                 }),
+                convention.tree("client", {
+                    prefix = "hydronium_router/client",
+                }),
             },
         },
     })

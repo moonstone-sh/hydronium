@@ -17,10 +17,23 @@ local suspense = require("hydronium.core.suspense")
 local resource = require("hydronium.core.resource")
 local hmr = require("hydronium.core.hmr")
 local family_loader = require("hydronium.core.family_loader")
+local actions = require("hydronium.core.action")
+local forms = require("hydronium.core.form")
+local signals = require("hydronium.signals")
 
 return {
   symbols = symbols,
   Fragment = symbols.FRAGMENT,
+
+  -- Reactivity is part of the host-neutral core surface. Keeping it here
+  -- lets libraries depend on `hydronium.core` without pulling the root
+  -- convenience barrel (and its test helpers) into browser bundles.
+  signals = signals,
+  createSignal = signals.createSignal,
+  createComputed = signals.createComputed,
+  createEffect = signals.createEffect,
+  batch = signals.batch,
+  untrack = signals.untrack,
 
   -- Element Creation
   h = element.h,
@@ -44,6 +57,17 @@ return {
   Suspense = suspense.Suspense,
   resource = resource.new,
   isSuspension = resource.isSuspension,
+
+  -- Host-neutral mutations and scoped form bindings
+  actions = actions,
+  action = actions.define,
+  Action = actions.Action,
+  action_ok = actions.ok,
+  action_fail = actions.fail,
+  forms = forms,
+  useForm = forms.useForm,
+  use_form = forms.useForm,
+  FormTransportContext = forms.TransportContext,
 
   -- Host-neutral live module replacement. Opt-in: callers explicitly
   -- enable family_loader before the application's first require.

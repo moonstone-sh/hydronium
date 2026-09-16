@@ -19,7 +19,9 @@
   @field path string   normalized path only, e.g. "/users/7"
   @field query table   parsed query (repeated keys become arrays)
   @field hash string|nil  fragment without "#", nil when absent
-  @field state any     opaque caller state carried with the entry
+  @field state any     JSON-shaped caller state carried with the entry. Browser
+                       histories accept nil, booleans, finite numbers, strings,
+                       and acyclic string-keyed objects or contiguous arrays.
 
   --- HISTORY ------------------------------------------------------------
 

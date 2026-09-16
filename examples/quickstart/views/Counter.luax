@@ -1,9 +1,9 @@
 -- The counter you edit.
 --
--- This module runs IN YOUR BROWSER, as Lua: views/App.luax renders an
--- empty container and boots a wasmoon VM into it, so the button's
--- onClick below is a genuine Lua closure driving the ordinary Hydronium
--- reconciler -- not a JS shim.
+-- This module runs IN YOUR BROWSER, as Lua: views/App.luax hydrates the
+-- server-rendered tree with a wasmoon VM, so the button's onClick below
+-- is a genuine Lua closure driving the ordinary Hydronium reconciler --
+-- not a JS shim.
 --
 -- TRY IT: with `moon run dev` running, change `+ 1` to `+ 5` below and
 -- save. The page does NOT reload. The count you had already clicked up

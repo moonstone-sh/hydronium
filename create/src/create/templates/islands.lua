@@ -29,7 +29,7 @@ local islands = {}
     framework source for a "look, no build step" proof; a generated
     project resolves its Hydronium modules through Moonstone dependencies).
 
-  The `dev` script runs `hydronium dev` (moonstone/hydronium-cli) around
+  The `dev` script runs `hydronium dev` (hydronium/cli) around
   the same `meteorite dev` invocation it used to run inline, passing the
   meteorite flags through one `--meteorite-args` value -- see ssr.lua's own
   header comment for the full reasoning (short version: `moon exec` eats a
@@ -75,7 +75,7 @@ constraint = "^0.2.5"
 role = "tool"
 
 [[dependencies]]
-name = "moonstone/hydronium-cli"
+name = "hydronium/cli"
 constraint = "^0.1.0"
 role = "tool"
 
@@ -85,17 +85,17 @@ constraint = "^0.3.7"
 role = "tool"
 
 [[dependencies]]
-name = "moonstone/hydronium"
+name = "hydronium/core"
 constraint = "^0.1.0"
 role = "runtime"
 
 [[dependencies]]
-name = "moonstone/hydronium-luax"
+name = "hydronium/luax"
 constraint = "^0.1.0"
 role = "runtime"
 
 [[dependencies]]
-name = "moonstone/hydronium-dom"
+name = "hydronium/dom"
 constraint = "^0.1.0"
 role = "runtime"
 ]=], project_name)

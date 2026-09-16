@@ -37,7 +37,7 @@
   ---------------------------------------------------------------------
   WHY IT IS STILL BLOCKED, accurately, as of 2026-09-11:
 
-  `moonstone/hydronium-router` now supplies route declarations, reactive
+  `hydronium/router` now supplies route declarations, reactive
   Router/Outlet/hooks, and memory/browser History adapters. Its browser
   bridge composes through mount({ luaGlobals = ... }), so client-side
   view navigation is no longer the blocker.

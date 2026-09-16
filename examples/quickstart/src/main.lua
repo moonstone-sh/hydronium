@@ -100,6 +100,14 @@ app:get("/js/bootstrap/:path*", {
 	cache = "no-cache",
 }))
 
+app:get("/js/router/history.js", meteorite.file("../../router/client/history.js", {
+	cache = "no-cache",
+}))
+
+app:get("/js/router/http.js", meteorite.file("../../router/client/http.js", {
+	cache = "no-cache",
+}))
+
 -- Serves hydronium's own runtime source for hydronium.client.mount to
 -- fetch over HTTP, exactly as hydronium/examples/meteorite_ssr does --
 -- restricted to `.lua`/`.json` under the two real member source roots,
@@ -114,6 +122,8 @@ app:get("/hydronium-src/:path*", function(c)
 		source_root = "../../core/src/"
 	elseif rel:match("^hydronium_dom/") then
 		source_root = "../../dom/src/"
+	elseif rel:match("^hydronium_router/") then
+		source_root = "../../router/src/"
 	else
 		return c:text(404, "not found")
 	end
@@ -140,7 +150,7 @@ end)
 
 -- Serves ONE of this project's own view modules, by require() id, as
 -- compiled Lua source. `views.Counter` -> `views/Counter.luax`, compiled
--- on demand by hydronium_luax's serve-time loader (mtime-cached, no
+-- on demand by hydronium_luax's serve-time loader (content-cached, no
 -- build step) and returned as text -- never executed here, because it is
 -- the browser's Lua VM that runs it, not the server's.
 --
@@ -188,14 +198,12 @@ app:get("/__hydronium/dev/module/:id", function(c)
 	return c:text(200, content)
 end)
 
-app:get("/", function(c)
-	local meteorite_adapter = require("hydronium_dom.server.meteorite")
-	local Document = require("views.Document")
-	return meteorite_adapter.render(c, Document, {
-		status = 200,
-		props = { title = "hydronium-quickstart" },
-	})
-end)
+local pages = require("views.Site")
+local router_adapter = require("hydronium_router.meteorite")
+router_adapter.mount(app, pages, {
+	handler = meteorite.lua("app.page_handler", { arg_mode = "lazy_context" }),
+	action_handler = meteorite.lua("app.action_handler", { arg_mode = "lazy_context" }),
+})
 
 app:get("/api/health", function(c)
 	return c:json({ status = "ok", timestamp = os.time() })
@@ -223,9 +231,15 @@ app:get("/__hydronium/watch", function(c)
 	watch.serve_sse(c, {
 		"views/App.luax",
 		"views/Counter.luax",
+		"views/Home.luax",
+		"views/About.luax",
+		"views/Site.lua",
+		"views/Actions.lua",
 		"views/Document.luax",
 		"public/style.css",
 	})
 end)
+
+router_adapter.validate_final(app, pages)
 
 return app

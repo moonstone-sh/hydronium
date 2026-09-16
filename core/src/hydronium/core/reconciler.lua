@@ -524,11 +524,24 @@ function Reconciler:hydrate(vnode, parentHostNode, domNode, boundaryNode, parent
       refModule.bindRef(vnode.ref, domNode)
     end
 
+    local props = vnode.props and (vnode.props._store or vnode.props) or {}
+    if props.unsafe_raw_html ~= nil or props.dangerouslySetInnerHTML ~= nil then
+      -- The host owns raw HTML as one opaque subtree. Its DOM descendants
+      -- have no corresponding VNodes to claim or remove.
+      return domNode, host.nextSibling(domNode)
+    end
+
     local raw, len = getChildrenList(vnode)
     local childCursor = host.firstChild(domNode)
     for i = 1, len do
+      while childCursor and host.isCommentNode and host.isCommentNode(childCursor) do
+        childCursor = host.nextSibling(childCursor)
+      end
       local _, nextCursor = self:hydrate(raw[i], domNode, childCursor, nil, parentComponent)
       childCursor = nextCursor
+    end
+    while childCursor and host.isCommentNode and host.isCommentNode(childCursor) do
+      childCursor = host.nextSibling(childCursor)
     end
     -- Real children left over past what the vnode tree accounted for
     -- were never part of this render -- a genuine hydration mismatch,

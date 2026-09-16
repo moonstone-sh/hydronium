@@ -23,7 +23,7 @@
   DOM member source roots and emits paths relative to each served root.
 --]]
 
-package.path = "core/src/?.lua;core/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;" .. package.path
+package.path = "core/src/?.lua;core/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;router/src/?.lua;router/src/?/init.lua;" .. package.path
 
 local function to_relpath(mod_id)
   local p = mod_id:gsub("%.", "/")
@@ -32,6 +32,8 @@ local function to_relpath(mod_id)
     { root = "core/src/", path = "core/src/" .. p .. "/init.lua" },
     { root = "dom/src/", path = "dom/src/" .. p .. ".lua" },
     { root = "dom/src/", path = "dom/src/" .. p .. "/init.lua" },
+    { root = "router/src/", path = "router/src/" .. p .. ".lua" },
+    { root = "router/src/", path = "router/src/" .. p .. "/init.lua" },
   }
   for _, c in ipairs(candidates) do
     local f = io.open(c.path, "r")
@@ -39,7 +41,7 @@ local function to_relpath(mod_id)
       f:close()
       -- The Meteorite example mounts both member source roots under the
       -- client-runtime route, preserving their distinct package namespaces.
-      return c.path:gsub("^core/src/", ""):gsub("^dom/src/", "")
+      return c.path:gsub("^core/src/", ""):gsub("^dom/src/", ""):gsub("^router/src/", "")
     end
   end
   return nil

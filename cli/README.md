@@ -1,4 +1,4 @@
-# moonstone/hydronium-cli
+# hydronium/cli
 
 The Hydronium developer CLI.
 
@@ -10,7 +10,7 @@ hydronium dev [--verbose] [--show-ips] [--fullscreen]
 `dev` spawns `meteorite dev` as a child process, tails the structured
 dev-event stream meteorite appends to `.meteorite/dev/events.log`, mirrors
 every event verbatim into this CLI's own durable `.hydronium/dev.log`, and
-renders a live status view with [Hydronium Ink](https://moonstone.sh/packages/moonstone/hydronium-ink):
+renders a live status view with [Hydronium Ink](https://moonstone.sh/packages/hydronium/ink):
 
 ```
  ➜  Hydronium app up and running on http://127.0.0.1:8080/
@@ -78,7 +78,7 @@ captures nothing extra. A flag that changes what is *captured*
 ## In a generated project
 
 `hydronium-create`'s `ssr` and `islands` templates declare
-`moonstone/hydronium-cli` as a `tool` dependency and generate a `dev`
+`hydronium/cli` as a `tool` dependency and generate a `dev`
 script that runs this CLI with the project's own Meteorite flags, so
 `moon run dev` is all a user types:
 

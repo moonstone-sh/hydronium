@@ -52,7 +52,7 @@ local Luax = {
   virtual_source = luals.virtual_source,
 
   -- Serve-time loading: compile-and-run a `.luax` file on demand,
-  -- cached by mtime (see hydronium_luax.loader's own doc comment).
+  -- cached by content (see hydronium_luax.loader's own doc comment).
   loader = loader,
   load_luax = loader.load,
 }

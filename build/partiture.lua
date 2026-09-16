@@ -6,11 +6,15 @@ return ballad.partiture(function(p)
     local project = moonstone.project({ root = "." })
     local artifact = moonstone.registry.source_package(project, {
         readme = "REGISTRY_README.md",
+        include_add = { "web/**" },
         collect = {
             lua_modules = {
                 convention.tree("src", {
                     prefix = "hydronium_ballad",
                     strip_prefix = "hydronium_ballad/",
+                }),
+                convention.tree("web", {
+                    prefix = "hydronium_ballad/web",
                 }),
             },
         },

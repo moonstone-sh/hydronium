@@ -2,13 +2,13 @@
   hydronium_dom.dev.watch -- per-module change identity (roadmap M2).
 
   Covers the pure, testable half of the M2 protocol addition: reading a
-  fingerprint back apart into its per-file stat entries, and naming
+  fingerprint back apart into its per-file content entries, and naming
   exactly which watched paths moved between two fingerprints. The SSE
   tests replace Meteorite's per-request stream globals with narrow fakes
   so abandoned-connection behavior remains deterministic here.
 
-  Fingerprint lines are the real output shape of the `stat` commands
-  `M.fingerprint` runs: "<mtime> <size> <name>", "|"-joined and sorted.
+  Fingerprint lines have the shape "<hashes> <size> <name>", "|"-joined
+  and sorted.
 --]]
 
 local runner = require("tests.runner")
@@ -52,7 +52,7 @@ describe("hydronium_dom.dev.watch -- per-file change identity", function()
   describe("changed_files", function()
     local base = "1757000000.0 100 views/App.luax|1757000000.0 200 views/Counter.luax"
 
-    it("names only the file whose stat line moved", function()
+    it("names only the file whose content stamp moved", function()
       local next_fp = "1757000000.0 100 views/App.luax|1757000009.0 205 views/Counter.luax"
       assert.same(watch.changed_files(base, next_fp), { "views/Counter.luax" })
     end)
@@ -67,9 +67,8 @@ describe("hydronium_dom.dev.watch -- per-file change identity", function()
     end)
 
     it("reports a created file, absent from the previous fingerprint", function()
-      -- `stat` on a missing file prints nothing, so a not-yet-existing
-      -- watched file simply has no line -- creation looks like an entry
-      -- appearing, not like a modification.
+      -- A missing watched file has no entry, so creation looks like an
+      -- entry appearing rather than a modification.
       local prev = "1757000000.0 100 views/App.luax"
       assert.same(watch.changed_files(prev, base), { "views/Counter.luax" })
     end)
@@ -100,19 +99,18 @@ describe("hydronium_dom.dev.watch -- per-file change identity", function()
       f:write("one")
       f:close()
 
-      local first = watch.fingerprint({ path }, 0, false)
+      local first = watch.fingerprint({ path })
       assert.truthy(first ~= "" and first ~= nil)
-      assert.equal(watch.fingerprint({ path }, 0, false), first)
+      assert.equal(watch.fingerprint({ path }), first)
 
-      -- Rewritten with a different LENGTH, so the fingerprint moves via
-      -- the size field even if the filesystem's mtime resolution has
-      -- not ticked between the two writes.
+      -- Same length and potentially the same filesystem timestamp: the
+      -- content hashes, not metadata, must move the fingerprint.
       local g = io.open(path, "w")
       assert.truthy(g, "could not reopen temp file for writing")
-      g:write("one-two-three")
+      g:write("two")
       g:close()
 
-      local second = watch.fingerprint({ path }, 0, false)
+      local second = watch.fingerprint({ path })
       assert.not_equal(second, first)
       assert.same(watch.changed_files(first, second), { path })
 
@@ -160,6 +158,7 @@ describe("hydronium_dom.dev.watch -- abandoned connections", function()
         watch.serve_sse({ header = function() end, query = function() end }, { "unused" }, {
           poll_interval = 0.5,
           budget = 5,
+          sleep = function() end,
         })
       end)
     end)
@@ -179,6 +178,7 @@ describe("hydronium_dom.dev.watch -- abandoned connections", function()
         watch.serve_sse({ header = function() end, query = function() end }, { "unused" }, {
           poll_interval = 0.5,
           budget = 1,
+          sleep = function() end,
         })
       end)
     end)

@@ -1,26 +1,17 @@
--- Client application root. This module and its child components execute in
--- the browser's persistent Lua VM, so edits refresh them without remounting
--- the document or resetting compatible signal state.
-
 local H = require("hydronium.core.element")
-local dom = require("hydronium_dom")
-local Counter = require("views.Counter")
-local d = dom.d
+local r = require("hydronium_router")
+local site = require("views.Site")
+local d = require("hydronium_dom").d
 
-local function App(props)
-  return (
-    <d.main class="page">
-      <d.div class="card">
-        <d.p class="eyebrow">Quickstart</d.p>
-        <d.h1 class="title">{props.title or "Hydronium + Meteorite"}</d.h1>
-        <d.p class="subtitle">Fine-grained reactive UI for Lua, server-rendered and hot-reloaded.</d.p>
-        <d.div class="app-slot">
-          <Counter initial={props.initial or 0} />
-        </d.div>
-        <d.p class="docs">Real Lua, running in your browser.</d.p>
-      </d.div>
-    </d.main>
-  )
+local function App()
+	local router = site:createRouter({
+		history = r.createBrowserHistory(),
+		resolve = require,
+	})
+
+	return function()
+		return d.lua.mount(H.h(router.Provider, nil, H.h(r.Outlet)), { module = "views.App" })
+	end
 end
 
 return App

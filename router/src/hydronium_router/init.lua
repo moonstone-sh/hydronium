@@ -16,6 +16,11 @@ local browser_history = require("hydronium_router.history.browser")
 local router = require("hydronium_router.router")
 local outlet = require("hydronium_router.outlet")
 local hooks = require("hydronium_router.hooks")
+local site = require("hydronium_router.site")
+local route_resource = require("hydronium_router.resource")
+local result = require("hydronium_router.result")
+local state = require("hydronium_router.state")
+local http = require("hydronium_router.http")
 
 local Router = {
   _VERSION = "0.1.0",
@@ -27,8 +32,14 @@ local Router = {
   matcher = matcher,
   history = history,
   hooks = hooks,
+  site = site,
+  Site = site.Site,
   RouterContext = router.RouterContext,
+  RouteContext = router.RouteContext,
   Outlet = outlet.Outlet,
+  RouteResource = route_resource.Resource,
+  state = state,
+  http = http,
 
   -- Pattern parsing
   parse_pattern = pattern.parse,
@@ -58,7 +69,9 @@ local Router = {
   to_location = history.to_location,
 
   -- Reactive router
-  route = router.route,
+  node = site.node,
+  createSite = site.site,
+  create_site = site.site,
   createRouter = router.create_router,
   create_router = router.create_router,
   useRouter = hooks.use_router,
@@ -67,6 +80,8 @@ local Router = {
   use_location = hooks.use_location,
   useMatch = hooks.use_match,
   use_match = hooks.use_match,
+  useMatches = hooks.use_matches,
+  use_matches = hooks.use_matches,
   useParams = hooks.use_params,
   use_params = hooks.use_params,
   useSearchParams = hooks.use_search_params,
@@ -75,6 +90,16 @@ local Router = {
   use_navigate = hooks.use_navigate,
   useHref = hooks.use_href,
   use_href = hooks.use_href,
+  useRouteData = hooks.use_route_data,
+  use_route_data = hooks.use_route_data,
+  useNavigation = hooks.use_navigation,
+  use_navigation = hooks.use_navigation,
+  useRevalidator = hooks.use_revalidator,
+  use_revalidator = hooks.use_revalidator,
+
+  redirect = result.redirect,
+  routeError = result.error,
+  route_error = result.error,
 }
 
 return Router

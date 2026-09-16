@@ -42,18 +42,18 @@ moon run dev ssr my-app
 
 | Directory | Registry package | Purpose |
 | --- | --- | --- |
-| [`core`](core/) | `moonstone/hydronium` | Signals, scopes, components, reconciliation, and the host contract. |
-| [`dom`](dom/) | `moonstone/hydronium-dom` | Browser DOM host, SSR renderer, and Meteorite integration. |
-| [`luax`](luax/) | `moonstone/hydronium-luax` | LUAX compiler, formatter, Tree-sitter grammar, and editor integrations. |
-| [`ink`](ink/) | `moonstone/hydronium-ink` | Terminal host with `Box`, `Text`, and `Newline` intrinsics. |
-| [`router`](router/) | `moonstone/hydronium-router` | Reactive Router/Outlet/hooks, typed hrefs, route matching, and memory/browser histories. |
-| [`build`](build/) | `moonstone/hydronium-ballad` | Ballad plugins for LUAX, CSS/assets, and browser bundles. |
-| [`create`](create/) | `moonstone/hydronium-create` | Project generator and editor bootstrapper. |
+| [`core`](core/) | `hydronium/core` | Signals, scopes, components, reconciliation, and the host contract. |
+| [`dom`](dom/) | `hydronium/dom` | Browser DOM host, SSR renderer, and Meteorite integration. |
+| [`luax`](luax/) | `hydronium/luax` | LUAX compiler, formatter, Tree-sitter grammar, and editor integrations. |
+| [`ink`](ink/) | `hydronium/ink` | Terminal host with `Box`, `Text`, and `Newline` intrinsics. |
+| [`router`](router/) | `hydronium/router` | Reactive Router/Outlet/hooks, typed hrefs, route matching, and memory/browser histories. |
+| [`build`](build/) | `hydronium/ballad` | Ballad plugins for LUAX, CSS/assets, and browser bundles. |
+| [`create`](create/) | `hydronium/create` | Project generator and editor bootstrapper. |
+| [`cli`](cli/) | `hydronium/cli` | Developer CLI: `hydronium dev` wraps a Meteorite dev server with a live status view. |
 
-The current packages live in Moonstone's registry namespace. A future
-Hydronium organization will own the source and publish them as
-`hydronium/*`; that package-name migration is planned as a breaking change.
-See [the namespace plan](docs/PACKAGE_NAMESPACE.md) for the exact mapping.
+The packages publish under the Hydronium organization's own `hydronium/*`
+registry namespace. See [the namespace plan](docs/PACKAGE_NAMESPACE.md) for
+the migration history from the earlier `moonstone/hydronium-*` names.
 
 Browser and Ink applications share the host-neutral
 `hydronium.core.hmr` replacement primitive. Browser transports fetch changed
@@ -61,6 +61,58 @@ modules; the generated Ink starter polls its LUAX source from the renderer's
 event loop. Both refresh component families inside the existing Lua VM.
 Minimal projects render once and exit, so there is no live process or state to
 hot-reload.
+
+## Routing and mutations
+
+`hydronium-router` keeps one serializable route tree for the browser and
+Meteorite. Nodes name screens, loaders, actions, pending UI, and error
+boundaries without importing host code. The browser resolves those logical
+names into components, while `hydronium_router.meteorite` lowers addressable
+leaves into explicit server routes. Backend APIs and assets remain ordinary
+Meteorite routes.
+
+```lua
+local r = require("hydronium_router")
+
+local site = r.createSite({
+  root = r.node({
+    id = "root",
+    path = "/",
+    screen = "views.App",
+    children = {
+      r.node({ id = "home", path = "", screen = "views.Home" }),
+      r.node({
+        id = "user",
+        path = "users/:id",
+        screen = "views.User",
+        load = "loaders.user",
+      }),
+    },
+  }),
+})
+```
+
+Mutations use host-neutral action descriptors and scoped form state:
+
+```lua
+local H = require("hydronium")
+
+local contact = H.action({
+  id = "contact.submit",
+  path = "/actions/contact",
+  schema = contact_schema,
+})
+
+local form = H.useForm(contact)
+-- form.props: method, action, enctype, onSubmit
+-- form:pending(), form:error("name"), form:data(), form:reset()
+```
+
+The generated SSR app composes browser history, abortable loader GETs, and
+form transport through `mount({ luaGlobals = ... })`. `r.http.get` uses a named
+Meteorite HTTP capability on the server and the browser fetch bridge after
+hydration. Forms remain usable as native HTML POSTs before hydration or when
+JavaScript is disabled.
 
 ## A small component
 

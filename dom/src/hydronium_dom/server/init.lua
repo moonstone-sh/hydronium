@@ -14,6 +14,7 @@ local html = require("hydronium_dom.server.html")
 local json = require("hydronium_dom.server.json")
 local sink_protocol = require("hydronium_dom.server.sink")
 local resourceModule = require("hydronium.core.resource")
+local RefreshRegistry = require("hydronium.core.refresh").RefreshRegistry
 
 local server = {}
 
@@ -103,25 +104,35 @@ local function render_children(children, write_fn, parent_scope, raw_text_mode)
   if children == nil then return end
   local t = type(children)
 
+  local function render_sequence(sequence, len)
+    local previous = nil
+    for i = 1, len do
+      local current = sequence[i]
+      -- HTML parsers coalesce adjacent text into one DOM Text node. Keep a
+      -- zero-width comment boundary so hydration can claim one host node per
+      -- VNode instead of duplicating the second value on fallback.
+      if not raw_text_mode and previous and current
+        and previous.kind == symbols.TEXT and current.kind == symbols.TEXT then
+        write_fn("<!--hy:t-->")
+      end
+      render_node(current, write_fn, parent_scope, raw_text_mode)
+      previous = current
+    end
+  end
+
   if t == "userdata" then
     local len = #children
-    for i = 1, len do
-      render_node(children[i], write_fn, parent_scope, raw_text_mode)
-    end
+    render_sequence(children, len)
     return
   elseif t == "table" and children._typeof ~= symbols.VNODE then
     local len = #children
     if len > 0 then
-      for i = 1, len do
-        render_node(children[i], write_fn, parent_scope, raw_text_mode)
-      end
+      render_sequence(children, len)
       return
     end
     local raw = children._store or children
     if #raw > 0 then
-      for i = 1, #raw do
-        render_node(raw[i], write_fn, parent_scope, raw_text_mode)
-      end
+      render_sequence(raw, #raw)
       return
     end
     return
@@ -511,6 +522,11 @@ render_node = function(node, write_fn, parent_scope, raw_text_mode)
   if type(node_tag) == "function" or (type(node_tag) == "table" and getmetatable(node_tag) and getmetatable(node_tag).__call) then
     local raw_props = (type(node.props) == "table" and node.props._store) or node.props or {}
     local comp_scope = scopeModule.Scope.new(parent_scope)
+    -- LUAX's HMR transform emits `scope.refresh_registry:signal(...)` for
+    -- setup-time signals. SSR does not preserve the registry after the
+    -- request, but it must expose the same setup contract as the client so
+    -- transformed components render rather than crashing on the server.
+    comp_scope.refresh_registry = RefreshRegistry.new()
 
     -- Mirrors ComponentInstance:render's (props, scope) calling convention
     -- (src/hydronium/core/component.lua) exactly, including the
@@ -525,7 +541,9 @@ render_node = function(node, write_fn, parent_scope, raw_text_mode)
     -- component pattern.
     local ok, res = pcall(function()
       return scopeModule.runWithScope(comp_scope, function()
+        comp_scope.refresh_registry:begin_generation()
         local result = node_tag(raw_props, comp_scope)
+        comp_scope.refresh_registry:finish_generation()
         if type(result) == "function" then
           result = result(raw_props, comp_scope)
         end

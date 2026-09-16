@@ -50,6 +50,17 @@ local function extract_request_data(c)
     return req
   end
 
+  local function context_value(name)
+    local value = c[name]
+    if type(value) ~= "function" then return value end
+    local ok, result = pcall(value, c)
+    return ok and result or nil
+  end
+
+  req.url = context_value("target") or context_value("url") or context_value("path") or "/"
+  req.path = context_value("path") or req.url:match("^[^?]*") or "/"
+  req.route_id = context_value("route_id")
+
   -- Params
   if type(c.params) == "table" then
     for k, v in pairs(c.params) do

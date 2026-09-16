@@ -1,444 +1,477 @@
---[[
-  hydronium_router.router -- the reactive router object.
-
-  This is the layer that binds the settled, pure primitives (pattern,
-  url, matcher, href) to Hydronium's reactive graph and to a History.
-  Everything above it -- `outlet`, the hooks -- reads this object and
-  nothing else.
-
-  --- WHY EVERY PIECE OF STATE HERE IS A PLAIN SIGNAL --------------------
-
-  `hydronium.createSignal`'s setter short-circuits on equality:
-
-      if equals(signal.value, resolvedVal) then return signal.value end
-
-  `createComputed` has no such dedup -- it is push-dirty, so it
-  re-notifies whenever any upstream source changes, whether or not its
-  own value actually moved. That difference is load-bearing here, and it
-  is the reason the "current matched route" is a `createSignal` that this
-  module explicitly `:set()`s rather than a `createComputed` derived from
-  the location:
-
-      /users/1  ->  /users/2
-
-  is a location change but NOT a route change. Because `_match_sig`
-  stores the matcher's STABLE route record (`result.route`, the identical
-  table `Matcher:add` stored, not the fresh per-match wrapper), setting it
-  to the same record is an equality hit and notifies nobody. The Outlet,
-  which reads only that signal, therefore does not re-render, while a
-  binding reading `params.id` does. That is the fine-grained property
-  this whole design exists to demonstrate, and it falls out of signal
-  identity plus the equality short-circuit -- no diffing, no
-  memoization layer.
-
-  --- PARAM SIGNAL IDENTITY IS STABLE ------------------------------------
-
-  Per-param signals are created lazily and then UPDATED IN PLACE. They are
-  never recreated per navigation, because a subscriber (a binding, an
-  effect, a component's render observer) is keyed to the signal object it
-  read. Swapping in a fresh signal on every navigation would leave every
-  existing subscriber attached to an orphan that nobody ever sets again --
-  the classic "it works once then goes dead" reactive bug.
-
-  A param signal is also created on first READ, not only on first match,
-  so `params.id` read before that param has ever appeared still returns a
-  live signal that fires when the param does appear.
-
-  --- THE LuaJIT `__pairs` FOOTGUN ---------------------------------------
-
-  `params` and `search_params` are PROXY tables: they hold no keys, and
-  serve reads through `__index` by delegating to a signal. LuaJIT and Lua
-  5.1 have NO `__pairs` metamethod, so
-
-      for k, v in pairs(router.params) do ... end   -- SILENTLY ITERATES NOTHING
-
-  It does not error. It does not warn. It runs zero iterations and you get
-  an empty result that looks like "there were no params". There is no way
-  to intercept this from Lua, so the mitigation is the explicit
-  alternative: `router.params_snapshot()` and `router.search_snapshot()`
-  return REAL plain tables that `pairs` iterates correctly (and that are
-  themselves reactive -- they read through the signals, so calling one
-  inside a render closure subscribes to the params it saw).
-
-  Note also that no method is hung off the proxies themselves. A
-  `params.snapshot()` method would collide with a route that legitimately
-  declares a param named `snapshot`, and the collision would resolve in
-  favour of the method -- a silent wrong answer. Snapshots live on the
-  router, where nothing can shadow them.
---]]
-
-local H = require("hydronium")
-
+-- Host-neutral reactive routing over a resolved, serializable route tree.
+local H = require("hydronium.core")
 local url = require("hydronium_router.url")
 local matcher = require("hydronium_router.matcher")
 local href_mod = require("hydronium_router.href")
 local history_mod = require("hydronium_router.history")
+local route_resource = require("hydronium_router.resource")
+local result_mod = require("hydronium_router.result")
+local hydration_state = require("hydronium_router.state")
 
 local M = {}
 
---- The context the Provider publishes and the hooks read. Module-level on
---- purpose: `useContext` matches on context object identity, so the hooks
---- and every Provider must share this one object. Per-router state lives
---- in the VALUE the Provider supplies, not in a per-router context.
 M.RouterContext = H.createContext(nil)
+M.RouteContext = H.createContext(nil)
+M.OutletDepthContext = H.createContext(1)
 
---- A single route declaration.
----
---- D2: this is a plain function call, deliberately NOT a `.luax` `<Route>`
---- element. It is the only declaration form that reads identically in a
---- `.luax` web app, a plain-Lua Ink TUI and a native shell, and the only
---- one a future statically-typed-params tool can analyse without running
---- the JSX compiler first.
----
---- @param id string          dot-separated route id, unique in this router
---- @param path string        a route pattern (see `hydronium_router.pattern`)
---- @param component any      the component rendered by `Outlet` for this route
---- @param opts? table        route options, stored as the matcher's `meta`:
----
----   `.params` table
----       D1, bring-your-own validation: `{ id = function(raw) ... end }`.
----       A predicate returns a coerced value to accept the segment (the
----       returned value becomes `params.id`) or nil to reject it, in which
----       case matching falls through to the next candidate route. See
----       `hydronium_router.matcher` for the full contract.
----
----   `.reuse` "remount"|nil
----       D4. Default (nil) is STAY-MOUNTED: a param change keeps the
----       component instance alive and only the bindings that read the
----       changed param update, which is this framework's whole thesis.
----       `"remount"` opts into the other behaviour: `Outlet` then derives
----       a real `key` from the matched params, and because the reconciler's
----       `canReuse` compares `oldVNode.key == newVNode.key`, a param change
----       unmounts the old instance (running its `onCleanup`s) and mounts a
----       fresh one (re-running setup).
----
----   `.loader` any
----       D3, RESERVED AND NOT IMPLEMENTED. Stored verbatim as opaque
----       metadata on the route record and never read, called, or validated
----       by this package. It exists only so that a future data-loading
----       convention has a declared place to attach without a breaking
----       change to this declaration shape. Nothing in hydronium-router
----       invokes it today; do not rely on it doing anything.
----
----   any other key is carried through untouched on `route.meta`.
----
---- @return table declaration
-function M.route(id, path, component, opts)
-  if type(id) ~= "string" or id == "" then
-    error("hydronium_router.route: id must be a non-empty string, got " .. type(id), 2)
-  end
-  if type(path) ~= "string" then
-    error("hydronium_router.route: path for route " .. string.format("%q", id)
-      .. " must be a string, got " .. type(path), 2)
-  end
-  if component == nil then
-    error("hydronium_router.route: route " .. string.format("%q", id)
-      .. " has no component -- pass the component to render for this route", 2)
-  end
-  if opts ~= nil and type(opts) ~= "table" then
-    error("hydronium_router.route: opts for route " .. string.format("%q", id)
-      .. " must be a table, got " .. type(opts), 2)
-  end
-
-  local meta = {}
-  if opts then
-    for k, v in pairs(opts) do meta[k] = v end
-  end
-  meta.component = component
-
-  if meta.reuse ~= nil and meta.reuse ~= "remount" and meta.reuse ~= "keep" then
-    error("hydronium_router.route: route " .. string.format("%q", id)
-      .. " has reuse = " .. string.format("%q", tostring(meta.reuse))
-      .. " -- the only accepted values are \"remount\" and \"keep\" (the default)", 2)
-  end
-
-  return { id = id, path = path, component = component, meta = meta }
+local function shallow_copy(value)
+  local out = {}
+  for key, item in pairs(value or {}) do out[key] = item end
+  return out
 end
 
---- Normalize a mount base to either "/" or a "/prefix" with no trailing slash.
 local function normalize_base(base)
   if base == nil then return "/" end
   if type(base) ~= "string" then
-    error("hydronium_router.create_router: base must be a string, got " .. type(base), 3)
+    error("hydronium_router.create_router: base must be a string", 3)
   end
   return url.normalize_path(base)
 end
 
---- Strip the mount base off an absolute path.
----
---- @return string|nil  the path relative to the base, or nil when the path
----   lies OUTSIDE the base -- which is a non-match, not a match at "/".
----   Returning "/" there would make a router mounted at "/admin" answer
----   for "/marketing", which is exactly the bug a base is meant to prevent.
 local function strip_base(base, path)
   if base == "/" then return path end
   if path == base then return "/" end
-  if path:sub(1, #base + 1) == base .. "/" then
-    return path:sub(#base + 1)
-  end
+  if path:sub(1, #base + 1) == base .. "/" then return path:sub(#base + 1) end
   return nil
 end
 
---- Update a name -> signal map in place from a fresh table of values.
----
---- Three cases, and the third is the one that is easy to forget: a param
---- present in the previous match but absent from this one must be set to
---- nil, or a binding would keep displaying a value from a route that is no
---- longer matched.
-local function sync_signal_map(map, values)
-  for k, v in pairs(values) do
-    local sig = map[k]
-    if sig then
-      sig:set(v)
-    else
-      map[k] = H.createSignal(v)
-    end
-  end
+local function with_base(base, target)
+  if base ~= "/" and target:sub(1, 1) == "/" then return base .. target end
+  return target
+end
 
-  for k, sig in pairs(map) do
-    if values[k] == nil then
-      sig:set(nil)
-    end
+local function sync_signal_map(map, values)
+  for key, value in pairs(values) do
+    local signal = map[key]
+    if signal then signal:set(value) else map[key] = H.createSignal(value) end
+  end
+  for key, signal in pairs(map) do
+    if values[key] == nil then signal:set(nil) end
   end
 end
 
---- Build a read-only reactive proxy over a name -> signal map.
----
---- Reading an absent key CREATES its signal rather than returning nil
---- outright, so the read is tracked and the reader wakes up if that name
---- ever appears. See the `__pairs` warning in this module's header.
 local function make_proxy(map, label)
   return setmetatable({}, {
     __index = function(_, key)
       if type(key) ~= "string" then return nil end
-      local sig = map[key]
-      if not sig then
-        sig = H.createSignal(nil)
-        map[key] = sig
+      local signal = map[key]
+      if not signal then
+        signal = H.createSignal(nil)
+        map[key] = signal
       end
-      return sig:get()
+      return signal:get()
     end,
-
-    __newindex = function(_, key, _)
-      error("hydronium_router: " .. label .. " is read-only -- cannot assign "
-        .. label .. "." .. tostring(key)
-        .. ". Navigate instead (router.navigate / useNavigate).", 2)
+    __newindex = function(_, key)
+      error("hydronium_router: " .. label .. " is read-only; cannot assign " .. tostring(key), 2)
     end,
-
     __tostring = function()
-      return "hydronium_router." .. label
-        .. " (reactive proxy; pairs() does NOT work on it -- use router."
-        .. label .. "_snapshot())"
+      return "hydronium_router." .. label .. " (reactive proxy; snapshot it before iteration)"
     end,
   })
 end
 
---- Create a router.
----
---- @param opts table
----   `.history` table   a History (see `hydronium_router.history`). Required.
----   `.routes` table[]  array of `M.route(...)` declarations. Required.
----   `.base` string     mount prefix, default "/".
---- @return table router
+local function match_chain(match_result)
+  if not match_result then return {} end
+  local chain = match_result.route.meta and match_result.route.meta.chain
+  if type(chain) == "table" then return chain end
+  return { match_result.route }
+end
+
+local function node_scope_identity(node, params)
+  if node.reuse == "keep" then return node.id end
+  local parts = { node.id }
+  for _, name in ipairs(node.own_params or {}) do
+    parts[#parts + 1] = name .. "=" .. tostring(params[name])
+  end
+  return table.concat(parts, "\1")
+end
+
+local function normalized_error(err, node)
+  if result_mod.kind(err) == "error" then
+    if err.route_id == nil then err.route_id = node.id end
+    return err
+  end
+  return {
+    _hydronium_route_result = "error",
+    status = 500,
+    kind = "loader_error",
+    message = tostring(err),
+    cause = err,
+    route_id = node.id,
+  }
+end
+
+local function default_executor(resolve_loader)
+  return function(descriptor, context, done)
+    if type(resolve_loader) ~= "function" then
+      done(nil, "no loader executor or resolve_loader function was provided for "
+        .. string.format("%q", descriptor.ref))
+      return nil
+    end
+    local loader = resolve_loader(descriptor.ref, "loader", context.route)
+    if type(loader) ~= "function" then
+      done(nil, "loader resolver returned " .. type(loader) .. " for "
+        .. string.format("%q", descriptor.ref))
+      return nil
+    end
+    local callback_called = false
+    local function settle(value, failure)
+      callback_called = true
+      done(value, failure)
+    end
+    local ok, value = pcall(loader, context, settle)
+    if not ok then done(nil, value); return nil end
+    if type(value) == "function" then return value end
+    if not callback_called then done(value, nil) end
+    return nil
+  end
+end
+
+--- Internal resolved-route constructor. Public applications use site/node.
+function M.route(id, path, component, opts)
+  opts = shallow_copy(opts)
+  opts.component = component
+  return { id = id, path = path, component = component, meta = opts }
+end
+
+---@param opts table
+---@return table router
 function M.create_router(opts)
   opts = opts or {}
-
-  if type(opts) ~= "table" then
-    error("hydronium_router.create_router: expected an options table, got " .. type(opts), 2)
-  end
-  if opts.history == nil then
-    error("hydronium_router.create_router: opts.history is required -- pass a History "
-      .. "(hydronium_router.create_memory_history() for tests, Ink and native hosts; "
-      .. "create_browser_history() in a browser)", 2)
-  end
+  if type(opts) ~= "table" then error("hydronium_router.create_router expects a table", 2) end
+  if opts.history == nil then error("hydronium_router.create_router requires opts.history", 2) end
+  if type(opts.routes) ~= "table" then error("hydronium_router.create_router requires resolved routes", 2) end
 
   local history = history_mod.validate(opts.history, "create_router opts.history")
   local base = normalize_base(opts.base)
-
   local routes = opts.routes
-  if type(routes) ~= "table" then
-    error("hydronium_router.create_router: opts.routes must be an array of route "
-      .. "declarations, got " .. type(routes), 2)
+  local route_matcher = matcher.new()
+  for index, declaration in ipairs(routes) do
+    if type(declaration) ~= "table" or type(declaration.id) ~= "string"
+      or type(declaration.path) ~= "string" then
+      error("hydronium_router.create_router: routes[" .. index .. "] is invalid", 2)
+    end
+    route_matcher:add(declaration.id, declaration.path, declaration.meta or declaration)
   end
 
-  local m = matcher.new()
-  for i = 1, #routes do
-    local decl = routes[i]
-    if type(decl) ~= "table" then
-      error("hydronium_router.create_router: routes[" .. i .. "] is a " .. type(decl)
-        .. ", expected a declaration from hydronium_router.route(id, path, component, opts)", 2)
-    end
-    if decl.component == nil and not (decl.meta and decl.meta.component) then
-      error("hydronium_router.create_router: routes[" .. i .. "] ("
-        .. string.format("%q", tostring(decl.id)) .. ") has no component", 2)
-    end
-    -- Accept a bare table as well as a `route()` result; `route()` simply
-    -- builds and validates this same shape.
-    local meta = decl.meta
-    if not meta then
-      meta = {}
-      for k, v in pairs(decl) do
-        if k ~= "id" and k ~= "path" then meta[k] = v end
-      end
-    end
-    m:add(decl.id, decl.path, meta)
-  end
-
-  -- Reactive state. All plain signals -- see the module header for why
-  -- none of these is a createComputed.
   local seed = H.untrack(function() return history.current() end)
+  local seed_relative = strip_base(base, seed.path)
+  local seed_result = seed_relative and route_matcher:match(seed_relative) or nil
+  local seed_chain = match_chain(seed_result)
+
   local location_sig = H.createSignal(seed)
-  local match_sig = H.createSignal(nil)
-  local param_sigs = {}
-  local query_sigs = {}
+  local leaf_sig = H.createSignal(seed_result and seed_result.route or nil)
+  local chain_sigs = {}
+  for depth, node in ipairs(seed_chain) do chain_sigs[depth] = H.createSignal(node) end
+  local chain_length_sig = H.createSignal(#seed_chain)
+  local param_sigs, query_sigs = {}, {}
+  for key, value in pairs(seed_result and seed_result.params or {}) do param_sigs[key] = H.createSignal(value) end
+  for key, value in pairs(seed.query or {}) do query_sigs[key] = H.createSignal(value) end
 
   local params_proxy = make_proxy(param_sigs, "params")
   local search_proxy = make_proxy(query_sigs, "search_params")
+  local navigation_state_sig = H.createSignal("idle")
+  local navigation_location_sig = H.createSignal(nil)
+  local redirect_sig = H.createSignal(nil)
+  local transition_id = 0
+  local current_transition = nil
+  local resources = {}
+  local initializing = true
+  local executor = opts.execute or default_executor(opts.resolve_loader)
+  if type(executor) ~= "function" then error("hydronium_router: execute must be a function", 2) end
 
   local router = {}
 
-  --- Resolve one Location into all the reactive state.
-  ---
-  --- The whole update is wrapped in `batch` so a single navigation is one
-  --- reactive flush rather than one per signal touched.
-  local function apply_location(loc)
-    local relative = strip_base(base, loc.path)
-    local result = relative and m:match(relative) or nil
-
-    H.batch(function()
-      location_sig:set(loc)
-      -- The stable route RECORD, not the per-match wrapper table: this is
-      -- what makes a param-only change dedup to "no route change".
-      match_sig:set(result and result.route or nil)
-      sync_signal_map(param_sigs, result and result.params or {})
-      sync_signal_map(query_sigs, loc.query or {})
-    end)
+  local function resource_for(node, params, force_new)
+    if not node.load then return nil end
+    local identity = node_scope_identity(node, params)
+    local existing = resources[node.id]
+    if not force_new and existing and existing.identity == identity then return existing end
+    local resource = route_resource.new({
+      status = "idle",
+      route_id = node.id,
+      key = node.load.key or node.id,
+      identity = identity,
+    })
+    resources[node.id] = resource
+    return resource
   end
 
-  -- Seed synchronously, BEFORE the effect. Effects are suppressed
-  -- entirely under SSR (`Effect.new` short-circuits when
-  -- `scheduler.isSSR()`), so a router that only ever populated itself
-  -- from its effect would render an empty Outlet on the server. Seeding
-  -- here means the first render is correct in every host; the effect's
-  -- own immediate run then dedups to a no-op.
-  apply_location(seed)
+  local function initialize_resource(resource, status, value, failure)
+    resource._status._signal.value = status
+    resource._value._signal.value = value
+    resource._error._signal.value = failure
+  end
 
-  -- The single subscription to navigation. `history.current()` is a
-  -- reactive read, so this effect re-runs on every push/replace/go with
-  -- no router-specific subscription mechanism.
+  local function cancel_transition()
+    local transition = current_transition
+    if not transition then return end
+    transition.cancelled = true
+    for _, cancel in ipairs(transition.cancels) do pcall(cancel) end
+    current_transition = nil
+  end
+
+  local function start_loaders(chain, params, loc, reason)
+    cancel_transition()
+    transition_id = transition_id + 1
+    local transition = {
+      id = transition_id,
+      cancelled = false,
+      cancels = {},
+      chain = chain,
+      location = loc,
+      reason = reason,
+    }
+    current_transition = transition
+    redirect_sig._signal.value = nil
+
+    local loading = false
+    for _, node in ipairs(chain) do if node.load then loading = true break end end
+    if initializing then
+      navigation_state_sig._signal.value = loading and "loading" or "idle"
+      navigation_location_sig._signal.value = loading and loc or nil
+    else
+      H.batch(function()
+        redirect_sig:set(nil)
+        navigation_state_sig:set(loading and "loading" or "idle")
+        navigation_location_sig:set(loading and loc or nil)
+      end)
+    end
+
+    local index = 1
+    local function finish()
+      if current_transition ~= transition or transition.cancelled then return end
+      current_transition = nil
+      if initializing then
+        navigation_state_sig._signal.value = "idle"
+        navigation_location_sig._signal.value = nil
+      else
+        H.batch(function()
+          navigation_state_sig:set("idle")
+          navigation_location_sig:set(nil)
+        end)
+      end
+    end
+
+    local run_next
+    run_next = function()
+      if current_transition ~= transition or transition.cancelled then return end
+      local node
+      while index <= #chain do
+        node = chain[index]
+        index = index + 1
+        if node.load then break end
+        node = nil
+      end
+      if not node then finish(); return end
+
+      local resource = resource_for(node, params, false)
+      if initializing then initialize_resource(resource, "pending", nil, nil) else resource:set_pending() end
+      local settled = false
+      local context = {
+        route = node,
+        route_id = node.id,
+        descriptor = node.load,
+        location = loc,
+        params = shallow_copy(params),
+        search = shallow_copy(loc.query),
+        transition_id = transition.id,
+        reason = reason,
+        request = opts.request,
+        services = opts.services,
+        parent = function(id)
+          local parent_resource = resources[id]
+          return parent_resource and parent_resource:value() or nil
+        end,
+        cancelled = function() return transition.cancelled end,
+      }
+
+      local function done(value, failure)
+        if settled then return end
+        settled = true
+        if current_transition ~= transition or transition.cancelled then return end
+        local kind = result_mod.kind(value)
+        if failure ~= nil then
+          local err = normalized_error(failure, node)
+          if initializing then initialize_resource(resource, "error", nil, err) else resource:reject(err) end
+          finish()
+          return
+        elseif kind == "redirect" then
+          if initializing then redirect_sig._signal.value = value else redirect_sig:set(value) end
+          finish()
+          if not initializing then history.replace(with_base(base, value.to), nil) end
+          return
+        elseif kind == "error" then
+          local err = normalized_error(value, node)
+          if initializing then initialize_resource(resource, "error", nil, err) else resource:reject(err) end
+          finish()
+          return
+        end
+        if initializing then initialize_resource(resource, "ready", value, nil) else resource:resolve(value) end
+        run_next()
+      end
+
+      local ok, cancel_or_error = pcall(executor, node.load, context, done)
+      if not ok then done(nil, cancel_or_error)
+      elseif not settled and type(cancel_or_error) == "function" then
+        transition.cancels[#transition.cancels + 1] = cancel_or_error
+      end
+    end
+
+    run_next()
+  end
+
+  local function sync_chain_signals(chain)
+    local previous_length = chain_length_sig._signal.value
+    for depth = 1, math.max(previous_length, #chain) do
+      local signal = chain_sigs[depth]
+      if not signal then
+        signal = H.createSignal(nil)
+        chain_sigs[depth] = signal
+      end
+      signal:set(chain[depth])
+    end
+    chain_length_sig:set(#chain)
+  end
+
+  local function apply_location(loc)
+    local relative = strip_base(base, loc.path)
+    local matched = relative and route_matcher:match(relative) or nil
+    local chain = match_chain(matched)
+    local params = matched and matched.params or {}
+    H.batch(function()
+      location_sig:set(loc)
+      leaf_sig:set(matched and matched.route or nil)
+      sync_chain_signals(chain)
+      sync_signal_map(param_sigs, params)
+      sync_signal_map(query_sigs, loc.query or {})
+    end)
+    start_loaders(chain, params, loc, "navigation")
+  end
+
+  local hydrated = false
+  local hydration = opts.hydration or rawget(_G, "__hydronium_router_state")
+  if hydration ~= nil then
+    hydration = hydration_state.decode(hydration)
+    local same_location = hydration.canonical_url == seed.href
+    local same_chain = #hydration.route_chain == #seed_chain
+    for depth, node in ipairs(seed_chain) do
+      if hydration.route_chain[depth] ~= node.id then same_chain = false; break end
+    end
+    if same_location and same_chain and hydration.route_id == (seed_result and seed_result.route.id) then
+      hydrated = true
+      for _, node in ipairs(seed_chain) do
+        if node.load then
+          local entry = hydration.resources[node.load.key or node.id]
+          if type(entry) ~= "table" or (entry.status ~= "ready" and entry.status ~= "error") then
+            hydrated = false
+            break
+          end
+          local resource = resource_for(node, seed_result and seed_result.params or {}, false)
+          initialize_resource(resource, entry.status, entry.value, entry.error)
+        end
+      end
+    end
+  end
+
+  -- Seed route resources before the router is exposed. Raw initialization is
+  -- intentional: create_router may run during component setup, where signal
+  -- writes are forbidden, and no observer can exist yet.
+  if not hydrated then start_loaders(seed_chain, seed_result and seed_result.params or {}, seed, "initial") end
+  initializing = false
+
+  local first_history_effect = true
   H.createEffect(function()
-    apply_location(history.current())
+    local current = history.current()
+    if first_history_effect then first_history_effect = false; return end
+    apply_location(current)
   end)
-
-  -- A router created inside a component scope must release its history
-  -- subscription when that component unmounts. Outside a scope this is a
-  -- documented silent no-op in core (`scope.onCleanup`), so a
-  -- module-level router is unaffected.
   H.onCleanup(function()
+    cancel_transition()
     history.dispose()
   end)
 
-  ------------------------------------------------------------------
-  -- Public surface
-  ------------------------------------------------------------------
-
   router.history = history
-  router.matcher = m
+  router.matcher = route_matcher
   router.base = base
-
-  --- Reactive getter for the current Location.
-  --- @return hydronium_router.Location
-  function router.location()
-    return location_sig:get()
-  end
-
-  --- Reactive getter for the matched ROUTE RECORD (or nil).
-  --- Notifies only when the matched route actually changes -- not when
-  --- its params change. `Outlet` reads exactly this.
-  --- @return table|nil route record
-  function router.match()
-    return match_sig:get()
-  end
-
   router.params = params_proxy
   router.search_params = search_proxy
+  router.resources = resources
 
-  --- A real plain table of the current path params.
-  ---
-  --- Use this, never `pairs(router.params)` -- see the `__pairs` note in
-  --- the module header. Reactive: it reads through the signals, so calling
-  --- it inside a render closure or effect subscribes to the params it saw.
-  --- @return table
-  function router.params_snapshot()
-    match_sig:get()
+  function router.location() return location_sig:get() end
+  function router.match() return leaf_sig:get() end
+  function router.route_at(depth)
+    local signal = chain_sigs[depth]
+    return signal and signal:get() or nil
+  end
+  function router.matches()
     local out = {}
-    for k, sig in pairs(param_sigs) do
-      local v = sig:get()
-      if v ~= nil then out[k] = v end
+    local length = chain_length_sig:get()
+    for depth = 1, length do out[depth] = chain_sigs[depth]:get() end
+    return out
+  end
+  function router.params_snapshot()
+    leaf_sig:get()
+    local out = {}
+    for key, signal in pairs(param_sigs) do
+      local value = signal:get()
+      if value ~= nil then out[key] = value end
     end
     return out
   end
-
-  --- A real plain table of the current query params. Same rules as
-  --- `params_snapshot`.
-  --- @return table
   function router.search_snapshot()
     location_sig:get()
     local out = {}
-    for k, sig in pairs(query_sigs) do
-      local v = sig:get()
-      if v ~= nil then out[k] = v end
+    for key, signal in pairs(query_sigs) do
+      local value = signal:get()
+      if value ~= nil then out[key] = value end
     end
     return out
   end
-
-  --- Navigate.
-  ---
-  --- @param to string    an href RELATIVE to the router's base
-  --- @param nav? table   `.replace` boolean (overwrite the current entry
-  ---                     instead of pushing), `.state` any
+  function router.route_data(id)
+    local resource = resources[id]
+    if not resource then
+      error("hydronium_router: route " .. string.format("%q", tostring(id))
+        .. " has no active loader resource", 2)
+    end
+    return resource
+  end
+  function router.navigation()
+    return {
+      state = function() return navigation_state_sig:get() end,
+      location = function() return navigation_location_sig:get() end,
+      transition_id = function() return transition_id end,
+    }
+  end
+  function router.redirect() return redirect_sig:get() end
+  function router.revalidate()
+    local loc = location_sig:get()
+    local relative = strip_base(base, loc.path)
+    local matched = relative and route_matcher:match(relative) or nil
+    start_loaders(match_chain(matched), matched and matched.params or {}, loc, "revalidation")
+  end
   function router.navigate(to, nav)
-    if type(to) ~= "string" then
-      error("hydronium_router: navigate(to) expects a string href, got " .. type(to), 2)
-    end
+    if type(to) ~= "string" then error("hydronium_router.navigate expects a string", 2) end
     nav = nav or {}
-
-    local target = to
-    if base ~= "/" and to:sub(1, 1) == "/" then
-      target = base .. to
-    end
-
-    if nav.replace then
-      history.replace(target, nav.state)
-    else
-      history.push(target, nav.state)
-    end
+    local target = with_base(base, to)
+    if nav.replace then history.replace(target, nav.state) else history.push(target, nav.state) end
   end
-
-  --- Build a link for a registered route id, base included.
-  --- Delegates to `hydronium_router.href`, which is where the unknown-id,
-  --- missing-param and unknown-param-key checks live.
-  --- @return string
   function router.href(id, params, query)
-    local built = href_mod.href(m, id, params, query)
-    if base == "/" then return built end
-    return base .. built
+    local built = href_mod.href(route_matcher, id, params, query)
+    return base == "/" and built or base .. built
   end
-
-  --- Provider component. Publishes THIS router on the shared
-  --- `RouterContext` so `useRouter`, `useParams`, `useNavigate` and
-  --- `Outlet` can find it.
+  function router.scope_identity(node)
+    return node_scope_identity(node, router.params_snapshot())
+  end
   function router.Provider(props)
     props = props or {}
-    return H.h(M.RouterContext.Provider, { value = router }, props.children)
+    return H.h(M.RouterContext.Provider, { value = router },
+      H.h(M.OutletDepthContext.Provider, { value = 1 }, props.children))
   end
-
   router.Context = M.RouterContext
-
   return router
 end
 
 M.create = M.create_router
 M.createRouter = M.create_router
-
 return M

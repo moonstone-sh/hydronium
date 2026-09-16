@@ -29,6 +29,7 @@
 ---@field target "_blank" | "_self" | "_parent" | "_top" | string?
 ---@field rel string?
 ---@field download any?
+---@field onNavigate? fun(): void Hydronium router navigation; emitted as a guarded click by the browser host.
 
 ---@class HTMLInputElement : HTMLElement
 ---@field type string?
@@ -367,7 +368,7 @@
 ---@field onBlur? fun(event: SyntheticFocusEvent<HTMLFormElement>): void
 ---@field onInput? fun(event: SyntheticInputEvent<HTMLFormElement>): void
 ---@field onChange? fun(event: SyntheticChangeEvent<HTMLFormElement>): void
----@field onSubmit? fun(event: SyntheticEvent<HTMLFormElement>): void
+---@field onSubmit? fun(values_literal?: string): void Hydronium browser forms receive a Lua-literal snapshot of successful controls.
 ---@field onReset? fun(event: SyntheticEvent<HTMLFormElement>): void
 ---@field onWheel? fun(event: SyntheticWheelEvent<HTMLFormElement>): void
 ---@field onTouchStart? fun(event: SyntheticTouchEvent<HTMLFormElement>): void

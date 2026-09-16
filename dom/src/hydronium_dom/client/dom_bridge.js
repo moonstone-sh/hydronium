@@ -33,6 +33,34 @@
 */
 
 /** @returns {Record<string, Function>} the 15 required bridge functions, plus the 1 optional one (hydration_mismatch) */
+let currentEvent;
+const CURRENT_EVENT = Symbol.for("hydronium.dom.currentEvent");
+const EVENT_PAYLOADS = Symbol.for("hydronium.dom.eventPayloads");
+
+export function getCurrentDomEvent() {
+  return currentEvent ?? globalThis[CURRENT_EVENT];
+}
+
+export function shouldHandleNavigation(event) {
+  if (!event || event.defaultPrevented) return false;
+  if (event.button != null && event.button !== 0) return false;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return false;
+  const anchor = event.currentTarget;
+  if (!anchor) return false;
+  if (anchor.hasAttribute?.("download")) return false;
+  const target = anchor.getAttribute?.("target");
+  if (target && target.toLowerCase() !== "_self") return false;
+  const href = anchor.getAttribute?.("href");
+  if (!href) return false;
+  try {
+    const url = new URL(href, globalThis.location?.href);
+    if (globalThis.location && url.origin !== globalThis.location.origin) return false;
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 export function createDomBridge() {
   /** @type {WeakMap<Node, Map<string, EventListener>>} */
   const listenerMap = new WeakMap();
@@ -61,6 +89,10 @@ export function createDomBridge() {
       if (child.parentNode === parent) parent.removeChild(child);
     },
     set_attr(el, key, value) {
+      if (key === "unsafe_raw_html" || key === "dangerouslySetInnerHTML") {
+        el.innerHTML = String(key === "dangerouslySetInnerHTML" ? value?.__html ?? "" : value);
+        return;
+      }
       if (key === "id") { el.id = String(value); return; }
       if (typeof value === "boolean") {
         if (value) el.setAttribute(key, "");
@@ -70,6 +102,10 @@ export function createDomBridge() {
       el.setAttribute(key, String(value));
     },
     remove_attr(el, key) {
+      if (key === "unsafe_raw_html" || key === "dangerouslySetInnerHTML") {
+        el.innerHTML = "";
+        return;
+      }
       if (key === "id") { el.id = ""; return; }
       el.removeAttribute(key);
     },
@@ -97,19 +133,61 @@ export function createDomBridge() {
     // reconciliation replace a component's onClick body across an HMR
     // refresh, with no HMR-specific code anywhere in this file.
     set_listener(el, eventName, fn) {
+      const domEventName = eventName === "navigate" ? "click" : eventName;
       let m = listenerMap.get(el);
       if (!m) { m = new Map(); listenerMap.set(el, m); }
       const prev = m.get(eventName);
-      if (prev) el.removeEventListener(eventName, prev);
-      const handler = () => fn();
+      if (prev) el.removeEventListener(domEventName, prev);
+      // Wasmoon cannot safely marshal a browser Event as a Lua callback
+      // argument. Callbacks stay argument-free unless an event adapter has
+      // captured a transport-safe value such as a string.
+      const handler = (event) => {
+        if (eventName === "navigate" && !shouldHandleNavigation(event)) return;
+        // Lua callbacks cross an async Wasmoon boundary, after the browser's
+        // cancellation window. Controlled submit and router-navigation
+        // events must therefore be cancelled before invoking Lua.
+        if (eventName === "submit" || eventName === "navigate") {
+          event.preventDefault();
+        }
+        currentEvent = event;
+        globalThis[CURRENT_EVENT] = event;
+        const clear = () => {
+          if (currentEvent === event) currentEvent = undefined;
+          if (globalThis[CURRENT_EVENT] === event) globalThis[CURRENT_EVENT] = undefined;
+        };
+        try {
+          // Some embedders schedule the Lua callback after this listener
+          // returns. Snapshot the event while currentTarget is still live.
+          const payloadFactory = globalThis[EVENT_PAYLOADS]?.get?.(eventName);
+          const payload = payloadFactory?.(event);
+          const result = payload === undefined ? fn() : fn(payload);
+          // Wasmoon callbacks are promise-backed even when the Lua function
+          // itself is synchronous. Keep the event current until Lua has
+          // finished calling any bridge atoms such as form_values().
+          if (result && typeof result.then === "function") {
+            result.finally(clear);
+          } else {
+            clear();
+          }
+        } catch (error) {
+          clear();
+          throw error;
+        }
+      };
       m.set(eventName, handler);
-      el.addEventListener(eventName, handler);
+      el.addEventListener(domEventName, handler);
+    },
+    prevent_default() {
+      currentEvent?.preventDefault?.();
     },
     remove_listener(el, eventName) {
       const m = listenerMap.get(el);
       if (!m) return;
       const prev = m.get(eventName);
-      if (prev) { el.removeEventListener(eventName, prev); m.delete(eventName); }
+      if (prev) {
+        el.removeEventListener(eventName === "navigate" ? "click" : eventName, prev);
+        m.delete(eventName);
+      }
     },
     // Hydration helpers. IMPORTANT (found the hard way, verified live via
     // Playwright, documented in docs/HMR_DOM_HOST.md Part IV): these

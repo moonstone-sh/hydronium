@@ -1,10 +1,10 @@
 # Hydronium Quickstart
 
-The "try this first" example: a small server-rendered page with a counter
-that runs as **real Lua in your browser**, and real state-preserving hot
-module replacement when you edit it.
+The "try this first" example: a server-rendered Hydronium site with shared
+browser/server routes, a progressive action, and a counter that runs as real
+Lua in your browser. Component edits use state-preserving hot replacement.
 
-Scaffolded from the `ssr` template (`moonstone/hydronium-create`), then polished into
+Scaffolded from the `ssr` template (`hydronium/create`), then polished into
 an onboarding page in the spirit of `npm create vite@latest`.
 
 ## Run it
@@ -22,6 +22,12 @@ When the server actually answers you get:
 ```
 
 Then open <http://localhost:8080/>.
+
+The About link routes without reloading the browser Lua VM. The contact form
+works as a native POST before hydration; after hydration it validates and
+submits in place. `views/Site.lua` supplies both the Hydronium browser router
+and Meteorite's explicit page routes. `views/Actions.lua` supplies the shared
+form/server action contract.
 
 To build a production binary instead:
 
@@ -62,9 +68,14 @@ the equivalent of Vite's `index.html` -- is an explicit page-reload boundary.
 ```
 views/Document.luax       stable server document + client bootstrap
 views/App.luax            hot client application root
+views/Home.luax           hot home page, counter, and progressive form
+views/About.luax          hot second page
 views/Counter.luax        hot nested component with preserved signal state
+views/Site.lua            shared serializable page declaration
+views/Actions.lua         shared action declaration and schema
 public/style.css          replaced in place without unloading the Lua VM
 src/main.lua              Meteorite routes and explicit update policy
+src/app/                  page adapter and action handler modules
 src/views/Document.lua    compiles the document shell on demand
 dev.sh                    startup banner, then `meteorite dev`
 client_manifest.json      framework modules loaded by the browser VM

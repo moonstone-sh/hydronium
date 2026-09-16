@@ -73,6 +73,9 @@ describe("Meteorite Integration Adapter", function()
     local c = {
       params = { user_id = "user-999" },
       query = { tab = "activity" },
+      target = function() return "/users/user-999?tab=activity" end,
+      path = function() return "/users/user-999" end,
+      route_id = function() return "users.show" end,
       request_id = "req-abc-999",
       state = { user_role = "admin" },
       scope = { org = "meteorite-foundation" },
@@ -86,6 +89,9 @@ describe("Meteorite Integration Adapter", function()
     assert.equal(captured_req.request_id, "req-abc-999")
     assert.equal(captured_req.state.user_role, "admin")
     assert.equal(captured_req.scope.org, "meteorite-foundation")
+    assert.equal(captured_req.url, "/users/user-999?tab=activity")
+    assert.equal(captured_req.path, "/users/user-999")
+    assert.equal(captured_req.route_id, "users.show")
 
     assert.truthy(res.body:find("<span id=\"user%-id\">user%-999</span>"))
     assert.truthy(res.body:find("<span id=\"tab\">activity</span>"))

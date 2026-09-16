@@ -23,9 +23,12 @@ local browser = require("hydronium_router.history.browser")
 local create = browser.create_browser_history
 
 --- A real, tiny stand-in for window.history + window.location.
-local function fake_window(initial)
+local state_codec = require("hydronium_router.history.state")
+
+local function fake_window(initial, initial_state)
   local w = {
     entries = { initial or "/" },
+    states = { state_codec.encode(initial_state) },
     index = 1,
     listeners = {},
     unsubscribed = 0,
@@ -34,13 +37,14 @@ local function fake_window(initial)
   w.bridge = {
     push_state = function(url, state)
       for i = #w.entries, w.index + 1, -1 do w.entries[i] = nil end
+      for i = #w.states, w.index + 1, -1 do w.states[i] = nil end
       w.index = w.index + 1
       w.entries[w.index] = url
-      w.last_state = state
+      w.states[w.index] = state
     end,
     replace_state = function(url, state)
       w.entries[w.index] = url
-      w.last_state = state
+      w.states[w.index] = state
     end,
     go = function(delta)
       local target = w.index + delta
@@ -51,6 +55,7 @@ local function fake_window(initial)
       for _, fn in ipairs(w.listeners) do fn() end
     end,
     location_href = function() return w.entries[w.index] end,
+    location_state = function() return w.states[w.index] end,
     on_popstate = function(fn)
       w.listeners[#w.listeners + 1] = fn
       return function()
@@ -118,8 +123,9 @@ describe("Router: history.browser", function()
       local hist = create(w.bridge)
       hist.push("/b", { n = 1 })
       assert.equal(w.entries[w.index], "/b")
-      assert.same(w.last_state, { n = 1 })
+      assert.equal(w.states[w.index], '{"n":1}')
       assert.equal(hist.current().path, "/b")
+      assert.same(hist.current().state, { n = 1 })
     end)
 
     it("replaces through the bridge without growing the stack", function()
@@ -131,6 +137,52 @@ describe("Router: history.browser", function()
       assert.equal(hist.current().path, "/c")
     end)
 
+    it("round-trips nested state through push, replace, back, and forward", function()
+      local w = fake_window("/a", { screen = "initial" })
+      local hist = create(w.bridge)
+      local pushed = {
+        enabled = true,
+        count = 3.5,
+        labels = { "stage:dev", "sad pepe", "Olá, 世界 👋" },
+        nested = { punctuation = [[quotes " slash \\ line
+break : ? # & =]], child = { ok = false } },
+      }
+
+      hist.push("/b", pushed)
+      assert.same(hist.current().state, pushed)
+      assert.falsy(hist.current().state == pushed, "browser state must be a structured copy")
+
+      hist.replace("/c", { replacement = { value = "résumé: ✓" } })
+      assert.same(hist.current().state, { replacement = { value = "résumé: ✓" } })
+
+      assert.truthy(hist.back())
+      assert.same(hist.current().state, { screen = "initial" })
+      assert.truthy(hist.forward())
+      assert.same(hist.current().state, { replacement = { value = "résumé: ✓" } })
+    end)
+
+    it("preserves nil state across every navigation direction", function()
+      local w = fake_window("/a")
+      local hist = create(w.bridge)
+      assert.is_nil(hist.current().state)
+      hist.push("/b", nil)
+      assert.equal(w.states[w.index], "null")
+      assert.is_nil(hist.current().state)
+      hist.back()
+      assert.is_nil(hist.current().state)
+      hist.forward()
+      assert.is_nil(hist.current().state)
+    end)
+
+    it("rejects values the browser cannot persist portably", function()
+      local hist = create(fake_window("/a").bridge)
+      assert.has_error(function() hist.push("/function", function() end) end, "unsupported function")
+      assert.has_error(function() hist.push("/infinite", math.huge) end, "finite")
+      assert.has_error(function() hist.push("/sparse", { [2] = true }) end, "contiguous")
+      local cyclic = {}; cyclic.self = cyclic
+      assert.has_error(function() hist.replace("/cyclic", cyclic) end, "cyclic")
+    end)
+
     it("updates from a popstate the adapter did not initiate", function()
       local w = fake_window("/a")
       local hist = create(w.bridge)
@@ -140,6 +192,13 @@ describe("Router: history.browser", function()
       w.index = 1
       for _, fn in ipairs(w.listeners) do fn() end
       assert.equal(hist.current().path, "/a")
+    end)
+
+    it("treats foreign browser history state as nil", function()
+      local w = fake_window("/a")
+      w.states[1] = nil
+      local hist = create(w.bridge)
+      assert.is_nil(hist.current().state)
     end)
 
     it("re-runs a Hydronium effect on navigation", function()

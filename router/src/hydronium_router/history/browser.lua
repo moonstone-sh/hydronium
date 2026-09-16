@@ -2,14 +2,15 @@
   hydronium_router.history.browser -- a History backed by the real
   `window.history`, reached through an injectable bridge.
 
-  BRIDGE CONTRACT -- five functions, either passed explicitly as a table
+  BRIDGE CONTRACT -- six functions, either passed explicitly as a table
   to `create_browser_history(bridge)` or (if omitted) read from plain Lua
   globals named `__router_<name>`:
 
-    push_state(url: string, state: any)
-    replace_state(url: string, state: any)
+    push_state(url: string, state_json: string)
+    replace_state(url: string, state_json: string)
     go(delta: integer)
     location_href() -> string          -- e.g. "/users/7?tab=a#top"
+    location_state() -> string|nil     -- encoded Hydronium state, or nil
     on_popstate(fn) -> unsubscribe|nil -- fn is called with no arguments
                                           after the browser navigates
 
@@ -37,13 +38,14 @@
   through this object, or use `history.memory`.
 --]]
 
-local hydronium = require("hydronium")
+local hydronium = require("hydronium.core")
 local history = require("hydronium_router.history")
+local state_codec = require("hydronium_router.history.state")
 
 local M = {}
 
 M.REQUIRED_BRIDGE_FNS = {
-  "push_state", "replace_state", "go", "location_href", "on_popstate",
+  "push_state", "replace_state", "go", "location_href", "location_state", "on_popstate",
 }
 
 local function default_bridge()
@@ -52,6 +54,7 @@ local function default_bridge()
     replace_state = _G.__router_replace_state,
     go = _G.__router_go,
     location_href = _G.__router_location_href,
+    location_state = _G.__router_location_state,
     on_popstate = _G.__router_on_popstate,
   }
 end
@@ -82,12 +85,14 @@ function M.create_browser_history(bridge)
       .. table.concat(missing, ", ")
       .. " -- either pass a bridge table (create_browser_history({ push_state = ..., ... })), "
       .. "or set the corresponding __router_<name> globals before calling it with no argument. "
-      .. "router/client/history.js installs exactly these five.",
+      .. "router/client/history.js installs exactly these six.",
       2
     )
   end
 
-  local location = hydronium.createSignal(history.to_location(bridge.location_href()))
+  local location = hydronium.createSignal(history.to_location(
+    bridge.location_href(), state_codec.decode(bridge.location_state())
+  ))
   local disposed = false
 
   -- Best-effort position tracking; see the module doc comment.
@@ -110,7 +115,9 @@ function M.create_browser_history(bridge)
   end
 
   local function sync_from_bridge()
-    location:set(history.to_location(bridge.location_href()))
+    location:set(history.to_location(
+      bridge.location_href(), state_codec.decode(bridge.location_state())
+    ))
   end
 
   local unsubscribe = bridge.on_popstate(function()
@@ -137,16 +144,18 @@ function M.create_browser_history(bridge)
   --- explicitly rather than waiting for an event that never arrives.
   function self.push(to, state)
     assert_live("push")
-    bridge.push_state(to, state)
+    local encoded = state_codec.encode(state)
+    bridge.push_state(to, encoded)
     pushes = pushes + 1 - offset  -- pushing while back in the stack drops the forward branch
     offset = 0
-    location:set(history.to_location(to, state))
+    location:set(history.to_location(to, state_codec.decode(encoded)))
   end
 
   function self.replace(to, state)
     assert_live("replace")
-    bridge.replace_state(to, state)
-    location:set(history.to_location(to, state))
+    local encoded = state_codec.encode(state)
+    bridge.replace_state(to, encoded)
+    location:set(history.to_location(to, state_codec.decode(encoded)))
   end
 
   --- The browser applies `go` asynchronously and reports the result via

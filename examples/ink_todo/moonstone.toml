@@ -12,19 +12,19 @@ version = "2.1.0"
 abi = "5.1"
 
 [[dependencies]]
-name = "moonstone/hydronium"
+name = "hydronium/core"
 constraint = "path:../../core"
 registry = "path"
 role = "runtime"
 
 [[dependencies]]
-name = "moonstone/hydronium-ink"
+name = "hydronium/ink"
 constraint = "path:../../ink"
 registry = "path"
 role = "runtime"
 
 [[dependencies]]
-name = "moonstone/hydronium-luax"
+name = "hydronium/luax"
 constraint = "path:../../luax"
 registry = "path"
 role = "runtime"

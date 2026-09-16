@@ -5,7 +5,9 @@
     "path": [
       "?.lua",
       "?/init.lua",
-      "?.luax"
+      "?.luax",
+      ".meteorite/aids/lua/?.lua",
+      ".meteorite/aids/lua/?/init.lua"
     ],
     "plugin": [
       ".moonstone/env/share/lua/5.1/hydronium_luax/luals/init.lua"
@@ -16,7 +18,8 @@
       ".moonstone/env/share/lua/5.1",
       ".moonstone/env/libexec/hydronium-luax/types",
       ".moonstone/env/libexec/hydronium-dom/types",
-      ".moonstone/env/libexec/hydronium-dom/ambient-types"
+      ".moonstone/env/libexec/hydronium-dom/ambient-types",
+      ".meteorite/aids/lua"
     ]
   },
   "files": {

@@ -1,13 +1,13 @@
 # Hydronium Ink
 
-`moonstone/hydronium-ink` renders Hydronium trees in a terminal. Its Yoga
+`hydronium/ink` renders Hydronium trees in a terminal. Its Yoga
 backed `Box` layout, styled `Text`, and input hooks run on LuaJIT.
 
 ```sh
-moon add moonstone/hydronium-ink
+moon add hydronium/ink
 ```
 
-The package resolves `moonstone/hydronium` and projects the matching native
+The package resolves `hydronium/core` and projects the matching native
 Yoga library into the Moonstone environment. Supported targets are arm64 and
 x86-64 macOS, plus glibc Linux. Windows is not supported.
 

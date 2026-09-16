@@ -45,6 +45,17 @@ local Hydronium = {
   resource = core.resource,
   isSuspension = core.isSuspension,
 
+  -- Host-neutral mutations and scoped form bindings
+  actions = core.actions,
+  action = core.action,
+  Action = core.Action,
+  action_ok = core.action_ok,
+  action_fail = core.action_fail,
+  forms = core.forms,
+  useForm = core.useForm,
+  use_form = core.use_form,
+  FormTransportContext = core.FormTransportContext,
+
   -- Context & Refs
   createContext = core.createContext,
   create_context = core.createContext,

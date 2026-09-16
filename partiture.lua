@@ -28,14 +28,14 @@ return ballad.partiture(function(p)
     end
 
     local release = layout.directory({
-        { from = package_orbit("core"), to = "hydronium" },
-        { from = package_orbit("dom"), to = "hydronium-dom" },
-        { from = package_orbit("luax"), to = "hydronium-luax" },
-        { from = package_orbit("ink"), to = "hydronium-ink" },
-        { from = package_orbit("router"), to = "hydronium-router" },
-        { from = package_orbit("ballad"), to = "hydronium-ballad" },
-        { from = package_orbit("create"), to = "hydronium-create" },
-        { from = package_orbit("cli"), to = "hydronium-cli" },
+        { from = package_orbit("core"), to = "core" },
+        { from = package_orbit("dom"), to = "dom" },
+        { from = package_orbit("luax"), to = "luax" },
+        { from = package_orbit("ink"), to = "ink" },
+        { from = package_orbit("router"), to = "router" },
+        { from = package_orbit("ballad"), to = "ballad" },
+        { from = package_orbit("create"), to = "create" },
+        { from = package_orbit("cli"), to = "cli" },
     })
 
     p.sink.directory(release, { out = "dist/orbit", file_graph = true, product = "release" })

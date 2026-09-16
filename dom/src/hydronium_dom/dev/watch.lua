@@ -31,47 +31,44 @@ local M = {}
 local DEFAULT_POLL_INTERVAL = 0.5
 local DEFAULT_BUDGET = 5
 
---- Snapshots every file in `files` (mtime/size/name) into one sorted,
---- "|"-joined string; any create/delete/modify changes it. `sleep_first`
---- folds the poll delay into the same `io.popen` call as the stat
---- commands, so each tick costs one subprocess, not two.
+--- Snapshots every file in `files` (two content hashes/size/name) into one
+--- sorted, "|"-joined string; any create/delete/content change changes it.
 ---
---- Sorted (not filesystem-stat-order-dependent) so the fingerprint
---- depends only on content, matching Ballad's own watcher, which pipes
---- its snapshot through `sort` for the same reason. "|"-joined, not
+--- This deliberately uses ordinary file reads rather than `io.popen("stat")`.
+--- Meteorite serves requests on multiple threads; forking a shell from that
+--- process can strand a request when a page refresh abandons its EventSource.
+--- Reading the files in-process also detects same-size writes made within a
+--- filesystem timestamp tick, which the old mtime/size fingerprint missed.
+---
+--- Sorted so caller order cannot affect the fingerprint. "|"-joined, not
 --- newline-joined: a raw newline round-tripped through a query string
 --- (percent-encoded as %0A in `since=...`) is rejected by Meteorite's
 --- router as a CRLF-injection guard, and a literal embedded newline in
 --- an SSE `data:` line is malformed per the SSE spec too (one `data:`
 --- prefix per line). "|" sidesteps both, since it never appears in a
 --- `stat` line's own content.
-function M.fingerprint(files, poll_interval, sleep_first)
-  local parts = {}
-  if sleep_first then
-    parts[#parts + 1] = "sleep " .. tostring(poll_interval) .. ";"
-  end
-  for _, f in ipairs(files) do
-    -- GNU `stat -f` is a successful *filesystem* report, not BSD stat's
-    -- formatting flag. Prefer GNU's `-c` spelling so Linux never accepts the
-    -- wrong command and folds changing free-block counts into the fingerprint.
-    parts[#parts + 1] = "stat -c '%.9Y %s %n' '" .. f .. "' 2>/dev/null || stat -f '%Fm %z %N' '" .. f .. "';"
-  end
-  parts[#parts + 1] = "true"
-  local p = io.popen(table.concat(parts, " "), "r")
-  if not p then
-    return ""
-  end
-  local out = p:read("*a") or ""
-  p:close()
+function M.fingerprint(files)
+  local modulo = 4294967296
   local lines = {}
-  for line in out:gmatch("[^\n]+") do
-    lines[#lines + 1] = line
+  for _, f in ipairs(files) do
+    local file = io.open(f, "rb")
+    if file then
+      local content = file:read("*a") or ""
+      file:close()
+      local a, b = 5381, 0
+      for index = 1, #content do
+        local byte = content:byte(index)
+        a = (a * 33 + byte) % modulo
+        b = (b * 65599 + byte) % modulo
+      end
+      lines[#lines + 1] = string.format("%.0f:%.0f %d %s", a, b, #content, f)
+    end
   end
   table.sort(lines)
   return table.concat(lines, "|")
 end
 
---- Splits a fingerprint back into { [path] = "<mtime> <size>" }.
+--- Splits a fingerprint back into { [path] = "<hashes> <size>" }.
 ---
 --- The fingerprint is not an opaque digest -- it is the concatenation of
 --- one `stat` line per watched file, so the identity of WHICH file moved
@@ -100,7 +97,7 @@ function M.parse_fingerprint(fp)
 end
 
 --- Names which watched files actually differ between two fingerprints.
---- Covers all three real cases: modified (stat line changed), created
+--- Covers all three real cases: modified (content entry changed), created
 --- (absent from `prev`, `stat` having failed and printed nothing), and
 --- deleted (absent from `next`, same reason).
 ---
@@ -212,6 +209,11 @@ function M.serve_sse(c, files, opts)
   local since = c:header("Last-Event-ID") or get_query("since")
   local budget_value = get_query("budget")
   local budget = tonumber(budget_value) or default_budget
+  local sleep = opts.sleep or _G.meteorite_sleep
+
+  if budget > 0 and type(sleep) ~= "function" then
+    error("hydronium_dom.dev.watch: positive budgets require Meteorite's meteorite_sleep helper")
+  end
 
   if not pcall(stream_begin, 200, "text/event-stream") then return end
   if not write("retry: 200\n\n") then return end
@@ -230,7 +232,8 @@ function M.serve_sse(c, files, opts)
   local elapsed = 0
   local since_heartbeat = 0
   while elapsed < budget do
-    local next_fp = M.fingerprint(files, poll_interval, true)
+    sleep(poll_interval)
+    local next_fp = M.fingerprint(files)
     elapsed = elapsed + poll_interval
     since_heartbeat = since_heartbeat + poll_interval
     if next_fp ~= current then

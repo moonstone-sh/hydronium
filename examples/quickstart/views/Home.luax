@@ -1,0 +1,41 @@
+local H = require("hydronium.core.element")
+local r = require("hydronium_router")
+local actions = require("views.Actions")
+local Counter = require("views.Counter")
+local d = require("hydronium_dom").d
+
+local function Home()
+	local navigate = r.useNavigate()
+	local form = require("hydronium.core.form").useForm(actions.contact, { enhance = true })
+	local go_about = nil
+	if _G.__dom_set_listener then
+		go_about = function() navigate("/about") end
+	end
+
+	return function()
+		return (
+			<d.main class="page">
+				<d.div class="card">
+					<d.p class="eyebrow">Quickstart</d.p>
+					<d.h1 class="title">Hydronium + Meteorite</d.h1>
+					<d.p class="subtitle">One page manifest, shared by the browser router and server compiler.</d.p>
+					<d.a href="/about" onNavigate={go_about}>About this example</d.a>
+					<d.div class="app-slot"><Counter initial={0} /></d.div>
+					<d.form method={form.props.method} action={form.props.action} onSubmit={form.props.onSubmit}>
+						<d.label for="name">Name</d.label>
+						<d.input id="name" name="name" />
+						<d.button type="submit" disabled={form:pending()}>Send</d.button>
+						<d.p class="form-error">{function() return form:error("name") or form:error("_form") or "" end}</d.p>
+						<d.p class="form-result">{function()
+							local result = form:data()
+							return result and result.greeting or ""
+						end}</d.p>
+					</d.form>
+					<d.p class="docs">Real Lua, running in your browser.</d.p>
+				</d.div>
+			</d.main>
+		)
+	end
+end
+
+return Home

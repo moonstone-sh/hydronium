@@ -14,7 +14,7 @@
   default `==` equality always sees a change and always notifies.
 --]]
 
-local hydronium = require("hydronium")
+local hydronium = require("hydronium.core")
 local history = require("hydronium_router.history")
 
 local M = {}

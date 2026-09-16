@@ -21,17 +21,17 @@ abi = "5.1"
 run = "luajit run.lua"
 
 [[dependencies]]
-name = "moonstone/hydronium"
+name = "hydronium/core"
 constraint = "^0.1.0"
 role = "runtime"
 
 [[dependencies]]
-name = "moonstone/hydronium-ink"
+name = "hydronium/ink"
 constraint = "^0.1.1"
 role = "runtime"
 
 [[dependencies]]
-name = "moonstone/hydronium-luax"
+name = "hydronium/luax"
 constraint = "^0.1.0"
 role = "runtime"
 ]=], project_name)
