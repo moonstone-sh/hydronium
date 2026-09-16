@@ -53,6 +53,8 @@ M.InkAppContext = hydronium.createContext(nil)
 --- @field setCursorPosition fun(position: { x: number, y: number }|nil)
 --- @field registerTicker fun(ticker: { tick: fun(nowMs: number), isActive: boolean }): fun() Returns an unregister function.
 --- @field registerPasteHandler fun(handler: fun(text: string)): fun() Returns an unregister function.
+--- @field setAltScreen fun(enabled: boolean): boolean Switches the terminal's alternate screen buffer on/off. Returns whether this call changed anything.
+--- @field altScreen fun(): boolean A reactive signal getter.
 
 --- @return hydronium_ink.InkAppContextValue
 local function requireAppContext(hookName)
@@ -207,6 +209,43 @@ function M.useCursor()
   local ctx = requireAppContext("useCursor")
   return {
     setCursorPosition = ctx.setCursorPosition,
+  }
+end
+
+--- @class hydronium_ink.UseAltScreenResult
+--- @field enter fun(): boolean Switch into the terminal's alternate screen buffer. Returns true if this call actually switched (false if already there).
+--- @field leave fun(): boolean Switch back to the normal screen.
+--- @field toggle fun(): boolean Leave if currently in the alternate screen, enter otherwise.
+--- @field isActive fun(): boolean REACTIVE GETTER (not a plain boolean -- see this module's own "setup once" doc comment, same deviation as useFocus's isFocused above). Read it from your render closure to render a different view per screen.
+
+--- The terminal's ALTERNATE SCREEN BUFFER (DECSET 1049) -- what a
+--- fullscreen TUI (vim, less, htop) runs in, so that leaving it restores
+--- the shell's real scrollback instead of leaving a painted frame behind.
+--- render.lua owns the escape sequences, the repaint invalidation each
+--- switch needs, and -- importantly -- leaving the alternate screen when
+--- render() returns for ANY reason, including a component error or Ctrl+C
+--- (see its `altScreen` option and teardown). Safe to call from a
+--- component's one-time setup call as well as from an input handler.
+---
+--- Unlike every other hook here this registers nothing and has no cleanup:
+--- it is a pair of functions over one process-wide terminal mode, so a
+--- component that enters the alternate screen and then unmounts does NOT
+--- implicitly leave it -- whoever entered decides when to leave (or lets
+--- render()'s own teardown do it).
+--- @return hydronium_ink.UseAltScreenResult
+function M.useAltScreen()
+  local ctx = requireAppContext("useAltScreen")
+  return {
+    enter = function()
+      return ctx.setAltScreen(true)
+    end,
+    leave = function()
+      return ctx.setAltScreen(false)
+    end,
+    toggle = function()
+      return ctx.setAltScreen(not ctx.altScreen())
+    end,
+    isActive = ctx.altScreen,
   }
 end
 

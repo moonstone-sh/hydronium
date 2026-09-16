@@ -77,6 +77,130 @@ describe("hydronium_ink.render -- useCursor", function()
   end)
 end)
 
+describe("hydronium_ink.render -- alternate screen", function()
+  local ENTER = "\27[?1049h"
+  local LEAVE = "\27[?1049l"
+
+  it("switches in before the first paint and back out when render returns, given opts.altScreen", function()
+    local captured = {}
+    local function fakeWrite(s)
+      table.insert(captured, s)
+    end
+
+    local firstPaintAt = nil
+    local function App()
+      local exit = hooks.useApp().exit
+      exit()
+      return function()
+        -- Records where in the write stream the first frame landed, so
+        -- "switched in BEFORE the first paint" is a real assertion rather
+        -- than just "both sequences appear somewhere".
+        firstPaintAt = #captured + 1
+        return hydronium.h(ink.Text, {}, "fullscreen")
+      end
+    end
+
+    render.render(hydronium.h(App), { writeFn = fakeWrite, altScreen = true })
+
+    local all = table.concat(captured)
+    local enterAt = all:find(ENTER, 1, true)
+    local leaveAt = all:find(LEAVE, 1, true)
+    assert.truthy(enterAt, "expected a DECSET 1049 enter sequence")
+    assert.truthy(leaveAt, "expected a DECSET 1049 leave sequence on the way out")
+    assert.truthy(leaveAt > enterAt, "the leave sequence must come after the enter sequence")
+    assert.truthy(firstPaintAt, "the app must have rendered at least once")
+    assert.truthy(
+      table.concat(captured, "", 1, firstPaintAt - 1):find(ENTER, 1, true),
+      "the alternate screen must be entered before the first frame is painted"
+    )
+    assert.truthy(all:find("fullscreen", 1, true), "the frame itself must still be painted")
+  end)
+
+  it("useAltScreen().toggle() switches at runtime and reports state through its reactive getter", function()
+    local captured = {}
+    local function fakeWrite(s)
+      table.insert(captured, s)
+    end
+
+    local seen = {}
+    local toggle, isActive, stop
+    local ticks = 0
+    local function App()
+      local alt = hooks.useAltScreen()
+      toggle, isActive = alt.toggle, alt.isActive
+      stop = hooks.useApp().exit
+      return function()
+        table.insert(seen, alt.isActive())
+        return hydronium.h(ink.Text, {}, alt.isActive() and "alt" or "normal")
+      end
+    end
+
+    render.render(hydronium.h(App), {
+      writeFn = fakeWrite,
+      -- Everything is driven from onTick, which runs outside any render --
+      -- exactly where a real key handler runs. (Ending the loop from the
+      -- render closure instead would never happen: that closure only
+      -- re-runs when a signal it reads changes.)
+      onTick = function()
+        ticks = ticks + 1
+        if ticks == 1 then
+          toggle()
+        elseif ticks == 2 then
+          toggle()
+        else
+          stop()
+        end
+      end,
+    })
+
+    local all = table.concat(captured)
+    assert.equal(seen[1], false, "the first render happens on the normal screen")
+    assert.truthy(all:find(ENTER, 1, true), "toggle() must switch into the alternate screen")
+    assert.falsy(isActive(), "toggling twice must end up back on the normal screen")
+    -- Exactly one enter and one leave: the second toggle leaves, and
+    -- render()'s teardown must not emit a redundant second leave.
+    local _, enters = all:gsub("\27%[%?1049h", "")
+    local _, leaves = all:gsub("\27%[%?1049l", "")
+    assert.equal(enters, 1, "expected exactly one enter sequence")
+    assert.equal(leaves, 1, "expected exactly one leave sequence")
+
+    local sawAlt = false
+    for _, value in ipairs(seen) do
+      if value then
+        sawAlt = true
+      end
+    end
+    assert.truthy(sawAlt, "isActive() must report true to a render that happens while in the alternate screen")
+  end)
+
+  it("leaves the alternate screen even when a component error propagates out of the loop", function()
+    local captured = {}
+    local function fakeWrite(s)
+      table.insert(captured, s)
+    end
+
+    local function App()
+      local alt = hooks.useAltScreen()
+      alt.enter()
+      return function()
+        return hydronium.h(ink.Text, {}, "boom")
+      end
+    end
+
+    local ok = pcall(render.render, hydronium.h(App), {
+      writeFn = fakeWrite,
+      onTick = function()
+        error("component blew up")
+      end,
+    })
+
+    assert.falsy(ok, "the error must still propagate out of render()")
+    local all = table.concat(captured)
+    assert.truthy(all:find(ENTER, 1, true), "entering from a component's setup call must work")
+    assert.truthy(all:find(LEAVE, 1, true), "the alternate screen must be left on the error path too")
+  end)
+end)
+
 describe("hydronium_ink.render -- host extensions", function()
   it("runs onTick inside the live loop before flushing", function()
     local stop

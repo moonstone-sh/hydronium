@@ -62,9 +62,10 @@ example of `useInput`, `useApp`, `useWindowSize`, `Box`, `Spacer`, and
 | Module | API | Use |
 | --- | --- | --- |
 | `hydronium_ink` | `Box`, `Text`, `Newline`, `Spacer`, `Transform` | Terminal intrinsic descriptors. |
-| `hydronium_ink.render` | `render(element, opts?)` | Mounts an app and runs its blocking event loop. `opts.exitOnCtrlC` defaults to `true`; `opts.writeFn` replaces `io.write`. |
+| `hydronium_ink.render` | `render(element, opts?)` | Mounts an app and runs its blocking event loop. `opts.exitOnCtrlC` defaults to `true`; `opts.writeFn` replaces the default sink; `opts.altScreen` starts in the terminal's alternate screen buffer. |
 | `hydronium_ink.hooks` | `useInput`, `usePaste`, `useApp`, `useWindowSize` | Keyboard, bracketed paste, app exit, and reactive terminal size. |
 | `hydronium_ink.hooks` | `useFocus`, `useFocusManager`, `useCursor`, `useBoxMetrics`, `useAnimation` | Focus traversal, cursor placement, measured layout, and timed updates. |
+| `hydronium_ink.hooks` | `useAltScreen` | Enter/leave the alternate screen buffer (DECSET 1049) at runtime, for a fullscreen view. `render()` always leaves it on the way out, including on an error. |
 
 `Box` supports Yoga flexbox properties such as `flexDirection`, `justifyContent`,
 `alignItems`, `flexGrow`, `padding`, `margin`, `width`, `height`, and

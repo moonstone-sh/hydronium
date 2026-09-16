@@ -107,6 +107,7 @@ typedef struct { unsigned char bytes[128]; } fd_set_t;
 int select(int nfds, fd_set_t *readfds, fd_set_t *writefds, fd_set_t *errorfds, timeval_t *timeout);
 
 long read(int fd, void *buf, unsigned long count);
+long write(int fd, const void *buf, unsigned long count);
 ]])
 
 local C = ffi.C
@@ -239,6 +240,95 @@ function M.pollReadable(fd, timeoutMs)
 
   local result = C.select(fd + 1, readfds, nil, nil, tv)
   return result > 0
+end
+
+--- Blocks for up to `timeoutMs` waiting for `fd` to become WRITABLE.
+--- Same select() mechanics as pollReadable above, third argument instead
+--- of the second. Used by writeAll below to wait out a full terminal
+--- output buffer instead of busy-looping on EAGAIN.
+--- @param fd integer
+--- @param timeoutMs integer
+--- @return boolean writable
+function M.pollWritable(fd, timeoutMs)
+  local writefds = ffi.new("fd_set_t[1]")
+  ffi.fill(writefds, ffi.sizeof("fd_set_t"), 0)
+  local byte_index = math.floor(fd / 8)
+  local bit_index = fd % 8
+  writefds[0].bytes[byte_index] = bit.bor(writefds[0].bytes[byte_index], bit.lshift(1, bit_index))
+
+  local tv = ffi.new("timeval_t[1]")
+  tv[0].tv_sec = math.floor(timeoutMs / 1000)
+  tv[0].tv_usec = (timeoutMs % 1000) * 1000
+
+  return C.select(fd + 1, nil, writefds, nil, tv) > 0
+end
+
+--- Writes ALL of `data` to `fd`, looping over write(2) until every byte is
+--- gone and waiting for writability when the terminal's output buffer is
+--- full.
+---
+--- WHY THIS EXISTS AT ALL -- a real, measured failure, not defensive
+--- programming. `setNonBlocking(0)` below sets O_NONBLOCK on stdin's open
+--- file description, and a process started by a terminal normally has fds
+--- 0, 1 and 2 pointing at the SAME description, so stdout becomes
+--- non-blocking too (verified in a live tmux pane: `fcntl(1, F_GETFL)`
+--- reports O_NONBLOCK immediately after the stdin call). A single large
+--- write into a pty then transfers only as much as fits in the terminal's
+--- buffer and reports a SHORT COUNT -- which `io.write` (C stdio) neither
+--- retries nor surfaces, so the rest of the frame is silently dropped.
+--- Measured with a 60-row painted frame: 10 rows reached the screen, the
+--- 10th cut mid-line. Small frames never hit it, which is why this went
+--- unnoticed until a full-height view was painted.
+---
+--- Returns false only if the fd stays unwritable for `timeoutMs` (default
+--- 1000) with bytes still pending, or on a hard write error -- both
+--- genuinely unrecoverable here, and a caller painting a frame has nothing
+--- better to do about it than carry on.
+---
+--- IMPLEMENTATION NOTE, and it is not stylistic. The Lua string is handed
+--- STRAIGHT to write(2) (LuaJIT converts a string argument to the
+--- `const void *` parameter itself), and a short write is resumed with
+--- `string.sub` -- no `ffi.new("char[?]", ...)` buffer and no pointer
+--- arithmetic anywhere. The first version of this function did allocate a
+--- VLA per call and advanced a `buf + sent` pointer, and that version
+--- SEGFAULTED (SIGSEGV, exit 139) once this write path got hot enough for
+--- LuaJIT to compile the loop -- reproduced live against a real pty, and
+--- it vanished the moment a Lua wrapper around this function broke the
+--- trace, which is the signature of exactly that hazard. Allocation-free
+--- and pointer-free is also the faster path for the overwhelmingly common
+--- case of a single complete write.
+--- @param fd integer
+--- @param data string
+--- @param timeoutMs? integer Per-stall wait. Default 1000.
+--- @return boolean complete, integer written
+function M.writeAll(fd, data, timeoutMs)
+  timeoutMs = timeoutMs or 1000
+  if #data == 0 then
+    return true, 0
+  end
+
+  local remaining = data
+  local sent = 0
+  while true do
+    -- tonumber(): write() is declared `long`, which LuaJIT hands back as a
+    -- boxed int64 cdata -- kept out of the arithmetic below on purpose.
+    local n = tonumber(C.write(fd, remaining, #remaining)) or -1
+    if n >= #remaining then
+      return true, sent + n
+    end
+    if n > 0 then
+      sent = sent + n
+      remaining = remaining:sub(n + 1)
+    else
+      -- Either EAGAIN (the terminal's buffer is full -- the whole reason
+      -- this loop exists) or a real error. select() tells them apart well
+      -- enough: an fd that never becomes writable will not become writable
+      -- by retrying harder.
+      if not M.pollWritable(fd, timeoutMs) then
+        return false, sent
+      end
+    end
+  end
 end
 
 --- Non-blocking read of up to `maxBytes` from `fd`. Returns `nil` (not

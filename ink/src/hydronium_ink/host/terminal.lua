@@ -924,6 +924,24 @@ function M.createTerminalHost(writeFn)
     return host._lastFrame
   end
 
+  --- Forgets the previous frame and marks the tree dirty, so the next
+  --- flush() does a full clear+redraw instead of diffing against a frame
+  --- the terminal is no longer showing.
+  ---
+  --- Needed whenever something OUTSIDE this host changes what is actually
+  --- on screen, which the diff in paint() cannot know about: the real case
+  --- is render.lua switching into or out of the terminal's alternate
+  --- screen buffer (`\27[?1049h`/`l`), which swaps in a screen sharing
+  --- none of the previous frame's cells -- without this, the next paint
+  --- would emit only the handful of cells that changed in the Lua-side
+  --- grid and leave the rest of the frame missing. Also the honest escape
+  --- hatch for anything else that writes over this host's output (an
+  --- external `clear`, a subprocess printing to the same terminal).
+  function host.invalidate()
+    host._lastFrame = nil
+    host._dirty = true
+  end
+
   return host
 end
 

@@ -653,6 +653,38 @@ describe("hydronium.host.terminal -- real Host contract + real ANSI output", fun
     assert.equal(m.clientHeight, 1, "5 - 2*border(1) - 2*padding(1)")
   end)
 
+  -- host.invalidate() exists for exactly one real caller today:
+  -- render.lua switching into/out of the terminal's alternate screen
+  -- buffer (\27[?1049h/l), which replaces the visible screen with one
+  -- sharing none of the previous frame's cells. Without this, the next
+  -- paint would emit only the cells that changed in the Lua-side grid and
+  -- leave the rest of the frame missing on the newly-switched screen.
+  it("invalidate() forces the next flush to repaint in full instead of diffing against a frame the terminal no longer shows", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    reconciler:mount(H.h(ink.Text, {}, "hello"), root)
+    host.flush()
+    assert.truthy(table.concat(writes):find("\27[2J", 1, true),
+      "the very first paint is always a full clear+redraw (no previous frame to diff against)")
+
+    clearWrites()
+    host.flush()
+    assert.equal(#writes, 0, "a flush with nothing dirty must write nothing at all")
+
+    host.invalidate()
+    assert.is_nil(host.getLastFrame(), "invalidate() must drop the cached previous frame")
+    host.flush()
+
+    local bytes = table.concat(writes)
+    assert.truthy(bytes:find("\27[2J", 1, true), "invalidate() must force a full clear+redraw")
+    local grid = interpretAnsi(bytes, 10, 1)
+    assert.equal(rowText(grid, 1, 1, 5), "hello",
+      "the whole frame must be repainted, not just the cells that changed since the last paint")
+  end)
+
   it("Transform renders its children in isolation and applies transform(line, index) to each plain-text output line", function()
     local writes, capture, clearWrites = newCapture()
     local host = terminalHostModule.createTerminalHost(capture)

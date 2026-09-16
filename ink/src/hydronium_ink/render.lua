@@ -69,6 +69,12 @@ local POLL_INTERVAL_MS = 33
 --- @field onTick? fun() Called once per event-loop turn, before the host
 ---   flushes. Development tools can use this host-neutral seam to poll for
 ---   module updates; render itself does not know about files or compilers.
+--- @field altScreen? boolean Default false. Switch the terminal into its
+---   ALTERNATE SCREEN BUFFER (DECSET 1049) before the first paint, and back
+---   out when render() returns -- including on an error or Ctrl+C, see the
+---   teardown below. A fullscreen app wants this so quitting restores the
+---   shell's real scrollback instead of leaving a painted frame behind.
+---   Toggle it at runtime with the `useAltScreen()` hook (hooks.lua).
 
 --- @class hydronium_ink.RenderResult
 --- @field exitReason any Whatever `useApp().exit(err)` was called with, or `nil` for a normal exit.
@@ -82,9 +88,31 @@ function M.render(element, opts)
   if exitOnCtrlC == nil then
     exitOnCtrlC = true
   end
-  local writeFn = opts.writeFn or io.write
-
   local interactive = ffi.C.isatty(0) == 1
+
+  -- DEFAULT SINK. On a real TTY every byte goes through tty_ffi.writeAll
+  -- (a retrying write(2) loop), NOT `io.write`: this loop makes stdin
+  -- non-blocking, and a terminal normally hands fds 0/1/2 the same open
+  -- file description, so stdout is non-blocking too. `io.write` neither
+  -- retries nor reports a short write, so any frame bigger than the
+  -- terminal's output buffer loses its tail silently -- measured for real
+  -- in a live tmux pane: 10 of a 60-row frame's rows reached the screen,
+  -- the last one cut mid-line. See tty_ffi.writeAll's own doc comment.
+  --
+  -- A caller-supplied `opts.writeFn` always wins (that is the injection
+  -- seam tests use), and a non-TTY run keeps plain `io.write`: there is no
+  -- pty buffer to fill, and fd 1 was never made non-blocking.
+  local writeFn = opts.writeFn
+  if not writeFn then
+    if interactive then
+      local ttyWriter = require("hydronium_ink.tty_ffi")
+      writeFn = function(s)
+        ttyWriter.writeAll(1, s)
+      end
+    else
+      writeFn = io.write
+    end
+  end
 
   local host = terminalHostModule.createTerminalHost(writeFn)
   local root = host.getRoot()
@@ -128,30 +156,36 @@ function M.render(element, opts)
   -- core/signals/signal.lua) while a component's setup or render-closure
   -- call is on the stack -- and `useFocus`'s autoFocus registration (and
   -- an unmount's own unregister, which can itself fire mid-reconcile)
-  -- both happen from exactly there. Route every focus-id write through
-  -- this: run it immediately when that's safe, or queue it for
-  -- `flushPendingFocusOps()` (called right after mount and after every
-  -- loop iteration's `host.flush()`, both real outside-any-render
-  -- points) when it isn't.
+  -- both happen from exactly there. Route every such write through
+  -- `deferSignalWrite`: run it immediately when that's safe, or queue it
+  -- for `flushPendingSignalWrites()` (called right after mount and after
+  -- every loop iteration's `host.flush()`, both real outside-any-render
+  -- points) when it isn't. Used by the focus registry below and by
+  -- `setAltScreen` (a component may enter the alternate screen from its
+  -- own one-time setup call, which is mid-render).
   local schedulerModule = require("hydronium.core.scheduler")
-  local pendingFocusOps = {}
+  local pendingSignalWrites = {}
 
-  local function safeSetActiveFocusId(id)
+  local function deferSignalWrite(write)
     if schedulerModule.isRendering() then
-      table.insert(pendingFocusOps, function()
-        setActiveFocusId(id)
-      end)
+      table.insert(pendingSignalWrites, write)
     else
-      setActiveFocusId(id)
+      write()
     end
   end
 
-  local function flushPendingFocusOps()
-    if #pendingFocusOps == 0 then
+  local function safeSetActiveFocusId(id)
+    deferSignalWrite(function()
+      setActiveFocusId(id)
+    end)
+  end
+
+  local function flushPendingSignalWrites()
+    if #pendingSignalWrites == 0 then
       return
     end
-    local ops = pendingFocusOps
-    pendingFocusOps = {}
+    local ops = pendingSignalWrites
+    pendingSignalWrites = {}
     for _, op in ipairs(ops) do
       op()
     end
@@ -281,6 +315,49 @@ function M.render(element, opts)
     end
   end
 
+  -- useAltScreen: the terminal's ALTERNATE SCREEN BUFFER (DECSET 1049 --
+  -- `\27[?1049h` to switch in, `\27[?1049l` to switch back), what a
+  -- fullscreen TUI (vim, less, htop) uses so that quitting restores the
+  -- shell scrollback exactly as it was instead of leaving a painted
+  -- frame behind. Written directly through the same `writeFn` the host
+  -- and useCursor already use, for the same reason: there is no "screen
+  -- buffer" concept in the character grid host/terminal.lua paints.
+  --
+  -- TWO THINGS THIS OWNS, and they are both the reason it lives here
+  -- rather than in an app:
+  --   * `host.invalidate()` after every switch. The host paints by
+  --     diffing against the frame it painted last; switching buffers
+  --     swaps in a screen that shares none of those cells, so the
+  --     previous frame is no longer what the terminal is showing and the
+  --     next flush must repaint in full.
+  --   * leaving on the way out, unconditionally -- normal exit, `exit()`,
+  --     Ctrl+C, or a component error propagating out of the loop (see the
+  --     teardown after this function's own pcall). A process that dies
+  --     inside the alternate screen leaves the user staring at a frozen
+  --     frame with their real scrollback hidden.
+  --
+  -- `opts.altScreen` switches in before the first mount (so a fullscreen
+  -- app never paints one frame on the normal screen first); the
+  -- `useAltScreen()` hook toggles it at runtime.
+  local altScreenActive = false
+  local getAltScreen, setAltScreenSignal = hydronium.signal(false)
+
+  --- @param enabled boolean
+  --- @return boolean changed
+  local function setAltScreen(enabled)
+    enabled = enabled and true or false
+    if enabled == altScreenActive then
+      return false
+    end
+    altScreenActive = enabled
+    writeFn(enabled and "\27[?1049h" or "\27[?1049l")
+    host.invalidate()
+    deferSignalWrite(function()
+      setAltScreenSignal(enabled)
+    end)
+    return true
+  end
+
   local ttyFfi = nil
   local initialSize = { columns = 0, rows = 0 }
   if interactive then
@@ -320,6 +397,8 @@ function M.render(element, opts)
     setCursorPosition = setCursorPosition,
     registerTicker = registerTicker,
     registerPasteHandler = registerPasteHandler,
+    setAltScreen = setAltScreen,
+    altScreen = getAltScreen,
   }
 
   local wrapped = hydronium.h(hooks.InkAppContext.Provider, { value = appContextValue }, element)
@@ -365,8 +444,12 @@ function M.render(element, opts)
       writeFn("\27[?2004h")
     end
 
+    if opts.altScreen then
+      setAltScreen(true)
+    end
+
     reconciler:mount(wrapped, root)
-    flushPendingFocusOps()
+    flushPendingSignalWrites()
     host.flush()
 
     while not exited do
@@ -415,10 +498,18 @@ function M.render(element, opts)
       end
 
       host.flush()
-      flushPendingFocusOps()
+      flushPendingSignalWrites()
     end
   end)
 
+  -- NOT gated on `interactive`: a non-TTY run can still have switched in
+  -- (setAltScreen only writes bytes, it needs no termios), and the one
+  -- thing that must never survive this function is the user's terminal
+  -- still showing the alternate screen.
+  if altScreenActive then
+    altScreenActive = false
+    writeFn("\27[?1049l")
+  end
   if interactive then
     writeFn("\27[?2004l")
   end
