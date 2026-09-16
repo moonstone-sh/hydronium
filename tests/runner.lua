@@ -455,6 +455,8 @@ local function main()
       -- than under tests/, matching ink/'s and create/'s own layout).
       "cli/tests/event_model_spec.lua",
       "cli/tests/dev_supervisor_spec.lua",
+      "cli/tests/inspector_spec.lua",
+      "cli/tests/main_spec.lua",
     }
   end
 

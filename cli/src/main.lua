@@ -1,7 +1,8 @@
 --[[
   `hydronium` -- the Hydronium developer CLI.
 
-    hydronium dev [--verbose] [--show-ips]
+    hydronium dev [--verbose] [--show-ips] [--fullscreen]
+                  [--meteorite-args "<flags>"]
 
   `dev` spawns `meteorite dev` as a child process, tails the structured
   dev-event stream that child appends to `.meteorite/dev/events.log`,
@@ -10,10 +11,10 @@
   hydronium_ink.
 
   FLAG GRAMMAR, parsed explicitly below rather than by a library, because
-  it is three tokens and every one of them must be exact: an unknown
-  subcommand or an unknown flag is an error with a usage message, never a
-  silent no-op. The only defaults are `verbose = false` and
-  `show_ips = false`.
+  it is a handful of tokens and every one of them must be exact: an
+  unknown subcommand or an unknown flag is an error with a usage message,
+  never a silent no-op. The only defaults are `verbose = false`,
+  `show_ips = false` and `fullscreen = false`.
 
     --verbose    DISPLAY DENSITY ONLY. Shows more rows in the collapsed
                  events pane (event_model.VERBOSE_CAPACITY instead of
@@ -30,6 +31,41 @@
                  address is already in meteorite's event and is already
                  written to .hydronium/dev.log regardless -- this only
                  controls whether it is shown on screen.
+    --fullscreen Start in the FULLSCREEN REQUEST-DEBUG VIEW instead of
+                 the compact status view (`f` toggles either way at
+                 runtime, `esc` leaves it, `q` quits). The view takes
+                 over the terminal's alternate screen buffer and lists
+                 every request in .hydronium/dev.log -- the durable,
+                 uncollapsed superset, not the 3-row display ring --
+                 with a per-request detail pane. Like --verbose and
+                 --show-ips this is DISPLAY ONLY: it captures nothing
+                 extra, and the detail pane says so where meteorite's
+                 event stream has nothing to show (no headers, no
+                 bodies; see src/inspector.lua). A future
+                 --capture-bodies (the flag --verbose's own comment
+                 reserves) is a different thing entirely: it would
+                 change what is CAPTURED, and this flag deliberately
+                 does not.
+    --meteorite-args "<flags>"
+                 Whitespace-split arguments appended after `meteorite
+                 dev` when spawning it, e.g.
+                   --meteorite-args "--mode hybrid_dev --backend fast_http"
+                 `meteorite dev` has NO defaults of its own and errors
+                 without --mode/--backend at minimum, so a real project
+                 always passes this; hydronium-create's generated
+                 `[scripts] dev` does exactly that (see
+                 create/src/create/templates/{ssr,islands}.lua).
+                 WHY A FLAG AND NOT `--` PASSTHROUGH: `moon exec`
+                 swallows the first `--` after the command it runs
+                 ("One '--' after <command> is treated as an argument
+                 delimiter and is not forwarded", `moon exec --help`),
+                 so a generated script would need `-- --` to get one
+                 through -- an invisible trap the first person to tidy
+                 the line up would break. A named option needs no
+                 delimiter at all. STATED LIMITATION: splitting on
+                 whitespace means no individual argument can contain a
+                 space. Nothing meteorite dev takes does today (modes,
+                 backends and the lua-root path are all space-free).
 
   ENVIRONMENT ESCAPE HATCHES (development/verification only, deliberately
   not flags -- the flag grammar above is the whole public surface):
@@ -39,12 +75,12 @@
                                  .meteorite/dev/events.log.
     HYDRONIUM_DEV_LOG=<path>     write the durable log here instead of
                                  .hydronium/dev.log.
-    HYDRONIUM_METEORITE_ARGS=<s> extra, whitespace-split arguments appended
-                                 after `meteorite dev` when spawning it
-                                 (e.g. "--mode hybrid_dev --backend
-                                 fast_http") -- meteorite dev has no
-                                 defaults of its own and errors without
-                                 --mode/--backend at minimum.
+    HYDRONIUM_METEORITE_ARGS=<s> the same thing as --meteorite-args, from
+                                 the environment, appended AFTER the flag's
+                                 own words. Kept (it predates the flag) for
+                                 exactly one job: adding or overriding a
+                                 flag for one run without editing the
+                                 project's committed dev script.
 
   Together those let the whole UI be driven against a hand-seeded events
   file on a machine with no meteorite installed.
@@ -85,7 +121,8 @@ M.USAGE = table.concat({
   "hydronium " .. M.VERSION,
   "",
   "Usage:",
-  "  hydronium dev [--verbose] [--show-ips]",
+  "  hydronium dev [--verbose] [--show-ips] [--fullscreen]",
+  "                [--meteorite-args \"<flags>\"]",
   "",
   "Commands:",
   "  dev            Run `meteorite dev` and render its dev-event stream.",
@@ -93,8 +130,20 @@ M.USAGE = table.concat({
   "Options:",
   "  --verbose      Show more rows in the events pane (display density only).",
   "  --show-ips     Show each request's remote address.",
+  "  --fullscreen   Start in the fullscreen request-debug view.",
+  "  --meteorite-args \"<flags>\"",
+  "                 Arguments for the spawned `meteorite dev`, e.g.",
+  "                 \"--mode hybrid_dev --backend fast_http\". Required in",
+  "                 practice: `meteorite dev` has no defaults of its own.",
   "  -h, --help     Print this help.",
   "  -v, --version  Print the version.",
+  "",
+  "Keys:",
+  "  f              Toggle the fullscreen request-debug view.",
+  "  j/k, up/down   Move the selected request (fullscreen only).",
+  "  pgup/pgdn, g/G Page, or jump to the oldest/newest request.",
+  "  esc            Leave the fullscreen view (or quit from the status view).",
+  "  q, ctrl-c      Quit.",
 }, "\n")
 
 --- @param argv string[]
@@ -119,20 +168,72 @@ function M.parse_args(argv)
     return nil, "unknown command '" .. first .. "'"
   end
 
-  local parsed = { command = "dev", verbose = false, show_ips = false }
-  for index = 2, #argv do
+  local parsed = {
+    command = "dev",
+    verbose = false,
+    show_ips = false,
+    fullscreen = false,
+    meteorite_args = nil,
+  }
+  local index = 2
+  while index <= #argv do
     local token = argv[index]
     if token == "--verbose" then
       parsed.verbose = true
     elseif token == "--show-ips" then
       parsed.show_ips = true
+    elseif token == "--fullscreen" then
+      parsed.fullscreen = true
+    elseif token == "--meteorite-args" then
+      -- Both spellings accepted. `--meteorite-args=...` is the form the
+      -- generated dev script uses (one shell-quoted token, nothing for a
+      -- script runner to mis-split); the separate-word form is what a
+      -- human types interactively.
+      local value = argv[index + 1]
+      if value == nil then
+        return nil, "--meteorite-args requires a value (e.g. --meteorite-args \"--mode hybrid_dev\")"
+      end
+      parsed.meteorite_args = value
+      index = index + 1
+    elseif token:sub(1, 17) == "--meteorite-args=" then
+      parsed.meteorite_args = token:sub(18)
     elseif token == "-h" or token == "--help" then
       return { command = "help" }
     else
       return nil, "unknown argument '" .. tostring(token) .. "' for `hydronium dev`"
     end
+    index = index + 1
   end
   return parsed
+end
+
+--- The exact argv the child is spawned with: `meteorite dev`, then the
+--- --meteorite-args words, then HYDRONIUM_METEORITE_ARGS's words.
+---
+--- ORDER IS THE CONTRACT: the environment variable comes last so it can
+--- override a flag the project's committed dev script already passes (for
+--- every flag meteorite dev takes, the later occurrence is the one that
+--- wins -- which is what makes a one-off `HYDRONIUM_METEORITE_ARGS="--mode
+--- static_dev" moon run dev` work without editing moonstone.toml).
+--- @param parsed table From M.parse_args.
+--- @param env_args? string Contents of HYDRONIUM_METEORITE_ARGS.
+--- @return string[]
+function M.meteorite_argv(parsed, env_args)
+  local argv = { "meteorite", "dev" }
+  -- Appended one source at a time rather than via a `{flag, env}` array:
+  -- with a nil flag that array's hole would make `ipairs` stop before ever
+  -- reaching the environment's own words.
+  local function append(source)
+    if type(source) ~= "string" then
+      return
+    end
+    for word in source:gmatch("%S+") do
+      argv[#argv + 1] = word
+    end
+  end
+  append(parsed and parsed.meteorite_args)
+  append(env_args)
+  return argv
 end
 
 --- How long to wait for a `startup` event before concluding the server is
@@ -165,6 +266,10 @@ local function drain(ctx)
       end
       -- Display second, collapsed, capped at the visible row count.
       ctx.buffer:push(event)
+      -- The fullscreen view's own history: uncollapsed, one row per
+      -- request, fed from the same loop so the two views can never
+      -- disagree about what happened. Ignores non-request events itself.
+      ctx.state:record_request(event)
       ctx.state:apply(event)
       applied = applied + 1
     else
@@ -194,17 +299,13 @@ function M.dev(parsed)
 
   -- `meteorite dev` itself requires --mode/--backend (it has no defaults
   -- of its own); a generated project's real invocation also carries
-  -- --hybrid-profile, --router-dispatch, --lua-root, etc. Wiring
-  -- hydronium-create's templates to assemble and pass these automatically
-  -- is separate, deferred work (see the plan). Until then, this is the
-  -- one way to actually reach the spawn path with a real project's flags.
-  local argv = { "meteorite", "dev" }
-  local extra_args = os.getenv("HYDRONIUM_METEORITE_ARGS")
-  if extra_args then
-    for word in extra_args:gmatch("%S+") do
-      argv[#argv + 1] = word
-    end
-  end
+  -- --hybrid-profile, --router-dispatch, --lua-root, etc.
+  -- hydronium-create's templates now assemble exactly those into the
+  -- `--meteorite-args` of the `[scripts] dev` they generate (see
+  -- create/src/create/templates/{ssr,islands}.lua), so a scaffolded
+  -- project's `moon run dev` reaches this spawn path with its own real
+  -- flags and nothing has to be set in the environment.
+  local argv = M.meteorite_argv(parsed, os.getenv("HYDRONIUM_METEORITE_ARGS"))
 
   local supervisor = dev_supervisor.new_supervisor({
     argv = argv,
@@ -222,11 +323,29 @@ function M.dev(parsed)
     return 1
   end
 
-  local state = ui.new_state()
+  local state = ui.new_state({
+    fullscreen = parsed.fullscreen,
+    show_ips = parsed.show_ips,
+  })
   local buffer = event_model.new_buffer({
     capacity = parsed.verbose and event_model.VERBOSE_CAPACITY or event_model.DEFAULT_CAPACITY,
     show_ips = parsed.show_ips,
   })
+
+  -- Seed the fullscreen view's history from the durable log BEFORE this
+  -- run appends anything to it, so the inspector really does show "every
+  -- request event in .hydronium/dev.log" (that file is append-only across
+  -- runs) rather than only the ones this session happened to see. Capped;
+  -- see dev_log.read_events. Nothing is replayed into the status view or
+  -- re-written to the log -- this is a read.
+  local seeded = dev_log.read_events(log_path, {
+    filter = event_model.is_request,
+    limit = state.history.capacity,
+  })
+  state.history:push_all(seeded)
+  if #seeded > 0 then
+    state.set_selection(state.history:count())
+  end
 
   local pid, spawn_err = supervisor:start()
   if should_spawn and not pid then
@@ -240,6 +359,7 @@ function M.dev(parsed)
     command = "dev",
     verbose = parsed.verbose,
     show_ips = parsed.show_ips,
+    fullscreen = parsed.fullscreen,
     events_path = events_path,
     child_pid = pid,
     spawned = should_spawn,
@@ -271,6 +391,12 @@ function M.dev(parsed)
   })
 
   local ok, err = pcall(render.render, hydronium.h(app), {
+    -- --fullscreen starts in the alternate screen buffer, so the very
+    -- first frame is already the fullscreen view rather than a status
+    -- frame painted over the user's scrollback. `f` toggles it at runtime
+    -- through hydronium_ink's useAltScreen (see ui/app.lua); render()
+    -- guarantees leaving it on the way out, including on an error.
+    altScreen = parsed.fullscreen,
     onTick = function()
       drain(ctx)
 

@@ -40,6 +40,8 @@
 local hydronium = require("hydronium")
 local ink = require("hydronium_ink")
 local hooks = require("hydronium_ink.hooks")
+local inspector = require("inspector")
+local inspector_view = require("ui.inspector_view")
 
 -- LuaJIT/5.1 spell it `unpack`; 5.2+ moved it to `table.unpack`. This
 -- package is LuaJIT-only (hydronium_ink is), but the two-line guard costs
@@ -75,10 +77,21 @@ M.State = State
 
 --- @class hydronium_cli.UiStateOptions
 --- @field url? string
+--- @field history? table An inspector.History (src/inspector.lua). One is created if omitted.
+--- @field fullscreen? boolean Start in the fullscreen request-debug view.
+--- @field show_ips? boolean Show remote addresses (mirrors --show-ips).
 
 --- All the reactive state the view reads. Created outside any component
 --- so the tick loop (which runs between renders, see render.lua's
 --- `opts.onTick`) can write to it directly.
+---
+--- THE REQUEST HISTORY IS NOT A SIGNAL, deliberately. It is a capped
+--- 2000-entry list (see src/inspector.lua) that grows by one on every
+--- request; putting it in a signal would mean copying it on every event to
+--- get a new value the signal could compare. Instead the list is an
+--- ordinary table on this state and `requests_revision` is the signal --
+--- bumped once per accepted request, read by the fullscreen view, which is
+--- what makes reading the plain table reactive.
 --- @param opts? hydronium_cli.UiStateOptions
 --- @return table
 function M.new_state(opts)
@@ -89,15 +102,50 @@ function M.new_state(opts)
   local get_url, set_url = hydronium.signal(opts.url or M.DEFAULT_URL)
   local get_entries, set_entries = hydronium.signal({})
   local get_note, set_note = hydronium.signal(nil)
+  local get_fullscreen, set_fullscreen = hydronium.signal(opts.fullscreen and true or false)
+  local get_revision, set_revision = hydronium.signal(0)
+  local get_selection, set_selection = hydronium.signal(0)
 
-  return setmetatable({
+  local state = setmetatable({
     status = get_status, set_status = set_status,
     routes = get_routes, set_routes = set_routes,
     ready_ms = get_ready_ms, set_ready_ms = set_ready_ms,
     url = get_url, set_url = set_url,
     entries = get_entries, set_entries = set_entries,
     note = get_note, set_note = set_note,
+    fullscreen = get_fullscreen, set_fullscreen = set_fullscreen,
+    requests_revision = get_revision, set_requests_revision = set_revision,
+    selection = get_selection, set_selection = set_selection,
+    history = opts.history or inspector.new_history(),
+    show_ips = opts.show_ips and true or false,
+    -- Last terminal height the fullscreen view actually painted with.
+    -- A PLAIN FIELD, not a signal: the view writes it during its own
+    -- render (a signal write there is rejected, see core/signals), and the
+    -- only reader is the key handler working out how far PageUp/PageDown
+    -- should jump. Nothing re-renders because of it.
+    viewport_rows = nil,
   }, State)
+
+  return state
+end
+
+--- Records one request into the history and keeps the selection pinned to
+--- the newest row while it already was the newest row (see
+--- inspector.follow_tail). Called from the drain loop, never from a
+--- render.
+--- @param event table
+--- @return boolean accepted
+function State:record_request(event)
+  local history = self.history
+  local previous_count = history:count()
+  local previous_dropped = history.dropped
+  if not history:push(event) then
+    return false
+  end
+  local dropped = history.dropped - previous_dropped
+  self.set_selection(inspector.follow_tail(self.selection(), previous_count, history:count(), dropped))
+  self.set_requests_revision(self.requests_revision() + 1)
+  return true
 end
 
 --- Folds one event into the header state. The events *pane* is fed
@@ -173,62 +221,161 @@ end
 function M.create_app(state, opts)
   opts = opts or {}
 
+  local InspectorView = inspector_view.create_view(state)
+
   return function()
     -- Registered once at setup, as hooks.lua requires. The ticker runs in
     -- render.lua's own loop; nothing here owns a timer.
     local spinner = hooks.useAnimation({ interval = 110 })
     local exit = hooks.useApp().exit
+    local alt = hooks.useAltScreen()
+
+    -- The REACTIVE window-size getter, not a snapshot of its value the way
+    -- `hooks.useWindowSize()` would hand back. The key handler below runs
+    -- between renders and needs the CURRENT terminal height to size a
+    -- PageUp/PageDown jump; reading the getter there is an untracked read
+    -- (no render is on the stack), which is exactly what is wanted.
+    local ink_context = hydronium.useContext(hooks.InkAppContext)
+
+    local function quit()
+      if opts.onQuit then
+        opts.onQuit()
+      end
+      exit()
+    end
+
+    --- Entering also switches the real terminal into its alternate screen
+    --- buffer, so leaving restores the scrollback the dev session was
+    --- started from instead of stranding a full-height frame in it.
+    local function set_fullscreen(enabled)
+      if enabled == state.fullscreen() then
+        return
+      end
+      state.set_fullscreen(enabled)
+      if enabled then
+        alt.enter()
+      else
+        alt.leave()
+      end
+    end
+
+    local function page_rows()
+      local size = ink_context and ink_context.windowSize()
+      local rows = state.viewport_rows
+        or inspector_view.visible_rows(size and size.rows or inspector.FALLBACK_ROWS)
+      return inspector.page_size(rows)
+    end
+
+    local function move(delta)
+      state.set_selection(inspector.move_selection(state.selection(), delta, state.history:count()))
+    end
 
     hooks.useInput(function(input, key)
-      if input == "q" or (key and key.escape) then
-        if opts.onQuit then
-          opts.onQuit()
+      key = key or {}
+
+      -- `q` always quits, on either screen. Escape is screen-sensitive:
+      -- in the inspector it means "back to the status view", which is what
+      -- every fullscreen pager does, and only quits from the status view
+      -- itself.
+      if input == "q" then
+        return quit()
+      end
+      if input == "f" then
+        return set_fullscreen(not state.fullscreen())
+      end
+      if key.escape then
+        if state.fullscreen() then
+          return set_fullscreen(false)
         end
-        exit()
+        return quit()
+      end
+
+      if not state.fullscreen() then
+        return
+      end
+
+      local count = state.history:count()
+      if input == "j" or key.downArrow then
+        move(1)
+      elseif input == "k" or key.upArrow then
+        move(-1)
+      elseif key.pageDown or input == " " then
+        move(page_rows())
+      elseif key.pageUp then
+        move(-page_rows())
+      elseif input == "g" or key.home then
+        state.set_selection(inspector.clamp_selection(1, count))
+      elseif input == "G" or key["end"] then
+        state.set_selection(inspector.clamp_selection(count, count))
       end
     end)
 
     return function()
-      local status = state.status()
-      local children = {}
-
-      if status == "starting" then
-        local frames = M.SPINNER_FRAMES
-        local frameText = frames[(spinner.frame() % #frames) + 1]
-        children[#children + 1] = spinner_line(frameText, "starting meteorite dev\226\128\166")
-      elseif status == "down" then
-        children[#children + 1] = hydronium.h(ink.Box, { flexDirection = "row" },
-          hydronium.h(ink.Text, { color = "red", bold = true }, " \195\151  "),
-          hydronium.h(ink.Text, {}, "Dev server stopped")
-        )
-      else
-        for _, line in ipairs(header_lines(state)) do
-          children[#children + 1] = line
-        end
+      if state.fullscreen() then
+        return hydronium.h(InspectorView)
       end
-
-      local note = state.note()
-      if note and status ~= "starting" then
-        children[#children + 1] =
-          hydronium.h(ink.Text, { color = "yellow" }, "    " .. note)
-      end
-
-      local entries = state.entries()
-      if #entries > 0 then
-        children[#children + 1] = hydronium.h(ink.Newline)
-        for index, entry in ipairs(entries) do
-          local text = entry.label
-          if entry.count and entry.count > 1 then
-            text = text .. " x" .. tostring(entry.count)
-          end
-          children[#children + 1] =
-            hydronium.h(ink.Text, { key = index, dimColor = true }, "    " .. text)
-        end
-      end
-
-      return hydronium.h(ink.Box, { flexDirection = "column" }, unpack(children))
+      return M.render_status(state, spinner)
     end
   end
+end
+
+--- The compact, persistent status view -- the whole view before the
+--- fullscreen inspector existed, split out verbatim so create_app's own
+--- render closure is just the screen switch.
+--- @param state table
+--- @param spinner table From hooks.useAnimation.
+--- @return any
+function M.render_status(state, spinner)
+  local status = state.status()
+  local children = {}
+
+  if status == "starting" then
+    local frames = M.SPINNER_FRAMES
+    local frameText = frames[(spinner.frame() % #frames) + 1]
+    children[#children + 1] = spinner_line(frameText, "starting meteorite dev\226\128\166")
+  elseif status == "down" then
+    children[#children + 1] = hydronium.h(ink.Box, { flexDirection = "row" },
+      hydronium.h(ink.Text, { color = "red", bold = true }, " \195\151  "),
+      hydronium.h(ink.Text, {}, "Dev server stopped")
+    )
+  else
+    for _, line in ipairs(header_lines(state)) do
+      children[#children + 1] = line
+    end
+  end
+
+  local note = state.note()
+  if note and status ~= "starting" then
+    children[#children + 1] =
+      hydronium.h(ink.Text, { color = "yellow" }, "    " .. note)
+  end
+
+  local entries = state.entries()
+  if #entries > 0 then
+    children[#children + 1] = hydronium.h(ink.Newline)
+    for index, entry in ipairs(entries) do
+      local text = entry.label
+      if entry.count and entry.count > 1 then
+        text = text .. " x" .. tostring(entry.count)
+      end
+      children[#children + 1] =
+        hydronium.h(ink.Text, { key = index, dimColor = true }, "    " .. text)
+    end
+  end
+
+  -- The one discoverability line for the fullscreen view.
+  if status ~= "starting" then
+    -- Read purely to subscribe: the count itself comes off a plain table
+    -- (see new_state's note), so this signal is what re-runs this render
+    -- when a request arrives.
+    state.requests_revision()
+    local count = state.history:count()
+    children[#children + 1] = hydronium.h(ink.Newline)
+    children[#children + 1] = hydronium.h(ink.Text, { dimColor = true },
+      string.format("    f  inspect %d request%s \194\183 q  quit", count, count == 1 and "" or "s"))
+  end
+
+  return hydronium.h(ink.Box, { flexDirection = "column" }, unpack(children))
 end
 
 return M

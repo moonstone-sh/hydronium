@@ -79,6 +79,56 @@ function M.cli_event(kind, fields)
   return event
 end
 
+--- Reads an existing durable log back into events, newest-last.
+---
+--- This is the read side of the "durable superset" contract at the top of
+--- this file: the fullscreen request-debug view (see src/inspector.lua and
+--- src/ui/inspector_view.lua) is specified to show every request event in
+--- `.hydronium/dev.log`, not just the ones the collapsed display buffer
+--- happens to still be holding. The file is append-only across runs, so
+--- this also brings back a PREVIOUS session's requests -- which is the
+--- point of a durable log, but is why `limit` exists: only the last
+--- `limit` matching events are kept, oldest dropped first, so a log that
+--- has been accumulating for weeks cannot turn into unbounded memory at
+--- startup.
+---
+--- Never raises and never reports a missing file as an error: no log yet
+--- is the ordinary first-run state.
+--- @param path? string
+--- @param opts? { filter?: fun(event: table): boolean, limit?: integer, open?: fun(path: string, mode: string): file*|nil }
+--- @return table[] events, integer skipped Lines that were not usable events.
+function M.read_events(path, opts)
+  opts = opts or {}
+  path = path or M.DEFAULT_PATH
+  local open = opts.open or io.open
+  local limit = opts.limit
+  local filter = opts.filter
+
+  local file = open(path, "rb")
+  if not file then
+    return {}, 0
+  end
+
+  local event_model = require("event_model")
+  local events, skipped = {}, 0
+  for line in file:lines() do
+    local event = event_model.parse_line(line)
+    if event then
+      if not filter or filter(event) then
+        events[#events + 1] = event
+        if limit and #events > limit then
+          table.remove(events, 1)
+        end
+      end
+    elseif line:gsub("%s+", "") ~= "" then
+      skipped = skipped + 1
+    end
+  end
+  file:close()
+
+  return events, skipped
+end
+
 local Log = {}
 Log.__index = Log
 M.Log = Log

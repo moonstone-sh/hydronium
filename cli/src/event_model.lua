@@ -297,6 +297,119 @@ function M.label(event, opts)
   return tostring(kind)
 end
 
+-- ---------------------------------------------------------------------
+-- Request detail (the fullscreen request-debug view's data shape)
+-- ---------------------------------------------------------------------
+
+--- @param event table|nil
+--- @return boolean
+function M.is_request(event)
+  return type(event) == "table" and event.kind == "request"
+end
+
+--- Normalizes header fields into a stable, sorted array of
+--- `{ name, value }` pairs, accepting every shape an emitter could
+--- plausibly use, because meteorite emits NONE of them today and this
+--- must not have to be redesigned when it picks one:
+---
+---   * an object/map:        `{"content-type": "text/html"}`
+---   * an array of objects:  `[{"name":"accept","value":"*/*"}]`
+---   * an array of pairs:    `[["accept","*/*"]]`
+---
+--- A map is sorted by name (JSON objects have no order, so any order this
+--- reconstructed would be arbitrary -- sorted is at least stable across
+--- renders). An array is left in the emitter's own order, which for
+--- headers IS meaningful (repeated `Set-Cookie`, for instance).
+--- @param headers any
+--- @return table[]|nil pairs, boolean present
+local function normalize_headers(headers)
+  if type(headers) ~= "table" then
+    return nil, false
+  end
+
+  local out = {}
+  if #headers > 0 then
+    for _, item in ipairs(headers) do
+      if type(item) == "table" then
+        local name = item.name or item[1]
+        local value = item.value or item[2]
+        if name ~= nil then
+          out[#out + 1] = { name = tostring(name), value = value == nil and "" or tostring(value) }
+        end
+      end
+    end
+    return out, true
+  end
+
+  local names = {}
+  for name in pairs(headers) do
+    if type(name) == "string" then
+      names[#names + 1] = name
+    end
+  end
+  if #names == 0 then
+    -- A real, empty `"headers": {}`: present (the emitter captured them)
+    -- but genuinely empty, which is NOT the same as absent.
+    return out, true
+  end
+  table.sort(names)
+  for _, name in ipairs(names) do
+    out[#out + 1] = { name = name, value = tostring(headers[name]) }
+  end
+  return out, true
+end
+
+--- One `request` event as the fullscreen inspector's row+detail record.
+---
+--- FORWARD COMPATIBILITY IS THE WHOLE POINT OF THIS FUNCTION. Meteorite's
+--- current emitter (zig/server/dev_events.zig) writes exactly method,
+--- path, status, duration_ms and remote_addr -- no headers, no body, and
+--- adding them there is deliberately out of scope for this CLI's work.
+--- So every consumer here goes through this one record, which reports
+--- what is present RATHER THAN assuming: `has_headers`/`has_body` are
+--- false today and become true, with real content, the moment a newer
+--- meteorite starts emitting `headers`/`body` on the same `request` kind
+--- -- with no change to the UI's data contract, only to what it finds in
+--- these fields. `parse_line` already passes unknown fields through
+--- verbatim (envelope-only validation), and dev_log already writes them
+--- to `.hydronium/dev.log` verbatim, so nothing upstream has to change
+--- either.
+---
+--- `body_bytes` is taken from an explicit `body_bytes`/`body_size` field
+--- when the emitter provides one (it may report a size for a body it
+--- chose NOT to include) and otherwise measured from the body itself.
+--- @param event table A `request` event (as returned by M.parse_line).
+--- @return table detail
+function M.request_detail(event)
+  local status = tonumber(event.status)
+  local duration = tonumber(event.duration_ms)
+  local headers, has_headers = normalize_headers(event.headers)
+
+  local body = event.body
+  if type(body) ~= "string" then
+    body = nil
+  end
+  local body_bytes = tonumber(event.body_bytes or event.body_size)
+  if not body_bytes and body then
+    body_bytes = #body
+  end
+
+  return {
+    ts = tonumber(event.ts),
+    method = type(event.method) == "string" and event.method or "?",
+    path = type(event.path) == "string" and event.path or "?",
+    status = status and math.floor(status) or nil,
+    duration_ms = duration,
+    remote_addr = (type(event.remote_addr) == "string" and event.remote_addr ~= "")
+      and event.remote_addr or nil,
+    headers = headers,
+    has_headers = has_headers,
+    body = body,
+    body_bytes = body_bytes,
+    has_body = body ~= nil or (body_bytes ~= nil and body_bytes > 0),
+  }
+end
+
 --- @param entry table A ring-buffer entry.
 --- @return string
 function M.format_entry(entry)
