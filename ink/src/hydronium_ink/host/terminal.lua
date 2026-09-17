@@ -74,21 +74,44 @@
   was trustworthy enough to use instead). `Box` supports flexDirection,
   justifyContent, alignItems, flexWrap, flexGrow, flexShrink, flexBasis,
   padding[X/Y], border, width/height -- real grow/shrink/wrap/justify/align
-  now work, which the block-stacker this replaced never could. A fresh
-  Yoga node tree is built and freed on every paint() call (mirroring this
-  module's existing "recompute layout from scratch every paint" approach,
-  not an incremental one -- see buildYogaTree()/resolvePositions() below),
-  TWICE on a paint containing a `wrap="wrap"`/`"hard"` Text with no
-  explicit width (see host.paint()'s own doc comment on the two-pass
-  reflow this needs). Text measurement (collectTextLines et al.) stays
-  this module's own responsibility, feeding Yoga fixed-size leaves for
-  everything except that one no-explicit-width reflow case, which needs
-  Yoga's own flex/stretch to resolve a width first. The root is
-  terminal-size-constrained when host.setSize() has been called (render.lua
-  does, from the real terminal size), auto-sized to content otherwise. All
-  text measurement/painting goes through hydronium_ink.text_metrics for
-  real Unicode display width and grapheme-cluster segmentation, not byte
+  now work, which the block-stacker this replaced never could. Each host
+  node keeps ONE real, persistent Yoga node alive across paints (created
+  once, patched in place via node._styleDirty/_childrenDirty from then
+  on, freed only when host.removeChild() really removes it -- see this
+  file's own "Incremental Yoga sync" section and buildYogaTree()'s doc
+  comment), NOT rebuilt from scratch every paint() the way it used to be.
+  A paint containing a `wrap="wrap"`/`"hard"` Text with no explicit width
+  still resyncs the WHOLE tree twice (see host.paint()'s own doc comment
+  on the two-pass reflow this needs) -- but "resync," under persistence,
+  means "patch whatever's dirty," not "recreate everything," so this
+  costs far less than it did before persistence landed. Text measurement
+  (collectTextLines et al.) stays this module's own responsibility,
+  feeding Yoga fixed-size leaves for everything except that one
+  no-explicit-width reflow case, which needs Yoga's own flex/stretch to
+  resolve a width first. The root is terminal-size-constrained when
+  host.setSize() has been called (render.lua does, from the real terminal
+  size), auto-sized to content otherwise. All text measurement/painting
+  goes through hydronium_ink.text_metrics for real Unicode display width
+  and grapheme-cluster segmentation, not byte
   count. See docs/HYDRONIUM_INK_TERMINAL_HOST.md.
+
+  KNOWN REMAINING SCALING COST, discovered profiling the persistence work
+  above rather than assumed: detachFromParent's `table.remove(siblings, i)`
+  is O(remaining siblings), and core/reconciler.lua's own reconcileChildren
+  calls appendChild for EVERY child on EVERY re-render "to ensure sibling
+  order" (see this file's own "REPAINT STRATEGY" doc comment above) even
+  when the order didn't change -- so a Box with N children re-renders in
+  O(N^2), dominated by table.remove, not by anything Yoga-related. Sampling
+  profiler evidence: for N=2000 siblings with one child's text changing,
+  table.remove accounted for over half of all samples taken during a
+  single update, and the persistent-Yoga-tree work above measured as
+  functionally free by comparison (calculateLayout over 2000 already-built
+  nodes: ~1 microsecond; the OLD full-rebuild code's 2000 newNode+free
+  calls: ~1.5ms -- both dwarfed by table.remove's cost at this N). Fixing
+  this needs parent.children to stop being a plain shifting array (an
+  intrusive doubly-linked list, or similar O(1)-move structure), which
+  ripples through every place in this file that walks it by index --
+  a separate, larger change not attempted here.
 
   LuaJIT-only: see hydronium_ink/init.lua's doc comment for why (Yoga is
   bound via LuaJIT's `ffi`, which plain PUC Lua has no equivalent of).
@@ -133,6 +156,64 @@ local function rawProps(props)
   return props._store or props
 end
 
+-- ===================== Incremental Yoga sync (dirty tracking) =====================
+-- buildYogaTree() below keeps ONE real Yoga node alive per host node across
+-- paints (created once, style/children patched incrementally), rather than
+-- rebuilding the whole native tree from scratch on every paint() call --
+-- see buildYogaTree's own doc comment for why, and YogaNode:free()'s doc
+-- comment in yoga_ffi.lua, which already documented this exact "one node
+-- per host node, freed individually on removal" model as this binding's
+-- intended lifecycle even before anything here actually did it that way.
+--
+-- `node._styleDirty`/`node._childrenDirty` (set by the mutating Host
+-- methods below, cleared by buildYogaTree once it has resynced them) are
+-- what let buildYogaTree skip real work for a subtree nothing changed in.
+-- A brand-new node (node._yoga == nil) always gets full setup regardless
+-- of these flags -- see buildYogaTree's own `isNew` check.
+
+-- A "Text" element's own children (text/Newline/nested-Text nodes) are
+-- absorbed into its single flattened Yoga leaf via collectTextLines()'s
+-- own separate walk -- buildYogaTree's normal box-children recursion
+-- never reaches them at all (Text's own branch never recurses into
+-- node.children the way "box" kind nodes do). A mutation on one of these
+-- absorbed nodes therefore has to be attributed to the nearest REAL
+-- Yoga-owning ancestor: the outermost Text element wrapping it (climbing
+-- past any nested Text along the way), not the absorbed node itself.
+local function nearestYogaOwner(node)
+  local n = node
+  while n.parent and n.parent.tag == "Text" do
+    n = n.parent
+  end
+  return n
+end
+
+--- Marks the real Yoga-owning ancestor-or-self of `node` as needing its
+--- OWN style/content resynced (its props changed, or -- if `node` is
+--- absorbed Text content -- the flattened line content the owning Text
+--- element derives from it changed).
+local function markStyleDirty(node)
+  nearestYogaOwner(node)._styleDirty = true
+end
+
+--- Marks the real Yoga-owning ancestor-or-self of `node` as needing its
+--- Yoga CHILD LIST resynced (an insert/move/removal happened in its
+--- direct children). For a node inside a Text element's absorbed
+--- content, this is the same as markStyleDirty: Text has no real Yoga
+--- children of its own to resync -- any structural change below it is a
+--- content change from the owning Text's own perspective.
+local function markChildrenDirty(node)
+  local owner = nearestYogaOwner(node)
+  if owner.tag == "Text" then
+    owner._styleDirty = true
+  else
+    owner._childrenDirty = true
+  end
+end
+
+--- Detaches `child` from whatever parent it currently has (a no-op if
+--- none). Used by appendChild/insertBefore to handle a MOVE (Yoga-owning
+--- ancestors on both the old and new side each need their child list
+--- resynced) as well as a fresh insert (nothing to detach from yet).
 local function detachFromParent(child)
   if child.parent and child.parent.children then
     local siblings = child.parent.children
@@ -142,7 +223,28 @@ local function detachFromParent(child)
         break
       end
     end
+    markChildrenDirty(child.parent)
     child.parent = nil
+  end
+end
+
+--- Frees `node`'s own persistent Yoga node (if it has one) and recurses
+--- into node.children unconditionally -- cheap and correct regardless of
+--- node kind, since an absorbed node (see nearestYogaOwner's doc comment)
+--- never has a `_yoga` of its own to free, and a Box silently-unsupported
+--- inside a Text (see collectTextLines's own doc comment) never got one
+--- created in the first place either. Called only from host.removeChild,
+--- which -- unlike appendChild/insertBefore -- is only ever used by the
+--- Reconciler for a real, permanent removal, never a reorder/move (a move
+--- goes through detachFromParent + appendChild/insertBefore without an
+--- intervening removeChild call).
+local function freeYogaSubtree(node)
+  if node._yoga then
+    node._yoga:free()
+    node._yoga = nil
+  end
+  for i = 1, #(node.children or {}) do
+    freeYogaSubtree(node.children[i])
   end
 end
 
@@ -434,32 +536,45 @@ local cell
 local resolvePositions
 local newFrame
 local paintNode
-local freeYogaTree
 
---- Builds a real Yoga node for `node` and its whole subtree, setting
---- style from Box props (or fixed content-box sizing for text leaves),
---- and stashes it on `node._yoga` / `node._layoutKind` / `node._layoutLines`
---- (fields this module owns exclusively, like the old `node._layout` was)
---- for `resolvePositions()` below to read back after `calculateLayout()`.
---- Rebuilt from scratch on every paint(), not maintained incrementally --
---- mirrors this module's pre-Yoga "recompute layout every paint" approach;
---- the Lua-side trees involved are small enough that reallocating Yoga
---- nodes per paint is not a real cost, and it avoids having to hook Yoga
---- node lifecycle into createInstance/removeChild/etc.
-local function buildYogaTree(node, yogaNodes)
-  local yg = Yoga.newNode()
-  yogaNodes[#yogaNodes + 1] = yg
+--- Syncs `node` (and, for a "box"-kind node, its whole subtree) against a
+--- real, PERSISTENT Yoga node: created once per host node
+--- (`node._yoga`, kept alive across paints -- see this file's own
+--- "Incremental Yoga sync" section above), and thereafter patched
+--- in place rather than torn down and rebuilt every paint(). A brand-new
+--- node (no `node._yoga` yet) always gets full style/children setup;
+--- an existing one only resyncs its style when `node._styleDirty` and
+--- its Yoga child list when `node._childrenDirty` (both set by the
+--- mutating Host methods below, cleared here once resynced) -- but a
+--- "box"-kind node still always RECURSES into its existing children
+--- regardless of its own `_childrenDirty`, so a dirty grandchild several
+--- levels down still gets resynced even when nothing on the path to it
+--- structurally changed.
+--- `node._layoutKind`/`node._layoutLines` (fields this module owns
+--- exclusively, like the old `node._layout` was) are what
+--- `resolvePositions()` below reads back after `calculateLayout()`.
+--- TRANSFORM IS THE ONE EXCEPTION: it always fully recomputes regardless
+--- of dirty flags (see its own branch below for why) -- everything else
+--- gets the skip-when-unchanged treatment.
+local function buildYogaTree(node)
+  local isNew = node._yoga == nil
+  local yg = node._yoga or Yoga.newNode()
   node._yoga = yg
 
   if node.type == "text" then
     node._layoutKind = "text"
-    yg:setStyle({ width = textMetrics.displayWidth(node.text), height = 1 })
+    if isNew or node._styleDirty then
+      yg:setStyle({ width = textMetrics.displayWidth(node.text), height = 1 })
+      node._styleDirty = false
+    end
     return yg
   end
 
   if node.type == "element" and node.tag == "Newline" then
     node._layoutKind = "newline"
-    yg:setStyle({ width = 0, height = 1 })
+    if isNew then
+      yg:setStyle({ width = 0, height = 1 })
+    end
     return yg
   end
 
@@ -471,28 +586,48 @@ local function buildYogaTree(node, yogaNodes)
     -- never has children in practice, but this keeps its code path
     -- identical to a childless Box rather than inventing a new kind).
     node._layoutKind = "box"
-    yg:setStyle({ flexGrow = 1 })
+    if isNew then
+      yg:setStyle({ flexGrow = 1 })
+    end
     return yg
   end
 
   if node.type == "element" and node.tag == "Transform" then
-    -- Renders `node.children` into a fully isolated sub-tree and frame
-    -- (its own Yoga nodes, built/laid out/painted/freed entirely within
-    -- this branch -- not part of the outer paint()'s own yogaNodes list
-    -- or its calculateLayout() pass), extracts each row as PLAIN text
-    -- (see this module's own doc comment above on Transform: no ANSI
-    -- re-parsing -- a transform that injects its own ANSI codes is not
-    -- supported), and calls `props.transform(line, index)` on each
-    -- (1-indexed, not real Ink's 0-indexed convention). The transformed
-    -- strings become this node's own "transform_block" content -- from
-    -- the OUTER tree's perspective, a Transform is a fixed-size leaf,
-    -- exactly like a Text.
-    local isolatedYogaNodes = {}
+    -- Renders `node.children` into a fully isolated sub-tree and frame,
+    -- extracts each row as PLAIN text (see this module's own doc comment
+    -- above on Transform: no ANSI re-parsing -- a transform that injects
+    -- its own ANSI codes is not supported), and calls
+    -- `props.transform(line, index)` on each (1-indexed, not real Ink's
+    -- 0-indexed convention). The transformed strings become this node's
+    -- own "transform_block" content -- from the OUTER tree's
+    -- perspective, a Transform is a fixed-size leaf, exactly like a Text.
+    --
+    -- Always fully recomputed, ignoring dirty flags entirely (unlike
+    -- every other branch here): this node's content depends on its
+    -- CHILDREN's rendered output, and nearestYogaOwner (see this file's
+    -- "Incremental Yoga sync" section) only bubbles a mutation up through
+    -- Text-tag ancestors, not Transform ones -- there is no cheap way to
+    -- know from here whether something inside actually changed, so this
+    -- always redoes the whole isolated render pass, matching its cost
+    -- before persistence was added anywhere else in this file.
+    --
+    -- `anonymousRoot` -- unlike every other node reached from here -- is
+    -- a genuinely fresh, throwaway Lua table on every single call (never
+    -- the same object twice, never referenced again after this branch
+    -- returns), so its own Yoga node is always brand new and always safe
+    -- to free again immediately below. Its `children` field, though, is
+    -- the REAL `node.children` -- the actual persistent host nodes,
+    -- reused across paints and potentially still holding a `_yoga` from
+    -- a PRIOR Transform call. `removeAllChildren()` before freeing
+    -- `isolatedRootYg` detaches them cleanly without touching their own
+    -- persistent Yoga nodes at all, so they stay valid and reusable for
+    -- next time (or for freeYogaSubtree, whenever they're genuinely
+    -- unmounted via host.removeChild -- never triggered from here).
     local anonymousRoot = {
       id = nextNodeId(), type = "root", tag = "TransformRoot",
       props = {}, children = node.children, parent = nil,
     }
-    local isolatedRootYg = buildYogaTree(anonymousRoot, isolatedYogaNodes)
+    local isolatedRootYg = buildYogaTree(anonymousRoot)
     isolatedRootYg:calculateLayout(YG_UNDEFINED, YG_UNDEFINED)
     resolvePositions(anonymousRoot, 1, 1)
 
@@ -500,7 +635,8 @@ local function buildYogaTree(node, yogaNodes)
     local iw, ih = math.max(isolatedLayout.w, 0), math.max(isolatedLayout.h, 0)
     local tempFrame = newFrame(iw, ih)
     paintNode(anonymousRoot, tempFrame)
-    freeYogaTree(isolatedYogaNodes)
+    isolatedRootYg:removeAllChildren()
+    isolatedRootYg:free()
 
     local plainLines = {}
     for y = 1, ih do
@@ -533,65 +669,81 @@ local function buildYogaTree(node, yogaNodes)
   end
 
   if node.type == "element" and node.tag == "Text" then
-    local lines = collectTextLines(node, textStyleOf(node.props))
-    local props = node.props or {}
-    node._pendingWrap = nil
-
-    if props.width and TRUNCATE_MODES[props.wrap] then
-      for i, line in ipairs(lines) do
-        lines[i] = truncateLine(line, props.width, props.wrap)
-      end
-    elseif props.width and WRAP_MODES[props.wrap] then
-      -- Width is already known up front -- wrap right now, no second
-      -- pass needed (unlike the no-explicit-width case below).
-      local wrapped = {}
-      for _, line in ipairs(lines) do
-        for _, wline in ipairs(wrapLine(line, props.width, props.wrap == "hard")) do
-          table.insert(wrapped, wline)
-        end
-      end
-      lines = wrapped
-    elseif node._prewrapWidth and WRAP_MODES[props.wrap] then
-      -- Pass 2 of the two-pass reflow host.paint() runs for a wrap mode
-      -- with no explicit width (see its own doc comment): use the lines
-      -- already wrapped there, against pass 1's real resolved width.
-      lines = node._prewrapLines
-    elseif WRAP_MODES[props.wrap] then
-      -- Pass 1: no explicit width yet, so there is nothing to wrap
-      -- against -- give Yoga the natural (unwrapped) width so its own
-      -- flex/stretch can resolve this node's real available width, and
-      -- flag it for host.paint() to rewrap and rerun layout once more.
-      node._pendingWrap = props.wrap
-    end
-
-    local w = 0
-    for _, line in ipairs(lines) do
-      local lw = 0
-      for _, run in ipairs(line) do lw = lw + textMetrics.displayWidth(run.text) end
-      if lw > w then w = lw end
-    end
-
-    -- Pass 1 of a no-explicit-width wrap (node._pendingWrap just got set
-    -- above) is the one case that must leave `width` UNSET rather than
-    -- pinning it to `w`: yoga_ffi's setStyle only calls
-    -- YGNodeStyleSetWidth when given a non-nil width, and an explicit
-    -- width -- even one meant only as a "natural size" hint -- always
-    -- wins over alignItems: stretch in real Yoga, blocking exactly the
-    -- flex/stretch resolution host.paint()'s second pass depends on to
-    -- learn this node's real available width. Every other case (a normal
-    -- unwrapped Text, an explicit-width Text, or pass 2 re-running with
-    -- node._prewrapWidth pinned) still wants an explicit width.
-    local yogaWidth = w
-    if props.width then
-      yogaWidth = props.width
-    elseif node._prewrapWidth and WRAP_MODES[props.wrap] then
-      yogaWidth = node._prewrapWidth
-    elseif node._pendingWrap then
-      yogaWidth = nil
-    end
     node._layoutKind = "text_block"
-    node._layoutLines = lines
-    yg:setStyle({ width = yogaWidth, height = math.max(#lines, 1) })
+    local props = node.props or {}
+    -- A wrap mode with NO explicit width can't use the isNew/_styleDirty
+    -- skip like everything else here: its correct wrapped content
+    -- depends on its PARENT's resolved width (via Yoga's own
+    -- flex/stretch -- see the two-pass reflow below), which can change
+    -- for reasons that have nothing to do with this node's own props or
+    -- content at all (a sibling's flexGrow, a terminal resize). Always
+    -- recomputing this specific case is the conservative, definitely-
+    -- correct choice; every other Text -- the overwhelming majority,
+    -- including explicit-width wrap and all truncate modes, whose
+    -- content genuinely depends only on their own props -- gets the
+    -- normal skip-when-unchanged treatment.
+    local isWrapNoWidth = WRAP_MODES[props.wrap] and not props.width
+
+    if isNew or node._styleDirty or isWrapNoWidth then
+      local lines = collectTextLines(node, textStyleOf(props))
+      node._pendingWrap = nil
+
+      if props.width and TRUNCATE_MODES[props.wrap] then
+        for i, line in ipairs(lines) do
+          lines[i] = truncateLine(line, props.width, props.wrap)
+        end
+      elseif props.width and WRAP_MODES[props.wrap] then
+        -- Width is already known up front -- wrap right now, no second
+        -- pass needed (unlike the no-explicit-width case below).
+        local wrapped = {}
+        for _, line in ipairs(lines) do
+          for _, wline in ipairs(wrapLine(line, props.width, props.wrap == "hard")) do
+            table.insert(wrapped, wline)
+          end
+        end
+        lines = wrapped
+      elseif node._prewrapWidth and WRAP_MODES[props.wrap] then
+        -- Pass 2 of the two-pass reflow host.paint() runs for a wrap mode
+        -- with no explicit width (see its own doc comment): use the lines
+        -- already wrapped there, against pass 1's real resolved width.
+        lines = node._prewrapLines
+      elseif WRAP_MODES[props.wrap] then
+        -- Pass 1: no explicit width yet, so there is nothing to wrap
+        -- against -- give Yoga the natural (unwrapped) width so its own
+        -- flex/stretch can resolve this node's real available width, and
+        -- flag it for host.paint() to rewrap and rerun layout once more.
+        node._pendingWrap = props.wrap
+      end
+
+      local w = 0
+      for _, line in ipairs(lines) do
+        local lw = 0
+        for _, run in ipairs(line) do lw = lw + textMetrics.displayWidth(run.text) end
+        if lw > w then w = lw end
+      end
+
+      -- Pass 1 of a no-explicit-width wrap (node._pendingWrap just got set
+      -- above) is the one case that must leave `width` UNSET rather than
+      -- pinning it to `w`: yoga_ffi's setStyle only calls
+      -- YGNodeStyleSetWidth when given a non-nil width, and an explicit
+      -- width -- even one meant only as a "natural size" hint -- always
+      -- wins over alignItems: stretch in real Yoga, blocking exactly the
+      -- flex/stretch resolution host.paint()'s second pass depends on to
+      -- learn this node's real available width. Every other case (a normal
+      -- unwrapped Text, an explicit-width Text, or pass 2 re-running with
+      -- node._prewrapWidth pinned) still wants an explicit width.
+      local yogaWidth = w
+      if props.width then
+        yogaWidth = props.width
+      elseif node._prewrapWidth and WRAP_MODES[props.wrap] then
+        yogaWidth = node._prewrapWidth
+      elseif node._pendingWrap then
+        yogaWidth = nil
+      end
+      node._layoutLines = lines
+      yg:setStyle({ width = yogaWidth, height = math.max(#lines, 1) })
+      node._styleDirty = false
+    end
     return yg
   end
 
@@ -600,38 +752,55 @@ local function buildYogaTree(node, yogaNodes)
   -- style mapping; Yoga's own flex algorithm (grow/shrink/wrap/justify/
   -- align, auto-sizing from children when width/height are unset) replaces
   -- what used to be this module's own hand-rolled block-stacking math.
-  local props = node.props or {}
   node._layoutKind = "box"
-  yg:setStyle({
-    flexDirection = props.flexDirection == "row" and "row" or "column",
-    justifyContent = props.justifyContent,
-    alignItems = props.alignItems,
-    flexWrap = props.flexWrap,
-    flexGrow = props.flexGrow,
-    flexShrink = props.flexShrink,
-    flexBasis = props.flexBasis,
-    width = props.width,
-    height = props.height,
-    padding = props.padding,
-    paddingX = props.paddingX,
-    paddingY = props.paddingY,
-    border = props.borderStyle and 1 or nil,
-    margin = props.margin,
-    marginX = props.marginX,
-    marginY = props.marginY,
-    position = props.position,
-    top = props.top,
-    right = props.right,
-    bottom = props.bottom,
-    left = props.left,
-    display = props.display,
-    overflow = props.overflow,
-  })
 
-  for i = 1, #node.children do
-    local childYg = buildYogaTree(node.children[i], yogaNodes)
-    yg:insertChild(childYg, i - 1) -- Yoga child indices are 0-based
+  if isNew or node._styleDirty then
+    local props = node.props or {}
+    yg:setStyle({
+      flexDirection = props.flexDirection == "row" and "row" or "column",
+      justifyContent = props.justifyContent,
+      alignItems = props.alignItems,
+      flexWrap = props.flexWrap,
+      flexGrow = props.flexGrow,
+      flexShrink = props.flexShrink,
+      flexBasis = props.flexBasis,
+      width = props.width,
+      height = props.height,
+      padding = props.padding,
+      paddingX = props.paddingX,
+      paddingY = props.paddingY,
+      border = props.borderStyle and 1 or nil,
+      margin = props.margin,
+      marginX = props.marginX,
+      marginY = props.marginY,
+      position = props.position,
+      top = props.top,
+      right = props.right,
+      bottom = props.bottom,
+      left = props.left,
+      display = props.display,
+      overflow = props.overflow,
+    })
+    node._styleDirty = false
   end
+
+  -- Always recurse into every existing child regardless of our OWN
+  -- _childrenDirty -- a grandchild several levels down can still have its
+  -- own _styleDirty/_childrenDirty pending even when nothing on the path
+  -- to it structurally changed. Only the actual Yoga child-list wiring
+  -- (removeAllChildren + reinsert) is skipped when this node's own child
+  -- list genuinely didn't change.
+  local childListChanged = isNew or node._childrenDirty
+  if childListChanged then
+    yg:removeAllChildren()
+  end
+  for i = 1, #node.children do
+    local childYg = buildYogaTree(node.children[i])
+    if childListChanged then
+      yg:insertChild(childYg, i - 1) -- Yoga child indices are 0-based
+    end
+  end
+  node._childrenDirty = false
 
   return yg
 end
@@ -664,9 +833,11 @@ resolvePositions = function(node, parentX, parentY)
 
   node._layout = {
     x = x, y = y, w = cell(computed.width), h = cell(computed.height),
-    -- Captured here (not lazily from measureElement()) because the real
-    -- Yoga node is about to be freed by freeYogaTree() -- see
-    -- YogaNode:getComputedLayout()'s own doc comment.
+    -- Captured here into a plain Lua table (rather than having
+    -- measureElement() read the Yoga node lazily) so that reading a
+    -- node's last-painted layout never depends on its persistent Yoga
+    -- node still being alive -- e.g. after host.removeChild() has since
+    -- freed it (see freeYogaSubtree's own doc comment).
     clientW = cell(computed.clientWidth), clientH = cell(computed.clientHeight),
     kind = node._layoutKind, lines = node._layoutLines,
   }
@@ -681,16 +852,6 @@ resolvePositions = function(node, parentX, parentY)
     for i = 1, #node.children do
       resolvePositions(node.children[i], x, y)
     end
-  end
-end
-
---- Frees every Yoga node created by `buildYogaTree()` for this paint --
---- called after resolvePositions() has read everything back, since this
---- module rebuilds the whole Yoga tree per paint rather than keeping one
---- alive across paints (see buildYogaTree()'s own doc comment).
-freeYogaTree = function(yogaNodes)
-  for i = 1, #yogaNodes do
-    yogaNodes[i]:free()
   end
 end
 
@@ -974,15 +1135,16 @@ function M.createTerminalHost(writeFn)
 
   function host.appendChild(parent, child)
     if not parent or not child then return end
-    detachFromParent(child)
+    detachFromParent(child) -- marks the OLD parent dirty too, if this is a move
     child.parent = parent
     table.insert(parent.children, child)
+    markChildrenDirty(parent)
     host._dirty = true
   end
 
   function host.insertBefore(parent, child, beforeChild)
     if not parent or not child then return end
-    detachFromParent(child)
+    detachFromParent(child) -- marks the OLD parent dirty too, if this is a move
     child.parent = parent
 
     local inserted = false
@@ -998,6 +1160,7 @@ function M.createTerminalHost(writeFn)
     if not inserted then
       table.insert(parent.children, child)
     end
+    markChildrenDirty(parent)
     host._dirty = true
   end
 
@@ -1012,6 +1175,12 @@ function M.createTerminalHost(writeFn)
         end
       end
     end
+    markChildrenDirty(parent)
+    -- Real, permanent removal (unlike a move through detachFromParent) --
+    -- see freeYogaSubtree's own doc comment -- so this is the one place
+    -- safe to actually free child's (and its subtree's) persistent Yoga
+    -- nodes rather than just letting them go stale.
+    freeYogaSubtree(child)
     host._dirty = true
   end
 
@@ -1023,12 +1192,14 @@ function M.createTerminalHost(writeFn)
       updated[k] = v
     end
     node.props = updated
+    markStyleDirty(node)
     host._dirty = true
   end
 
   function host.commitTextUpdate(node, oldText, newText)
     if not node then return end
     node.text = tostring(newText or "")
+    markStyleDirty(node)
     host._dirty = true
   end
 
@@ -1049,8 +1220,7 @@ function M.createTerminalHost(writeFn)
   function host.paint()
     local availW, availH = host._cols or YG_UNDEFINED, host._rows or YG_UNDEFINED
 
-    local yogaNodes = {}
-    local rootYoga = buildYogaTree(root, yogaNodes)
+    local rootYoga = buildYogaTree(root)
     rootYoga:calculateLayout(availW, availH)
     resolvePositions(root, 1, 1) -- 1-indexed frame coordinates, see resolvePositions()
 
@@ -1060,12 +1230,17 @@ function M.createTerminalHost(writeFn)
     -- width to wrap against yet). Pass 1, above, measured each at its
     -- natural (unwrapped) width so Yoga's own flex/stretch could resolve
     -- its real available width; collect that now, rewrap against it, and
-    -- rerun the whole build+layout once more with the wrapped lines
-    -- pinned to that resolved width (node._prewrapWidth/_prewrapLines --
-    -- see buildYogaTree's Text branch). Pinning the width (rather than
+    -- rerun build+layout once more with the wrapped lines pinned to that
+    -- resolved width (node._prewrapWidth/_prewrapLines -- see
+    -- buildYogaTree's Text branch, which always recomputes this specific
+    -- case regardless of dirty flags). Pinning the width (rather than
     -- re-measuring it from the now-shorter wrapped content) is what keeps
     -- this to exactly two passes: pass 2 asserts the same width Yoga
     -- already computed in pass 1, so it resolves identically again.
+    -- Every Yoga node involved is the same persistent one both passes --
+    -- rerunning buildYogaTree a second time here just re-patches style on
+    -- whatever's actually dirty (which, for a pending-wrap Text, is
+    -- unconditional), it does not rebuild or free anything.
     local pendingWrap = {}
     local function collectPendingWrap(n)
       if n._pendingWrap then table.insert(pendingWrap, n) end
@@ -1076,8 +1251,6 @@ function M.createTerminalHost(writeFn)
     collectPendingWrap(root)
 
     if #pendingWrap > 0 then
-      freeYogaTree(yogaNodes)
-
       for _, n in ipairs(pendingWrap) do
         local resolvedWidth = math.max(n._layout.clientW or n._layout.w, 0)
         local wrapped = {}
@@ -1090,8 +1263,7 @@ function M.createTerminalHost(writeFn)
         n._prewrapLines = wrapped
       end
 
-      yogaNodes = {}
-      rootYoga = buildYogaTree(root, yogaNodes)
+      rootYoga = buildYogaTree(root)
       rootYoga:calculateLayout(availW, availH)
       resolvePositions(root, 1, 1)
 
@@ -1100,8 +1272,6 @@ function M.createTerminalHost(writeFn)
         n._prewrapLines = nil
       end
     end
-
-    freeYogaTree(yogaNodes)
 
     local rootLayout = root._layout
     local w, h = math.max(rootLayout.w, 0), math.max(rootLayout.h, 0)

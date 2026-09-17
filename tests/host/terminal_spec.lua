@@ -901,4 +901,85 @@ describe("hydronium.host.terminal -- real Host contract + real ANSI output", fun
     assert.equal(frame.w, 2, "root must auto-size back to its content's width")
     assert.equal(frame.h, 1, "root must auto-size back to its content's height")
   end)
+
+  -- The two specs below exercise incremental (persistent, patch-on-update)
+  -- Yoga tree maintenance -- buildYogaTree() used to tear down and rebuild
+  -- the WHOLE native Yoga tree from scratch on every single paint(); it
+  -- now keeps one real Yoga node alive per host node across paints and
+  -- patches only what a mutation's own dirty flags say actually changed.
+
+  it("keeps a node's persistent Yoga node across paints, only re-syncing what actually changed", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    local count, setCount = H.signal(1)
+    local function App()
+      return function()
+        return H.h(ink.Box, { flexDirection = "row" },
+          H.h(ink.Text, nil, "static"),
+          H.h(ink.Text, nil, tostring(count()))
+        )
+      end
+    end
+
+    reconciler:mount(H.h(App), root)
+    host.flush()
+
+    local box = root.children[1]
+    local staticText = box.children[1]
+    local boxYogaBefore, staticYogaBefore = box._yoga, staticText._yoga
+
+    H.act(function() setCount(2) end)
+    host.flush()
+
+    assert.truthy(box._yoga == boxYogaBefore,
+      "the Box's persistent Yoga node must be reused across paints, not recreated")
+    assert.truthy(staticText._yoga == staticYogaBefore,
+      "an unchanged sibling Text's persistent Yoga node must be reused, not recreated")
+    assert.falsy(staticText._styleDirty, "an unchanged Text must not be left marked dirty")
+    assert.falsy(box._childrenDirty, "an unchanged Box's child list must not be left marked dirty")
+
+    local grid = interpretAnsi(table.concat(writes), 10, 1)
+    assert.equal(rowText(grid, 1, 1, 7), "static2")
+  end)
+
+  it("frees a removed subtree's Yoga nodes via host.removeChild without corrupting a remaining sibling or a later remount", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    local showFirst, setShowFirst = H.signal(true)
+    local function App()
+      return function()
+        return H.h(ink.Box, { flexDirection = "row" },
+          showFirst() and H.h(ink.Text, { key = "a" }, "AAA") or nil,
+          H.h(ink.Text, { key = "b" }, "BBB")
+        )
+      end
+    end
+
+    reconciler:mount(H.h(App), root)
+    host.flush()
+    assert.equal(rowText(interpretAnsi(table.concat(writes), 10, 1), 1, 1, 6), "AAABBB")
+
+    clearWrites()
+    H.act(function() setShowFirst(false) end)
+    host.flush()
+    assert.equal(rowText(interpretAnsi(table.concat(writes), 10, 1), 1, 1, 3), "BBB",
+      "removing the first Text must free its Yoga node and leave the remaining sibling intact")
+
+    -- Remount a brand-new "a" node (a real create, not a reuse of the
+    -- freed one -- the reconciler never resurrects an unmounted vnode's
+    -- host node) and paint again: this is the real regression case for a
+    -- use-after-free/double-free bug in freeYogaSubtree, since it forces
+    -- a fresh Yoga.newNode() call right after the previous one at that
+    -- same conceptual tree position was freed.
+    clearWrites()
+    H.act(function() setShowFirst(true) end)
+    host.flush()
+    assert.equal(rowText(interpretAnsi(table.concat(writes), 10, 1), 1, 1, 6), "AAABBB")
+  end)
 end)

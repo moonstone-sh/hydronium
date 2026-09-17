@@ -194,21 +194,15 @@ five target triples with zero CMake.
   real Yoga flexbox" below for how reflow gets an available width without
   a Yoga measure-function callback. Nested `Text` style merging and
   `Newline` semantics are unchanged.
-- A fresh Yoga node tree is built and freed on every `paint()` call
-  (`buildYogaTree`/`resolvePositions`/`freeYogaTree` in `host/terminal.lua`)
-  rather than kept alive incrementally across the host node lifecycle —
-  a deliberate simplification matching this module's pre-existing
-  "recompute layout from scratch every paint" approach (the old
-  `measure()`/`position()` pair did the same). The Lua-side trees this
-  host ever deals with are small enough that this costs nothing
-  observable, and it avoids threading Yoga node lifecycle through
-  `createInstance`/`removeChild`/etc. **Not yet revisited**: a `paint()`
-  containing any `wrap = "wrap"`/`"hard"` `Text` with no explicit `width`
-  now does this TWICE (see "Real reflow..." below) — still not an
-  observable cost at this module's current scale, but the first thing to
-  fix if a real app's tree grows large enough that per-paint full
-  rebuild+layout stops being free; a Yoga measure-function callback would
-  remove both the doubling and the whole-tree-rebuild dependency at once.
+- **Later superseded** — see "Incremental (persistent) Yoga tree" below:
+  a fresh Yoga node tree used to be built and freed on every `paint()`
+  call rather than kept alive across the host node lifecycle. That was a
+  deliberate simplification at the time (the Lua-side trees this host
+  dealt with then were small enough for it to cost nothing observable),
+  not an architectural commitment — `YogaNode:free()` in `yoga_ffi.lua`
+  had already documented "one node per host node, freed individually on
+  removal" as this binding's own intended lifecycle before anything here
+  actually did it that way.
 
 ## Real reflow and terminal-constrained layout
 
@@ -294,6 +288,62 @@ Explicitly NOT implemented (out of scope, not attempted):
   not adding a prop to the existing pipeline — carved out as its own
   future slice rather than attempted here, the same honest-scoping
   treatment given to real text reflow above.
+
+## Incremental (persistent) Yoga tree
+
+Later implemented: each host node now keeps ONE real Yoga node alive
+across paints (`node._yoga`, created once, patched in place, freed only
+by `host.removeChild` on a genuine removal — see `freeYogaSubtree` and
+the "Incremental Yoga sync" section at the top of `host/terminal.lua`)
+instead of the whole native tree being torn down and rebuilt on every
+`paint()` call. `commitUpdate`/`commitTextUpdate` mark a node's
+`_styleDirty`; `appendChild`/`insertBefore`/`removeChild` mark the
+relevant parent's `_childrenDirty`; `buildYogaTree` skips re-deriving a
+node's Yoga style, or re-wiring a parent's Yoga child list, when neither
+flag is set — but still recurses into every existing child regardless,
+so a dirty descendant several levels down still gets patched even when
+nothing on the path to it structurally changed. `Transform` is the one
+exception: it always fully recomputes regardless of dirty flags, since
+its content depends on its children's *rendered output*, which nothing
+here propagates a dirty signal for.
+
+A node inside a `Text` element's absorbed content (nested `Text`,
+`Newline`, or plain text — see `buildYogaTree`'s own Text branch, which
+never recurses into its children the way a "box" kind does) has no Yoga
+node of its own to mark; `nearestYogaOwner` climbs to the outermost `Text`
+wrapping it and marks that instead. A `wrap = "wrap"`/`"hard"` `Text`
+with **no** explicit `width` is deliberately exempted from the dirty-flag
+skip and always recomputes: its correct wrapped content depends on its
+*parent's* resolved width (via Yoga's own flex/stretch, in the two-pass
+reflow above), which can change for reasons that have nothing to do with
+this node's own props at all (a sibling's `flexGrow`, a terminal resize).
+
+**Verified this actually engages, not just "should":** instrumenting
+`Yoga.newNode()` for a 100-sibling `Box` where one child's text changes
+showed the pre-persistence code allocating 102 new Yoga nodes on that
+single update (a full rebuild); the persistent version allocates 0.
+
+**Honest profiling result, not just a design assumption:** for a
+2000-sibling `Box`, `calculateLayout` over the already-built persistent
+tree measured at roughly 1 microsecond, and the *old* full-rebuild code's
+2000 `newNode`+`free` calls measured at roughly 1.5ms — both real, and
+both now avoided by this change on an unchanged node, but neither is
+actually the dominant cost at that scale. A sampling profile of one
+real update (one child's text changing, forcing `core/reconciler.lua`'s
+`reconcileChildren` to re-`appendChild` all 2000 siblings "to ensure
+sibling order," per "Repaint strategy" above) showed `table.remove`
+— called from `detachFromParent`'s array-shift removal, O(remaining
+siblings) per call, over up to 2000 calls — accounting for more than
+half of all samples taken, dwarfing everything Yoga-related. **This
+change does not fix that.** It's a separate, pre-existing cost living in
+this same file's plain-array `children` representation, exposed (not
+introduced) by profiling this work rather than assumed from either side.
+A real fix needs `parent.children` to stop being a plain shifting array
+(an intrusive doubly-linked list, or similar structure supporting O(1)
+move-to-end), which ripples through every place in this file that walks
+it by index (`paintNode`, `resolvePositions`, `collectTextLines`,
+`buildYogaTree`'s own children loop, ...) — a separate, larger change,
+not attempted here.
 
 ## Color mapping
 
