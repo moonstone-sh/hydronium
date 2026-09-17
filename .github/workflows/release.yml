@@ -100,6 +100,11 @@ jobs:
           # needing every package bumped in lockstep.
           while IFS= read -r -d '' publish_script; do
             package_dir="$(dirname "$publish_script")"
+            # basename "$package_dir" is unreliable as a package label: lib
+            # packages export to a trailing .../registry/ directory, so it's
+            # literally "registry" for six of the eight. package.toml's own
+            # name field is the actual thing being published either way.
+            package_name="$(sed -n 's/^name = "\(.*\)"$/\1/p' "$package_dir/package.toml" | head -1)"
             asset="$(find "$package_dir" -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.tar.zst' \) -print -quit)"
             test -n "$asset"
             gh release upload "$RELEASE_TAG" "$asset" --clobber
@@ -107,7 +112,7 @@ jobs:
             publish_output="$(sh "$publish_script" 2>&1)" || publish_status=$?
             if [ "$publish_status" -ne 0 ]; then
               if printf '%s' "$publish_output" | grep -q 'already exists'; then
-                echo "⚠ $(basename "$package_dir"): already published at this version, skipping."
+                echo "⚠ ${package_name:-$package_dir}: already published at this version, skipping."
                 continue
               fi
               printf '%s\n' "$publish_output" >&2
