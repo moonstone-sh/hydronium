@@ -90,10 +90,28 @@ jobs:
           # runner doesn't have, and the endpoint that *would* do it over
           # HTTP (POST /api/registry/packages/manage) requires an
           # interactive session step-up no CI credential can satisfy.
+          # Every package in dist/orbit publishes on every release run, even
+          # when only one of the 8 actually bumped its version -- most runs
+          # will re-attempt N-1 already-published versions. The registry
+          # rejects a duplicate version with 409 and the exact message
+          # "Version X already exists." (registry-publish.ts); treat that
+          # one message as an expected skip, not a failure, so a partial
+          # version bump still ships via a normal tag push instead of
+          # needing every package bumped in lockstep.
           while IFS= read -r -d '' publish_script; do
             package_dir="$(dirname "$publish_script")"
             asset="$(find "$package_dir" -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.tar.zst' \) -print -quit)"
             test -n "$asset"
             gh release upload "$RELEASE_TAG" "$asset" --clobber
-            sh "$publish_script"
+            publish_status=0
+            publish_output="$(sh "$publish_script" 2>&1)" || publish_status=$?
+            if [ "$publish_status" -ne 0 ]; then
+              if printf '%s' "$publish_output" | grep -q 'already exists'; then
+                echo "⚠ $(basename "$package_dir"): already published at this version, skipping."
+                continue
+              fi
+              printf '%s\n' "$publish_output" >&2
+              exit "$publish_status"
+            fi
+            printf '%s\n' "$publish_output"
           done < <(find dist/orbit -type f -name publish.sh -print0 | sort -z)
