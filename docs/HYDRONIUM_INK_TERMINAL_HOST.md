@@ -187,10 +187,12 @@ five target triples with zero CMake.
   color looks.
 - `Text` gained `backgroundColor`, `dimColor`, `italic`, `underline`,
   `strikethrough`, `inverse` (all real SGR codes, see "Color mapping"
-  below) and `width` + `wrap` (`"truncate"`/`"truncate-start"`/
-  `"truncate-middle"`/`"truncate-end"`, ASCII `"..."` marker — see the
-  "Explicitly NOT implemented" note on real reflow below for why this is
-  narrower than real Ink's own `wrap`). Nested `Text` style merging and
+  below) and `width` + `wrap`, now all six of real Ink's own `wrap`
+  values: the four `truncate*` variants (ASCII `"..."` marker) plus real
+  reflow via `"wrap"`/`"hard"` (word-wrap, breaking mid-word only for
+  `"hard"` or when a single word alone exceeds the width) — see "Layout:
+  real Yoga flexbox" below for how reflow gets an available width without
+  a Yoga measure-function callback. Nested `Text` style merging and
   `Newline` semantics are unchanged.
 - A fresh Yoga node tree is built and freed on every `paint()` call
   (`buildYogaTree`/`resolvePositions`/`freeYogaTree` in `host/terminal.lua`)
@@ -200,31 +202,67 @@ five target triples with zero CMake.
   `measure()`/`position()` pair did the same). The Lua-side trees this
   host ever deals with are small enough that this costs nothing
   observable, and it avoids threading Yoga node lifecycle through
-  `createInstance`/`removeChild`/etc.
+  `createInstance`/`removeChild`/etc. **Not yet revisited**: a `paint()`
+  containing any `wrap = "wrap"`/`"hard"` `Text` with no explicit `width`
+  now does this TWICE (see "Real reflow..." below) — still not an
+  observable cost at this module's current scale, but the first thing to
+  fix if a real app's tree grows large enough that per-paint full
+  rebuild+layout stops being free; a Yoga measure-function callback would
+  remove both the doubling and the whole-tree-rebuild dependency at once.
+
+## Real reflow and terminal-constrained layout
+
+Both later implemented, without the `YGNodeSetMeasureFunc` FFI-callback
+integration described (and deliberately not attempted) above:
+
+- **Terminal-constrained root layout**: `host.setSize(columns, rows)`
+  (`host/terminal.lua`) tells the host the real terminal size; `paint()`
+  passes it to the root's own `calculateLayout` instead of `NaN, NaN`, so
+  percentage widths/heights, `flexGrow`, and `alignItems: stretch`
+  resolve against the real terminal everywhere in the tree, not just
+  content. `render.lua` calls it once at startup (from the same
+  `tty_ffi.getWindowSize()` call that already seeded `useWindowSize()`)
+  and again on every detected resize. Left uncalled (auto-sizing to
+  content, the original behavior), for a non-interactive/piped run where
+  there is no real terminal to constrain against.
+- **Real reflow (`wrap = "wrap"`/`"hard"`) without a measure-function
+  callback**: when `Text` has its own explicit `width`, this needs no new
+  machinery -- it wraps immediately, the same time truncation already
+  did. Without one, `buildYogaTree` leaves the leaf's Yoga `width` style
+  completely *unset* (not even set to its natural content width -- an
+  explicit width, even used only as a hint, always wins over
+  `alignItems: stretch` in real Yoga, which is exactly the mechanism this
+  needs) and flags the node (`node._pendingWrap`); `host.paint()` reads
+  the real resolved width Yoga's own flex/stretch produced for it after
+  that first `calculateLayout`, wraps the text against it
+  (`wrapLine` in `host/terminal.lua`), and reruns `buildYogaTree` +
+  `calculateLayout` once more with the wrapped lines pinned to that same
+  width (so pass 2 can't trigger a different flex allocation and need a
+  third pass). A Box in the far more common `flexDirection: "column"`
+  case gets this "for free" from Yoga's own default cross-axis stretch;
+  a `flexDirection: "row"` parent has no such mechanism for its own main
+  axis, so a width-less wrapping `Text` inside a row currently has
+  nothing to resolve a width from -- an edge case not solved here.
+- **Unicode-aware measurement and painting**: a new
+  `hydronium_ink.text_metrics` module replaces every place this host used
+  to treat `#text` (byte count) as both display width and paint-loop
+  length -- a model that split every multi-byte UTF-8 character across as
+  many cells as it had bytes. It decodes UTF-8, assigns each codepoint a
+  terminal display width (0 for combining marks/format chars/controls, 2
+  for CJK/Hangul/fullwidth/most-emoji ranges, 1 otherwise -- a
+  hand-maintained practical approximation of Unicode's East-Asian-Width
+  property and UAX #29 grapheme segmentation, not a generated-from-UCD
+  table; see the module's own doc comment for exact scope), and segments
+  text into grapheme clusters (handling combining marks, ZWJ sequences,
+  emoji skin-tone modifiers, and regional-indicator flag pairs). A
+  2-cell-wide cluster paints its full text into one cell and an empty
+  "continuation" cell right after -- a real terminal auto-advances two
+  columns for one wide glyph on its own, so writing a second character
+  there would consume a THIRD column. `truncateLine` and the new
+  `wrapLine` both cut/wrap at cluster boundaries and account for
+  wide-cluster width, never splitting a multi-byte character in half.
 
 Explicitly NOT implemented (out of scope, not attempted):
-- No real text **reflow** — `wrap = "wrap"`/`"hard"` (real Ink's other
-  two documented `wrap` values) are not implemented; only the four
-  `truncate*` variants are, and only when `Text` has its own explicit
-  `width` prop (not when a width is merely inherited from a container's
-  own layout, the way real Ink's does). Real reflow needs Yoga to know
-  an available width *during* its own layout pass, via a "measure
-  function" callback (`YGNodeSetMeasureFunc`) this FFI binding does not
-  register — a real, separate, riskier integration (an FFI-callable Lua
-  callback, with real GC-lifetime concerns for the C function pointer),
-  not attempted here.
-- The renderer itself still has no notion of the real terminal's
-  column/row count for *layout* purposes — the root Yoga node is laid
-  out with undefined available width/height
-  (`YGNodeCalculateLayout(root, NaN, NaN, ...)`), so the frame still
-  auto-sizes to the measured content's bounding box only. (Separately,
-  `hydronium_ink.hooks.useWindowSize()`/`render.lua`'s event loop *do*
-  now query the real terminal size for reactive app code to read — see
-  the interactivity work this doc's sibling covers — but that value is
-  never fed back into the root's own `calculateLayout` call
-  automatically; an app wanting "fill the terminal" still has to pass
-  the queried size into its own top-level `Box`'s `width`/`height`
-  itself.)
 - Bare text (a plain string) directly under a `Box` with no enclosing
   `Text` is not valid input in real Ink; this module is more lenient
   (it measures and paints it as plain unstyled text rather than silently
@@ -292,11 +330,14 @@ Reset is always `\27[0m`.
 | Real `backgroundColor` fill + per-edge `borderColor`/`borderDimColor` | VERIFIED | Dedicated specs asserting exact `fg`/`bg` on border and interior cells, including a specific-edge-overrides-box-wide-fallback case. |
 | Real `overflow = "hidden"` clipping (not just layout reservation) | VERIFIED | Dedicated spec: a sibling box's own content is provably untouched while the clipped box's overflow is dropped. |
 | Real SGR `italic`/`underline`/`strikethrough`/`inverse`/`dimColor` | VERIFIED | Dedicated spec asserting all five flags on the interpreted grid cell. |
-| `Text` `wrap = "truncate"`/`"truncate-start"`/`"truncate-middle"` (explicit `width` only) | VERIFIED | Dedicated spec, all three modes, exact expected strings. |
+| `Text` `wrap = "truncate"`/`"truncate-start"`/`"truncate-middle"`/`"truncate-end"` (explicit `width`) | VERIFIED | Dedicated spec, all three modes, exact expected strings; a wide-character variant confirms a cluster is never split in half. |
+| `Text` `wrap = "wrap"`/`"hard"` (real reflow, explicit width or resolved from a container's own layout) | VERIFIED | Dedicated specs: word-boundary wrap, mid-word hard-wrap, and reflow against a width resolved from a parent `Box`'s own layout with no explicit `width` on the `Text` itself. |
 | Real Spacer (flexGrow=1 leaf) | VERIFIED | Dedicated spec: a Spacer between two Text siblings pushes the second all the way to the last column. |
 | `measureElement(ref)` / `useBoxMetrics` (x/y/width/height/clientWidth/clientHeight) | VERIFIED | Dedicated spec asserts exact values (including content-box size correctly subtracting border+padding) from a real bound `ref`, plus `hasMeasured=false` before anything painted. |
 | `Transform` (isolated-subtree render, per-line `transform(line, index)`) | VERIFIED (plain-text only — see "Explicitly NOT implemented" above) | Dedicated multi-line spec asserts both transformed lines' exact text and that no `fg` leaks through. |
-| Real text **reflow** (`wrap = "wrap"`/`"hard"`), real terminal size feeding layout, `Static` | NOT IMPLEMENTED, not attempted | See "Layout: real Yoga flexbox" and "Explicitly NOT implemented" above. |
+| Terminal-constrained root layout (`host.setSize`) | VERIFIED | Dedicated specs: a size-constrained root fills the real terminal instead of auto-sizing to content, a width-less Box stretches to it, and `setSize(0, 0)` reverts to auto-sizing. |
+| Unicode-aware measurement/painting (grapheme clusters, wide CJK/emoji) | VERIFIED | `hydronium_ink.text_metrics`; dedicated specs for a precomposed accented character, wide-character cell/continuation-cell painting, and Box width measured by display width rather than byte count. |
+| `Static` | NOT IMPLEMENTED, not attempted | See "Explicitly NOT implemented" above. |
 | `useInput`/`useApp`/`useWindowSize` (real raw-mode stdin, ANSI key parsing, live resize) | VERIFIED | See this doc's sibling covering `hydronium_ink.render`/`hooks`/`keys`/`tty_ffi` — real injected keypresses in a live `tmux` pane, not just unit tests. |
 | `ink` member's own test suite green | VERIFIED | `luajit tests/runner.lua tests/host/terminal_spec.lua` → 17/17 passed. The repo-wide suite (`luajit tests/runner.lua`) is 413/414 — the one failure is `tests/core/lazy_barrel_spec.lua`, pre-existing and unrelated (an environment issue: it shells out to a `lua` binary not on this machine's `PATH`), not caused by this module. |
 

@@ -77,16 +77,25 @@
   now work, which the block-stacker this replaced never could. A fresh
   Yoga node tree is built and freed on every paint() call (mirroring this
   module's existing "recompute layout from scratch every paint" approach,
-  not an incremental one) -- see buildYogaTree()/resolvePositions() below.
-  Text measurement (collectTextLines et al.) stays this module's own
-  responsibility, feeding Yoga fixed-size leaves; text wrapping remains
-  out of scope. See docs/HYDRONIUM_INK_TERMINAL_HOST.md.
+  not an incremental one -- see buildYogaTree()/resolvePositions() below),
+  TWICE on a paint containing a `wrap="wrap"`/`"hard"` Text with no
+  explicit width (see host.paint()'s own doc comment on the two-pass
+  reflow this needs). Text measurement (collectTextLines et al.) stays
+  this module's own responsibility, feeding Yoga fixed-size leaves for
+  everything except that one no-explicit-width reflow case, which needs
+  Yoga's own flex/stretch to resolve a width first. The root is
+  terminal-size-constrained when host.setSize() has been called (render.lua
+  does, from the real terminal size), auto-sized to content otherwise. All
+  text measurement/painting goes through hydronium_ink.text_metrics for
+  real Unicode display width and grapheme-cluster segmentation, not byte
+  count. See docs/HYDRONIUM_INK_TERMINAL_HOST.md.
 
   LuaJIT-only: see hydronium_ink/init.lua's doc comment for why (Yoga is
   bound via LuaJIT's `ffi`, which plain PUC Lua has no equivalent of).
 --]]
 
 local Yoga = require("hydronium_ink.yoga_ffi")
+local textMetrics = require("hydronium_ink.text_metrics")
 
 local M = {}
 
@@ -195,17 +204,13 @@ local function collectTextLines(node, style)
   return lines
 end
 
--- Truncation modes this module implements. `wrap = "wrap"`/`"hard"` (real
--- reflow, matching real Ink's other two documented `wrap` values) is
--- deliberately NOT implemented -- see docs/HYDRONIUM_INK_TERMINAL_HOST.md.
--- Real reflow needs to know an available width DURING Yoga's own layout
--- pass (via a Yoga "measure function" callback, YGNodeSetMeasureFunc,
--- which this module's FFI binding does not register), not after the
--- fact like these truncation modes can. Truncation only ever applies
--- here when the `Text` itself has an explicit `width` prop (added
--- specifically for this) -- unlike real Ink, a `Text` inheriting a
--- narrower width purely from its container's own layout does NOT get
--- truncated, for the same measure-function reason.
+-- Truncation modes this module implements. Unlike `wrap = "wrap"`/`"hard"`
+-- (real reflow, see WRAP_MODES/wrapLine below), truncation only ever
+-- applies when `Text` has its own explicit `width` prop: it cuts the text
+-- to fit AFTER that width is already known, with no need to learn one
+-- from Yoga's own layout pass first. A `Text` whose width is merely
+-- inherited from a container's own layout is NOT truncated (it would
+-- need the same width-resolved-by-Yoga two-pass machinery `wrap` uses).
 local TRUNCATE_MODES = {
   truncate = true, ["truncate-start"] = true, ["truncate-middle"] = true, ["truncate-end"] = true,
 }
@@ -219,12 +224,11 @@ local function copyRunWith(run, text)
 end
 
 --- Truncates one `collectTextLines()` line (a list of styled runs) to fit
---- `width` cells, preserving per-run styling at the cut boundary as best
---- it can. Uses a plain ASCII "..." marker, not a real Unicode ellipsis
---- -- consistent with this module's existing byte-per-cell text model
---- (see paintNode's own per-byte `setCell` loop), which has no
---- wide-character/emoji width accounting anywhere yet; a real ellipsis
---- glyph would itself violate that same one-byte-one-cell assumption.
+--- `width` CELLS (not bytes or codepoints -- see hydronium_ink.text_metrics),
+--- preserving per-run styling at the cut boundary as best it can. Uses a
+--- plain ASCII "..." marker, not a real Unicode ellipsis glyph (U+2026),
+--- purely to keep the marker's own width trivially == its character count
+--- without consulting text_metrics for it too.
 --- @param line table[] Array of {text, fg, bg, bold, ...} runs.
 --- @param width integer
 --- @param mode "truncate"|"truncate-start"|"truncate-middle"|"truncate-end"
@@ -232,20 +236,30 @@ end
 local function truncateLine(line, width, mode)
   if width < 0 then width = 0 end
   local total = 0
-  for _, run in ipairs(line) do total = total + #run.text end
+  for _, run in ipairs(line) do total = total + textMetrics.displayWidth(run.text) end
   if total <= width then return line end
   if width == 0 or #line == 0 then return {} end
 
   local marker = ("..."):sub(1, math.min(3, width))
   local keep = math.max(width - #marker, 0)
 
+  -- Walks `line`'s runs as a flat stream of {text, run} grapheme clusters,
+  -- so a cut never lands inside a multi-byte character. `keep` is a cell
+  -- budget: a wide (2-cell) cluster that would overshoot it is dropped
+  -- rather than split.
   local function takeFromStart(n)
     local result, remaining = {}, n
     for _, run in ipairs(line) do
       if remaining <= 0 then break end
-      local take = math.min(remaining, #run.text)
-      table.insert(result, copyRunWith(run, run.text:sub(1, take)))
-      remaining = remaining - take
+      local kept = {}
+      for _, g in ipairs(textMetrics.clusters(run.text)) do
+        if g.width > remaining then break end
+        kept[#kept + 1] = g.text
+        remaining = remaining - g.width
+      end
+      if #kept > 0 then
+        table.insert(result, copyRunWith(run, table.concat(kept)))
+      end
     end
     return result
   end
@@ -255,9 +269,17 @@ local function truncateLine(line, width, mode)
     for i = #line, 1, -1 do
       if remaining <= 0 then break end
       local run = line[i]
-      local take = math.min(remaining, #run.text)
-      table.insert(result, 1, copyRunWith(run, run.text:sub(#run.text - take + 1)))
-      remaining = remaining - take
+      local clusters = textMetrics.clusters(run.text)
+      local kept = {}
+      for j = #clusters, 1, -1 do
+        local g = clusters[j]
+        if g.width > remaining then break end
+        table.insert(kept, 1, g.text)
+        remaining = remaining - g.width
+      end
+      if #kept > 0 then
+        table.insert(result, 1, copyRunWith(run, table.concat(kept)))
+      end
     end
     return result
   end
@@ -279,12 +301,129 @@ local function truncateLine(line, width, mode)
   end
 end
 
+-- `wrap`/`hard` modes: real reflow, unlike TRUNCATE_MODES above. `wrap`
+-- pushes a single word wider than the target width onto its own
+-- (overflowing) line without splitting it; `hard` always fills every
+-- line to `width`, splitting mid-word if it has to -- matching real
+-- Ink's own documented distinction between the two.
+local WRAP_MODES = { wrap = true, hard = true }
+
+local function isSpaceCluster(text)
+  return text == " "
+end
+
+--- Coalesces a flat grapheme-cluster stream (each tagged with the run/
+--- style it came from) back into styled runs, merging consecutive
+--- clusters that share the same originating run.
+local function graphemesToRuns(graphemes)
+  local runs = {}
+  local curStyle, curText = nil, {}
+  for _, g in ipairs(graphemes) do
+    if g.style ~= curStyle then
+      if curStyle then table.insert(runs, copyRunWith(curStyle, table.concat(curText))) end
+      curStyle, curText = g.style, {}
+    end
+    table.insert(curText, g.text)
+  end
+  if curStyle then table.insert(runs, copyRunWith(curStyle, table.concat(curText))) end
+  return runs
+end
+
+--- Flattens `line` (a list of styled runs) into one grapheme-cluster
+--- stream, then groups it into whitespace-delimited "tokens" (a maximal
+--- run of space clusters, or a maximal run of non-space clusters) --
+--- the unit `wrapLine` below actually wraps at.
+local function tokenizeLine(line)
+  local graphemes = {}
+  for _, run in ipairs(line) do
+    for _, g in ipairs(textMetrics.clusters(run.text)) do
+      table.insert(graphemes, { text = g.text, width = g.width, style = run })
+    end
+  end
+
+  local tokens = {}
+  local i, n = 1, #graphemes
+  while i <= n do
+    local spaceTok = isSpaceCluster(graphemes[i].text)
+    local j = i
+    local width = 0
+    while j <= n and isSpaceCluster(graphemes[j].text) == spaceTok do
+      width = width + graphemes[j].width
+      j = j + 1
+    end
+    local tokGraphemes = {}
+    for k = i, j - 1 do table.insert(tokGraphemes, graphemes[k]) end
+    table.insert(tokens, { graphemes = tokGraphemes, width = width, isSpace = spaceTok })
+    i = j
+  end
+  return tokens, #graphemes
+end
+
+--- Real word-wrap: breaks one `collectTextLines()` line into one or more
+--- output lines (each a list of styled runs, same shape as the input) so
+--- none exceeds `width` cells, breaking at whitespace where possible. A
+--- word wider than `width` on its own either gets its own (overflowing)
+--- line (`hard = false`) or is split mid-word across lines (`hard =
+--- true`). Preserves per-cluster styling exactly like `truncateLine`.
+--- @param line table[] Array of {text, fg, bg, bold, ...} runs.
+--- @param width integer
+--- @param hard boolean
+--- @return table[][] one or more output lines
+local function wrapLine(line, width, hard)
+  local tokens, graphemeCount = tokenizeLine(line)
+  if width <= 0 or graphemeCount == 0 then return { line } end
+
+  local outLines = {}
+  local current, currentWidth = {}, 0
+
+  local function pushLine()
+    table.insert(outLines, graphemesToRuns(current))
+    current, currentWidth = {}, 0
+  end
+
+  for _, tok in ipairs(tokens) do
+    if tok.isSpace then
+      if #current > 0 then
+        if currentWidth + tok.width <= width then
+          for _, g in ipairs(tok.graphemes) do table.insert(current, g) end
+          currentWidth = currentWidth + tok.width
+        else
+          pushLine()
+        end
+      end
+    elseif tok.width <= width then
+      if currentWidth + tok.width > width then pushLine() end
+      for _, g in ipairs(tok.graphemes) do table.insert(current, g) end
+      currentWidth = currentWidth + tok.width
+    elseif hard then
+      for _, g in ipairs(tok.graphemes) do
+        if currentWidth + g.width > width and currentWidth > 0 then pushLine() end
+        table.insert(current, g)
+        currentWidth = currentWidth + g.width
+      end
+    else
+      -- Oversized word, non-hard wrap: its own line, left unsplit.
+      if #current > 0 then pushLine() end
+      for _, g in ipairs(tok.graphemes) do table.insert(current, g) end
+      currentWidth = tok.width
+      pushLine()
+    end
+  end
+  if #current > 0 or #outLines == 0 then pushLine() end
+
+  return outLines
+end
+
 -- "Undefined" in Yoga's own sense (its C headers `#define YGUndefined
--- NAN` -- not a linkable symbol, just a NaN float): used as the root's
--- available width/height so it auto-sizes to its content, exactly like
--- the old measure()'s root-has-no-fixed-size behavior. NOT the terminal's
--- real column/row count -- this module still has no notion of that (see
--- docs/HYDRONIUM_INK_TERMINAL_HOST.md's "Layout" scope statement).
+-- NAN` -- not a linkable symbol, just a NaN float). Used as the root's
+-- available width/height when this host has no known real terminal
+-- size yet (host._cols/_rows unset -- e.g. a non-interactive/piped run,
+-- or a test that never calls host.setSize()), in which case the root
+-- auto-sizes to its content, matching this module's original
+-- behavior. When a real size IS known, host.paint() passes it instead
+-- so the root -- and therefore percentage widths/heights, flexGrow,
+-- and alignItems: stretch throughout the tree -- are resolved against
+-- the actual terminal, not against content.
 local YG_UNDEFINED = 0 / 0
 
 -- Forward declarations: Transform's own buildYogaTree branch (below)
@@ -314,7 +453,7 @@ local function buildYogaTree(node, yogaNodes)
 
   if node.type == "text" then
     node._layoutKind = "text"
-    yg:setStyle({ width = #node.text, height = 1 })
+    yg:setStyle({ width = textMetrics.displayWidth(node.text), height = 1 })
     return yg
   end
 
@@ -383,7 +522,8 @@ local function buildYogaTree(node, yogaNodes)
         if ok and type(result) == "string" then out = result end
       end
       transformedLines[i] = out
-      if #out > w then w = #out end
+      local ow = textMetrics.displayWidth(out)
+      if ow > w then w = ow end
     end
 
     node._layoutKind = "transform_block"
@@ -395,21 +535,63 @@ local function buildYogaTree(node, yogaNodes)
   if node.type == "element" and node.tag == "Text" then
     local lines = collectTextLines(node, textStyleOf(node.props))
     local props = node.props or {}
+    node._pendingWrap = nil
+
     if props.width and TRUNCATE_MODES[props.wrap] then
       for i, line in ipairs(lines) do
         lines[i] = truncateLine(line, props.width, props.wrap)
       end
+    elseif props.width and WRAP_MODES[props.wrap] then
+      -- Width is already known up front -- wrap right now, no second
+      -- pass needed (unlike the no-explicit-width case below).
+      local wrapped = {}
+      for _, line in ipairs(lines) do
+        for _, wline in ipairs(wrapLine(line, props.width, props.wrap == "hard")) do
+          table.insert(wrapped, wline)
+        end
+      end
+      lines = wrapped
+    elseif node._prewrapWidth and WRAP_MODES[props.wrap] then
+      -- Pass 2 of the two-pass reflow host.paint() runs for a wrap mode
+      -- with no explicit width (see its own doc comment): use the lines
+      -- already wrapped there, against pass 1's real resolved width.
+      lines = node._prewrapLines
+    elseif WRAP_MODES[props.wrap] then
+      -- Pass 1: no explicit width yet, so there is nothing to wrap
+      -- against -- give Yoga the natural (unwrapped) width so its own
+      -- flex/stretch can resolve this node's real available width, and
+      -- flag it for host.paint() to rewrap and rerun layout once more.
+      node._pendingWrap = props.wrap
     end
+
     local w = 0
     for _, line in ipairs(lines) do
       local lw = 0
-      for _, run in ipairs(line) do lw = lw + #run.text end
+      for _, run in ipairs(line) do lw = lw + textMetrics.displayWidth(run.text) end
       if lw > w then w = lw end
     end
-    if props.width then w = props.width end
+
+    -- Pass 1 of a no-explicit-width wrap (node._pendingWrap just got set
+    -- above) is the one case that must leave `width` UNSET rather than
+    -- pinning it to `w`: yoga_ffi's setStyle only calls
+    -- YGNodeStyleSetWidth when given a non-nil width, and an explicit
+    -- width -- even one meant only as a "natural size" hint -- always
+    -- wins over alignItems: stretch in real Yoga, blocking exactly the
+    -- flex/stretch resolution host.paint()'s second pass depends on to
+    -- learn this node's real available width. Every other case (a normal
+    -- unwrapped Text, an explicit-width Text, or pass 2 re-running with
+    -- node._prewrapWidth pinned) still wants an explicit width.
+    local yogaWidth = w
+    if props.width then
+      yogaWidth = props.width
+    elseif node._prewrapWidth and WRAP_MODES[props.wrap] then
+      yogaWidth = node._prewrapWidth
+    elseif node._pendingWrap then
+      yogaWidth = nil
+    end
     node._layoutKind = "text_block"
     node._layoutLines = lines
-    yg:setStyle({ width = w, height = math.max(#lines, 1) })
+    yg:setStyle({ width = yogaWidth, height = math.max(#lines, 1) })
     return yg
   end
 
@@ -547,6 +729,29 @@ local function setCell(frame, x, y, ch, style, clip)
   }
 end
 
+--- Paints `text` starting at cell (x, y), one grapheme cluster per
+--- iteration (see hydronium_ink.text_metrics) instead of one BYTE per
+--- cell -- the previous model, which split every multi-byte UTF-8
+--- character across as many cells as it had bytes. A 2-cell-wide
+--- cluster (CJK, most emoji) writes its full text into its first cell
+--- and an empty "continuation" cell right after: real terminals advance
+--- the cursor two columns for one wide glyph on their own, so the
+--- continuation cell must stay empty (not a space -- that would consume
+--- a THIRD column) for the grid's column accounting to stay correct.
+--- @return integer the next cx after the painted text
+local function paintClusters(frame, x, y, text, style, clip)
+  local cx = x
+  for _, g in ipairs(textMetrics.clusters(text)) do
+    setCell(frame, cx, y, g.text, style, clip)
+    cx = cx + 1
+    if g.width >= 2 then
+      setCell(frame, cx, y, "", style, clip)
+      cx = cx + 1
+    end
+  end
+  return cx
+end
+
 --- Resolves one border edge's color/dim, falling back from the specific
 --- `border<Edge>Color`/`border<Edge>DimColor` prop to the box-wide
 --- `borderColor`/`borderDimColor`. Corners (see paintNode below) use the
@@ -623,31 +828,19 @@ paintNode = function(node, frame, clip)
       local cx = layout.x
       local cy = layout.y + i - 1
       for _, run in ipairs(line) do
-        for j = 1, #run.text do
-          setCell(frame, cx, cy, run.text:sub(j, j), run, clip)
-          cx = cx + 1
-        end
+        cx = paintClusters(frame, cx, cy, run.text, run, clip)
       end
     end
   elseif layout.kind == "text" then
     -- Bare text directly under a Box (no enclosing <Text>) -- see the
     -- "text" kind's doc comment on measure() above.
-    local cx = layout.x
-    for j = 1, #node.text do
-      setCell(frame, cx, layout.y, node.text:sub(j, j), nil, clip)
-      cx = cx + 1
-    end
+    paintClusters(frame, layout.x, layout.y, node.text, nil, clip)
   elseif layout.kind == "transform_block" then
     -- Plain, unstyled text -- see this node's own buildYogaTree branch
     -- and this module's Transform doc comment for why (no ANSI
     -- re-parsing of a transform's return value).
     for i, line in ipairs(layout.lines) do
-      local cx = layout.x
-      local cy = layout.y + i - 1
-      for j = 1, #line do
-        setCell(frame, cx, cy, line:sub(j, j), nil, clip)
-        cx = cx + 1
-      end
+      paintClusters(frame, layout.x, layout.y + i - 1, line, nil, clip)
     end
   end
   -- "newline": nothing to paint -- it already reserved its space during
@@ -725,6 +918,23 @@ function M.createTerminalHost(writeFn)
 
   function host.getRoot()
     return root
+  end
+
+  --- Tells this host the real terminal size, so host.paint() constrains
+  --- the root Yoga node to it instead of auto-sizing to content (see
+  --- YG_UNDEFINED's own doc comment). `columns`/`rows` of 0 or nil clear
+  --- the constraint, going back to auto-sizing -- render.lua does this
+  --- when `tty_ffi.getWindowSize()` isn't available (a non-interactive/
+  --- piped run). Does not itself trigger a repaint; call host.invalidate()
+  --- too (render.lua's resize-poll loop does) so the next flush() actually
+  --- picks up the new size with a full redraw rather than diffing against
+  --- a previous frame of a different shape.
+  function host.setSize(columns, rows)
+    if columns and columns > 0 and rows and rows > 0 then
+      host._cols, host._rows = columns, rows
+    else
+      host._cols, host._rows = nil, nil
+    end
   end
 
   function host.createInstance(tag, props)
@@ -837,10 +1047,60 @@ function M.createTerminalHost(writeFn)
   --- separately for a test/tool that genuinely wants to force a repaint
   --- right now.
   function host.paint()
+    local availW, availH = host._cols or YG_UNDEFINED, host._rows or YG_UNDEFINED
+
     local yogaNodes = {}
     local rootYoga = buildYogaTree(root, yogaNodes)
-    rootYoga:calculateLayout(YG_UNDEFINED, YG_UNDEFINED)
+    rootYoga:calculateLayout(availW, availH)
     resolvePositions(root, 1, 1) -- 1-indexed frame coordinates, see resolvePositions()
+
+    -- Two-pass reflow for Text nodes using wrap="wrap"/"hard" with no
+    -- explicit width prop (buildYogaTree flagged them via
+    -- node._pendingWrap instead of wrapping immediately, since it had no
+    -- width to wrap against yet). Pass 1, above, measured each at its
+    -- natural (unwrapped) width so Yoga's own flex/stretch could resolve
+    -- its real available width; collect that now, rewrap against it, and
+    -- rerun the whole build+layout once more with the wrapped lines
+    -- pinned to that resolved width (node._prewrapWidth/_prewrapLines --
+    -- see buildYogaTree's Text branch). Pinning the width (rather than
+    -- re-measuring it from the now-shorter wrapped content) is what keeps
+    -- this to exactly two passes: pass 2 asserts the same width Yoga
+    -- already computed in pass 1, so it resolves identically again.
+    local pendingWrap = {}
+    local function collectPendingWrap(n)
+      if n._pendingWrap then table.insert(pendingWrap, n) end
+      if n._layoutKind == "box" then
+        for i = 1, #n.children do collectPendingWrap(n.children[i]) end
+      end
+    end
+    collectPendingWrap(root)
+
+    if #pendingWrap > 0 then
+      freeYogaTree(yogaNodes)
+
+      for _, n in ipairs(pendingWrap) do
+        local resolvedWidth = math.max(n._layout.clientW or n._layout.w, 0)
+        local wrapped = {}
+        for _, line in ipairs(n._layoutLines) do
+          for _, wline in ipairs(wrapLine(line, resolvedWidth, n._pendingWrap == "hard")) do
+            table.insert(wrapped, wline)
+          end
+        end
+        n._prewrapWidth = resolvedWidth
+        n._prewrapLines = wrapped
+      end
+
+      yogaNodes = {}
+      rootYoga = buildYogaTree(root, yogaNodes)
+      rootYoga:calculateLayout(availW, availH)
+      resolvePositions(root, 1, 1)
+
+      for _, n in ipairs(pendingWrap) do
+        n._prewrapWidth = nil
+        n._prewrapLines = nil
+      end
+    end
+
     freeYogaTree(yogaNodes)
 
     local rootLayout = root._layout

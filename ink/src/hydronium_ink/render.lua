@@ -370,6 +370,12 @@ function M.render(element, opts)
     local ok, size = pcall(ttyFfi.getWindowSize)
     if ok then
       initialSize = size
+      -- Constrains the root Yoga node to the real terminal size (see
+      -- host/terminal.lua's host.setSize doc comment) instead of it
+      -- auto-sizing to content. Left uncalled (root stays auto-sized)
+      -- for a non-interactive/piped run, where there is no real
+      -- terminal size to constrain against.
+      host.setSize(size.columns, size.rows)
     end
   end
 
@@ -472,6 +478,14 @@ function M.render(element, opts)
           local current = getWindowSize()
           if size.columns ~= current.columns or size.rows ~= current.rows then
             setWindowSize(size)
+            host.setSize(size.columns, size.rows)
+            -- The new size's frame has a different shape than the last
+            -- painted one, so paint() would already do a full clear+
+            -- redraw on its own (see its own "changed" doc comment) --
+            -- invalidate() just makes that explicit and, via _dirty,
+            -- guarantees the next host.flush() actually repaints even if
+            -- nothing else changed this tick.
+            host.invalidate()
           end
         end
       else

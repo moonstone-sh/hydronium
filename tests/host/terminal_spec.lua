@@ -25,6 +25,7 @@ local H = require("hydronium")
 local ink = require("hydronium_ink")
 local terminalHostModule = require("hydronium_ink.host.terminal")
 local measure = require("hydronium_ink.measure")
+local textMetrics = require("hydronium_ink.text_metrics")
 
 -- ===================== Test-only ANSI interpreter =====================
 -- Not part of the host implementation -- exists purely so this spec can
@@ -128,17 +129,38 @@ local function interpretAnsi(bytes, w, h, grid)
         i = e + 1
       end
     else
+      -- Decodes ONE grapheme cluster (not just one UTF-8 codepoint), via
+      -- the SAME hydronium_ink.text_metrics the real host uses, and
+      -- advances `col` by its real display width (2 for CJK/emoji, 0 for
+      -- a lone combining mark) rather than always 1. This matters for a
+      -- wide cluster specifically because the byte stream never contains
+      -- a second character for its "second" column -- host/terminal.lua's
+      -- own paintClusters() deliberately never writes one (see its doc
+      -- comment): a real terminal auto-advances two columns for one wide
+      -- glyph on its own, so this interpreter has to know to do the same
+      -- to keep reconstructing the right column positions for whatever
+      -- comes after.
       local b0 = bytes:byte(i)
       local seqLen = (b0 and b0 >= 0xC0) and utf8SeqLen(b0) or 1
-      local ch = bytes:sub(i, i + seqLen - 1)
+      -- Bounded to the next ESC (or end of string): clusters() must never
+      -- see into a following ANSI escape sequence, since it would treat
+      -- ESC (a C0 control, zero-width per codepointWidth) as a combining
+      -- continuation of whatever real character precedes it.
+      local escAt = bytes:find("\27", i, true)
+      local textSpan = escAt and bytes:sub(i, escAt - 1) or bytes:sub(i)
+      local firstCluster = textMetrics.clusters(textSpan)[1]
+      local ch, width = bytes:sub(i, i + seqLen - 1), 1
+      if firstCluster then
+        ch, width = firstCluster.text, firstCluster.width
+      end
       if row >= 1 and row <= h and col >= 1 and col <= w then
         grid[row][col] = {
           ch = ch, fg = fg, bg = bg, bold = bold, dim = dim, italic = italic,
           underline = underline, strikethrough = strikethrough, inverse = inverse,
         }
       end
-      col = col + 1
-      i = i + seqLen
+      col = col + width
+      i = i + #ch
     end
   end
 
@@ -705,5 +727,178 @@ describe("hydronium.host.terminal -- real Host contract + real ANSI output", fun
     assert.equal(rowText(grid, 1, 1, 10), "1:line one")
     assert.equal(rowText(grid, 2, 1, 10), "2:line two")
     assert.is_nil(grid[1][1].fg, "Transform output is plain, unstyled text -- no fg color of its own")
+  end)
+
+  -- The specs below exercise Unicode-aware measurement/painting
+  -- (hydronium_ink.text_metrics), real word-wrap, and terminal-
+  -- constrained root layout -- none of which existed before this pass.
+  -- Previously every one of these iterated `#text` BYTES per cell, so a
+  -- multi-byte character (accented Latin, CJK, emoji) was split across
+  -- as many cells as it had bytes.
+
+  it("renders multi-byte and wide characters as one cell each, not split across their bytes", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    -- "café" (é precomposed, 2 bytes) + "日本" (2 wide CJK chars, 3 bytes
+    -- each) -- 4 narrow cells + 2 wide (4-cell) cells = 8 cells, 12 bytes.
+    reconciler:mount(H.h(ink.Text, {}, "café\230\151\165\230\156\172"), root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 8, 1)
+    assert.equal(rowText(grid, 1, 1, 4), "café", "the accented character must be one cell, not two")
+    assert.equal(grid[1][5].ch, "\230\151\165", "the first CJK character occupies its own cell")
+    assert.equal(grid[1][7].ch, "\230\156\172", "the second CJK character starts right after the first one's 2 cells")
+
+    -- The continuation cell itself is never written to the byte stream at
+    -- all (a real terminal auto-advances 2 columns for one wide glyph, so
+    -- writing a second character there would consume a THIRD column) --
+    -- check the host's own internal frame, not the ANSI-reconstructed
+    -- grid, which can only ever show its last-painted content (a blank
+    -- space, from the initial clear) at a position nothing ever wrote to.
+    local internalFrame = host.getLastFrame()
+    assert.equal(internalFrame.rows[1][6].ch, "", "a wide character's second cell must be an empty continuation, not a copy of the glyph")
+  end)
+
+  it("measures a Box's width by real display width, not byte count, so a CJK child is not clipped", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    -- 2 wide CJK chars = 4 display cells but 6 bytes; a byte-counting
+    -- Box would sizeShrink to 6 (fine) but a byte-counting Text leaf
+    -- would claim width 6 instead of 4, corrupting a row layout next to it.
+    local vnode = H.h(ink.Box, { flexDirection = "row" },
+      H.h(ink.Text, nil, "\230\151\165\230\156\172"),
+      H.h(ink.Text, nil, "|")
+    )
+    reconciler:mount(vnode, root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 5, 1)
+    assert.equal(grid[1][5].ch, "|", "the second Text must start at cell 5 (4 display cells, not 6 bytes)")
+  end)
+
+  it("truncates Text to fit an explicit width when the content includes wide characters", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    -- "AB" + 3 wide CJK chars (6 display cells) = 8 cells total, truncated to 5.
+    reconciler:mount(H.h(ink.Text, { width = 5, wrap = "truncate" }, "AB\230\151\165\230\156\172\230\151\165"), root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 5, 1)
+    -- "AB" (2 cells) + one wide char (2 cells) = 4 cells, then "..." would
+    -- overflow -- the wide char must be dropped whole, not split, leaving
+    -- "AB" + marker clipped to the 5-cell budget.
+    assert.equal(grid[1][1].ch, "A")
+    assert.equal(grid[1][2].ch, "B")
+    assert.truthy(grid[1][3].ch == "." or grid[1][3].ch == "\230\151\165",
+      "must not cut a wide character in half to make room for the marker")
+  end)
+
+  it("wraps Text at word boundaries to an explicit width instead of overflowing", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    reconciler:mount(H.h(ink.Text, { width = 5, wrap = "wrap" }, "one two three"), root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 5, 3)
+    assert.equal(rowText(grid, 1, 1, 5):gsub("%s+$", ""), "one")
+    assert.equal(rowText(grid, 2, 1, 5):gsub("%s+$", ""), "two")
+    assert.equal(rowText(grid, 3, 1, 5):gsub("%s+$", ""), "three", "an overlong word keeps its own (overflowing) line without being split")
+  end)
+
+  it("hard-wraps a single overlong word across lines when wrap='hard'", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    reconciler:mount(H.h(ink.Text, { width = 4, wrap = "hard" }, "abcdefgh"), root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 4, 2)
+    assert.equal(rowText(grid, 1, 1, 4), "abcd")
+    assert.equal(rowText(grid, 2, 1, 4), "efgh")
+  end)
+
+  it("wraps Text against a container's real resolved width when Text itself has no explicit width", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    -- The Box fixes the cross-axis width at 5; Yoga's default
+    -- alignItems: stretch then gives the Text (no width of its own) that
+    -- same 5-cell width -- the two-pass reflow in host.paint() must pick
+    -- that resolved width up and wrap against it.
+    local vnode = H.h(ink.Box, { width = 5 },
+      H.h(ink.Text, { wrap = "wrap" }, "one two three")
+    )
+    reconciler:mount(vnode, root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 5, 3)
+    assert.equal(rowText(grid, 1, 1, 5):gsub("%s+$", ""), "one")
+    assert.equal(rowText(grid, 2, 1, 5):gsub("%s+$", ""), "two")
+    assert.equal(rowText(grid, 3, 1, 5):gsub("%s+$", ""), "three")
+  end)
+
+  it("constrains the root layout to a terminal size set via host.setSize, instead of auto-sizing to content", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    host.setSize(10, 4)
+    -- A single narrow Text as the only child: with an unconstrained
+    -- (auto-sizing-to-content) root, the frame would be exactly 2x1 --
+    -- with a constrained root, it must be the full 10x4 terminal.
+    reconciler:mount(H.h(ink.Text, nil, "hi"), root)
+    host.flush()
+
+    local frame = host.getLastFrame()
+    assert.equal(frame.w, 10, "root width must be the terminal's real column count")
+    assert.equal(frame.h, 4, "root height must be the terminal's real row count")
+  end)
+
+  it("stretches a childless-width Box to the real terminal width when the root is size-constrained", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    host.setSize(10, 1)
+    local boxRef = H.createRef()
+    reconciler:mount(H.h(ink.Box, { ref = boxRef, backgroundColor = "blue" }, H.h(ink.Text, nil, "x")), root)
+    host.flush()
+
+    local metrics = measure.measureElement(boxRef)
+    assert.equal(metrics.width, 10, "a Box with no explicit width must stretch to the constrained root's real width")
+  end)
+
+  it("host.setSize(0, 0) (non-interactive/piped) goes back to auto-sizing the root to content", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    host.setSize(10, 4)
+    host.setSize(0, 0) -- e.g. tty_ffi.getWindowSize() failing/unavailable
+    reconciler:mount(H.h(ink.Text, nil, "hi"), root)
+    host.flush()
+
+    local frame = host.getLastFrame()
+    assert.equal(frame.w, 2, "root must auto-size back to its content's width")
+    assert.equal(frame.h, 1, "root must auto-size back to its content's height")
   end)
 end)
