@@ -44,10 +44,17 @@ function Effect.new(fn)
     return self
   end
 
-  -- Initial execution runs immediately with effect protection
+  -- Initial execution runs immediately with effect protection. Restore the
+  -- flag even if execute() throws (it re-raises after disposing itself),
+  -- otherwise a throwing initial effect leaves isFlushingEffects stuck true.
   scheduler.setFlushingEffects(true)
-  self:execute()
+  local ok, err = pcall(function()
+    self:execute()
+  end)
   scheduler.setFlushingEffects(false)
+  if not ok then
+    error(err, 0)
+  end
   scheduler.flush()
 
   return self

@@ -1,5 +1,5 @@
 -- Hydronium Performance Benchmark Suite
-package.path = "src/?.lua;src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
+package.path = "core/src/?.lua;core/src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
 
 local H = require("hydronium")
 

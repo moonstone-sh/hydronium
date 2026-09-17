@@ -98,6 +98,9 @@ function signalModule.createSignal(initialValue, options)
 
     -- Amendment 3: Queue signal updates from effects safely
     if scheduler.isFlushingEffects() then
+      if scheduler.isBatching() then
+        scheduler.recordBatchWrite(signal, signal.value)
+      end
       signal.value = resolvedVal
       scheduler.queueEffectSignal(function()
         notifySubscribers(signal)
@@ -105,6 +108,9 @@ function signalModule.createSignal(initialValue, options)
       return signal.value
     end
 
+    if scheduler.isBatching() then
+      scheduler.recordBatchWrite(signal, signal.value)
+    end
     signal.value = resolvedVal
 
     if scheduler.isBatching() then

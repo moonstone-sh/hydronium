@@ -286,6 +286,120 @@ describe("Signals & Fine-Grained Reactivity", function()
       a:set(6)
       assert.equal(runs, 2)
     end)
+
+    it("rolls back signal values written during a failed batch", function()
+      local a = signals.signal(1)
+
+      assert.has_error(function()
+        signals.batch(function()
+          a:set(2)
+          error("Simulated batch failure")
+        end)
+      end, "Simulated batch failure")
+
+      -- The batch never committed, so its writes must not be observable.
+      assert.equal(a:get(), 1)
+    end)
+
+    it("rolls back only the innermost batch level's writes on a nested failure", function()
+      local a = signals.signal(1)
+      local b = signals.signal(10)
+
+      signals.batch(function()
+        a:set(2)
+        assert.has_error(function()
+          signals.batch(function()
+            b:set(20)
+            error("Simulated inner batch failure")
+          end)
+        end, "Simulated inner batch failure")
+
+        -- Inner batch rolled back, but the outer batch's own write survives.
+        assert.equal(a:get(), 2)
+        assert.equal(b:get(), 10)
+      end)
+
+      assert.equal(a:get(), 2)
+      assert.equal(b:get(), 10)
+    end)
+
+    it("rolls back a signal to its pre-batch value even if written multiple times", function()
+      local a = signals.signal(1)
+
+      assert.has_error(function()
+        signals.batch(function()
+          a:set(2)
+          a:set(3)
+          error("Simulated batch failure")
+        end)
+      end, "Simulated batch failure")
+
+      assert.equal(a:get(), 1)
+    end)
+  end)
+
+  describe("Effect failure recovery", function()
+    it("does not leave the scheduler stuck after a throwing effect", function()
+      local scheduler = require("hydronium.core.scheduler")
+      local a = signals.signal(1)
+
+      -- Initial run must not throw; the effect only throws once a:get() == 2.
+      local eff = signals.effect(function()
+        if a:get() == 2 then
+          error("Simulated effect failure")
+        end
+      end)
+
+      assert.has_error(function()
+        a:set(2)
+      end, "Simulated effect failure")
+
+      -- A throwing effect must not leave isFlushingEffects permanently true,
+      -- which would otherwise silently disable the render-phase mutation
+      -- guard and the effect-signal deferral path for the rest of the run.
+      assert.falsy(scheduler.isFlushingEffects())
+
+      -- The scheduler must still be usable afterward.
+      local b = signals.signal(1)
+      local runs = 0
+      signals.effect(function()
+        b:get()
+        runs = runs + 1
+      end)
+      b:set(2)
+      assert.equal(runs, 2)
+    end)
+  end)
+
+  describe("Computed equals option", function()
+    it("keeps the previous reference when equals reports no change", function()
+      local a = signals.signal(1)
+      local eval_count = 0
+
+      local parity = signals.computed(function()
+        eval_count = eval_count + 1
+        return { odd = (a:get() % 2) == 1 }
+      end, {
+        equals = function(x, y)
+          if x == nil or y == nil then return x == y end
+          return x.odd == y.odd
+        end,
+      })
+
+      local first = parity:get()
+      assert.equal(eval_count, 1)
+
+      a:set(3) -- still odd: recomputes, but result is `equals` to the old one
+      local second = parity:get()
+      assert.equal(eval_count, 2)
+      assert.truthy(first == second) -- same table reference preserved
+
+      a:set(4) -- now even: genuinely changed
+      local third = parity:get()
+      assert.equal(eval_count, 3)
+      assert.falsy(first == third)
+      assert.falsy(third.odd)
+    end)
   end)
 
   describe("Untrack", function()

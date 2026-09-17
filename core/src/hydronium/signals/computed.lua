@@ -88,7 +88,18 @@ function computedModule.createComputed(fn, options)
         error(tostring(wrapped), 0)
       end
 
-      node.value = res
+      -- Only replace the cached value when it's actually different by
+      -- `equals` (default `==`), so consumers doing reference-equality
+      -- checks on a computed returning e.g. tables/arrays don't see churn
+      -- on every recompute that happens to produce an equal result. Note
+      -- this does not suppress the eager markDirty()/notifySubscribers
+      -- cascade already fired when a source changed -- doing that would
+      -- require switching this graph from eager-notify/lazy-evaluate to a
+      -- pull-time glitch-free (epoch-based) scheme, which is a larger
+      -- change than wiring the option through.
+      if not equals(res, node.value) then
+        node.value = res
+      end
       node.isDirty = false
     end
     return node.value

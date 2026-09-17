@@ -27,6 +27,13 @@ local effectSet = {}
 
 local effectSignalQueue = {}
 
+-- Stack of per-batch-level write logs, one frame per nested startBatch()
+-- call. Each frame maps a signal table to a {value=...} wrapper holding the
+-- value it had the *first* time it was written within that batch level, so
+-- cancelBatch() can restore it (a nil-safe wrapper, since a signal's prior
+-- value may legitimately be nil).
+local batchSnapshots = {}
+
 local componentStack = {}
 
 local MAX_FLUSH_ITERATIONS = 100
@@ -78,11 +85,24 @@ end
 
 function scheduler.startBatch()
   batchDepth = batchDepth + 1
+  table.insert(batchSnapshots, {})
+end
+
+--- Record a signal's pre-write value so a failed batch can restore it.
+--- Only the first write to a given signal within the current (innermost)
+--- batch level is recorded, so cancelling restores the value the signal
+--- held when this batch level began, not an intermediate one.
+function scheduler.recordBatchWrite(signal, oldValue)
+  local frame = batchSnapshots[#batchSnapshots]
+  if frame and frame[signal] == nil then
+    frame[signal] = { value = oldValue }
+  end
 end
 
 function scheduler.endBatch()
   if batchDepth > 0 then
     batchDepth = batchDepth - 1
+    table.remove(batchSnapshots)
     if batchDepth == 0 then
       scheduler.flush()
     end
@@ -94,6 +114,14 @@ function scheduler.cancelBatch()
     batchDepth = batchDepth - 1
     -- Discard any pending updates created during failed batch
     effectSignalQueue = {}
+    -- Roll back signal values written during this batch level so a failed
+    -- batch leaves state exactly as it was before the batch started.
+    local frame = table.remove(batchSnapshots)
+    if frame then
+      for signal, wrapped in pairs(frame) do
+        signal.value = wrapped.value
+      end
+    end
   end
 end
 
@@ -211,13 +239,22 @@ function scheduler.flush()
         effectSet = {}
 
         scheduler.setFlushingEffects(true)
-        for i = 1, #currentEffects do
-          local eff = currentEffects[i]
-          if not eff.isDisposed then
-            eff:execute()
+        -- eff:execute() re-raises on failure; restore the flag through a
+        -- pcall so a throwing effect can't leave isFlushingEffects stuck
+        -- true for the rest of the process (the outer pcall in this
+        -- function only resets isFlushingFlag, not this one).
+        local effOk, effErr = pcall(function()
+          for i = 1, #currentEffects do
+            local eff = currentEffects[i]
+            if not eff.isDisposed then
+              eff:execute()
+            end
           end
-        end
+        end)
         scheduler.setFlushingEffects(false)
+        if not effOk then
+          error(effErr, 0)
+        end
       end
 
       -- Phase 4: Apply queued signal updates from effects
