@@ -27,7 +27,7 @@ jobs:
         with:
           repository: moonstone-sh/moonstone
           # Includes `moon artifact create`, required by Ballad registry export.
-          ref: 8594a61de69798fd534d7d9e9c595f7f25ddb3f5
+          ref: aa8513801dc1ac970686d5efb71c40dece2e9594
           path: .ci/moonstone
       - uses: actions/checkout@v4
         with:

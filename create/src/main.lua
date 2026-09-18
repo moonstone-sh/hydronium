@@ -1,4 +1,14 @@
-package.path = "./src/?.lua;./src/?/init.lua;" .. package.path
+-- Derived from this script's own invocation path (arg[0]), not the
+-- current working directory: a hardcoded "./src/..." prefix only ever
+-- worked when CWD happened to be this package's own root (true for local
+-- dev, via `lua src/main.lua`, but not once installed as a global tool
+-- and invoked from wherever a user happens to be -- the actual reported
+-- failure mode this masked, though the launcher script's own LUA_PATH
+-- should now find these modules first regardless; this just stops the
+-- fallback from being a footgun that could shadow the real files with an
+-- unrelated "./src/..." in the invoking directory).
+local script_dir = (arg and arg[0] or ""):match("^(.*)[/\\][^/\\]+$") or "."
+package.path = script_dir .. "/?.lua;" .. script_dir .. "/?/init.lua;" .. package.path
 
 local c = require("clingy")
 local v = require("valua")
@@ -7,7 +17,7 @@ local create = require("create.init")
 local app
 app = c.create({
   name = "hydronium-create",
-  version = "0.3.0",
+  version = "0.3.2",
   description = "Scaffold and initialize new Hydronium reactive Lua projects",
 
   root = c.node({
