@@ -62,6 +62,6 @@ jobs:
           export XDG_DATA_HOME="$RUNNER_TEMP/hydronium-xdg-data"
           mkdir -p "$XDG_DATA_HOME/nvim/site/parser"
           cp "$parser_dir/luax.so" "$XDG_DATA_HOME/nvim/site/parser/luax.so"
-          moon exec luajit tests/runner.lua
+          moon exec -- luajit tests/runner.lua
       - name: Export all registry packages
-        run: moon exec ballad play partiture.lua
+        run: moon exec -- ballad -- play partiture.lua

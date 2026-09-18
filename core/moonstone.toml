@@ -13,7 +13,7 @@ abi = "5.1"
 
 [scripts]
 dev = "lua ./main.lua \"$@\""
-package = "moon exec ballad -- play partiture.lua"
+package = "moon exec -- ballad -- play partiture.lua"
 
 [[dependencies]]
 name = "moonstone/ballad"
