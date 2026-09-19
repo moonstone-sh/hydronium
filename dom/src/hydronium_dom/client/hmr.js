@@ -1,6 +1,6 @@
 /*
   hydronium.client.hmr -- the real client-side Hot Module Replacement
-  runtime: swap one changed module inside the SURVIVING Lua VM and let
+  runtime: swap a changed module batch inside the SURVIVING Lua VM and let
   the ordinary reconciler patch the DOM, instead of destroying the page
   with `location.reload()`.
 
@@ -17,11 +17,9 @@
   needs: the browser is running a persistent Lua VM with a real
   `package.loaded` registry, and `hydronium.core.family_loader` already
   maps a `require()` module id to every live ComponentInstance created
-  from it. So "replace this module and re-run the affected components"
-  is one existing primitive call, not a graph invalidation algorithm.
-  Nothing in here re-implements refresh, reconciliation, or state
-  preservation -- it only decides WHICH module to swap, and when to give
-  up and reload the page instead.
+  from it. The runtime module graph expands a changed dependency to its
+  affected component boundaries; this file only fetches a coherent source
+  set and hands it to that planner at a browser-safe frame boundary.
 
   ---------------------------------------------------------------------
   CHANGE IDENTITY -- how a file on disk becomes a module id
@@ -54,9 +52,8 @@
   have worked. This runtime falls back when:
 
     - fetching or compiling the new module source failed;
-    - `family_loader.reload(id)` matched zero families -- the module
-      never registered a component, so no live instance can be
-      refreshed and the page's current DOM cannot reflect the edit;
+    - the runtime graph requests a restart or remount that this browser
+      transport cannot perform without destroying page state;
     - any instance's own `refresh()` reported failure.
 
   Deliberately NOT a fallback: a family that matched but currently has
@@ -67,9 +64,22 @@
 
 import { createDevTransport } from "./dev_transport.js";
 
-const SWAP_LUA = `
-  local id = __hydronium_hmr_id
-  local result = require("hydronium.core.hmr").replace(id, __hydronium_hmr_src)
+const APPLY_BATCH_LUA = `
+  local host = _G.__hydronium_hmr_host
+  if not host then
+    host = require("hydronium.core.hmr_host").new()
+    _G.__hydronium_hmr_host = host
+  end
+  for i = 1, __hydronium_hmr_count do
+    host:queue(
+      _G["__hydronium_hmr_id_" .. i],
+      _G["__hydronium_hmr_src_" .. i],
+      _G["__hydronium_hmr_module_revision_" .. i]
+    )
+  end
+  local result = host:flush(__hydronium_hmr_batch_revision)
+  __hydronium_hmr_outcome = result and result.outcome or "skipped"
+  __hydronium_hmr_reason = result and result.reason or nil
   __hydronium_hmr_families = result.families
   __hydronium_hmr_refreshed = result.refreshed
   __hydronium_hmr_failed = result.failed
@@ -88,9 +98,12 @@ const SWAP_LUA = `
  *   source per id, fetched as `<moduleUrl>/<id>` (default
  *   `/__hydronium/dev/module`).
  * @param {(info: object) => void} [options.onUpdate] Called after each
- *   handled change with `{ status, id, paths, families, refreshed, failed, error }`.
+ *   handled change with `{ status, id, ids, revision, paths, outcome,
+ *   families, refreshed, failed, error }`.
  * @param {() => void} [options.onFullReload] Overrides the reload action
  *   (tests use this; defaults to `location.reload()`).
+ * @param {(apply: () => void) => void} [options.schedule] Runs an accepted
+ *   batch at a host-safe boundary. Defaults to `requestAnimationFrame`.
  * @returns {{ close: () => void }}
  */
 export function installHmr(options) {
@@ -101,6 +114,7 @@ export function installHmr(options) {
     moduleUrl = "/__hydronium/dev/module",
     onUpdate,
     onFullReload,
+    schedule,
   } = options || {};
 
   if (!lua) throw new Error("hydronium.client.hmr: `lua` (the engine mount() returned) is required");
@@ -159,35 +173,60 @@ export function installHmr(options) {
     });
   }
 
-  async function swap(id) {
+  async function fetchModule(id, batchRevision) {
     // Cache-busted for the same reason dev_transport.js busts its own
     // connection URL: this route's response is a plain 200 with no
     // cache headers, and a repeat fetch of an unchanged URL is exactly
     // what the browser's HTTP cache is designed to short-circuit --
     // which would silently serve the PRE-EDIT source.
-    const url = `${moduleUrl.replace(/\/+$/, "")}/${encodeURIComponent(id)}?_t=${Date.now()}`;
+    const url = `${moduleUrl.replace(/\/+$/, "")}/${encodeURIComponent(id)}?_t=${Date.now()}&revision=${encodeURIComponent(batchRevision)}`;
     const res = await fetch(url);
     if (!res.ok) {
       throw new Error(`fetching ${url} failed: ${res.status}`);
     }
     const src = await res.text();
+    const responseRevision = res.headers?.get?.("x-hydronium-revision")
+      || res.headers?.get?.("etag")
+      || batchRevision;
+    return { id, src, revision: String(responseRevision) };
+  }
 
-    // Source is handed across as a global and `load()`ed Lua-side rather
-    // than interpolated into the Lua snippet -- same reasoning as
-    // mount.js's own note: real compiled Lua routinely contains byte
-    // sequences that would corrupt naive string interpolation.
-    lua.global.set("__hydronium_hmr_src", src);
-    lua.global.set("__hydronium_hmr_id", id);
-    await lua.doString(SWAP_LUA);
+  function safeBoundary() {
+    return new Promise((resolve) => {
+      if (schedule) {
+        schedule(resolve);
+      } else if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => resolve());
+      } else {
+        queueMicrotask(resolve);
+      }
+    });
+  }
+
+  async function applyBatch(modules, batchRevision) {
+    // Sources cross as values, never interpolated into Lua. All fetches have
+    // completed before this point, and hmr_host flushes the queue once.
+    lua.global.set("__hydronium_hmr_count", modules.length);
+    lua.global.set("__hydronium_hmr_batch_revision", batchRevision);
+    modules.forEach((module, index) => {
+      const slot = index + 1;
+      lua.global.set(`__hydronium_hmr_id_${slot}`, module.id);
+      lua.global.set(`__hydronium_hmr_src_${slot}`, module.src);
+      lua.global.set(`__hydronium_hmr_module_revision_${slot}`, module.revision);
+    });
+    await safeBoundary();
+    await lua.doString(APPLY_BATCH_LUA);
 
     return {
+      outcome: String(lua.global.get("__hydronium_hmr_outcome") || "rejected"),
+      reason: lua.global.get("__hydronium_hmr_reason") || undefined,
       families: Number(lua.global.get("__hydronium_hmr_families") || 0),
       refreshed: Number(lua.global.get("__hydronium_hmr_refreshed") || 0),
       failed: Number(lua.global.get("__hydronium_hmr_failed") || 0),
     };
   }
 
-  transport.subscribe(async (event) => {
+  async function handle(event) {
     if (event.type !== "reload") return;
 
     const paths = event.paths || [];
@@ -231,24 +270,46 @@ export function installHmr(options) {
       if (rule.action === "hot" && rule.module && !ids.includes(rule.module)) ids.push(rule.module);
     }
 
-    for (const id of ids) {
-      let result;
-      try {
-        result = await swap(id);
-      } catch (err) {
-        fullReload({ reason: "hot swap threw", paths, id, error: String(err && err.message ? err.message : err) });
-        return;
-      }
-      if (result.families === 0) {
-        fullReload({ reason: "module registered no component family", paths, id, ...result });
-        return;
-      }
-      if (result.failed > 0) {
-        fullReload({ reason: "an instance failed to refresh", paths, id, ...result });
-        return;
-      }
-      report({ status: "hot-swapped", paths, id, ...result });
+    if (ids.length === 0) return;
+
+    let modules;
+    try {
+      modules = await Promise.all(ids.map((id) => fetchModule(id, event.fingerprint)));
+    } catch (err) {
+      fullReload({ reason: "hot batch fetch failed", paths, ids, error: String(err && err.message ? err.message : err) });
+      return;
     }
+
+    let result;
+    try {
+      result = await applyBatch(modules, event.fingerprint);
+    } catch (err) {
+      fullReload({ reason: "hot batch threw", paths, ids, error: String(err && err.message ? err.message : err) });
+      return;
+    }
+    if (result.outcome === "restart" || result.outcome === "remount" || result.outcome === "rejected") {
+      fullReload({ reason: result.reason || `HMR requested ${result.outcome}`, paths, ids, ...result });
+      return;
+    }
+    if (result.failed > 0) {
+      fullReload({ reason: "an instance failed to refresh", paths, ids, ...result });
+      return;
+    }
+    report({
+      status: result.outcome === "skipped" ? "skipped" : result.outcome === "installed" ? "installed" : "hot-swapped",
+      paths,
+      ids,
+      id: ids.length === 1 ? ids[0] : undefined,
+      revision: event.fingerprint,
+      ...result,
+    });
+  }
+
+  let updateTail = Promise.resolve();
+  transport.subscribe((event) => {
+    updateTail = updateTail.then(() => handle(event)).catch((err) => {
+      fullReload({ reason: "HMR transport handler failed", error: String(err && err.message ? err.message : err) });
+    });
   });
 
   return {

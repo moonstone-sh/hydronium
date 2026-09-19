@@ -115,6 +115,9 @@ end
 local MOUNT_BOOTSTRAP_ENTRIES = {
   "hydronium",
   "hydronium.core.element",
+  -- hmr.js invokes this from JavaScript after boot, so no Lua source-level
+  -- require edge can make it reachable from the application entry.
+  "hydronium.core.hmr_host",
   "hydronium_dom",
   "hydronium_dom.host.dom",
   "hydronium.core.reconciler",
@@ -257,17 +260,33 @@ function M.resolve(ctx, inputs, opts)
     table.insert(sorted_aliases, { base = base, real = real })
   end
   table.sort(sorted_aliases, function(a, b) return a.base < b.base end)
+  -- This seed graph is build-time evidence, not an HMR authority: the
+  -- runtime graph records dynamic require edges.  Keeping source mappings,
+  -- declared literal edges, and content revisions here lets a dev host mark
+  -- what it can manage before the first runtime observation.
+  local module_records = {}
+  for _, id in ipairs(order) do
+    local mod = by_id[id]
+    table.insert(module_records, {
+      id = id,
+      origin = mod.origin,
+      target = mod.target,
+      requires = scan_requires(mod.content),
+      revision = process.b3sum_string(mod.content),
+    })
+  end
   local graph_json = dkjson.encode({
     entries = entries,
     modules = order,
     aliases = sorted_aliases,
+    module_records = module_records,
   }, { indent = false })
 
   out:add(ctx.graph:add_asset({
     kind = "hy_module_graph",
     generated = true,
     content = graph_json,
-    metadata = { hydronium = { entries = entries, aliases = aliases } },
+    metadata = { hydronium = { entries = entries, aliases = aliases, module_records = module_records } },
   }))
 
   return out

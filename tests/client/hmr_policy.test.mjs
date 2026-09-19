@@ -38,6 +38,7 @@ test("HMR requires explicit update policies and preserves state for hot modules"
       get(key) { return globals.get(key); },
     },
     async doString() {
+      globals.set("__hydronium_hmr_outcome", "hot");
       globals.set("__hydronium_hmr_families", 1);
       globals.set("__hydronium_hmr_refreshed", 1);
       globals.set("__hydronium_hmr_failed", 0);
@@ -83,6 +84,87 @@ test("HMR requires explicit update policies and preserves state for hot modules"
     assert.equal(reports.at(-1).status, "full-reload");
     assert.equal(reloads, 1);
 
+    hmr.close();
+  } finally {
+    globalThis.EventSource = originalEventSource;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("HMR fetches a revisioned module set and commits it once at a frame boundary", async () => {
+  const originalEventSource = globalThis.EventSource;
+  const originalFetch = globalThis.fetch;
+  const sources = [];
+  const globals = new Map();
+  const fetched = [];
+  const frames = [];
+  const reports = [];
+  let evaluations = 0;
+
+  class FakeEventSource {
+    constructor(url) {
+      this.url = url;
+      this.listeners = new Map();
+      sources.push(this);
+    }
+    addEventListener(type, listener) { this.listeners.set(type, listener); }
+    emit(type, data) { this.listeners.get(type)?.({ data }); }
+    close() {}
+  }
+
+  globalThis.EventSource = FakeEventSource;
+  globalThis.fetch = async (url) => {
+    fetched.push(url);
+    return {
+      ok: true,
+      headers: { get: () => null },
+      text: async () => `return ${JSON.stringify(url)}`,
+    };
+  };
+
+  const lua = {
+    global: {
+      set(key, value) { globals.set(key, value); },
+      get(key) { return globals.get(key); },
+    },
+    async doString() {
+      evaluations += 1;
+      assert.equal(globals.get("__hydronium_hmr_count"), 2);
+      assert.equal(globals.get("__hydronium_hmr_batch_revision"), "revision 2");
+      globals.set("__hydronium_hmr_outcome", "hot");
+      globals.set("__hydronium_hmr_families", 2);
+      globals.set("__hydronium_hmr_refreshed", 2);
+      globals.set("__hydronium_hmr_failed", 0);
+    },
+  };
+
+  try {
+    const hmr = installHmr({
+      lua,
+      updates: {
+        "lib/model.lua": { action: "hot", module: "lib.model" },
+        "views/App.luax": { action: "hot", module: "views.App" },
+      },
+      schedule: (apply) => frames.push(apply),
+      onUpdate: (info) => reports.push(info),
+    });
+
+    sources[0].emit("changed", "lib/model.lua|views/App.luax");
+    sources[0].emit("reload", "revision 2");
+    await turn();
+    await turn();
+
+    assert.equal(fetched.length, 2, "the whole source set is fetched before commit");
+    assert.equal(evaluations, 0);
+    assert.equal(frames.length, 1);
+    frames[0]();
+    await turn();
+    await turn();
+
+    assert.equal(evaluations, 1, "one Lua evaluation commits the complete batch");
+    assert.deepEqual(reports.at(-1).ids, ["lib.model", "views.App"]);
+    assert.equal(reports.at(-1).revision, "revision 2");
+    assert.equal(reports.at(-1).status, "hot-swapped");
     hmr.close();
   } finally {
     globalThis.EventSource = originalEventSource;

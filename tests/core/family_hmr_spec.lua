@@ -140,4 +140,61 @@ describe("HMR generalization: ComponentFamily + family_loader (no hand-wiring)",
 
     instance:unmount(reconciler)
   end)
+
+  it("does not promote an exported utility into a family until it is mounted as a component", function()
+    family.reset()
+    familyLoader.reset()
+    familyLoader.enable()
+    local id = "scratch.family_hmr_utility"
+    package.loaded[id] = nil
+    package.preload[id] = function()
+      return {
+        format = function(value) return "#" .. tostring(value) end,
+      }
+    end
+
+    local utility = require(id)
+    assert.equal(family.get(id .. "::format"), nil,
+      "ordinary exported helpers must not become component HMR boundaries merely by loading")
+
+    package.preload[id] = nil
+    package.loaded[id] = nil
+    familyLoader.reset()
+    family.reset()
+  end)
+
+  it("mounts the current family definition when a vnode still carries an old exported function", function()
+    family.reset()
+    familyLoader.reset()
+    familyLoader.enable()
+    local id = "scratch.family_hmr_stale_mount"
+    local message = "old"
+    package.loaded[id] = nil
+    package.preload[id] = function()
+      local value = message
+      return function()
+        return H.h("div", nil, value)
+      end
+    end
+
+    local Old = require(id)
+    local host = H.test.createTestHost()
+    local reconciler = H.Reconciler.new(host)
+    local first = ComponentInstance.new(H.h(Old), nil, host)
+    first:mount(nil, nil, reconciler)
+    message = "new"
+    familyLoader.reload(id)
+
+    local stale_vnode_instance = ComponentInstance.new(H.h(Old), nil, host)
+    stale_vnode_instance:mount(nil, nil, reconciler)
+    assert.equal(stale_vnode_instance:render().props.children[1].text, "new",
+      "a closure retaining Old must resolve to the family's current definition")
+
+    first:unmount(reconciler)
+    stale_vnode_instance:unmount(reconciler)
+    package.preload[id] = nil
+    package.loaded[id] = nil
+    familyLoader.reset()
+    family.reset()
+  end)
 end)

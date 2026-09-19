@@ -17,6 +17,8 @@ local suspense = require("hydronium.core.suspense")
 local resource = require("hydronium.core.resource")
 local hmr = require("hydronium.core.hmr")
 local family_loader = require("hydronium.core.family_loader")
+local module_graph = require("hydronium.core.module_graph")
+local hmr_host = require("hydronium.core.hmr_host")
 local actions = require("hydronium.core.action")
 local forms = require("hydronium.core.form")
 local signals = require("hydronium.signals")
@@ -73,6 +75,10 @@ return {
   -- enable family_loader before the application's first require.
   hmr = hmr,
   family_loader = family_loader,
+  -- Observation-only runtime require graph. Hosts may enable it without
+  -- opting into HMR; it never selects or applies invalidations.
+  module_graph = module_graph,
+  hmr_host = hmr_host,
 
   -- Context & Refs
   createContext = context.createContext,

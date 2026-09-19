@@ -70,7 +70,8 @@ mission's hard requirement is that a normal component, required
 normally, is discovered without a source list or a per-component
 registration call. Stock Lua/LuaJIT has exactly one hook point for "a
 module was just loaded for the first time": `require` itself.
-`family_loader.enable()` wraps it (opt-in — never called automatically,
+`family_loader.enable()` enables the shared runtime module-graph require
+instrumentation (opt-in — never called automatically,
 so production and any code that never calls it pays zero cost and sees
 zero behavior change: the reverse map stays empty, and
 `core/component.lua`'s family lookup on every mount is then always a
@@ -89,11 +90,13 @@ familyLoader.reload("app.components.counter") -- dev-transport-triggered:
                                                 -- via Family:update_definition
 ```
 
-`scan_exports(module_id, exported)` covers two shapes: a bare function
-return (`family_id = module_id .. "::default"`) and a table of named
-function exports (`family_id = module_id .. "::" .. key`, for each
-string-keyed function value). Both are real, common Lua module shapes;
-neither requires any compiler cooperation.
+`scan_exports(module_id, exported)` records two candidate shapes: a bare
+function return (`family_id = module_id .. "::default"`) and a table of
+named function exports (`family_id = module_id .. "::" .. key`, for each
+string-keyed function value). A candidate is promoted to a `ComponentFamily`
+only when it is mounted through `ComponentInstance`; this keeps plain exported
+helpers out of HMR boundary selection. Neither shape requires compiler
+cooperation.
 
 ## Automatic wiring into ComponentInstance
 

@@ -6,6 +6,7 @@ local Reconciler = require("hydronium.core.reconciler").Reconciler
 local family = require("hydronium.core.family")
 local family_loader = require("hydronium.core.family_loader")
 local hmr = require("hydronium.core.hmr")
+local hmr_host = require("hydronium.core.hmr_host")
 
 describe("Ink component-family HMR", function()
   it("refreshes the terminal tree in the same VM without resetting state", function()
@@ -37,7 +38,8 @@ describe("Ink component-family HMR", function()
     _G.__ink_hmr_set(6)
     host.flush()
 
-    local result = hmr.replace(id, [[
+    local updates = hmr_host.new()
+    updates:queue(id, [[
       local H = require("hydronium")
       local ink = require("hydronium_ink")
       return function(_, scope)
@@ -47,10 +49,14 @@ describe("Ink component-family HMR", function()
         _G.__ink_hmr_set = set_count
         return function() return ink.Text(nil, "new " .. count()) end
       end
-    ]])
+    ]], "ink-r2")
+    -- Ink invokes this flush from render.onTick: after input dispatch and
+    -- before the terminal frame is painted.
+    local result = updates:flush("ink-batch-r2")
     host.flush()
 
     assert.equal(result.failed, 0)
+    assert.equal(result.revision, "ink-batch-r2")
     local frame = host.getLastFrame()
     local rendered = {}
     for x = 1, frame.w do rendered[#rendered + 1] = frame.rows[1][x].ch end

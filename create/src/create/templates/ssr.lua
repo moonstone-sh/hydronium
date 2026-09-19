@@ -803,6 +803,8 @@ return Counter
   "hydronium.signals.graph": "hydronium/signals/graph.lua",
   "hydronium.core.family_loader": "hydronium/core/family_loader.lua",
   "hydronium.core.hmr": "hydronium/core/hmr.lua",
+  "hydronium.core.hmr_host": "hydronium/core/hmr_host.lua",
+  "hydronium.core.module_graph": "hydronium/core/module_graph.lua",
   "hydronium.core.family": "hydronium/core/family.lua",
   "hydronium.core.refresh": "hydronium/core/refresh.lua",
   "hydronium.signals": "hydronium/signals/init.lua",

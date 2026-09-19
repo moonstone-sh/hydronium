@@ -59,6 +59,8 @@ test("scaffold dry-run produces a portable Ink terminal project", function()
   assert(file_map[".luarc.json"], "missing .luarc.json")
   local run_lua = require("create.templates.ink").files({ name = "test-ink-app" })["run.lua"]
   assert(run_lua and run_lua:find('require%("hydronium.core.hmr"%)'), "Ink run.lua must use shared core HMR")
+  assert(run_lua:find('require%("hydronium.core.hmr_host"%)'), "Ink run.lua must commit through the shared host boundary")
+  assert(run_lua:find("pcall(updates.flush", 1, true), "Ink run.lua must flush queued updates between event-loop turns")
   assert(run_lua:find("onTick", 1, true), "Ink run.lua must poll refreshes inside the renderer loop")
 end)
 
@@ -116,6 +118,10 @@ test("scaffold dry-run produces expected files for ssr template", function()
   local manifest = generated["client_manifest.json"]
   assert(manifest:find('"hydronium_router.history.state"', 1, true),
     "SSR client manifest must include browser history state decoding")
+  assert(manifest:find('"hydronium.core.hmr_host"', 1, true),
+    "SSR client manifest must include the browser HMR host coordinator")
+  assert(manifest:find('"hydronium.core.module_graph"', 1, true),
+    "SSR client manifest must include the runtime module graph")
   assert(not generated["moonstone.toml"]:find("path:../", 1, true), "SSR dependencies must install without sibling checkouts")
   assert(generated["build.zig"]:find("meteorite/meteorite/zig/build_api.zig", 1, true),
     "SSR build must use the installed Meteorite package layout")

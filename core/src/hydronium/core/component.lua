@@ -106,6 +106,11 @@ function ComponentInstance.new(vnode, parentComponent, host)
   -- proven.
   self.family = familyLoader.lookup(self.type)
   if self.family then
+    -- VNodes can legitimately retain an older exported function (for
+    -- example, a parent closure created before an HMR pass).  Family identity
+    -- is the durable boundary: always execute its newest definition when a
+    -- new instance is mounted from such a stale function reference.
+    self.type = self.family.current_definition or self.type
     self.family:register_instance(self)
   end
 

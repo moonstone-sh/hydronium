@@ -46,6 +46,7 @@ local hydronium = require("hydronium")
 local luax = require("hydronium_luax")
 local render = require("hydronium_ink.render")
 local hmr = require("hydronium.core.hmr")
+local hmr_host = require("hydronium.core.hmr_host")
 local family_loader = require("hydronium.core.family_loader")
 
 local function read_file(path)
@@ -82,6 +83,8 @@ local App = require(module_id)
 
 local last_source = read_file(filename)
 local next_poll = 0
+local revision = 0
+local updates = hmr_host.new()
 local function poll_hmr()
   local now = require("hydronium_ink.clock").nowMs()
   if now < next_poll then return end
@@ -99,7 +102,12 @@ local function poll_hmr()
     return
   end
 
-  local replaced, result_or_error = pcall(hmr.replace, module_id, compiled_or_error)
+  revision = revision + 1
+  updates:queue(module_id, compiled_or_error, tostring(revision))
+  -- onTick runs outside input dispatch and render, immediately before Ink
+  -- flushes the terminal host. Every source queued during this turn is
+  -- therefore committed as one revisioned batch at a safe host boundary.
+  local replaced, result_or_error = pcall(updates.flush, updates, tostring(revision))
   if not replaced or result_or_error.failed > 0 then
     io.stderr:write("\nHydronium Ink: refresh failed: " .. tostring(result_or_error) .. "\n")
     return

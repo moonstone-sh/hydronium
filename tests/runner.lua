@@ -396,6 +396,7 @@ local function main()
       "tests/core/refresh_spec.lua",
       "tests/core/refresh_component_spec.lua",
       "tests/core/family_hmr_spec.lua",
+      "tests/core/module_graph_spec.lua",
       "tests/core/hmr_spec.lua",
       "tests/core/hydration_spec.lua",
       "tests/core/family_identity_adversarial_spec.lua",
