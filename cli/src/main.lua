@@ -115,7 +115,7 @@ local dev_log = require("dev_log")
 
 local M = {}
 
-M.VERSION = "0.1.0"
+M.VERSION = "0.1.1"
 
 M.USAGE = table.concat({
   "hydronium " .. M.VERSION,

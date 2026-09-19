@@ -220,6 +220,7 @@ describe("hydronium-cli dev_supervisor -- child process", function()
     })
     assert.equal(pid, 4242)
     local command = captured[1]
+    assert.truthy(command:find('CLINGY_OWNER_PID="$PPID"', 1, true))
     assert.truthy(command:find("'meteorite' 'dev'", 1, true))
     assert.truthy(command:find(">> '.hydronium/meteorite-dev.out' 2>&1", 1, true))
     -- The child must not be able to eat a keystroke meant for the UI:

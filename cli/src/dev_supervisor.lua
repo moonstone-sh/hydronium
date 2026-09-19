@@ -20,12 +20,12 @@
       meteorite dev ... >> <out> 2>&1 < /dev/null & echo $!
 
   The popen'd shell exits immediately after printing the pid; the child is
-  reparented to init and keeps running, which is exactly what we want --
-  a blocking `os.execute` would never return, and a plain `io.popen`
-  handle read in the render loop would block the UI. The cost, stated: no
-  SIGCHLD, so liveness is polled with `kill -0` rather than observed.
-  Anything more (real fork/exec via FFI, a pty) buys nothing here and
-  would have to be carried on every platform.
+  reparented to init and keeps running. The command exports this process's
+  pid as CLINGY_OWNER_PID before detaching, so Clingy's parent monitor can
+  still tear down Meteorite and its HTTP server if this UI dies without
+  reaching Supervisor:stop(). A blocking `os.execute` would never return,
+  and a plain `io.popen` handle read in the render loop would block the UI.
+  There is no SIGCHLD after reparenting, so liveness is polled with `kill -0`.
 
   TAILING. Three real conditions the file is in, all handled:
     * not there yet -- meteorite has not started, or is an older build
@@ -234,7 +234,10 @@ function M.spawn_detached(argv, opts)
   -- dev.lua runs under plain Lua, not LuaJIT) at a native (.so/.dylib)
   -- module built for the wrong ABI, which fails or -- worse -- misloads
   -- rather than falling back to a pure-Lua alternative.
-  local line = "env -u LUA_CPATH " .. table.concat(quoted, " ")
+  -- The shell running this line is a direct child of the Hydronium CLI, so
+  -- its $PPID is the CLI process that owns this detached session. Clingy's
+  -- generated supervisor validates and monitors the inherited override.
+  local line = 'CLINGY_OWNER_PID="$PPID" env -u LUA_CPATH ' .. table.concat(quoted, " ")
 
   if opts.output_path then
     line = line .. " >> " .. M.shell_quote(opts.output_path) .. " 2>&1"
