@@ -1,9 +1,12 @@
 local discovery = require("hydronium_lab").discovery
+local lab_host = require("hydronium_lab").host
 local ink_lab = require("hydronium_ink_lab")
 
 local M = {}
 local state = { config = nil, registry = nil, service = nil, fingerprint = nil, generation = 0, error = nil, request_id = nil,
-  instance = tostring({}) }
+  instance = tostring({}), config_path = nil, contract = nil }
+
+M.frame_memory = { lua_heap = "64mb", max_response = "16mb", request_arena = "32mb" }
 
 local function read(path)
   local file, err = io.open(path, "rb")
@@ -28,7 +31,8 @@ end
 
 local function load_config()
   if state.config then return state.config end
-  local chunk, err = loadfile(".hydronium/lab/config.lua")
+  local path = state.config_path or ".hydronium/lab/config.lua"
+  local chunk, err = loadfile(path)
   if not chunk then error("Hydronium Lab config is unavailable: " .. tostring(err), 0) end
   local config = chunk()
   if type(config) ~= "table" or type(config.paths) ~= "table" then error("Hydronium Lab config needs a paths list", 0) end
@@ -125,18 +129,71 @@ local function mutation_allowed(c)
   return same_origin(c) and c:header("x-hydronium-lab") == "1"
 end
 
-function M.page(c)
+function M.page(c, contract)
   if not same_origin(c) then return c:text(403, "forbidden") end
   local config = load_config()
+  contract = contract or state.contract or lab_host.contract({
+    base_path = config.base_path,
+    renderer_stylesheet_asset = "assets/ink.css",
+  })
   local h = require("hydronium").h
   local Document = require("hydronium_ink_lab.dom")
   local body = require("hydronium_dom.server").render_to_string(h(Document, {
     title = config.title or "Hydronium Ink Lab",
     project_name = config.project_name or config.title or "Hydronium Ink Lab",
     project_id = config.project_id or config.project_name or "hydronium-lab",
+    boot = contract,
+    stylesheet_url = contract.assets.stylesheet,
+    client_url = contract.assets.client,
   }), { doctype = true })
   return c:bytes(200, "text/html; charset=utf-8", body, { headers = { ["Cache-Control"] = "no-store", ["X-Content-Type-Options"] = "nosniff",
     ["Referrer-Policy"] = "no-referrer", ["Content-Security-Policy"] = "default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self'" } })
+end
+
+function M.redirect(c)
+  local config = load_config()
+  local contract = state.contract or lab_host.contract({ base_path = config.base_path })
+  return c:redirect(302, contract.base_path == "/" and "/" or contract.base_path .. "/")
+end
+
+--- Mount the Meteorite adapter at an explicit prefix.  Route ownership lives
+--- here instead of in the launcher, so another Lab CLI (or an application)
+--- can compose the same adapter without copying its private HTTP surface.
+--- @param app table Meteorite application
+--- @param opts? {base_path?: string, config_path?: string, redirect_root?: boolean, memory?: table}
+function M.mount(app, opts)
+  opts = opts or {}
+  local contract = lab_host.contract({
+    base_path = opts.base_path,
+    renderer_stylesheet_asset = opts.renderer_stylesheet_asset or "assets/ink.css",
+  })
+  if state.contract and state.contract.base_path ~= contract.base_path then
+    error("hydronium_meteorite.lab: one process cannot mount multiple Lab prefixes", 2)
+  end
+  state.contract = contract
+  state.config_path = opts.config_path or ".hydronium/lab/config.lua"
+  local base, memory = contract.base_path, opts.memory or M.frame_memory
+  local prefix = base == "/" and "" or base
+  local page_path = base == "/" and "/" or base .. "/"
+
+  -- Meteorite source-lifts inline handlers and therefore rejects captures.
+  -- Resolve the adapter inside each handler so the emitted route remains
+  -- portable across the graph-building and owned runtime Lua states.
+  app:get(page_path, function(c) return require("hydronium_meteorite.lab").page(c) end)
+  app:get(prefix .. "/assets/lab.css", function(c) return require("hydronium_meteorite.lab").asset(c, "lab.css") end)
+  app:get(prefix .. "/assets/workbench.css", function(c) return require("hydronium_meteorite.lab").asset(c, "workbench.css") end)
+  app:get(prefix .. "/assets/workbench.js", function(c) return require("hydronium_meteorite.lab").asset(c, "workbench.js") end)
+  app:get(prefix .. "/assets/ink.css", function(c) return require("hydronium_meteorite.lab").asset(c, "ink.css") end)
+  app:get(prefix .. "/assets/virtual_terminal.js", function(c) return require("hydronium_meteorite.lab").asset(c, "virtual_terminal.js") end)
+  app:get(prefix .. "/assets/meteorite.js", function(c) return require("hydronium_meteorite.lab").asset(c, "meteorite.js") end)
+  app:get(prefix .. "/catalog", function(c) return require("hydronium_meteorite.lab").catalog(c) end)
+  app:post(prefix .. "/sessions", { memory = memory }, function(c) return require("hydronium_meteorite.lab").create_session(c) end)
+  app:post(prefix .. "/sessions/:id/operations", { memory = memory }, function(c) return require("hydronium_meteorite.lab").operation(c) end)
+  app:delete(prefix .. "/sessions/:id", function(c) return require("hydronium_meteorite.lab").close_session(c) end)
+  if opts.redirect_root ~= false and base ~= "/" then
+    app:get("/", function(c) return require("hydronium_meteorite.lab").redirect(c) end)
+  end
+  return contract
 end
 
 local function package_client_path(name)
@@ -164,7 +221,25 @@ local function package_client_path(name)
   if name == "virtual_terminal.js" and ink_root then
     return ink_root:gsub("/init%.lua$", "/client/virtual_terminal.js"), "text/javascript; charset=utf-8"
   end
-  if name == "lab.css" and ink_root then return ink_root:gsub("/init%.lua$", "/client/lab.css"), "text/css; charset=utf-8" end
+  if name == "ink.css" and ink_root then
+    return ink_root:gsub("/init%.lua$", "/client/ink.css"), "text/css; charset=utf-8"
+  end
+  local lab_root = search_module("hydronium_lab")
+  if name == "workbench.css" and lab_root then
+    return lab_root:gsub("/init%.lua$", "/client/workbench.css"), "text/css; charset=utf-8"
+  end
+  if name == "workbench.js" and lab_root then
+    return lab_root:gsub("/init%.lua$", "/client/workbench.js"), "text/javascript; charset=utf-8"
+  end
+  if name == "lab.css" and ink_root and lab_root then
+    -- The stable renderer stylesheet URL is a host-built bundle. Lab supplies
+    -- the workbench chrome; Ink appends only renderer-specific compatibility
+    -- and terminal rules while its migration is in progress.
+    return {
+      lab_root:gsub("/init%.lua$", "/client/workbench.css"),
+      ink_root:gsub("/init%.lua$", "/client/lab.css"),
+    }, "text/css; charset=utf-8"
+  end
   return nil
 end
 
@@ -172,7 +247,14 @@ function M.asset(c, name)
   if not same_origin(c) then return c:text(403, "forbidden") end
   local path, content_type = package_client_path(name)
   if not path then return c:text(404, "not found") end
-  local ok, content = pcall(read, path)
+  local ok, content = pcall(function()
+    if type(path) == "table" then
+      local parts = {}
+      for index, item in ipairs(path) do parts[index] = read(item) end
+      return table.concat(parts, "\n")
+    end
+    return read(path)
+  end)
   if not ok then return c:text(500, content) end
   return c:bytes(200, content_type, content, { headers = { ["Cache-Control"] = "no-cache", ["X-Content-Type-Options"] = "nosniff" } })
 end
@@ -213,7 +295,7 @@ end
 function M.reset_for_test()
   if state.service then state.service:shutdown() end
   state = { config = nil, registry = nil, service = nil, fingerprint = nil, generation = 0, error = nil, request_id = nil,
-    instance = tostring({}) }
+    instance = tostring({}), config_path = nil, contract = nil }
 end
 
 return M

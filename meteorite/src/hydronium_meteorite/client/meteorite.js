@@ -1,7 +1,17 @@
 import { createInkLab } from "./virtual_terminal.js";
+import * as workbench from "./workbench.js";
 
 const root = document.querySelector("[data-hydronium-ink-lab]");
 const status = root?.querySelector("[data-lab-status]");
+const basePath = (root?.dataset.labBasePath || "/__hydronium/lab").replace(/\/+$/, "") || "/";
+const labUrl = (suffix) => `${basePath === "/" ? "" : basePath}/${suffix}`;
+const transport = {
+  catalog: root?.dataset.labCatalogUrl || labUrl("catalog"),
+  createSession: root?.dataset.labCreateSessionUrl || labUrl("sessions"),
+  sessionOperations: root?.dataset.labSessionOperationsUrl || labUrl("sessions/{id}/operations"),
+  closeSession: root?.dataset.labCloseSessionUrl || labUrl("sessions/{id}"),
+};
+const sessionUrl = (template, id) => template.replace("{id}", encodeURIComponent(id));
 let session = null;
 let sequence = 0;
 let generation = null;
@@ -24,7 +34,7 @@ async function json(url, options = {}) {
 
 async function ensureSession() {
   if (session) return;
-  const value = await json("/__hydronium/lab/sessions", {
+  const value = await json(transport.createSession, {
     method: "POST", headers: { "content-type": "application/json", "x-hydronium-lab": "1" }, body: "{}",
   });
   session = value.session;
@@ -34,13 +44,13 @@ async function ensureSession() {
 
 async function performRequest(message) {
   if (message.op === "catalog") {
-    const value = await json("/__hydronium/lab/catalog");
+    const value = await json(transport.catalog);
     return value.catalog;
   }
   await ensureSession();
   sequence += 1;
   try {
-    const value = await json(`/__hydronium/lab/sessions/${encodeURIComponent(session)}/operations`, {
+    const value = await json(sessionUrl(transport.sessionOperations, session), {
       method: "POST", headers: { "content-type": "application/json", "x-hydronium-lab": "1" },
       body: JSON.stringify({ sequence, generation, request: message }),
     });
@@ -50,7 +60,7 @@ async function performRequest(message) {
       session = null;
       await ensureSession();
       sequence += 1;
-      const value = await json(`/__hydronium/lab/sessions/${encodeURIComponent(session)}/operations`, {
+      const value = await json(sessionUrl(transport.sessionOperations, session), {
         method: "POST", headers: { "content-type": "application/json", "x-hydronium-lab": "1" },
         body: JSON.stringify({ sequence, generation, request: message }),
       });
@@ -71,7 +81,7 @@ function request(message) {
 }
 
 try {
-  lab = await createInkLab({ root, request, autoResize: true });
+  lab = await createInkLab({ root, request, autoResize: true, workbench });
   if (status) status.textContent = "Connected";
 } catch (error) {
   if (status) status.textContent = `Error: ${error.message}`;
@@ -85,7 +95,7 @@ try {
 async function refreshCatalog() {
   if (!lab || document.hidden) return;
   try {
-    const value = await json("/__hydronium/lab/catalog");
+    const value = await json(transport.catalog);
     if (value.error) {
       if (status) status.textContent = `Update failed — showing last preview: ${value.error}`;
       return;
@@ -107,4 +117,13 @@ async function refreshCatalog() {
 }
 
 const refreshTimer = window.setInterval(refreshCatalog, 750);
-window.addEventListener("pagehide", () => window.clearInterval(refreshTimer), { once: true });
+window.addEventListener("pagehide", () => {
+  window.clearInterval(refreshTimer);
+  if (!session) return;
+  fetch(sessionUrl(transport.closeSession, session), {
+    method: "DELETE",
+    headers: { "x-hydronium-lab": "1" },
+    keepalive: true,
+  }).catch(() => undefined);
+  session = null;
+}, { once: true });
