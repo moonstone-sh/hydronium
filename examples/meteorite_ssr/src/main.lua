@@ -54,11 +54,15 @@ meteorite.site(app, {
     ["/__hydronium/hmr-demo/:path*"] = { dir = "hmr_demo", param = "path" },
     ["/__hydronium/client-mount-demo/:path*"] = { dir = "client_mount_demo", param = "path" },
     -- The real hydronium-ballad build output (see ../partiture.lua --
-    -- `moon exec ballad -- play partiture.lua`, run BEFORE `zig build`,
+    -- `moon exec -- ballad play partiture.lua`, run BEFORE `zig build`,
     -- since meteorite.site bakes file content at graph/build time, not
     -- just the file list -- see route 9's own comment below for the
     -- live-verified finding that drives this ordering requirement).
     ["/dist/client/:path*"] = { dir = "dist/client", param = "path" },
+    -- M3: Vite's content-hashed build output, merged into dist/ by
+    -- hydronium_ballad.plugins.vite_assets + site.manifest. Served here so
+    -- /prod-island needs no Vite process at all.
+    ["/assets/:path*"] = { dir = "dist/assets", param = "path" },
   },
 })
 
@@ -496,13 +500,18 @@ end)
 --        per-request standalone reload; a `require` call made from
 --        inside the body is module-cache-backed and does.
 app:get("/__hydronium/watch", function(c)
-  require("hydronium_dom.dev.watch").serve_sse(c, {
+  -- Watch set comes from the declared topology (hydronium.sources.lua), plus
+  -- the legacy demo files that still have bespoke routes and no module id.
+  -- One list, derived -- not a hand-maintained duplicate that can drift from
+  -- what the module routes actually fingerprint.
+  local registry = require("hydronium_dom.dev.source_registry").load("hydronium.sources.lua")
+  require("hydronium_dom.dev.watch").serve_sse(c, registry:watch_files({
     "views/App.luax",
     "src/views/App.lua",
     "hmr_demo/click_increment.lua",
     "hmr_demo/family_counter.lua",
     "hmr_demo/arbitrary_tree_counter.lua",
-  })
+  }))
 end)
 
 -- 9. Serves hmr_demo/click_increment.lua's CURRENT content, fresh on
@@ -564,7 +573,7 @@ end)
 --     server.render_to_string, then hydrates it client-side against the
 --     REAL, separately-built bundled chunk under dist/client/ (built by
 --     ../partiture.lua's hydronium_ballad.plugins.client pipeline --
---     run `moon exec ballad -- play partiture.lua` before `zig build`).
+--     run `moon exec -- ballad play partiture.lua` before `zig build`).
 --     Deliberately NOT routed through meteorite_adapter.render/AppView's
 --     shared page shell -- this route needs to inject its own <script
 --     type="module"> calling mount(), which that adapter's fixed
@@ -606,7 +615,7 @@ app:get("/hydrate-demo", function(c)
   end
   if not chunk_url then
     return c:text(500, "hydrate-demo: no built client bundle found under dist/client -- "
-      .. "run: moon exec ballad -- play partiture.lua")
+      .. "run: moon exec -- ballad play partiture.lua")
   end
 
   local page = "<!doctype html>\n<html><head><meta charset=\"utf-8\">"
@@ -632,6 +641,224 @@ app:get("/hydrate-demo", function(c)
   -- in practice): this context has no `html` method at all. `content_type`
   -- must live here, top-level -- Meteorite reserves it out of `headers`
   -- (see meteorite_adapter.render's own comment on this exact rule).
+  return { status = 200, content_type = "text/html; charset=utf-8", headers = {}, body = page }
+end)
+
+-- 13. M2 dev-module route for /dual-hmr's Lua half (docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md).
+--     Same real snapshot/revision mechanism as route 9-11's hmr_demo
+--     routes and examples/quickstart's own
+--     /__hydronium/dev/module/:id (dom/src/hydronium_dom/dev/watch.lua's
+--     read_snapshot) -- scoped to this example's one new module instead
+--     of a full source-registry lookup, since meteorite_ssr has no
+--     hydronium.sources.lua topology declaration the way quickstart does.
+--     views/Document.luax's mount() calls this URL once at boot
+--     (appModuleUrl) and hmr.js re-fetches it on every hot update
+--     (moduleUrl) -- one source of truth, matching quickstart's own
+--     comment on its analogous route.
+app:get("/__hydronium/dual-hmr/dev/module/:id", function(c)
+  local id = c:param("id") or ""
+
+  -- Manifest-whitelisted lookup: the dotted HTTP parameter is resolved
+  -- against the declared topology (hydronium.sources.lua), never turned into
+  -- a filesystem path. An id the topology does not declare is simply not
+  -- servable -- which is also what replaced this route's old hardcoded
+  -- `if id ~= "dual_hmr.app"` check.
+  local registry = require("hydronium_dom.dev.source_registry").load("hydronium.sources.lua")
+  local record = registry:module(id)
+  if not record then
+    return c:text(404, "module not found")
+  end
+
+  local watch = require("hydronium_dom.dev.watch")
+  -- DEV_WATCHED_FILES, not just this module's own file: the revision the
+  -- client sends is the SSE frame's whole-set fingerprint. See that list's
+  -- comment above.
+  local source, revision, reason, err = watch.read_snapshot(registry:watch_files({
+    "views/App.luax",
+    "src/views/App.lua",
+    "hmr_demo/click_increment.lua",
+    "hmr_demo/family_counter.lua",
+    "hmr_demo/arbitrary_tree_counter.lua",
+  }), c:query("revision"), function()
+    -- Serve the module through hydronium_luax.loader, NOT a raw io.open.
+    -- The loader is path-based, not extension-based: it happily compiles a
+    -- plain `.lua` file, and that compile runs hydronium_luax.transforms.refresh,
+    -- which rewrites `local a, b = signal(x)` at the top of a setup taking a
+    -- `scope` parameter into the descriptor-carrying
+    -- `scope.refresh_registry:signal(x, {...})` form. That descriptor is what
+    -- lets RefreshRegistry carry the live value across a hot swap. Reading the
+    -- file raw skipped the transform, which is why this example's component
+    -- used to need a hand-written descriptor to keep its state.
+    return (require("hydronium_luax.loader").source(record.path))
+  end)
+  if reason == "stale" then
+    return c:text(409, "HMR source snapshot is stale", { headers = {
+      ["X-Hydronium-Revision"] = revision or "",
+      ["Cache-Control"] = "no-store",
+    } })
+  elseif reason == "read_failed" then
+    return c:text(500, "-- hydronium dev: " .. tostring(err), { headers = { ["Cache-Control"] = "no-store" } })
+  end
+  return c:text(200, source, { headers = {
+    ["X-Hydronium-Revision"] = revision,
+    ["Cache-Control"] = "no-store",
+  } })
+end)
+
+-- 14. M2's own gate (docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md): one real
+--     page running TWO independent, deliberately uncoordinated client
+--     HMR systems side by side --
+--       (a) a real WASM Lua VM (mount.js, hmr: true) hot-swapping
+--           dual_hmr/app.lua's RENDER function via
+--           hydronium.core.family_loader, driven by installHmr() over
+--           /__hydronium/watch + route 13 above -- the exact same
+--           mechanism examples/quickstart uses for its whole app;
+--       (b) a real `d.js.island` whose `module` specifier
+--           ("src/dual-hmr-island.js") is resolved by
+--           hydronium_dom.server.vite_module (M2's hy_asset_ref
+--           resolver, dom/src/hydronium_dom/server/vite_module.lua) to a
+--           real `vite dev` origin, hot-patched by Vite's own native
+--           import.meta.hot -- see
+--           hydronium/js/examples/islands-tailwind/src/dual-hmr-island.js.
+--     `<script type="module" src=".../@vite/client">` bootstraps Vite's
+--     HMR client manually, BEFORE bootstrap.js's dynamic import runs --
+--     this page is served by Meteorite, not by Vite, so Vite's own
+--     dev-server HTML transform (which normally injects that script for
+--     you) never runs; this is the plan's §2.5 "standard non-middleware
+--     Vite integration pattern" made concrete. Requires a real `vite
+--     dev --port 5174` running against
+--     hydronium/js/examples/islands-tailwind (see that project's
+--     package.json) alongside this `meteorite dev` -- a real dual-dev-server
+--     session, not simulated.
+--     vite_module.configure/.reset live INSIDE the handler body (not at
+--     file top level) for the same reason route 13's `require` does:
+--     Meteorite's hybrid build reloads each inline handler in its own
+--     fresh Lua state per request, so file-top-level module state would
+--     not survive into it.
+app:get("/dual-hmr", function(c)
+  local dom = require("hydronium_dom")
+  local server = require("hydronium_dom.server")
+  local hydronium = require("hydronium")
+  local h = hydronium.createElement
+  local d = dom.d
+  local vite_module = require("hydronium_dom.server.vite_module")
+
+  -- @hydronium/vite publishes the origin it actually bound to
+  -- .hydronium/vite-dev.json while its dev server runs (and removes it on
+  -- shutdown, so a stale file cannot point at a dead port). Reading it means
+  -- the port is configured in exactly one place -- the Vite config -- instead
+  -- of being duplicated here and drifting. The literal is a fallback for
+  -- running this page without the plugin.
+  local vite_origin = "http://localhost:5174"
+  local origin_file = io.open(".hydronium/vite-dev.json", "r")
+  if origin_file then
+    local body = origin_file:read("*a")
+    origin_file:close()
+    vite_origin = body:match('"origin"%s*:%s*"([^"]+)"') or vite_origin
+  end
+  vite_module.configure({ mode = "dev", vite_origin = vite_origin })
+
+  local LuaApp = dofile("dual_hmr/app.lua")
+
+  -- One page scope for BOTH islands. Rendering them with two bare
+  -- render_to_string calls minted `hy:i1` twice (each call restarts
+  -- island_seq), and since the browser resolves an island id against the
+  -- whole document, bootstrap.js hydrated the JS island into the Lua
+  -- island's node -- silently, apart from a hydration-mismatch warning.
+  -- render_page shares the id sequence and produces ONE merged client plan,
+  -- so `suppress_client_plan_script` is no longer needed here either.
+  local body_html, _, plan_script = server.render_page(function(render)
+    local lua_html = render(dom.d.lua.mount(h(LuaApp, { initial = 5 })))
+    local js_html = render(
+      h(d.js.island, { module = "src/dual-hmr-island.js", hydrate = "load", props = { initial = 7 } },
+        h("div", { class = "card" }, {
+          h("h3", nil, "JS island (real Vite HMR)"),
+          h("button", { id = "js-counter-btn" }, "JS count: 7"),
+        })))
+    return "<div id=\"lua-app\">" .. lua_html .. "</div>"
+      .. "<div id=\"js-app\">" .. js_html .. "</div>"
+  end)
+
+  vite_module.reset()
+
+  local page = "<!doctype html>\n<html><head><meta charset=\"utf-8\">"
+    .. "<title>Hydronium dual HMR: Lua family_loader + Vite JS island</title></head><body>"
+    .. "<h1>Two independent, deliberately uncoordinated HMR systems on one real page</h1>"
+    .. body_html
+    .. plan_script
+    .. "<script type=\"module\">window.__pageBootId = Math.random().toString(36).slice(2);</script>"
+    .. "<script type=\"module\" src=\"http://localhost:5174/@vite/client\"></script>"
+    .. "<script type=\"module\">"
+    .. "import { mount } from \"/js/bootstrap/mount.js\";"
+    .. "import { installHmr } from \"/js/bootstrap/hmr.js\";"
+    .. "mount({"
+    .. "hydroniumBaseUrl: \"/hydronium-src\","
+    .. "manifestUrl: \"/__hydronium/client-mount-demo/client_manifest.json\","
+    .. "appModuleId: \"dual_hmr.app\","
+    .. "appModuleUrl: \"/__hydronium/dual-hmr/dev/module/dual_hmr.app\","
+    .. "container: \"#lua-app\","
+    .. "props: { initial: 5 },"
+    .. "hydrate: true,"
+    .. "hmr: true,"
+    .. "}).then(({ lua, remount }) => {"
+    .. "window.__luaMounted = true;"
+    .. "installHmr({"
+    .. "lua, remount,"
+    .. "watchUrl: \"/__hydronium/watch\","
+    .. "moduleUrl: \"/__hydronium/dual-hmr/dev/module\","
+    .. "updates: { \"dual_hmr/app.lua\": { action: \"hot\", module: \"dual_hmr.app\", effects: \"safe\" } },"
+    .. "onUpdate: (info) => { (window.__luaHmrEvents = window.__luaHmrEvents || []).push(info); },"
+    .. "});"
+    .. "}).catch((e) => { window.__luaMountError = String((e && e.stack) || e); console.error(e); });"
+    .. "</script>"
+    .. "<script type=\"module\">"
+    .. "import { activate } from \"/js/bootstrap/bootstrap.js\";"
+    .. "activate().then((r) => { window.__jsIslandResult = r; }).catch((e) => { window.__jsIslandError = String((e && e.stack) || e); console.error(e); });"
+    .. "</script>"
+    .. "</body></html>"
+
+  return { status = 200, content_type = "text/html; charset=utf-8", headers = {}, body = page }
+end)
+
+-- M3 gate (docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md): a JS island served
+-- ENTIRELY from the merged dist/, with no Vite process running. The island's
+-- module specifier is resolved through hydronium_dom.assets against the
+-- merged hydronium-manifest.lua, so the page references the content-hashed
+-- file Vite emitted at build time. Deliberately JS-only: the dual-HMR page
+-- next door already covers the Lua half, and this one is about production.
+app:get("/prod-island", function(c)
+  local dom = require("hydronium_dom")
+  local d = dom.d
+  local h = require("hydronium").h
+  local server = require("hydronium_dom.server")
+  local assets = require("hydronium_dom.assets")
+  local vite_module = require("hydronium_dom.server.vite_module")
+
+  assets.configure("dist/hydronium-manifest.lua")
+  vite_module.configure({ mode = "prod" })
+
+  local body, _, plan_script = server.render_page(function(render)
+    return "<div id=\"js-app\">" .. render(
+      h(d.js.island, { module = "src/dual-hmr-island.js", hydrate = "load", props = { initial = 7 } },
+        h("div", { class = "card" }, {
+          h("h3", nil, "JS island (production build, no Vite process)"),
+          h("button", { id = "js-counter-btn" }, "JS count: 7"),
+        }))) .. "</div>"
+  end)
+
+  vite_module.reset()
+  assets.reset()
+
+  local page = "<!doctype html>\n<html><head><meta charset=\"utf-8\">"
+    .. "<title>Hydronium production island</title></head><body>"
+    .. "<h1>Production island, served from merged dist/</h1>"
+    .. body .. plan_script
+    .. "<script type=\"module\">window.__pageBootId = Math.random().toString(36).slice(2);</script>"
+    .. "<script type=\"module\">import { activate } from \"/js/bootstrap/bootstrap.js\";"
+    .. "activate().then((r) => { window.__jsIslandResult = r; })"
+    .. ".catch((e) => { window.__jsIslandError = String((e && e.stack) || e); console.error(e); });</script>"
+    .. "</body></html>"
+
   return { status = 200, content_type = "text/html; charset=utf-8", headers = {}, body = page }
 end)
 
