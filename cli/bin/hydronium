@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+# Source-tree launcher for `path:`/`link:` development dependencies. Released
+# packages receive the equivalent launcher from Ballad's layout.exec recipe.
+set -eu
+
+entry=$0
+while [ -L "$entry" ]; do
+  entry_dir=$(CDPATH= cd -- "$(dirname -- "$entry")" && pwd)
+  target=$(readlink "$entry")
+  case "$target" in
+    /*) entry=$target ;;
+    *) entry=$entry_dir/$target ;;
+  esac
+done
+root=$(CDPATH= cd -- "$(dirname -- "$entry")/.." && pwd)
+exec "${LUA_BIN:-luajit}" "$root/src/main.lua" "$@"
