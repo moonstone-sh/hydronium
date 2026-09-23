@@ -414,5 +414,56 @@ return Counter
       assert.equal(refresh_transform.module_id_from_filename("views/App.luax"), "views.App")
       assert.equal(refresh_transform.module_id_from_filename("./src/client/counter.luax"), "src.client.counter")
     end)
+
+  describe("missing-scope diagnostic", function()
+    local function compile(src)
+      return compiler.compile(src, { filename = "views/Demo.lua" }).refresh
+    end
+
+    it("names a setup that declares signals but takes no `scope` parameter", function()
+      local r = compile([[local Bad = function(props)
+  local count, setCount = createSignal(0)
+  return function() return count() end
+end]])
+      assert.equal(r.rewritten, 0)
+      assert.equal(#r.missing_scope, 1)
+      assert.equal(r.missing_scope[1].setup, "Bad")
+      assert.same(r.missing_scope[1].signals, { "count" })
+      assert.truthy(r.missing_scope[1].line)
+    end)
+
+    it("reports every signal the setup would have registered", function()
+      local r = compile([[local Bad = function(props)
+  local a, setA = createSignal(0)
+  local b, setB = createSignal(1)
+  return function() return a() end
+end]])
+      assert.same(r.missing_scope[1].signals, { "a", "b" })
+    end)
+
+    it("stays silent for a function that returns a function but declares no signals", function()
+      local r = compile([[local NotAComponent = function(props)
+  return function() return 1 end
+end]])
+      assert.equal(#r.missing_scope, 0)
+    end)
+
+    it("stays silent once the setup declares `scope` -- the rewrite happens instead", function()
+      local r = compile([[local Good = function(props, scope)
+  local count, setCount = createSignal(0)
+  return function() return count() end
+end]])
+      assert.equal(r.rewritten, 1)
+      assert.equal(#r.missing_scope, 0)
+    end)
+  end)
+
+    it("uses an explicit logical module id while retaining its diagnostic filename", function()
+      local res = compiler.compile([[local function Counter(props, scope)
+  local count, setCount = createSignal(0)
+  return function() return d.div({}, count) end
+end]], { filename = "/checkout/src/App.luax", module_id = "app" })
+      assert.equal(res.refresh.descriptors[1].block_path, "app::Counter.setup")
+    end)
   end)
 end)

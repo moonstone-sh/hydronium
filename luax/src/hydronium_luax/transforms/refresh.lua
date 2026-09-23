@@ -267,6 +267,38 @@ local function match_signal_declaration(stmt)
   return accessor.name, call.arguments[1], call
 end
 
+--- Diagnostic only -- never a rewrite. A function that returns a function
+--- AND declares signals at its top level, but takes no `scope` parameter, is
+--- almost certainly a component setup whose state will NOT survive a hot
+--- swap: rule 2a forbids rewriting it, because this pass never invents the
+--- `scope` binding. That refusal is correct, but silently losing every
+--- signal's value on edit is precisely the failure this pass exists to
+--- remove -- so name it rather than let it pass unremarked. The caller
+--- decides whether to print, warn, or ignore; see `stats.missing_scope`.
+--- @return nil
+local function collect_missing_scope(fn, state, identity)
+  if has_scope_param(fn) or not returns_a_function(fn) then
+    return
+  end
+  local names = {}
+  for _, stmt in ipairs(fn.body or {}) do
+    local name = match_signal_declaration(stmt)
+    if name then
+      names[#names + 1] = name
+    end
+  end
+  -- Only a function that would ACTUALLY have gained descriptors is worth
+  -- reporting; "returns a function" alone is an ordinary Lua shape.
+  if #names == 0 then
+    return
+  end
+  state.stats.missing_scope[#state.stats.missing_scope + 1] = {
+    setup = identity or "<anonymous>",
+    signals = names,
+    line = (type(fn.loc) == "table" and fn.loc.start and fn.loc.start.line) or nil,
+  }
+end
+
 local function descriptor_table(name, block_path, loc)
   return ast.TableConstructor({
     ast.TableField(ast.StringLiteral("kind"), ast.StringLiteral("signal"), loc),
@@ -344,6 +376,12 @@ local function walk(node, state, name_hint)
     local block_path = state.module_id .. "::" .. identity .. ".setup"
     rewrite_setup_body(node, block_path, state.stats)
     state.stats.setups[#state.stats.setups + 1] = block_path
+  elseif is_function_node(node) then
+    local identity = nil
+    if node.type == "FunctionDeclaration" or node.type == "LocalFunctionDeclaration" then
+      identity = dotted_name(node.name)
+    end
+    collect_missing_scope(node, state, identity or name_hint)
   end
 
   local fields = CHILD_FIELDS[node.type]
@@ -385,11 +423,16 @@ end
 --- @return table stats { rewritten, descriptors, setups }
 function M.transform(ast_root, opts)
   opts = opts or {}
-  local stats = { rewritten = 0, descriptors = {}, setups = {} }
+  -- `missing_scope`: setups that declare signals but take no `scope`
+  -- parameter, so they were deliberately NOT rewritten and their state will
+  -- not survive a hot swap. See collect_missing_scope.
+  local stats = { rewritten = 0, descriptors = {}, setups = {}, missing_scope = {} }
   if type(ast_root) ~= "table" then return ast_root, stats end
 
   local state = {
-    module_id = module_id_from_filename(opts.filename),
+    -- `filename` is diagnostic identity; a build/dev host may supply the
+    -- logical module id explicitly so refresh families agree with require().
+    module_id = opts.module_id or module_id_from_filename(opts.filename),
     anon_count = 0,
     stats = stats,
   }

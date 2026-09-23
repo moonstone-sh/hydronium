@@ -71,8 +71,13 @@ function M.compile(ctx, inputs, opts)
             .. "' has no source_path (only real files can be compiled, not already-generated assets)")
         else
           local source = read_file(asset.source_path)
+          local compiled_vpath = asset.virtual_path:gsub("%.luax$", ".lua")
+          -- A topology-aware caller may stamp the logical id in metadata.
+          -- Fall back to Ballad's virtual path for existing partitures.
+          local declared_id = asset.metadata and asset.metadata.hydronium and asset.metadata.hydronium.module_id
           local compile_opts = {
             filename = asset.source_path,
+            module_id = declared_id or module_id_from_virtual_path(compiled_vpath),
             runtime = opts.runtime or "hydronium",
             development = opts.development == true,
           }
@@ -93,8 +98,23 @@ function M.compile(ctx, inputs, opts)
               end
             end
 
-            local compiled_vpath = asset.virtual_path:gsub("%.luax$", ".lua")
-            local module_id = module_id_from_virtual_path(compiled_vpath)
+            -- Setups that declare signals but take no `scope` parameter are
+            -- NOT rewritten by hydronium_luax.transforms.refresh (it never
+            -- invents that binding), so every one of their signals silently
+            -- loses its value on each hot swap. Name them at build time
+            -- rather than letting a developer discover it by watching a
+            -- counter reset. A warning, not a failure: the code is correct,
+            -- it just forfeits state preservation.
+            local missing = (result.refresh and result.refresh.missing_scope) or {}
+            for _, entry in ipairs(missing) do
+              ctx.warn("hydronium_ballad.plugins.luax.compile: " .. asset.source_path
+                .. ":" .. tostring(entry.line or "?") .. ": `" .. tostring(entry.setup)
+                .. "` declares signal(s) " .. table.concat(entry.signals or {}, ", ")
+                .. " but takes no `scope` parameter, so their values will not survive a hot swap"
+                .. " -- change its setup to `function(props, scope)` to opt in")
+            end
+
+            local module_id = declared_id or module_id_from_virtual_path(compiled_vpath)
 
             out:add(ctx.graph:add_asset({
               kind = "hy_module",

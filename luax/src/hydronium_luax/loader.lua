@@ -51,6 +51,41 @@ local function read_source(path)
   return source
 end
 
+-- Paths already reported on, so a module recompiled on every edit does not
+-- reprint the same warning forever. Keyed by path .. "\0" .. first line.
+local warned = {}
+
+--- Reports setups that declare signals but take no `scope` parameter.
+---
+--- `hydronium_luax.transforms.refresh` deliberately refuses to rewrite those
+--- (it never invents the `scope` binding), which is correct -- but the
+--- consequence is that every one of those signals silently loses its value on
+--- each hot swap. Silent state loss is the exact failure the refresh pass
+--- exists to remove, so say it out loud once per compile result. Callers that
+--- want the data rather than the message read `compiled.refresh.missing_scope`
+--- directly; pass `options.quiet = true` to suppress the print entirely.
+--- @param path string
+--- @param compiled table
+--- @param quiet boolean|nil
+local function report_missing_scope(path, compiled, quiet)
+  if quiet then return end
+  local refresh = compiled and compiled.refresh
+  local entries = refresh and refresh.missing_scope
+  if type(entries) ~= "table" or #entries == 0 then return end
+  for _, entry in ipairs(entries) do
+    local key = path .. "\0" .. tostring(entry.setup) .. "\0" .. tostring(entry.line)
+    if not warned[key] then
+      warned[key] = true
+      io.stderr:write(string.format(
+        "hydronium: %s:%s: `%s` declares signal(s) %s but takes no `scope` parameter, "
+          .. "so their values will NOT survive a hot swap. Change its setup to "
+          .. "`function(props, scope)` to opt in.\n",
+        path, tostring(entry.line or "?"), tostring(entry.setup),
+        table.concat(entry.signals or {}, ", ")))
+    end
+  end
+end
+
 --- Compile and run `path` (a `.luax` file), returning its module result.
 --- Recompiles automatically whenever the file's content changes; otherwise
 --- returns the cached result after one ordinary file read.
@@ -75,6 +110,7 @@ function M.load(path, options)
   opts.runtime = opts.runtime or "hydronium"
 
   local compiled = compiler.compile(source, opts)
+  report_missing_scope(path, compiled, opts.quiet)
 
   local load_fn = loadstring or load
   local chunk, err = load_fn(compiled.code, "@" .. path)
@@ -123,6 +159,7 @@ function M.source(path, options)
   opts.runtime = opts.runtime or "hydronium"
 
   local compiled = compiler.compile(source, opts)
+  report_missing_scope(path, compiled, opts.quiet)
   source_cache[path] = { source = source, code = compiled.code, compiled = compiled }
   return compiled.code, compiled
 end
