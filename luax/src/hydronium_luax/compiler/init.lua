@@ -779,6 +779,10 @@ function compiler.compile(source_or_ast, options)
   local ast_root
   local source_content = ""
   local filename = options.filename or "input.luax"
+  -- A physical filename is for parser diagnostics and source maps. HMR
+  -- identity belongs to the project source topology and may intentionally be
+  -- different (for example a public entry alias), so never derive it here.
+  local module_id = options.module_id
 
   if type(source_or_ast) == "string" then
     source_content = source_or_ast
@@ -796,7 +800,9 @@ function compiler.compile(source_or_ast, options)
   -- Pass `refresh_descriptors = false` to disable it entirely.
   local refresh_stats = nil
   if options.refresh_descriptors ~= false then
-    ast_root, refresh_stats = refresh_transform.transform(ast_root, { filename = filename })
+    ast_root, refresh_stats = refresh_transform.transform(ast_root, {
+      filename = filename, module_id = module_id,
+    })
   end
 
   local env = options.env or env_mod.get_current()
