@@ -404,6 +404,8 @@ local function main()
       "tests/build/client_require_discipline_spec.lua",
       "tests/server/render_page_spec.lua",
       "tests/build/vite_assets_spec.lua",
+      "tests/build/assets_hash_spec.lua",
+      "tests/build/style_bundle_spec.lua",
       "tests/core/hmr_spec.lua",
       "tests/core/hydration_spec.lua",
       "tests/core/family_identity_adversarial_spec.lua",
