@@ -1,0 +1,17 @@
+{
+  "name": "hydronium-js-workspace",
+  "private": true,
+  "version": "0.0.0",
+  "description": "npm workspace for Hydronium's web-asset (JS/CSS) adapter -- @hydronium/dom-client and @hydronium/vite. NOT a moonstone package; does not ship via moon/ballad. See docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md.",
+  "type": "module",
+  "scripts": {
+    "sync:dom-client": "node scripts/sync-dom-client.mjs",
+    "check:dom-client-drift": "node scripts/check-dom-client-drift.mjs",
+    "test:client": "node --test ../tests/client/*.test.mjs",
+    "build": "pnpm --filter @hydronium/vite build",
+    "test:plugin": "node --test packages/vite/tests/plugin.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

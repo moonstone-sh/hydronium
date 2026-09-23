@@ -18,3 +18,15 @@ examples/meteorite_ssr/dist/
 dist/
 *.vsix
 nvim.log
+
+# JS (hydronium/js workspace -- @hydronium/dom-client, @hydronium/vite).
+# NOTE: dom/src/hydronium_dom/client/ is intentionally NOT ignored here --
+# it is a generated-but-committed copy (see js/scripts/sync-dom-client.mjs),
+# committed so dom/'s moonstone package still ships its client JS without
+# requiring node/npm at package time. See docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md.
+node_modules/
+js/**/.vite/
+
+# Written by @hydronium/vite while its dev server is running.
+.hydronium/vite-dev.json
+js/**/.hydronium/
