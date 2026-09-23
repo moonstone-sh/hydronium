@@ -305,10 +305,7 @@ end)
 -- The `dev` script is the one line in a generated project a user runs on
 -- day one, and it has two independent ways to be silently wrong: naming a
 -- binary the project does not depend on, and omitting the mandatory `--`
--- separator `moon exec` now requires between its own flags and the child
--- command (`moon exec --help`: "The '--' separator is mandatory: it marks
--- the exact boundary between Moonstone's own flags and the command to
--- run"). Both are asserted here, for both Meteorite-backed templates.
+-- separator `moon exec` requires between its own flags and the child command.
 for _, template_id in ipairs({ "ssr", "islands" }) do
   test(template_id .. " dev script runs `hydronium dev` with this project's real meteorite flags", function()
     local generated = require("create.templates." .. template_id).files({ name = "test-" .. template_id })
@@ -332,10 +329,8 @@ for _, template_id in ipairs({ "ssr", "islands" }) do
     assert(args:find("--lua-root .moonstone/env/libexec/luajit", 1, true),
       "[" .. template_id .. "] missing --lua-root: " .. args)
 
-    -- Without a `--` before `hydronium`, `moon exec` treats the child's own
-    -- flags (`--meteorite-args=...`) as unknown flags of its own and fails.
     assert(dev:find("moon exec %-%-dev %-%- hydronium dev", 1, false),
-      "[" .. template_id .. "] dev script must separate moon's own flags from the child command with a mandatory `--`: " .. dev)
+      "[" .. template_id .. "] dev script must separate moon's own flags from the child command: " .. dev)
 
     -- ...and the binary that script calls has to actually be in the
     -- project's environment, which means a declared dependency.
@@ -350,6 +345,8 @@ for _, template_id in ipairs({ "ssr", "islands" }) do
     local build = manifest:match("\nbuild = \"([^\"]+)\"")
     assert(build and build:find("meteorite build", 1, true),
       "[" .. template_id .. "] build script must still call meteorite build directly, got: " .. tostring(build))
+    assert(build and build:find("moon exec --dev -- meteorite build", 1, true),
+      "[" .. template_id .. "] build script must separate Meteorite flags from Moonstone options: " .. tostring(build))
 
     -- The generated README has to tell the user what `moon run dev` now
     -- shows them, including how to reach the fullscreen view.

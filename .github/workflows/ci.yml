@@ -66,6 +66,40 @@ jobs:
       - name: Export all registry packages
         run: moon exec -- ballad play partiture.lua
 
+      # This is intentionally downstream of the artifact export, rather than
+      # another source-tree example test.  It creates a disposable file
+      # registry from dist/orbit, installs hydronium/create from that registry,
+      # scaffolds an islands app, locks it, builds it, and drives the resulting
+      # server in Chromium.  A green unit suite cannot substitute for this:
+      # missing exports and browser-only blank pages both pass source tests.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: js/pnpm-lock.yaml
+      - name: Install browser-gate dependencies
+        working-directory: js
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium for consumer gate
+        working-directory: js
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Published consumer scaffold gate
+        env:
+          MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
+          HYDRONIUM_BROWSER_GATE: node --test js/tests/consumer_scaffold.browser.test.mjs
+        run: bash tests/e2e/consumer_scaffold.sh
+      - name: Static SPA browser gate
+        run: |
+          (cd examples/spa_hash_demo && moon exec -- ballad play partiture.lua)
+          node --test js/tests/spa_hash_demo.browser.test.mjs
+      - name: Meteorite + Vite production and dual-HMR gates
+        env:
+          MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
+        run: bash tests/e2e/meteorite_vite_browser.sh
+
   # The JS/CSS adapter (hydronium/js -- @hydronium-js/dom-client, @hydronium-js/vite)
   # shares no toolchain with `validate` above: no zig, no moonstone, no ballad.
   # Kept as its own job so it runs in parallel and a failure names the right
@@ -114,6 +148,10 @@ jobs:
       - name: Install Chromium for browser gates
         working-directory: js
         run: pnpm exec playwright install --with-deps chromium
+      - name: Standalone browser behavior gates
+        run: |
+          node --test js/tests/router_hash_history.browser.test.mjs
+          node --test js/tests/overlay.browser.test.mjs
 
       - name: Tailwind + build-manifest gate
         working-directory: js/examples/islands-tailwind

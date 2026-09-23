@@ -424,6 +424,7 @@ local function main()
       "tests/host/source_registry_spec.lua",
       "tests/core/lua_mount_spec.lua",
       "tests/core/lazy_barrel_spec.lua",
+      "tests/package_load_spec.lua",
       "tests/core/action_form_spec.lua",
       "tests/luax/no_core_coupling_spec.lua",
       "tests/luax/loader_spec.lua",
