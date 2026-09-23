@@ -64,4 +64,69 @@ jobs:
           cp "$parser_dir/luax.so" "$XDG_DATA_HOME/nvim/site/parser/luax.so"
           moon exec -- luajit tests/runner.lua
       - name: Export all registry packages
-        run: moon exec -- ballad -- play partiture.lua
+        run: moon exec -- ballad play partiture.lua
+
+  # The JS/CSS adapter (hydronium/js -- @hydronium/dom-client, @hydronium/vite)
+  # shares no toolchain with `validate` above: no zig, no moonstone, no ballad.
+  # Kept as its own job so it runs in parallel and a failure names the right
+  # half of the codebase. Before this job existed, NOTHING mechanically checked
+  # any of it -- the client runtime could drift from the copy `dom/` actually
+  # serves, or a browser-side HMR regression could land, and CI would stay
+  # green. See docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md.
+  web:
+    name: Test the web-asset adapter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          # Vite 8 requires ^20.19.0 || >=22.12.0 (its own engines field).
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: js/pnpm-lock.yaml
+
+      # These three need no install at all -- they import only source paths
+      # and `node:` builtins -- so run them first for a fast, cheap failure.
+      - name: Client runtime tests (no install required)
+        run: node --test tests/client/*.test.mjs
+      - name: Dev-server supervisor tests (no install required)
+        run: node --test js/packages/vite/tests/supervisor.test.mjs
+      - name: dom-client drift check
+        # Fails when dom/src/hydronium_dom/client/ has diverged from the
+        # @hydronium/dom-client package it is generated from. Exits 1 on drift.
+        run: node js/scripts/check-dom-client-drift.mjs
+
+      - name: Install web workspace
+        working-directory: js
+        run: pnpm install --frozen-lockfile
+      - name: Build @hydronium/vite
+        # pnpm does NOT run a workspace package's `prepare` on install, so the
+        # compiled output the plugin is consumed through does not exist until
+        # this runs. Without it `vite build` in the example cannot resolve
+        # @hydronium/vite at all on a fresh checkout.
+        working-directory: js
+        run: pnpm build
+      - name: Plugin unit tests
+        run: node --test js/packages/vite/tests/plugin.test.mjs
+      - name: Install Chromium for browser gates
+        working-directory: js
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Tailwind + build-manifest gate
+        working-directory: js/examples/islands-tailwind
+        run: node --test tests/tailwind-source.test.mjs
+      # NOTE: the M3 production gate and the dual-HMR gate are NOT run here.
+      # Both need a compiled Meteorite binary (zig + moonstone + ballad, i.e.
+      # the `validate` job's whole toolchain) plus, for M3, a ballad merge step.
+      # Wiring that into CI means joining the two jobs; until then they are
+      # documented pre-release gates -- see their own file headers for the
+      # exact commands.
+      - name: Browser HMR gate
+        # Spawns a real `vite dev`, drives real Chromium, edits an island on
+        # disk, and asserts window.__bootId is unchanged -- i.e. that Vite
+        # HMR-patched rather than full-reloaded.
+        working-directory: js/examples/islands-tailwind
+        run: node --test tests/hmr.test.mjs
