@@ -28,6 +28,7 @@ describe("Ink component-family HMR", function()
         return function() return ink.Text(nil, "old " .. count()) end
       end
     ]])
+    require("hydronium.core.module_graph").manage(id, { effects = "safe" })
     local App = require(id)
     local writes = {}
     local host = terminal.createTerminalHost(function(bytes) writes[#writes + 1] = bytes end)
@@ -49,7 +50,7 @@ describe("Ink component-family HMR", function()
         _G.__ink_hmr_set = set_count
         return function() return ink.Text(nil, "new " .. count()) end
       end
-    ]], "ink-r2")
+    ]], "ink-r2", "safe")
     -- Ink invokes this flush from render.onTick: after input dispatch and
     -- before the terminal frame is painted.
     local result = updates:flush("ink-batch-r2")
