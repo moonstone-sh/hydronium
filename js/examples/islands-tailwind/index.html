@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hydronium islands + Tailwind (M1 example)</title>
+  </head>
+  <body class="min-h-screen bg-slate-900 text-white font-sans flex items-center justify-center">
+    <main class="p-8 rounded-lg bg-slate-800 shadow-xl">
+      <!-- Stands in for SSR-produced markup: hydrate() below claims this
+           existing button rather than replacing it, same as
+           examples/js_island/counter.js does against real Meteorite SSR
+           output. No Lua/Meteorite in this standalone M1 example. -->
+      <button id="app-root">Count: 0</button>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

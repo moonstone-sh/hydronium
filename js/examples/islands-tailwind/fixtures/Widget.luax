@@ -1,0 +1,14 @@
+-- Fixture for M1's Tailwind `@source` proof
+-- (docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md). Not compiled by anything in
+-- this example -- Tailwind's scanner only needs the literal class-name
+-- token below to exist inside a real `.luax` file reachable by
+-- ../src/styles.css's `@source "../fixtures/**/*.luax"` directive. Real
+-- `.luax` compilation stays hydronium_ballad's job (see the plan's §2.1);
+-- this file is deliberately never touched by luax.compile in this example.
+local function Widget(props)
+  return <button class="bg-fuchsia-600 text-white px-3 py-1 rounded">
+    {props.label}
+  </button>
+end
+
+return Widget

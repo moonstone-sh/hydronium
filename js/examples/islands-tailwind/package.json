@@ -1,0 +1,22 @@
+{
+  "name": "hydronium-example-islands-tailwind",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "M1 proving ground for docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md: a real JS island (hydrate/dispose ABI matching examples/js_island/counter.js) importing a real npm dependency (nanoid), plus a Tailwind v4 CSS entry that scans a .luax file via an explicit @source directive. Deliberately standalone -- does not depend on @hydronium/dom-client or @hydronium/vite, both still M0 skeletons/M2+ work; this milestone only proves Vite 8 + Tailwind v4 themselves.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "nanoid": "6.0.1"
+  },
+  "devDependencies": {
+    "vite": "8.3.0",
+    "tailwindcss": "4.3.3",
+    "@tailwindcss/vite": "4.3.3",
+    "playwright": "1.63.0",
+    "@hydronium/vite": "workspace:*"
+  }
+}

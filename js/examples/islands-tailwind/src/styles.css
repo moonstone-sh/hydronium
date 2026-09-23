@@ -1,0 +1,10 @@
+/* M1 of docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md: Tailwind v4, CSS-first
+   config. `source(none)` turns OFF Tailwind's own automatic project-wide
+   content detection, so every file this stylesheet can see classes from is
+   listed below, deliberately -- including the explicit `@source` for
+   `.luax`, which Tailwind has no built-in knowledge of. */
+@import "tailwindcss" source(none);
+
+@source "../index.html";
+@source "../src/**/*.js";
+@source "../fixtures/**/*.luax";
