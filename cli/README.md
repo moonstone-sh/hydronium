@@ -84,16 +84,14 @@ script that runs this CLI with the project's own Meteorite flags, so
 
 ```toml
 [scripts]
-dev = "moon exec --dev hydronium dev --meteorite-args='--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit'"
+dev = "moon exec --dev -- hydronium dev --meteorite-args='--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit'"
 ```
 
 The flags travel in one `--meteorite-args` value rather than as trailing
-arguments because `moon exec` consumes the first `--` after the command it
-runs (`moon exec --help`: "One '--' after `<command>` is treated as an
-argument delimiter and is not forwarded"), so a `--`-passthrough script
-would need a second `--` to work at all. Splitting the value on whitespace
-means no single argument may contain a space; nothing `meteorite dev` takes
-does.
+arguments after a second `--` so a single quoted string is all `moon run`
+needs to hand the host shell as one argument. Splitting the value on
+whitespace means no single argument may contain a space; nothing
+`meteorite dev` takes does.
 
 ## Requirements
 
