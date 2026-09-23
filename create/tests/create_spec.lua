@@ -2,6 +2,7 @@ package.path = "./src/?.lua;./src/?/init.lua;" .. package.path
 
 local create = require("create.init")
 local luals = require("create.luals")
+local process = require("create.process")
 
 local total = 0
 local passed = 0
@@ -22,7 +23,7 @@ print("\n--- hydronium-create unit tests ---")
 
 test("available_templates lists all supported templates", function()
   local tmpls = create.available_templates()
-  assert(#tmpls == 4, "expected 4 templates, got " .. #tmpls)
+  assert(#tmpls == 5, "expected 5 templates, got " .. #tmpls)
   local ids = {}
   for _, t in ipairs(tmpls) do
     ids[t.id] = true
@@ -31,12 +32,137 @@ test("available_templates lists all supported templates", function()
   assert(ids.islands, "missing islands template")
   assert(ids.minimal, "missing minimal template")
   assert(ids.ink, "missing ink template")
+  assert(ids.love, "missing LÖVE template")
   -- `spa` is deliberately NOT listed -- see templates/spa.lua's own
   -- header comment and create.scaffold's explicit gate below. Corrected
   -- 2026-09-10: `mount()` and the client bundler ARE real now (the `ssr`
   -- template uses both), and hydronium-router is now real; what remains is
   -- a complete static build/delivery recipe without a Meteorite process.
   assert(not ids.spa, "spa should not be listed as an available template")
+end)
+
+test("scaffold dry-run produces a LÖVE game with a controlled HMR boundary", function()
+  local res, err = create.scaffold({
+    directory = "/tmp/test-hydronium-love", template = "love", name = "test-love-app", dry_run = true,
+  })
+  assert(res ~= nil, "scaffold returned nil: " .. tostring(err))
+  local files = {}
+  for _, file in ipairs(res.created) do files[file.path] = true end
+  assert(files["main.lua"], "missing LÖVE entrypoint")
+  assert(files["src/App.lua"], "missing game module")
+  assert(files["hydronium.sources.lua"], "missing topology declaration")
+  assert(files["partiture.lua"], "missing dependency-closed packaging pipeline")
+  local generated = require("create.templates.love").files({ name = "test-love-app" })
+  local main = generated["main.lua"]
+  assert(main:find("love_hmr.from_love", 1, true), "LÖVE scaffold must use the real LÖVE HMR adapter")
+  assert(main:find("on_remount", 1, true), "LÖVE scaffold must define a controlled remount boundary")
+  assert(generated["moonstone.toml"]:find('name = "luajit"', 1, true), "LÖVE scaffold must select the embedded ABI")
+  assert(generated["moonstone.toml"]:find('name = "moonstone/ballad"', 1, true), "LÖVE packaging needs Ballad")
+end)
+
+test("add_love layers a bridge onto an existing project without replacing its entrypoint", function()
+  local res, err = create.add_love({ directory = "/tmp/test-existing-love", dry_run = true })
+  assert(res ~= nil, "add_love returned nil: " .. tostring(err))
+  assert(res.additive, "add_love must identify itself as additive")
+  local files = {}
+  for _, file in ipairs(res.created) do files[file.path] = true end
+  assert(files["src/hydronium_love.lua"], "missing additive LÖVE bridge")
+  assert(files["HYDRONIUM_LOVE.md"], "missing additive integration instructions")
+  assert(files["hydronium.love.partiture.lua"], "missing dependency-closed LÖVE packaging pipeline")
+  assert(not files["main.lua"], "add_love must not overwrite the game's entrypoint")
+end)
+
+test("add_love uses structured Moonstone operations and synchronizes once", function()
+  local target = "/tmp/test-existing-love-command"
+  os.execute(string.format('mkdir -p "%s"', target))
+  local main = assert(io.open(target .. "/main.lua", "w")); main:write("function love.draw() end\n"); main:close()
+  local manifest = assert(io.open(target .. "/moonstone.toml", "w")); manifest:write("manifest_version = 2\n"); manifest:close()
+  local calls = {}
+  local export = [[{"contract":"moonstone:manifest:v1","manifest":{"runtime":{"name":"luajit","version":"2.1.0","abi":"5.1"},"dependencies":[],"scripts":[]}}]]
+  local res, err = create.add_love({
+    directory = target,
+    run_process = function(spec)
+      calls[#calls + 1] = spec
+      if spec.args[1] == "manifest" and spec.args[2] == "export" then
+        return { exit_code = 0, stdout = export, stderr = "" }
+      end
+      return { exit_code = 0, stdout = "", stderr = "" }
+    end,
+    write_project = function(_, files)
+      local created = {}
+      for path, content in pairs(files) do created[#created + 1] = { path = path, size = #content } end
+      return { created = created }
+    end,
+  })
+  assert(res ~= nil, "injected add_love should succeed: " .. tostring(err))
+  assert(res.synced, "successful add-on must finish moon sync")
+  local flattened = {}
+  for _, call in ipairs(calls) do flattened[#flattened + 1] = table.concat(call.args, " ") end
+  local commands = table.concat(flattened, "\n")
+  assert(commands:find("add --role runtime --no-sync hydronium/core", 1, true), commands)
+  assert(commands:find("add --tool --no-sync moonstone/ballad", 1, true), commands)
+  assert(commands:find("manifest script set love-dev --command love .", 1, true), commands)
+  assert(flattened[#flattened] == "sync", "sync must be the final operation")
+  os.remove(target .. "/main.lua")
+  os.remove(target .. "/moonstone.toml")
+  os.execute(string.format('rmdir "%s" 2>/dev/null', target))
+end)
+
+test("add_love refuses an incompatible existing runtime before mutation", function()
+  local target = "/tmp/test-existing-love-wrong-abi"
+  os.execute(string.format('mkdir -p "%s"', target))
+  local main = assert(io.open(target .. "/main.lua", "w")); main:write("function love.draw() end\n"); main:close()
+  local original = "manifest_version = 2\n# keep me\n"
+  local manifest = assert(io.open(target .. "/moonstone.toml", "w")); manifest:write(original); manifest:close()
+  local calls = 0
+  local res, err = create.add_love({
+    directory = target,
+    run_process = function(spec)
+      calls = calls + 1
+      assert(spec.args[1] == "manifest" and spec.args[2] == "export", "runtime refusal must not mutate")
+      return { exit_code = 0, stdout = [[{"manifest":{"runtime":{"name":"lua","version":"5.4","abi":"5.4"}}}]], stderr = "" }
+    end,
+  })
+  assert(res == nil and err:find("moon interpreter set luajit@2.1", 1, true), tostring(err))
+  assert(calls == 1, "only the read-only manifest export should run")
+  local restored = assert(io.open(target .. "/moonstone.toml", "r")); assert(restored:read("*a") == original); restored:close()
+  os.remove(target .. "/main.lua"); os.remove(target .. "/moonstone.toml")
+  os.execute(string.format('rmdir "%s" 2>/dev/null', target))
+end)
+
+test("add_love initializes non-Moonstone games and rolls back pre-sync failures", function()
+  local target = "/tmp/test-existing-love-rollback"
+  os.execute(string.format('mkdir -p "%s"', target))
+  local main = assert(io.open(target .. "/main.lua", "w")); main:write("function love.draw() end\n"); main:close()
+  os.remove(target .. "/moonstone.toml")
+  local calls = {}
+  local res, err = create.add_love({
+    directory = target,
+    run_process = function(spec)
+      calls[#calls + 1] = table.concat(spec.args, " ")
+      if spec.args[1] == "manifest" and spec.args[2] == "export" then
+        return { exit_code = 0, stdout = [[{"manifest":{"runtime":{"name":"love","version":"11.5","abi":"5.1"},"dependencies":[],"scripts":[]}}]], stderr = "" }
+      end
+      return { exit_code = 0, stdout = "", stderr = "" }
+    end,
+    write_project = function() return nil, "simulated write failure" end,
+  })
+  assert(res == nil and err == "simulated write failure", tostring(err))
+  assert(calls[1]:find("init .", 1, true), "a non-Moonstone game must be initialized first")
+  assert(calls[1]:find("--interpreter luajit@2.1", 1, true), calls[1])
+  assert(calls[1]:find("--empty", 1, true), "initialization must not create or replace game files")
+  assert(io.open(target .. "/moonstone.toml", "r") == nil, "pre-sync failure must remove a newly-created manifest")
+  os.remove(target .. "/main.lua")
+  os.execute(string.format('rmdir "%s" 2>/dev/null', target))
+end)
+
+test("process builder quotes POSIX paths and rejects unsafe Windows cmd input", function()
+  local command = process.build_command({ tool = "moon", cwd = "/tmp/a game's", args = { "add", "hydronium/core" } }, "posix")
+  assert(command:find("'/tmp/a game'\\''s'", 1, true), command)
+  local ok = pcall(process.build_command, { tool = "moon", cwd = "C:/game & tools", args = { "sync" } }, "windows")
+  assert(not ok, "Windows cmd metacharacters must fail closed")
+  local windows = process.build_command({ tool = "moon", cwd = "C:/Games/My Game", args = { "sync" } }, "windows")
+  assert(windows:find('pushd "C:/Games/My Game"', 1, true), windows)
 end)
 
 test("scaffold dry-run produces a portable Ink terminal project", function()
@@ -54,7 +180,9 @@ test("scaffold dry-run produces a portable Ink terminal project", function()
   assert(file_map["moonstone.toml"], "missing moonstone.toml")
   assert(file_map[".gitignore"], "missing .gitignore")
   assert(file_map["run.lua"], "missing run.lua")
-  assert(file_map["src/App.luax"], "missing src/App.luax")
+  assert(file_map["src/app.luax"], "missing src/app.luax")
+  assert(file_map["src/App.stories.luax"], "missing starter Lab story")
+  assert(file_map["hydronium.sources.lua"], "missing explicit source topology")
   assert(file_map["README.md"], "missing README.md")
   assert(file_map[".luarc.json"], "missing .luarc.json")
   local run_lua = require("create.templates.ink").files({ name = "test-ink-app" })["run.lua"]
@@ -62,6 +190,16 @@ test("scaffold dry-run produces a portable Ink terminal project", function()
   assert(run_lua:find('require%("hydronium.core.hmr_host"%)'), "Ink run.lua must commit through the shared host boundary")
   assert(run_lua:find("pcall(updates.flush", 1, true), "Ink run.lua must flush queued updates between event-loop turns")
   assert(run_lua:find("onTick", 1, true), "Ink run.lua must poll refreshes inside the renderer loop")
+  assert(run_lua:find("hydronium.sources.lua", 1, true), "Ink run.lua must consume the project source topology")
+  assert(run_lua:find("source_inventory.load", 1, true), "Ink must prefer a generated source inventory when available")
+  assert(run_lua:find("source_topology.resolve", 1, true), "Ink run.lua must resolve source records rather than infer conventions")
+  assert(run_lua:find("updates:queue_batch", 1, true), "Ink run.lua must deliver multi-file changes as one batch")
+  local manifest = require("create.templates.ink").files({ name = "test-ink-app" })["moonstone.toml"]
+  assert(manifest:find('lab = "moon exec -- hydronium lab"', 1, true), "Ink must expose a Lab script")
+  assert(manifest:find('name = "hydronium/cli"', 1, true), "Ink Lab must include the Hydronium CLI tool")
+  assert(manifest:find('name = "hydronium/ink-lab"', 1, true), "Ink Lab must include its renderer adapter")
+  local story = require("create.templates.ink").files({ name = "test-ink-app" })["src/App.stories.luax"]
+  assert(story:find("lab.collection", 1, true), "Ink must generate a convention Lab story")
 end)
 
 test("Ink rejects non-LuaJIT interpreters before writing", function()
@@ -107,9 +245,10 @@ test("scaffold dry-run produces expected files for ssr template", function()
   assert(file_map["moonstone.toml"], "missing moonstone.toml")
   assert(file_map["src/main.lua"], "missing src/main.lua")
   assert(file_map["src/views/Document.lua"], "missing src/views/Document.lua")
-  assert(file_map["views/Document.luax"], "missing views/Document.luax")
-  assert(file_map["views/App.luax"], "missing views/App.luax")
-  assert(file_map["views/Counter.luax"], "missing views/Counter.luax")
+  assert(file_map["src/views/Document.luax"], "missing src/views/Document.luax")
+  assert(file_map["src/views/App.luax"], "missing src/views/App.luax")
+  assert(file_map["src/views/Counter.luax"], "missing src/views/Counter.luax")
+  assert(file_map["hydronium.sources.lua"], "missing source topology manifest")
   assert(file_map["public/style.css"], "missing public/style.css")
   assert(file_map["build.zig"], "missing build.zig")
   assert(not file_map["src/hydronium"], "generated projects must resolve Hydronium through dependencies, not a source symlink")
@@ -127,10 +266,16 @@ test("scaffold dry-run produces expected files for ssr template", function()
     "SSR build must use the installed Meteorite package layout")
   assert(generated["src/main.lua"]:find("libexec/hydronium-router/hydronium_router/client/history.js", 1, true),
     "SSR must serve the packaged router client assets")
-  assert(generated["src/main.lua"]:find('id:match("^loaders%.', 1, true),
-    "SSR must serve route loader modules to the browser")
-  assert(generated["src/main.lua"]:find('"src/" .. rel .. ".lua"', 1, true),
-    "SSR loader modules must resolve from src/loaders")
+  assert(generated["src/main.lua"]:find("hydronium_dom.dev.source_registry", 1, true),
+    "SSR must resolve browser modules through the source registry")
+  assert(generated["src/main.lua"]:find("load_inventory", 1, true),
+    "SSR must prefer Ballad's generated source inventory when it exists")
+  assert(generated["src/main.lua"]:find("registry:module(id)", 1, true),
+    "SSR must whitelist declared module IDs")
+  assert(generated["src/main.lua"]:find("passive = { \"src/views/App.luax\"", 1, true),
+    "SSR must classify client UI source as passive Meteorite input")
+  assert(not generated["src/main.lua"]:find('id:gsub("%%.", "/")', 1, true),
+    "SSR must not reconstruct filesystem paths from request IDs")
 end)
 
 test("scaffold dry-run produces expected files for islands template", function()
@@ -159,11 +304,11 @@ end)
 
 -- The `dev` script is the one line in a generated project a user runs on
 -- day one, and it has two independent ways to be silently wrong: naming a
--- binary the project does not depend on, and passing meteorite's flags in
--- a shape that does not survive `moon exec`'s own argument handling
--- ("One '--' after <command> is treated as an argument delimiter and is
--- not forwarded" -- `moon exec --help`). Both are asserted here, for both
--- Meteorite-backed templates.
+-- binary the project does not depend on, and omitting the mandatory `--`
+-- separator `moon exec` now requires between its own flags and the child
+-- command (`moon exec --help`: "The '--' separator is mandatory: it marks
+-- the exact boundary between Moonstone's own flags and the command to
+-- run"). Both are asserted here, for both Meteorite-backed templates.
 for _, template_id in ipairs({ "ssr", "islands" }) do
   test(template_id .. " dev script runs `hydronium dev` with this project's real meteorite flags", function()
     local generated = require("create.templates." .. template_id).files({ name = "test-" .. template_id })
@@ -187,10 +332,10 @@ for _, template_id in ipairs({ "ssr", "islands" }) do
     assert(args:find("--lua-root .moonstone/env/libexec/luajit", 1, true),
       "[" .. template_id .. "] missing --lua-root: " .. args)
 
-    -- A bare `--` here would be eaten by `moon exec` itself and the flags
-    -- would reach `hydronium dev` as unknown arguments.
-    assert(not dev:find(" -- ", 1, true),
-      "[" .. template_id .. "] dev script must not rely on a `--` delimiter `moon exec` swallows: " .. dev)
+    -- Without a `--` before `hydronium`, `moon exec` treats the child's own
+    -- flags (`--meteorite-args=...`) as unknown flags of its own and fails.
+    assert(dev:find("moon exec %-%-dev %-%- hydronium dev", 1, false),
+      "[" .. template_id .. "] dev script must separate moon's own flags from the child command with a mandatory `--`: " .. dev)
 
     -- ...and the binary that script calls has to actually be in the
     -- project's environment, which means a declared dependency.
@@ -261,6 +406,7 @@ test("luals.configure uses alter to update .luarc.json with Hydronium LuaX plugi
 
   assert(content:find("hydronium_luax/luals/init.lua"), "missing hydronium_luax plugin in .luarc.json")
   assert(content:find("%.moonstone/env/share/lua/5.4"), "missing workspace library in .luarc.json")
+  assert(content:find("%.moonstone/env/libexec/hydronium%-core/types"), "missing Hydronium core form types library")
   assert(content:find("hydronium%-luax/types"), "missing packaged LUAX types in .luarc.json")
   assert(content:find("hydronium%-dom/types"), "missing packaged DOM types in .luarc.json")
   assert(content:find("%*%.luax"), "missing *.luax association in .luarc.json")
@@ -490,7 +636,7 @@ test("every template's generated content actually parses/compiles (content-valid
           return luax.compile(content, { filename = f.path, runtime = "hydronium", development = false })
         end)
         assert(ok, "[" .. tmpl.id .. "] " .. f.path .. " failed to compile: " .. tostring(compile_result))
-        if tmpl.id == "ink" and f.path == "src/App.luax" then
+        if tmpl.id == "ink" and f.path == "src/app.luax" then
           ink_refresh_descriptors = compile_result.refresh and compile_result.refresh.rewritten or 0
         end
         checked_luax = checked_luax + 1
@@ -534,20 +680,26 @@ test("every template's generated content actually parses/compiles (content-valid
       assert(manifest:find('constraint = "%^0%.1%.0"'), "[ink] dependencies must use portable registry constraints")
       assert(not manifest:find('registry = "path"', 1, true), "[ink] must not require a monorepo checkout")
       assert(not manifest:find('path:', 1, true), "[ink] must not emit path constraints")
+    elseif tmpl.id == "love" then
+      assert(manifest:find('name = "luajit"', 1, true), "[love] must select LuaJIT")
+      assert(manifest:find('version = "2.1.0"', 1, true), "[love] must select LuaJIT 2.1")
+      assert(manifest:find('abi = "5.1"', 1, true), "[love] must target LÖVE's Lua 5.1 ABI")
+      assert(manifest:find('name = "moonstone/ballad"', 1, true), "[love] must package with Ballad")
+      assert(manifest:find('package = "moon exec %-%- ballad play partiture.lua"'), "[love] missing package script")
     end
 
     local luals_file = assert(io.open(dir .. "/.luarc.json", "r"))
     local luals_config = luals_file:read("*a")
     luals_file:close()
-    if tmpl.id ~= "ink" then
+    if tmpl.id ~= "ink" and tmpl.id ~= "love" then
       assert(luals_config:find("hydronium%-dom/types"), "[" .. tmpl.id .. "] missing packaged DOM types")
     else
-      assert(luals_config:find("share/lua/5%.1"), "[ink] missing LuaJIT workspace library")
-      assert(not luals_config:find("hydronium%-dom/types"), "[ink] must not configure DOM types")
+      assert(luals_config:find("share/lua/5%.1"), "[" .. tmpl.id .. "] missing LuaJIT workspace library")
+      assert(not luals_config:find("hydronium%-dom/types"), "[" .. tmpl.id .. "] must not configure DOM types")
     end
-    if tmpl.id == "minimal" then
-      assert(not luals_config:find("hydronium_luax", 1, true), "[minimal] must not configure an unavailable LUAX plugin")
-      assert(not luals_config:find("ambient%-types"), "[minimal] must not opt into bare DOM globals")
+    if tmpl.id == "minimal" or tmpl.id == "love" then
+      assert(not luals_config:find("hydronium_luax", 1, true), "[" .. tmpl.id .. "] must not configure an unavailable LUAX plugin")
+      assert(not luals_config:find("ambient%-types"), "[" .. tmpl.id .. "] must not opt into bare DOM globals")
     else
       assert(luals_config:find("hydronium_luax/luals/init.lua", 1, true), "[" .. tmpl.id .. "] missing LUAX plugin")
       assert(luals_config:find("hydronium%-luax/types"), "[" .. tmpl.id .. "] missing packaged LUAX types")

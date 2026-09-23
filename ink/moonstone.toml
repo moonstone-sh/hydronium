@@ -2,7 +2,7 @@ manifest_version = 2
 
 [package]
 name = "hydronium/ink"
-version = "0.3.0"
+version = "0.3.1"
 kind = "lib"
 description = "Hydronium Ink: real terminal Host adapter and Box/Text/Newline intrinsics"
 
@@ -12,7 +12,7 @@ version = "2.1.0"
 abi = "5.1"
 
 [scripts]
-package = "moon exec -- ballad -- play partiture.lua"
+package = "moon exec -- ballad play partiture.lua"
 
 [[dependencies]]
 name = "moonstone/ballad"
@@ -22,5 +22,11 @@ role = "tool"
 [[dependencies]]
 name = "hydronium/core"
 constraint = "path:../core"
+registry = "path"
+role = "runtime"
+
+[[dependencies]]
+name = "hydronium/oklab-utils"
+constraint = "path:../oklab-utils"
 registry = "path"
 role = "runtime"

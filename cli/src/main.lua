@@ -56,13 +56,20 @@
                  `[scripts] dev` does exactly that (see
                  create/src/create/templates/{ssr,islands}.lua).
                  WHY A FLAG AND NOT `--` PASSTHROUGH: `moon exec`
-                 swallows the first `--` after the command it runs
-                 ("One '--' after <command> is treated as an argument
-                 delimiter and is not forwarded", `moon exec --help`),
-                 so a generated script would need `-- --` to get one
-                 through -- an invisible trap the first person to tidy
-                 the line up would break. A named option needs no
-                 delimiter at all. STATED LIMITATION: splitting on
+                 forwards everything after its own `--` verbatim,
+                 including any further `--` the child wants for itself
+                 (verified: `moon exec -- printf '[%s]' -- -- x`
+                 prints `[--][--][x]`) -- `--` passthrough to
+                 `hydronium dev` would work mechanically. The real
+                 reason not to use it: `moon run` hands the script
+                 body to the host shell before Moonstone ever parses
+                 it, so a generated `[scripts] dev` line would depend
+                 on the shell quoting multiple space-separated flags
+                 correctly and keeping them together across edits. A
+                 named option folds the whole flag set into ONE shell-
+                 quoted string instead, so it either survives re-
+                 quoting as one token or breaks visibly.
+                 STATED LIMITATION: splitting on
                  whitespace means no individual argument can contain a
                  space. Nothing meteorite dev takes does today (modes,
                  backends and the lua-root path are all space-free).
@@ -115,7 +122,11 @@ local dev_log = require("dev_log")
 
 local M = {}
 
-M.VERSION = "0.1.1"
+M.VERSION = "0.2.0"
+
+local function shell_quote(value)
+  return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
+end
 
 M.USAGE = table.concat({
   "hydronium " .. M.VERSION,
@@ -126,6 +137,8 @@ M.USAGE = table.concat({
   "",
   "Commands:",
   "  dev            Run `meteorite dev` and render its dev-event stream.",
+  "  lab            Compatibility alias for `hydronium-lab dev`.",
+  "  lab init       Install the standalone Lab tool and host adapter.",
   "",
   "Options:",
   "  --verbose      Show more rows in the events pane (display density only).",
@@ -162,6 +175,28 @@ function M.parse_args(argv)
     return { command = "version" }
   end
   if first ~= "dev" then
+    if first == "lab" then
+      local parsed = { command = "lab", init = argv[2] == "init", host = "127.0.0.1", port = 6100 }
+      local index = parsed.init and 3 or 2
+      while index <= #argv do
+        local token = argv[index]
+        if token == "--no-open" then parsed.no_open = true
+        elseif token == "--ci" then parsed.ci = true; parsed.no_open = true
+        elseif token == "--host" or token == "--port" or token == "--config" or token == "--adapter" then
+          local value = argv[index + 1]
+          if not value then return nil, token .. " requires a value" end
+          parsed[token:sub(3):gsub("%-", "_")] = token == "--port" and tonumber(value) or value
+          index = index + 1
+        elseif token:match("^%-%-host=") then parsed.host = token:match("=(.*)$")
+        elseif token:match("^%-%-port=") then parsed.port = tonumber(token:match("=(.*)$"))
+        elseif token:match("^%-%-config=") then parsed.config = token:match("=(.*)$")
+        elseif token:match("^%-%-adapter=") then parsed.adapter = token:match("=(.*)$")
+        else return nil, "unknown argument '" .. tostring(token) .. "' for `hydronium lab`" end
+        index = index + 1
+      end
+      if not parsed.port or parsed.port < 1 or parsed.port > 65535 or parsed.port % 1 ~= 0 then return nil, "--port must be an integer from 1 to 65535" end
+      return parsed
+    end
     if first:sub(1, 1) == "-" then
       return nil, "unknown option '" .. first .. "' (expected a command first)"
     end
@@ -234,6 +269,19 @@ function M.meteorite_argv(parsed, env_args)
   append(parsed and parsed.meteorite_args)
   append(env_args)
   return argv
+end
+
+--- Compatibility command only. Lab discovery and host planning live in the
+--- standalone hydronium/lab-cli package, keeping this developer console free
+--- of renderer and web-host dependencies.
+function M.lab_command(parsed)
+  local parts = { "hydronium-lab", "dev", "--host", shell_quote(parsed.host or "127.0.0.1"),
+    "--port", tostring(parsed.port or 6100) }
+  if parsed.config then parts[#parts + 1], parts[#parts + 2] = "--config", shell_quote(parsed.config) end
+  if parsed.adapter then parts[#parts + 1], parts[#parts + 2] = "--adapter", shell_quote(parsed.adapter) end
+  if parsed.no_open then parts[#parts + 1] = "--no-open" end
+  if parsed.ci then parts[#parts + 1] = "--ci" end
+  return table.concat(parts, " ")
 end
 
 --- How long to wait for a `startup` event before concluding the server is
@@ -462,6 +510,32 @@ function M.main(argv)
   end
   if parsed.command == "version" then
     io.stdout:write("hydronium " .. M.VERSION .. "\n")
+    return 0
+  end
+  if parsed.command == "lab" then
+    if parsed.init then
+      local commands = {
+        "moon add --dev --no-sync hydronium/lab hydronium/ink-lab hydronium/meteorite",
+        "moon add --tool --no-sync hydronium/lab-cli moonstone/meteorite",
+        "moon manifest script set lab --command 'moon exec --dev -- hydronium-lab dev'",
+        "moon sync",
+      }
+      for _, command in ipairs(commands) do
+        local ok, _, code = os.execute(command)
+        if not (ok == true or ok == 0) then
+          io.stderr:write("hydronium lab init: command failed: " .. command .. " (" .. tostring(code or ok) .. ")\n")
+          return 1
+        end
+      end
+      io.stdout:write("Hydronium Lab added. Create a *.stories.lua or *.stories.luax file, then run `moon run lab`.\n")
+      return 0
+    end
+    local ok, why, code = os.execute(M.lab_command(parsed))
+    if not (ok == true or ok == 0) then
+      io.stderr:write("hydronium lab: standalone `hydronium-lab` failed (is hydronium/lab-cli installed?): "
+        .. tostring(code or why or ok) .. "\n")
+      return 1
+    end
     return 0
   end
   return M.dev(parsed)

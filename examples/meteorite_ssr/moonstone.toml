@@ -12,8 +12,8 @@ version = "2.1.0"
 abi = "5.1"
 
 [scripts]
-"graph" = "moon exec --dev meteorite graph src/main.lua .meteorite/graph/current release-hybrid fast_http"
-"package" = "moon exec -- ballad -- play partiture.lua"
+"graph" = "moon exec --dev -- meteorite graph src/main.lua .meteorite/graph/current release-hybrid fast_http"
+"package" = "moon exec -- ballad play partiture.lua"
 
 [[dependencies]]
 name = "moonstone/meteorite"

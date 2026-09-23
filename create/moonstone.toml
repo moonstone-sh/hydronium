@@ -14,7 +14,7 @@ abi = "5.1"
 [scripts]
 test = "lua ./tests/create_spec.lua"
 dev = "lua ./src/main.lua \"$@\""
-package = "moon exec -- ballad -- play partiture.lua"
+package = "moon exec -- ballad play partiture.lua"
 
 [[dependencies]]
 name = "moonstone/ballad"

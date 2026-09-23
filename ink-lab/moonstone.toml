@@ -12,7 +12,7 @@ version = "2.1.0"
 abi = "5.1"
 
 [scripts]
-package = "moon exec -- ballad -- play partiture.lua"
+package = "moon exec -- ballad play partiture.lua"
 
 [[dependencies]]
 name = "moonstone/ballad"
@@ -40,5 +40,14 @@ role = "runtime"
 [[dependencies]]
 name = "hydronium/lab"
 constraint = "path:../lab"
+registry = "path"
+role = "runtime"
+
+# `hydronium_ink_lab.dom` is a LUAX document loaded by a Lua shim. Declare the
+# loader directly rather than relying on whichever HTTP host happens to mount
+# the renderer.
+[[dependencies]]
+name = "hydronium/luax"
+constraint = "path:../luax"
 registry = "path"
 role = "runtime"

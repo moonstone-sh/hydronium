@@ -46,6 +46,8 @@ moon run dev ssr my-app
 | [`dom`](dom/) | `hydronium/dom` | Browser DOM host, SSR renderer, and Meteorite integration. |
 | [`luax`](luax/) | `hydronium/luax` | LUAX compiler, formatter, Tree-sitter grammar, and editor integrations. |
 | [`ink`](ink/) | `hydronium/ink` | Terminal host with `Box`, `Text`, and `Newline` intrinsics. |
+| [`lab`](lab/) | `hydronium/lab` | Portable component stories and explicit registries. |
+| [`ink-lab`](ink-lab/) | `hydronium/ink-lab` | Resizable browser workbench for canonical Ink cell frames. |
 | [`router`](router/) | `hydronium/router` | Reactive Router/Outlet/hooks, typed hrefs, route matching, and memory/browser histories. |
 | [`build`](build/) | `hydronium/ballad` | Ballad plugins for LUAX, CSS/assets, and browser bundles. |
 | [`create`](create/) | `hydronium/create` | Project generator and editor bootstrapper. |
@@ -181,8 +183,8 @@ The workspace uses Moonstone and LuaJIT. From the repository root:
 
 ```sh
 moon sync
-moon exec luajit tests/runner.lua
-moon exec ballad play partiture.lua
+moon exec -- luajit tests/runner.lua
+moon exec -- ballad play partiture.lua
 ```
 
 The test suite covers the runtime, hosts, LUAX compiler and tooling. The last

@@ -18,7 +18,7 @@ PORT=8080
   printf '\n  \033[32m\xe2\x9e\x9c\033[0m  Hydronium app up and running on \033[36mhttp://localhost:%s/\033[0m\n\n' "$PORT"
 ) &
 
-exec moon exec --dev meteorite dev \
+exec moon exec --dev -- meteorite dev \
   --mode hybrid_dev \
   --backend fast_http \
   --lua-root .moonstone/env/libexec/luajit

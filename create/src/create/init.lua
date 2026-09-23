@@ -1,9 +1,11 @@
 local writer = require("create.writer")
 local luals = require("create.luals")
+local process = require("create.process")
+local jsonc = require("alter_jsonc")
 
 local create = {}
 
-local template_order = { "ssr", "islands", "minimal", "ink" }
+local template_order = { "ssr", "islands", "minimal", "ink", "love" }
 local template_specs = {
   ssr = {
     module = require("create.templates.ssr"),
@@ -37,6 +39,16 @@ local template_specs = {
     description = "Interactive terminal UI with Yoga layout and keyboard input",
     tooling = { luax = true, dom = false, bare_dom = false },
     interpreters = { "luajit@2.1" },
+    runtime_reason = "hydronium-ink uses LuaJIT FFI for terminal layout",
+    next_script = "run",
+  },
+  love = {
+    module = require("create.templates.love"),
+    name = "LÖVE Game",
+    description = "LÖVE game loop with topology-backed controlled HMR remounts",
+    tooling = { luax = false, dom = false, bare_dom = false },
+    interpreters = { "luajit@2.1" },
+    runtime_reason = "LÖVE embeds LuaJIT/Lua 5.1; the `love` executable remains a host prerequisite",
     next_script = "run",
   },
 }
@@ -101,6 +113,186 @@ local function is_directory_empty(dir)
   return false
 end
 
+local function read_file(path)
+  local file = io.open(path, "rb")
+  if not file then return nil end
+  local content = file:read("*a")
+  file:close()
+  return content
+end
+
+local function write_file(path, content)
+  local file, err = io.open(path, "wb")
+  if not file then return nil, err end
+  local ok, write_err = file:write(content)
+  file:close()
+  if not ok then return nil, write_err end
+  return true
+end
+
+local function love_compatible_abi(abi)
+  return abi == "5.1" or abi == "lua51" or abi == "lua-5.1"
+end
+
+local function manifest_from_export(output)
+  local document, err = jsonc.parse(output or "")
+  if not document then return nil, tostring(err and err.message or err or "invalid JSON") end
+  local manifest = document:value_at({ "manifest" })
+  if type(manifest) ~= "table" then return nil, "Moonstone returned no manifest" end
+  return manifest
+end
+
+--- Add Hydronium to an existing LÖVE project. The dependency is changed only
+--- through Moonstone; the bridge deliberately leaves the game's entrypoint
+--- and editor configuration alone.
+function create.add_love(opts)
+  opts = opts or {}
+  local target_dir = opts.directory or "."
+  local files = template_specs.love.module.addon_files()
+  -- Refuse before invoking Moonstone so an existing bridge never leaves a
+  -- project with a surprising dependency-only partial result.
+  for path in pairs(files) do
+    local existing = io.open((target_dir .. "/" .. path):gsub("/+", "/"), "r")
+    if existing then
+      existing:close()
+      return nil, "Refusing to overwrite existing file " .. path
+    end
+  end
+
+  local planned_commands = {
+    { "moon", "add", "--role", "runtime", "--no-sync", "hydronium/core" },
+    { "moon", "add", "--tool", "--no-sync", "moonstone/ballad" },
+    { "moon", "manifest", "script", "set", "love-dev", "--command", "love ." },
+    { "moon", "manifest", "script", "set", "love-package", "--command", "moon exec -- ballad play hydronium.love.partiture.lua" },
+    { "moon", "sync" },
+  }
+  if opts.dry_run then
+    local results, err = (opts.write_project or writer.write_project)(target_dir, files, { dry_run = true, no_overwrite = true })
+    if not results then return nil, err end
+    return {
+      project_name = opts.name or (target_dir:match("([^/]+)/?$") or "existing-love-project"),
+      target_dir = target_dir, template = "love-addon", created = results.created,
+      next_script = "love-dev", package_script = "love-package", dry_run = true,
+      additive = true, commands = planned_commands,
+    }
+  end
+
+  if not directory_exists(target_dir) then
+    return nil, "--add-love expects an existing LÖVE project directory: " .. target_dir
+  end
+  local main = io.open((target_dir .. "/main.lua"):gsub("/+", "/"), "r")
+  if not main then return nil, "No main.lua found; --add-love only augments an existing LÖVE project" end
+  main:close()
+
+  local moon = opts.moon or os.getenv("MOONSTONE_CLI") or os.getenv("MOONSTONE_BIN") or "moon"
+  local run = opts.run_process or process.capture
+  local manifest_path = (target_dir .. "/moonstone.toml"):gsub("/+", "/")
+  local original_manifest = read_file(manifest_path)
+  local initialized = original_manifest == nil
+  local project_name = opts.name or (target_dir:match("([^/]+)/?$") or "existing-love-project")
+
+  local function invoke(args)
+    local result = run({ tool = moon, args = args, cwd = target_dir })
+    if type(result) == "boolean" then result = { exit_code = result and 0 or 1 } end
+    return result or { exit_code = 1, stderr = "process runner returned no result" }
+  end
+  local function detail(result)
+    local value = result and (result.stderr ~= "" and result.stderr or result.stdout) or nil
+    return value and value ~= "" and (": " .. value) or ""
+  end
+  local function rollback_manifest()
+    if initialized then
+      os.remove(manifest_path)
+    elseif original_manifest then
+      write_file(manifest_path, original_manifest)
+    end
+  end
+
+  if initialized then
+    local result = invoke({ "init", ".", "--name", project_name, "--kind", "script",
+      "--interpreter", "luajit@2.1", "--empty", "--no-git", "--no-sync", "--yes" })
+    if result.exit_code ~= 0 then
+      return nil, "Could not initialize this LÖVE game as a Moonstone project" .. detail(result)
+    end
+  end
+
+  local exported = invoke({ "manifest", "export", "--json" })
+  if exported.exit_code ~= 0 then
+    rollback_manifest()
+    return nil, "Could not inspect moonstone.toml" .. detail(exported)
+  end
+  local manifest, manifest_err = manifest_from_export(exported.stdout)
+  if not manifest then
+    rollback_manifest()
+    return nil, "Could not read Moonstone's manifest contract: " .. manifest_err
+  end
+  local runtime = manifest.runtime or {}
+  if not love_compatible_abi(runtime.abi) then
+    rollback_manifest()
+    return nil, string.format(
+      "This project uses Lua ABI %s, but LÖVE 11.5 embeds LuaJIT/Lua 5.1. "
+        .. "Choose the migration explicitly with `moon interpreter set luajit@2.1`, then rerun --add-love.",
+      tostring(runtime.abi or "unknown")
+    )
+  end
+
+  local dependencies, scripts = {}, {}
+  for _, dependency in ipairs(manifest.dependencies or {}) do dependencies[dependency.name] = dependency.role end
+  for _, script in ipairs(manifest.scripts or {}) do scripts[script.name] = script.command end
+
+  local runtime_packages = {}
+  if dependencies["hydronium/core"] ~= "runtime" then runtime_packages[#runtime_packages + 1] = "hydronium/core" end
+  if #runtime_packages > 0 then
+    local args = { "add", "--role", "runtime", "--no-sync" }
+    for _, package_name in ipairs(runtime_packages) do args[#args + 1] = package_name end
+    local result = invoke(args)
+    if result.exit_code ~= 0 then rollback_manifest(); return nil, "Could not add Hydronium" .. detail(result) end
+  end
+  if dependencies["moonstone/ballad"] ~= "tool" then
+    local result = invoke({ "add", "--tool", "--no-sync", "moonstone/ballad" })
+    if result.exit_code ~= 0 then rollback_manifest(); return nil, "Could not add Ballad for dependency-closed packaging" .. detail(result) end
+  end
+
+  local desired_scripts = {
+    ["love-dev"] = "love .",
+    ["love-package"] = "moon exec -- ballad play hydronium.love.partiture.lua",
+  }
+  for _, name in ipairs({ "love-dev", "love-package" }) do
+    if scripts[name] and scripts[name] ~= desired_scripts[name] then
+      rollback_manifest()
+      return nil, "Refusing to replace existing Moonstone script " .. name
+    end
+    if not scripts[name] then
+      local result = invoke({ "manifest", "script", "set", name, "--command", desired_scripts[name] })
+      if result.exit_code ~= 0 then rollback_manifest(); return nil, "Could not install Moonstone script " .. name .. detail(result) end
+    end
+  end
+
+  local write_project = opts.write_project or writer.write_project
+  local results, err = write_project(target_dir, files, {
+    no_overwrite = true,
+    cleanup_on_error = true,
+  })
+  if not results then rollback_manifest(); return nil, err end
+
+  local synced = invoke({ "sync" })
+  if synced.exit_code ~= 0 then
+    return nil, "Hydronium was added, but Moonstone could not finish synchronization" .. detail(synced)
+      .. ". The project is in a coherent pending state; rerun `moon sync`."
+  end
+  return {
+    project_name = project_name,
+    target_dir = target_dir,
+    template = "love-addon",
+    created = results.created,
+    next_script = "love-dev",
+    package_script = "love-package",
+    dry_run = false,
+    additive = true,
+    synced = true,
+  }
+end
+
 function create.scaffold(opts, ctx)
   opts = opts or {}
   local template_id = opts.template or "ssr"
@@ -122,7 +314,7 @@ function create.scaffold(opts, ctx)
     return nil, string.format("Unknown template '%s'. Available templates: %s", template_id, table.concat(template_order, ", "))
   end
 
-  local interpreter = opts.interpreter or "luajit@2.1"
+  local interpreter = opts.interpreter or template_spec.default_interpreter or "luajit@2.1"
   if template_spec.interpreters then
     local allowed = false
     for _, candidate in ipairs(template_spec.interpreters) do
@@ -130,9 +322,10 @@ function create.scaffold(opts, ctx)
     end
     if not allowed then
       return nil, string.format(
-        "Template '%s' requires one of: %s. hydronium-ink uses LuaJIT FFI for terminal layout.",
+        "Template '%s' requires one of: %s. %s.",
         template_id,
-        table.concat(template_spec.interpreters, ", ")
+        table.concat(template_spec.interpreters, ", "),
+        template_spec.runtime_reason or "The selected host requires this runtime"
       )
     end
   end

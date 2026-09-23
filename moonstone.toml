@@ -12,7 +12,7 @@ version = "2.1.0"
 abi = "5.1"
 
 [scripts]
-package = "moon exec -- ballad -- play partiture.lua"
+package = "moon exec -- ballad play partiture.lua"
 
 [[dependencies]]
 name = "moonstone/ballad"
@@ -34,6 +34,26 @@ path = "dom"
 [[orbits.member]]
 name = "ink"
 path = "ink"
+
+[[orbits.member]]
+name = "lab"
+path = "lab"
+
+[[orbits.member]]
+name = "lab-cli"
+path = "lab-cli"
+
+[[orbits.member]]
+name = "ink-lab"
+path = "ink-lab"
+
+[[orbits.member]]
+name = "meteorite"
+path = "meteorite"
+
+[[orbits.member]]
+name = "oklab-utils"
+path = "oklab-utils"
 
 [[orbits.member]]
 name = "router"

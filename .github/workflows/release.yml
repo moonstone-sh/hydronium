@@ -61,7 +61,7 @@ jobs:
           ln -s "$GITHUB_WORKSPACE/.ci/ballad" "$GITHUB_WORKSPACE/../ballad"
           (cd .ci/ballad && moon sync --locked)
       - name: Export all registry packages
-        run: moon exec -- ballad -- play partiture.lua
+        run: moon exec -- ballad play partiture.lua
       - name: Upload and publish every registry package
         env:
           GH_TOKEN: ${{ github.token }}

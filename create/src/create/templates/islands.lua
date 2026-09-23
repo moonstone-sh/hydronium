@@ -29,12 +29,14 @@ local islands = {}
     framework source for a "look, no build step" proof; a generated
     project resolves its Hydronium modules through Moonstone dependencies).
 
-  The `dev` script runs `hydronium dev` (hydronium/cli) around
-  the same `meteorite dev` invocation it used to run inline, passing the
-  meteorite flags through one `--meteorite-args` value -- see ssr.lua's own
-  header comment for the full reasoning (short version: `moon exec` eats a
-  bare `--`, and the CLI adds a live status view plus a fullscreen
-  request-debug view over meteorite's dev-event stream).
+  The `dev` script runs `hydronium dev` (hydronium/cli) around the same
+  `meteorite dev` invocation it used to run inline, passing the meteorite flags
+  through one `--meteorite-args` value -- see ssr.lua's own header comment for
+  the full reasoning (short version: `moon run` hands the script body to the
+  host shell before Moonstone parses it, so a single named, quoted value
+  survives shell requoting better than `--` passthrough would), and the CLI adds
+  a live status view plus a fullscreen request-debug view over meteorite's dev-
+  event stream).
 
   Same base fixes as ssr.lua also apply here (see that file's own header
   comment for exhaustive detail): meteorite.app/meteorite.site/app:get
@@ -66,8 +68,8 @@ version = "2.1.0"
 abi = "5.1"
 
 [scripts]
-dev = "moon exec --dev hydronium dev --meteorite-args='--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit'"
-build = "moon exec --dev meteorite build --mode release-hybrid --backend fast_http"
+dev = "moon exec --dev -- hydronium dev --meteorite-args='--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit'"
+build = "moon exec --dev -- meteorite build --mode release-hybrid --backend fast_http"
 
 [[dependencies]]
 name = "moonstone/meteorite"
