@@ -127,6 +127,19 @@ end
 ---@class HydroniumForm
 ---@field action HydroniumAction
 ---@field props HydroniumFormProps
+---@field values fun(self: HydroniumForm): table<string, any>
+---@field errors fun(self: HydroniumForm): table<string, string[]>
+---@field error fun(self: HydroniumForm, field: string): string|nil
+---@field pending fun(self: HydroniumForm): boolean
+---@field status fun(self: HydroniumForm): integer|nil
+---@field data fun(self: HydroniumForm): any
+---@field is_valid fun(self: HydroniumForm): boolean
+---@field set_values fun(self: HydroniumForm, values: table<string, any>)
+---@field set_value fun(self: HydroniumForm, field: string, value: any)
+---@field set_errors fun(self: HydroniumForm, errors: table<string, string[]>)
+---@field validate fun(self: HydroniumForm, candidate?: table<string, any>): boolean, table<string, string[]>, any
+---@field submit fun(self: HydroniumForm, candidate?: table<string, any>): boolean
+---@field reset fun(self: HydroniumForm, next?: {values?: table<string, any>, errors?: table<string, string[]>, status?: integer, data?: any})
 
 ---@param action HydroniumAction
 ---@param opts? table

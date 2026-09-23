@@ -49,6 +49,7 @@ function luals.configure(target_dir, opts)
   local plugin_rel_path = ".moonstone/env/share/lua/" .. lua_ver_str .. "/hydronium_luax/luals/init.lua"
   local library_paths = {
     ".moonstone/env/share/lua/" .. lua_ver_str,
+    ".moonstone/env/libexec/hydronium-core/types",
   }
   if enable_luax then
     table.insert(library_paths, ".moonstone/env/libexec/hydronium-luax/types")
