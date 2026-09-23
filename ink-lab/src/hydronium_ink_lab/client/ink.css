@@ -1,0 +1,24 @@
+/* Ink renderer additions for the shared Hydronium Lab workbench. */
+.hydronium-lab[data-lab-renderer="ink"] .hydronium-lab__renderer-controls {
+  display: contents;
+}
+
+.hydronium-lab[data-lab-renderer="ink"] .hydronium-lab__terminal {
+  flex: none;
+  max-width: none;
+  color: var(--hy-terminal-foreground, #e5e7eb);
+  background: var(--hy-terminal-background, #111318);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 7%), 0 16px 38px rgb(0 0 0 / 42%);
+  cursor: text;
+}
+
+.hydronium-lab[data-lab-renderer="ink"] .hydronium-lab__terminal,
+.hydronium-lab[data-lab-renderer="ink"] .hydronium-lab__terminal span {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.hydronium-lab[data-lab-renderer="ink"] .hydronium-lab__stage:fullscreen .hydronium-lab__terminal {
+  max-width: none;
+  max-height: none;
+}

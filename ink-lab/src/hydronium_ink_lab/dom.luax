@@ -1,77 +1,87 @@
--- The Lab document is ordinary Hydronium DOM SSR.  Browser code only fills
--- the virtual terminal and binds controls; this component owns structure and
--- accessibility.
+-- Ink is a renderer adapter over the shared Hydronium Lab workbench. It owns
+-- only terminal controls, the virtual terminal surface and terminal-specific
+-- preferences; Lab owns the surrounding authoring experience.
 local H = require("hydronium")
+local workbench = require("hydronium_lab.workbench")
+local Workbench = workbench.Shell
+local Icon = workbench.Icon
 
-local function Icon(props)
-  return <span class="material-symbols-outlined" aria-hidden="true">{props.name}</span>
-end
-
-local function Shell(props)
+local function InkControls()
   return (
-    <main class="hydronium-ink-lab" data-hydronium-ink-lab data-lab-project={props.project_id or "hydronium-lab"}>
-      <section class="hydronium-ink-lab__canvas">
-        <header class="hydronium-ink-lab__canvas-toolbar">
-          <span class="hydronium-ink-lab__active-story" data-lab-active-story aria-live="polite" />
-          <div class="hydronium-ink-lab__canvas-hud">
-            <label class="hydronium-ink-lab__icon-control">
-              <Icon name="palette" />
-              <select data-lab-color aria-label="Color capability">
-                <option value="ansi16">ANSI 16</option><option value="ansi256">ANSI 256</option><option value="truecolor">Truecolor</option>
-              </select>
-            </label>
-            <label class="hydronium-ink-lab__icon-control">
-              <Icon name="aspect_ratio" />
-              <select data-lab-size aria-label="Terminal size preset" />
-            </label>
-            <span class="hydronium-ink-lab__dimensions" data-lab-dimensions aria-live="polite" />
-            <div class="hydronium-ink-lab__canvas-actions">
-              <button type="button" data-lab-zoom-out aria-label="Zoom out"><Icon name="zoom_out" /></button>
-              <button type="button" data-lab-zoom-in aria-label="Zoom in"><Icon name="zoom_in" /></button>
-              <button type="button" data-lab-canvas-reset aria-label="Center canvas"><Icon name="my_location" /></button>
-              <button type="button" data-lab-sidebar-toggle aria-label="Hide stories"><Icon name="menu" /></button>
-            </div>
-          </div>
-        </header>
-        <section class="hydronium-ink-lab__stage" data-lab-stage tabindex="0" aria-label="Terminal canvas. Space drag pans; C centers; F toggles fullscreen; Control plus or minus zooms.">
-          <div class="hydronium-ink-lab__viewport" data-lab-viewport>
-            <div class="hydronium-ink-lab__terminal" data-lab-terminal role="application" tabindex="0" aria-label="Interactive terminal preview" />
-          </div>
-          <p class="hydronium-ink-lab__hint"><kbd>Space</kbd> drag · <kbd>C</kbd> center · <kbd>F</kbd> fullscreen · <kbd>Ctrl</kbd> <kbd>+</kbd>/<kbd>−</kbd> zoom</p>
-        </section>
-        <div class="hydronium-ink-lab__interactions" data-lab-interactions />
-      </section>
-      <aside class="hydronium-ink-lab__sidebar" data-lab-sidebar aria-label="Stories">
-        <header><strong>{props.project_name or "Hydronium Ink Lab"}</strong><span>
-          <button type="button" data-lab-preferences-toggle aria-label="Preferences"><Icon name="settings" /></button>
-          <button type="button" data-lab-sidebar-toggle aria-label="Hide stories"><Icon name="close" /></button>
-        </span></header>
-        <input type="search" data-lab-story-search aria-label="Search stories" placeholder="Search stories" />
-        <nav data-lab-stories />
-      </aside>
-      <aside class="hydronium-ink-lab__preferences" data-lab-preferences hidden aria-label="Lab preferences">
-        <header><strong>Preferences</strong><button type="button" data-lab-preferences-close aria-label="Close preferences"><Icon name="close" /></button></header>
-        <p>Saved locally for this project.</p>
-        <label class="hydronium-ink-lab__control">Terminal font<select data-lab-font aria-label="Terminal font">
-          <option value="system">System monospace</option><option value="caskaydia-mono">CaskaydiaCove Nerd Font Mono</option><option value="caskaydia">CaskaydiaCove Nerd Font</option><option value="cascadia-mono">Cascadia Mono</option><option value="jetbrains">JetBrainsMono Nerd Font</option><option value="sf-mono">SF Mono</option>
-        </select></label>
-        <label class="hydronium-ink-lab__control">Custom font<input data-lab-font-custom aria-label="Custom terminal font" placeholder="Installed font family" /></label>
-        <label class="hydronium-ink-lab__toggle"><input type="checkbox" data-lab-ligatures aria-label="Enable font ligatures" /><span>Enable font ligatures</span></label>
-      </aside>
-    </main>
+    <div class="hydronium-lab__renderer-controls hydronium-ink-lab__renderer-controls" data-lab-renderer-controls>
+      <label class="hydronium-lab__icon-control hydronium-ink-lab__icon-control" data-lab-meta-control>
+        <Icon name="palette" />
+        <select data-lab-color aria-label="Color capability">
+          <option value="ansi16">ANSI 16</option><option value="ansi256">ANSI 256</option><option value="truecolor">Truecolor</option>
+        </select>
+      </label>
+      <label class="hydronium-lab__icon-control hydronium-ink-lab__icon-control" data-lab-meta-control>
+        <Icon name="aspect_ratio" />
+        <select data-lab-size aria-label="Terminal size preset" />
+      </label>
+    </div>
   )
 end
 
+local function InkPreferences()
+  return (
+    <div class="hydronium-lab__renderer-preferences hydronium-ink-lab__renderer-preferences" data-lab-renderer-preferences>
+        <label class="hydronium-lab__control hydronium-ink-lab__control">Terminal font<select data-lab-font aria-label="Terminal font">
+          <option value="system">System monospace</option><option value="caskaydia-mono">CaskaydiaCove Nerd Font Mono</option><option value="caskaydia">CaskaydiaCove Nerd Font</option><option value="cascadia-mono">Cascadia Mono</option><option value="jetbrains">JetBrainsMono Nerd Font</option><option value="sf-mono">SF Mono</option>
+        </select></label>
+        <label class="hydronium-lab__control hydronium-ink-lab__control">Custom font<input data-lab-font-custom aria-label="Custom terminal font" placeholder="Installed font family" /></label>
+        <label class="hydronium-lab__toggle hydronium-ink-lab__toggle"><input type="checkbox" data-lab-ligatures aria-label="Enable font ligatures" /><span>Enable font ligatures</span></label>
+    </div>
+  )
+end
+
+local function Shell(props)
+  local root_attributes = {
+    ["data-hydronium-ink-lab"] = "",
+  }
+  if props.boot and props.boot.base_path then
+    root_attributes["data-lab-base-path"] = props.boot.base_path
+  end
+  local transport = props.boot and props.boot.transport or {}
+  if props.boot and props.boot.version then root_attributes["data-lab-contract-version"] = props.boot.version end
+  if transport.catalog then root_attributes["data-lab-catalog-url"] = transport.catalog end
+  if transport.create_session then root_attributes["data-lab-create-session-url"] = transport.create_session end
+  if transport.session_operations then root_attributes["data-lab-session-operations-url"] = transport.session_operations end
+  if transport.close_session then root_attributes["data-lab-close-session-url"] = transport.close_session end
+  return <Workbench
+    renderer="ink"
+    legacy_class_prefix="hydronium-ink-lab"
+    root_attributes={root_attributes}
+    project_id={props.project_id or "hydronium-lab"}
+    project_name={props.project_name or "Hydronium Ink Lab"}
+    renderer_controls={<InkControls />}
+    metrics={<span class="hydronium-lab__dimensions hydronium-ink-lab__dimensions" data-lab-dimensions aria-live="polite" />}
+    preview={<div class="hydronium-lab__terminal hydronium-ink-lab__terminal" data-lab-terminal role="application" tabindex="0" aria-label="Interactive terminal preview" />}
+    preferences={<InkPreferences />}
+    canvas_label="Terminal canvas. Space drag pans; C centers; F toggles fullscreen; Control plus or minus zooms."
+  />
+end
+
 local function Document(props)
+  local assets = props.boot and props.boot.assets or {}
+  local workbench_stylesheet_url = props.workbench_stylesheet_url or assets.workbench_stylesheet
+  local renderer_stylesheet_url = props.renderer_stylesheet_url or assets.renderer_stylesheet
+  local stylesheet_url
+  if not workbench_stylesheet_url and not renderer_stylesheet_url then
+    stylesheet_url = props.stylesheet_url or assets.stylesheet or "/__hydronium/lab/assets/lab.css"
+  end
+  local client_url = props.client_url or assets.client or "/__hydronium/lab/assets/meteorite.js"
   return (
     <html lang="en">
       <head>
         <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><meta name="referrer" content="no-referrer" />
         <title>{props.title or "Hydronium Ink Lab"}</title>
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0,0" />
-        <link rel="stylesheet" href="/__hydronium/lab/assets/lab.css" />
+        {workbench_stylesheet_url and <link rel="stylesheet" href={workbench_stylesheet_url} />}
+        {renderer_stylesheet_url and <link rel="stylesheet" href={renderer_stylesheet_url} />}
+        {stylesheet_url and <link rel="stylesheet" href={stylesheet_url} />}
       </head>
-      <body><Shell {...props} /><script type="module" src="/__hydronium/lab/assets/meteorite.js" /></body>
+      <body><Shell {...props} /><script type="module" src={client_url} /></body>
     </html>
   )
 end
