@@ -20,6 +20,8 @@ local family_loader = require("hydronium.core.family_loader")
 local module_graph = require("hydronium.core.module_graph")
 local hmr_host = require("hydronium.core.hmr_host")
 local love_hmr = require("hydronium.core.love_hmr")
+local source_topology = require("hydronium.core.source_topology")
+local source_inventory = require("hydronium.core.source_inventory")
 local actions = require("hydronium.core.action")
 local forms = require("hydronium.core.form")
 local signals = require("hydronium.signals")
@@ -81,6 +83,8 @@ return {
   module_graph = module_graph,
   hmr_host = hmr_host,
   love_hmr = love_hmr,
+  source_topology = source_topology,
+  source_inventory = source_inventory,
 
   -- Context & Refs
   createContext = context.createContext,

@@ -81,6 +81,8 @@ local Hydronium = {
   module_graph = core.module_graph,
   hmr_host = core.hmr_host,
   love_hmr = core.love_hmr,
+  source_topology = core.source_topology,
+  source_inventory = core.source_inventory,
 
   -- Testing & Test Host
   test = testModule,
