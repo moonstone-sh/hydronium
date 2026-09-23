@@ -162,8 +162,8 @@ five target triples with zero CMake.
 - `Box` now supports real `flexDirection`, `justifyContent`, `alignItems`,
   `flexWrap`, `flexGrow`, `flexShrink`, `flexBasis`, `margin`/`marginX`/
   `marginY`, `position`/`top`/`right`/`bottom`/`left` (absolute
-  positioning), `display`, `overflow` (`"hidden"`/`"scroll"` really clip
-  painted content to the box, not just reserve layout space),
+  positioning), `display`, `overflow` (`"hidden"` clips, while `"scroll"`
+  is a controlled viewport using cell-valued `scrollTop`/`scrollLeft` props),
   `backgroundColor`, and per-edge `borderColor`/`borderTopColor`/etc. +
   `borderDimColor`/etc, in addition to the `padding`/`paddingX`/
   `paddingY`/`borderStyle`/`width`/`height` props that already existed —
@@ -264,13 +264,11 @@ Explicitly NOT implemented (out of scope, not attempted):
 - A `Box` nested inside a `Text` is silently ignored during layout
   (mirrors real Ink's own constraint on this) rather than validated or
   erroring.
-- `Transform` operates on **plain, unstyled text** per output line, not
-  the already-ANSI-styled string real Ink hands its own `transform`
-  callback. A transform function that itself injects ANSI codes (the
-  common real-world case: gradient/chalk-style color libraries) is not
-  supported — this module would need to parse ANSI back out of the
-  transform's return value into real cell styles to support that, which
-  it does not attempt. `transform(line, index)`'s `index` is also
+- `Transform` receives **plain, unstyled text** per output line, rather than
+  the already-ANSI-styled string real Ink hands its own `transform` callback.
+  Its returned standard SGR sequences are parsed into Ink's styled cells;
+  color spaces beyond the host's normal 8-color SGR palette are not
+  supported. `transform(line, index)`'s `index` is also
   1-indexed here, a deliberate Lua-native choice, not real Ink's
   0-indexed one.
 - **`Static` is not implemented at all**, not even partially. Real Ink's
@@ -384,12 +382,13 @@ Reset is always `\27[0m`.
 | `Text` `wrap = "wrap"`/`"hard"` (real reflow, explicit width or resolved from a container's own layout) | VERIFIED | Dedicated specs: word-boundary wrap, mid-word hard-wrap, and reflow against a width resolved from a parent `Box`'s own layout with no explicit `width` on the `Text` itself. |
 | Real Spacer (flexGrow=1 leaf) | VERIFIED | Dedicated spec: a Spacer between two Text siblings pushes the second all the way to the last column. |
 | `measureElement(ref)` / `useBoxMetrics` (x/y/width/height/clientWidth/clientHeight) | VERIFIED | Dedicated spec asserts exact values (including content-box size correctly subtracting border+padding) from a real bound `ref`, plus `hasMeasured=false` before anything painted. |
-| `Transform` (isolated-subtree render, per-line `transform(line, index)`) | VERIFIED (plain-text only — see "Explicitly NOT implemented" above) | Dedicated multi-line spec asserts both transformed lines' exact text and that no `fg` leaks through. |
+| Controlled `overflow = "scroll"` viewport | VERIFIED | Dedicated spec asserts vertical translation, content-bound clamping, and measured effective/max offsets. |
+| `Transform` (isolated-subtree render, per-line `transform(line, index)`) | VERIFIED | Dedicated multi-line and ANSI-SGR specs assert both transformed text and parsed styled cells. |
 | Terminal-constrained root layout (`host.setSize`) | VERIFIED | Dedicated specs: a size-constrained root fills the real terminal instead of auto-sizing to content, a width-less Box stretches to it, and `setSize(0, 0)` reverts to auto-sizing. |
 | Unicode-aware measurement/painting (grapheme clusters, wide CJK/emoji) | VERIFIED | `hydronium_ink.text_metrics`; dedicated specs for a precomposed accented character, wide-character cell/continuation-cell painting, and Box width measured by display width rather than byte count. |
 | `Static` | NOT IMPLEMENTED, not attempted | See "Explicitly NOT implemented" above. |
 | `useInput`/`useApp`/`useWindowSize` (real raw-mode stdin, ANSI key parsing, live resize) | VERIFIED | See this doc's sibling covering `hydronium_ink.render`/`hooks`/`keys`/`tty_ffi` — real injected keypresses in a live `tmux` pane, not just unit tests. |
-| `ink` member's own test suite green | VERIFIED | `luajit tests/runner.lua tests/host/terminal_spec.lua` → 17/17 passed. The repo-wide suite (`luajit tests/runner.lua`) is 413/414 — the one failure is `tests/core/lazy_barrel_spec.lua`, pre-existing and unrelated (an environment issue: it shells out to a `lua` binary not on this machine's `PATH`), not caused by this module. |
+| Ink and repository test suites green | VERIFIED 2026-09-23 | `luajit tests/runner.lua tests/host/terminal_spec.lua` → 33/33; the repository suite is 1043/1043. Re-run both before trusting this row — counts here have gone stale before. |
 
 ## Real terminal evidence
 

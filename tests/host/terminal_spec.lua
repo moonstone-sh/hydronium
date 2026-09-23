@@ -586,6 +586,48 @@ describe("hydronium.host.terminal -- real Host contract + real ANSI output", fun
     assert.equal(rowText(grid, 1, 1, 10), "HELLOSIDE ", "overflowing 'WORLD' must be clipped, and the sibling's own 'SIDE' must be untouched")
   end)
 
+  it("renders a controlled overflow=scroll viewport and exposes its clamped metrics", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+    local viewportRef = H.createRef()
+
+    reconciler:mount(H.h(ink.Box, { ref = viewportRef, width = 5, height = 2, overflow = "scroll", scrollTop = 1 },
+      H.h(ink.Text, nil, "first"),
+      H.h(ink.Text, nil, "second"),
+      H.h(ink.Text, nil, "third")
+    ), root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 5, 2)
+    assert.equal(rowText(grid, 1, 1, 5), "secon")
+    assert.equal(rowText(grid, 2, 1, 5), "third")
+    local metrics = measure.measureElement(viewportRef)
+    assert.equal(metrics.scrollTop, 1)
+    assert.equal(metrics.scrollMaxTop, 1)
+
+    clearWrites()
+    reconciler:reconcile(H.h(ink.Box, { ref = viewportRef, width = 5, height = 2, overflow = "scroll", scrollTop = 99 },
+      H.h(ink.Text, nil, "first"),
+      H.h(ink.Text, nil, "second"),
+      H.h(ink.Text, nil, "third")
+    ), root)
+    host.flush()
+    assert.equal(measure.measureElement(viewportRef).scrollTop, 1, "out-of-range controlled offsets clamp to the content")
+
+    writes, capture, clearWrites = newCapture()
+    host = terminalHostModule.createTerminalHost(capture)
+    root = host.getRoot()
+    reconciler = H.Reconciler.new(host)
+    reconciler:mount(H.h(ink.Box, { width = 5, height = 1, overflow = "scroll", scrollLeft = 3 },
+      H.h(ink.Text, nil, "ABCDEFGHIJ")
+    ), root)
+    host.flush()
+    grid = interpretAnsi(table.concat(writes), 5, 1)
+    assert.equal(rowText(grid, 1, 1, 5), "DEFGH", "horizontal offsets use the same controlled viewport contract")
+  end)
+
   it("applies real SGR codes for italic, underline, strikethrough, inverse, and dimColor", function()
     local writes, capture, clearWrites = newCapture()
     local host = terminalHostModule.createTerminalHost(capture)
@@ -603,6 +645,34 @@ describe("hydronium.host.terminal -- real Host contract + real ANSI output", fun
     assert.truthy(cell.strikethrough, "expected SGR 9 (strikethrough)")
     assert.truthy(cell.inverse, "expected SGR 7 (inverse)")
     assert.truthy(cell.dim, "expected SGR 2 (dim)")
+  end)
+
+  it("lowers absolute colors to the selected truecolor, ANSI-256, or ANSI-16 target while palette names remain themed", function()
+    local writes, capture = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+    reconciler:mount(H.h(ink.Text, { color = "#112233" }, "X"), root)
+
+    host.setColorCapability("truecolor")
+    host.flush()
+    assert.truthy(table.concat(writes):find("\27[38;2;17;34;51m", 1, true))
+
+    writes, capture = newCapture()
+    host = terminalHostModule.createTerminalHost(capture)
+    root, reconciler = host.getRoot(), H.Reconciler.new(host)
+    reconciler:mount(H.h(ink.Text, { color = "#112233" }, "X"), root)
+    host.setColorCapability("ansi256")
+    host.flush()
+    assert.truthy(table.concat(writes):find("\27[38;5;", 1, true))
+
+    writes, capture = newCapture()
+    host = terminalHostModule.createTerminalHost(capture)
+    root, reconciler = host.getRoot(), H.Reconciler.new(host)
+    reconciler:mount(H.h(ink.Text, { color = "red" }, "X"), root)
+    host.setColorCapability("truecolor")
+    host.flush()
+    assert.truthy(table.concat(writes):find("\27[31m", 1, true), "palette names must use the terminal's live palette slot")
   end)
 
   it("truncates Text to fit an explicit width with truncate/truncate-start/truncate-middle", function()
@@ -727,6 +797,37 @@ describe("hydronium.host.terminal -- real Host contract + real ANSI output", fun
     assert.equal(rowText(grid, 1, 1, 10), "1:line one")
     assert.equal(rowText(grid, 2, 1, 10), "2:line two")
     assert.is_nil(grid[1][1].fg, "Transform output is plain, unstyled text -- no fg color of its own")
+  end)
+
+  it("parses ANSI SGR returned by Transform into styled terminal cells", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    reconciler:mount(H.h(ink.Transform, {
+      transform = function(line) return "\27[31m" .. line .. "\27[0m" end,
+    }, H.h(ink.Text, nil, "red")), root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 3, 1)
+    assert.equal(rowText(grid, 1, 1, 3), "red")
+    assert.equal(grid[1][1].fg, 1)
+  end)
+
+  it("parses truecolor ANSI returned by Transform without carrying styles past SGR reset", function()
+    local writes, capture = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+    reconciler:mount(H.h(ink.Transform, {
+      transform = function() return "\27[1;38;2;1;2;3mA\27[0mB" end,
+    }, H.h(ink.Text, nil, "x")), root)
+    host.setColorCapability("truecolor")
+    host.flush()
+    local bytes = table.concat(writes)
+    assert.truthy(bytes:find("\27[38;2;1;2;3m", 1, true))
+    assert.truthy(bytes:find("\27[0mB", 1, true), "reset must clear Transform styles before the following cell")
   end)
 
   -- The specs below exercise Unicode-aware measurement/painting

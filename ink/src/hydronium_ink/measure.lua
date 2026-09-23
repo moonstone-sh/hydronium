@@ -25,6 +25,10 @@ local M = {}
 ---@field height integer
 ---@field clientWidth integer Content-box width (inside border+padding).
 ---@field clientHeight integer Content-box height (inside border+padding).
+---@field scrollLeft integer Effective horizontal offset (clamped to content).
+---@field scrollTop integer Effective vertical offset (clamped to content).
+---@field scrollMaxLeft integer Largest usable horizontal offset.
+---@field scrollMaxTop integer Largest usable vertical offset.
 ---@field hasMeasured boolean False before the ref's element has ever been painted.
 
 --- @param ref table A `hydronium.createRef()` whose `.current` was bound
@@ -34,8 +38,9 @@ function M.measureElement(ref)
   local node = ref and ref.current
   local layout = node and node._layout
   if not layout then
-    return { x = 0, y = 0, width = 0, height = 0, clientWidth = 0, clientHeight = 0, hasMeasured = false }
+    return { x = 0, y = 0, width = 0, height = 0, clientWidth = 0, clientHeight = 0, scrollLeft = 0, scrollTop = 0, scrollMaxLeft = 0, scrollMaxTop = 0, hasMeasured = false }
   end
+  local scroll = node._scroll or {}
   return {
     x = layout.x,
     y = layout.y,
@@ -43,6 +48,10 @@ function M.measureElement(ref)
     height = layout.h,
     clientWidth = layout.clientW or layout.w,
     clientHeight = layout.clientH or layout.h,
+    scrollLeft = scroll.left or 0,
+    scrollTop = scroll.top or 0,
+    scrollMaxLeft = scroll.maxLeft or 0,
+    scrollMaxTop = scroll.maxTop or 0,
     hasMeasured = true,
   }
 end

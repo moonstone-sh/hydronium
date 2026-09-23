@@ -33,15 +33,15 @@
              margin / marginX / marginY (integer, spaces)
              position ("relative" | "absolute"), top / right / bottom / left (integer)
              display ("flex" | "none")
-             overflow ("visible" | "hidden" | "scroll" -- "scroll" is
-               treated identically to "hidden": clips, but there is no
-               real scrollable viewport)
+             overflow ("visible" | "hidden" | "scroll")
+             scrollTop / scrollLeft (integer, controlled cell offsets for
+               overflow="scroll"; compose with a signal and useInput)
              borderStyle ("single" draws real box-drawing characters;
                any other truthy value reserves border space but draws
                nothing -- only "single" is implemented)
              borderColor / borderTopColor / borderRightColor /
                borderBottomColor / borderLeftColor (named color, see
-               Text's `color` below for the set) -- the per-edge props
+             Text's `color` below for accepted values) -- the per-edge props
                override `borderColor` on that edge only; corners use
                `borderColor` directly, not either adjacent edge (a
                stated simplification, see host/terminal.lua's
@@ -56,20 +56,16 @@
              All of the above are real Yoga flexbox properties (see
              hydronium_ink.yoga_ffi) -- grow/shrink/wrap/justify/align
              actually work, unlike the block-stacking layout this replaced.
-    Text:    color / backgroundColor (one of: red, green, yellow, blue,
-               magenta, cyan, white, gray -- see host/terminal.lua's
-               COLOR_CODES)
+    Text:    color / backgroundColor (terminal palette names, opaque
+               #RRGGBB sRGB, or values from hydronium_oklab_utils)
              bold / dimColor / italic / underline / strikethrough / inverse (boolean)
              width (integer, optional) + wrap ("truncate" |
                "truncate-start" | "truncate-middle" | "truncate-end") --
                truncates (with a plain ASCII "..." marker, not a real
                Unicode ellipsis -- this module has no wide-character
                width accounting anywhere yet) to fit `width` when both
-               are set. `wrap = "wrap"`/`"hard"` (real reflow) is
-               explicitly NOT implemented -- see
-               docs/HYDRONIUM_INK_TERMINAL_HOST.md for why (it needs a
-               Yoga measure-function callback this binding doesn't
-               register, not just a truncation pass).
+               are set. `wrap = "wrap"` word-wraps and `"hard"` splits
+               long words, including when Yoga resolves the width.
     Newline: no props -- a line-break marker, meaningful as a child of
              Text (forces a new line within that Text's own layout) or,
              in a reduced "occupies space, paints nothing" sense, as a
@@ -82,13 +78,9 @@
              isolation, then calls transform once per output line
              (1-indexed -- NOT real Ink's 0-indexed convention, a
              deliberate Lua-native choice) with that line's PLAIN text
-             (no ANSI/style codes -- see host/terminal.lua's own doc
-             comment on Transform for why: a transform that itself
-             injects ANSI codes, e.g. a real gradient/chalk library,
-             is not supported here, since that would need this module to
-             parse ANSI back out of the transform's own return value
-             into real cell styles, which it does not attempt). The
-             transform's return value is painted as plain unstyled text.
+             (no ANSI/style codes from its children). ANSI SGR styling in
+             the transform's return value is parsed into
+             terminal cells (standard 8 colors and host text styles).
 --]]
 
 local symbols = require("hydronium.core.symbols")
@@ -132,7 +124,8 @@ end
 --- when a host's catalog is big/spec-driven enough to warrant the
 --- ambient-file (Tier 2) approach instead.
 
----@alias HydroniumInkColor "red"|"green"|"yellow"|"blue"|"magenta"|"cyan"|"white"|"gray"
+---@alias HydroniumInkColor string|hydronium_oklab_utils.Color Palette name,
+--- opaque #RRGGBB, or an sRGB/OKLab/OKLCH value from hydronium/oklab-utils.
 
 ---@class HydroniumInkBoxProps
 ---@field flexDirection? "row"|"column"
@@ -155,6 +148,8 @@ end
 ---@field left? integer
 ---@field display? "flex"|"none"
 ---@field overflow? "visible"|"hidden"|"scroll"
+---@field scrollTop? integer Controlled vertical offset in terminal cells.
+---@field scrollLeft? integer Controlled horizontal offset in terminal cells.
 ---@field borderStyle? "single"|boolean
 ---@field borderColor? HydroniumInkColor
 ---@field borderTopColor? HydroniumInkColor
@@ -180,7 +175,7 @@ end
 ---@field strikethrough? boolean
 ---@field inverse? boolean
 ---@field width? integer
----@field wrap? "truncate"|"truncate-start"|"truncate-middle"|"truncate-end"
+---@field wrap? "truncate"|"truncate-start"|"truncate-middle"|"truncate-end"|"wrap"|"hard"
 
 ---@class HydroniumInkTransformProps
 ---@field transform fun(line: string, index: integer): string

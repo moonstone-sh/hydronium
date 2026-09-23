@@ -119,21 +119,14 @@
 
 local Yoga = require("hydronium_ink.yoga_ffi")
 local textMetrics = require("hydronium_ink.text_metrics")
+local terminalColor = require("hydronium_ink.color")
 
 local M = {}
 
--- Named color -> SGR digit (\27[3<n>m). "gray" deliberately occupies the
--- slot the SGR spec calls "black" (n=0): the requested named set is
--- red/green/yellow/blue/magenta/cyan/white/gray, i.e. 8 names for the 8
--- \27[3<n>m slots, and something has to take slot 0. Many real terminal
--- color schemes already render SGR 30 as a dark gray rather than pure
--- black, which is why this mapping (rather than, say, silently dropping
--- "gray" or reaching for a non-\27[3<n>m bright-black code) was chosen --
--- but on a literal black-on-black theme this WILL render as invisible
--- black, not a visible gray. Documented limitation, not a bug to chase.
-local COLOR_CODES = {
-  gray = 0, red = 1, green = 2, yellow = 3, blue = 4, magenta = 5, cyan = 6, white = 7,
-}
+-- Palette names lower to their terminal SGR slots, preserving the user's
+-- active terminal theme. Absolute #RRGGBB/OKLab colors are represented by
+-- terminalColor objects and lowered only when the frame is encoded.
+local COLOR_CODES = terminalColor.palette
 
 -- Only "single" is implemented. Any other truthy `borderStyle` still
 -- reserves the 1-cell border in layout (see getBoxMetrics) but paints
@@ -258,8 +251,8 @@ local function textStyleOf(props, inherited)
     strikethrough = inherited.strikethrough, inverse = inherited.inverse,
   }
   if props then
-    if props.color ~= nil then style.fg = COLOR_CODES[props.color] end
-    if props.backgroundColor ~= nil then style.bg = COLOR_CODES[props.backgroundColor] end
+    if props.color ~= nil then style.fg = terminalColor.resolve(props.color) end
+    if props.backgroundColor ~= nil then style.bg = terminalColor.resolve(props.backgroundColor) end
     if props.bold ~= nil then style.bold = props.bold and true or false end
     if props.dimColor ~= nil then style.dim = props.dimColor and true or false end
     if props.italic ~= nil then style.italic = props.italic and true or false end
@@ -268,6 +261,39 @@ local function textStyleOf(props, inherited)
     if props.inverse ~= nil then style.inverse = props.inverse and true or false end
   end
   return style
+end
+
+-- Parses the small, style-only SGR vocabulary this host can paint back into
+-- cell runs. Transform receives plain text, but its result may use ordinary
+-- ANSI styling (as gradient/chalk-style helpers do) without leaking escape
+-- bytes into the terminal grid.
+local function ansiRuns(text)
+  local runs, style, cursor = {}, {}, 1
+  local function append(chunk)
+    if chunk ~= "" then
+      runs[#runs + 1] = {
+        text = chunk, fg = style.fg, bg = style.bg, bold = style.bold,
+        dim = style.dim, italic = style.italic, underline = style.underline,
+        strikethrough = style.strikethrough, inverse = style.inverse,
+      }
+    end
+  end
+  local function reset() style = {} end
+  while cursor <= #text do
+    local startAt, endAt, params = text:find("\27%[([%d;]*)m", cursor)
+    if not startAt then append(text:sub(cursor)); break end
+    append(text:sub(cursor, startAt - 1))
+    if params == "" then reset() else
+      -- SGR 0 clears every rendition attribute, including attributes that
+      -- happen not to be mentioned by terminalColor.from_sgr's delta table.
+      if params == "0" or params:find("^0;") or params:find(";0;") or params:find(";0$") then reset() end
+      local fg, bg, flags = terminalColor.from_sgr(params, style.fg, style.bg)
+      style.fg, style.bg = fg, bg
+      for key, value in pairs(flags) do style[key] = value end
+    end
+    cursor = endAt + 1
+  end
+  return runs
 end
 
 --- Walks a `Text` intrinsic's own children collecting them into a list
@@ -594,13 +620,12 @@ local function buildYogaTree(node)
 
   if node.type == "element" and node.tag == "Transform" then
     -- Renders `node.children` into a fully isolated sub-tree and frame,
-    -- extracts each row as PLAIN text (see this module's own doc comment
-    -- above on Transform: no ANSI re-parsing -- a transform that injects
-    -- its own ANSI codes is not supported), and calls
+    -- extracts each row as PLAIN text and calls
     -- `props.transform(line, index)` on each (1-indexed, not real Ink's
     -- 0-indexed convention). The transformed strings become this node's
     -- own "transform_block" content -- from the OUTER tree's
     -- perspective, a Transform is a fixed-size leaf, exactly like a Text.
+    -- Returned ANSI SGR sequences are parsed into ordinary styled cell runs.
     --
     -- Always fully recomputed, ignoring dirty flags entirely (unlike
     -- every other branch here): this node's content depends on its
@@ -657,8 +682,10 @@ local function buildYogaTree(node)
         local ok, result = pcall(transform, line, i)
         if ok and type(result) == "string" then out = result end
       end
-      transformedLines[i] = out
-      local ow = textMetrics.displayWidth(out)
+      local runs = ansiRuns(out)
+      transformedLines[i] = runs
+      local ow = 0
+      for _, run in ipairs(runs) do ow = ow + textMetrics.displayWidth(run.text) end
       if ow > w then w = ow end
     end
 
@@ -875,9 +902,9 @@ end
 --- @param style table|nil {fg, bg, bold, dim, italic, underline, strikethrough, inverse}
 --- @param clip table|nil {x1, y1, x2, y2} -- cells outside this rect are
 ---   silently dropped, same as cells outside the frame itself. Set by
----   paintNode() for a `Box` with `overflow = "hidden"` (or `"scroll"`,
----   which this module treats identically -- there is no real scrollable
----   viewport here, just the same clipping).
+---   paintNode() for a `Box` with `overflow = "hidden"` or `"scroll"`.
+---   Scroll boxes additionally translate their children by their controlled,
+---   clamped `scrollTop`/`scrollLeft` offsets before this clip is applied.
 local function setCell(frame, x, y, ch, style, clip)
   if y < 1 or y > frame.h or x < 1 or x > frame.w then return end
   if clip and (x < clip.x1 or x > clip.x2 or y < clip.y1 or y > clip.y2) then return end
@@ -925,17 +952,18 @@ local function resolveBorderEdge(props, edgeName)
   local color = props["border" .. edgeName .. "Color"] or props.borderColor
   local dim = props["border" .. edgeName .. "DimColor"]
   if dim == nil then dim = props.borderDimColor end
-  return color and COLOR_CODES[color], dim and true or false
+  return color and terminalColor.resolve(color), dim and true or false
 end
 
-paintNode = function(node, frame, clip)
+paintNode = function(node, frame, clip, offsetX, offsetY)
   local layout = node._layout
+  offsetX, offsetY = offsetX or 0, offsetY or 0
 
   if layout.kind == "box" then
     local props = node.props or {}
-    local x1, y1 = layout.x, layout.y
+    local x1, y1 = layout.x + offsetX, layout.y + offsetY
     local x2, y2 = layout.x + layout.w - 1, layout.y + layout.h - 1
-    local bg = props.backgroundColor and COLOR_CODES[props.backgroundColor]
+    local bg = props.backgroundColor and terminalColor.resolve(props.backgroundColor)
 
     if bg then
       for y = y1, y2 do
@@ -948,7 +976,7 @@ paintNode = function(node, frame, clip)
     if props.borderStyle then
       local chars = BOX_CHARS[props.borderStyle]
       if chars then
-        local baseFg = props.borderColor and COLOR_CODES[props.borderColor]
+        local baseFg = props.borderColor and terminalColor.resolve(props.borderColor)
         local baseDim = props.borderDimColor and true or false
         local topFg, topDim = resolveBorderEdge(props, "Top")
         local rightFg, rightDim = resolveBorderEdge(props, "Right")
@@ -981,13 +1009,40 @@ paintNode = function(node, frame, clip)
       end
     end
 
+    local childOffsetX, childOffsetY = offsetX, offsetY
+    if props.overflow == "scroll" then
+      -- Controlled offsets compose with a signal and useInput; the host does
+      -- not impose a hidden keyboard policy on a scrollable view.
+      local contentRight, contentBottom = layout.x - 1, layout.y - 1
+      for i = 1, #node.children do
+        local childLayout = node.children[i]._layout
+        if childLayout then
+          contentRight = math.max(contentRight, childLayout.x + childLayout.w - 1)
+          contentBottom = math.max(contentBottom, childLayout.y + childLayout.h - 1)
+        end
+      end
+      local maxLeft = math.max(contentRight - (layout.x + layout.w - 1), 0)
+      local maxTop = math.max(contentBottom - (layout.y + layout.h - 1), 0)
+      local requestedLeft = math.max(0, math.floor(tonumber(props.scrollLeft) or 0))
+      local requestedTop = math.max(0, math.floor(tonumber(props.scrollTop) or 0))
+      local left, top = math.min(requestedLeft, maxLeft), math.min(requestedTop, maxTop)
+      node._scroll = {
+        left = left, top = top, maxLeft = maxLeft, maxTop = maxTop,
+        width = math.max(contentRight - layout.x + 1, 0),
+        height = math.max(contentBottom - layout.y + 1, 0),
+      }
+      childOffsetX, childOffsetY = offsetX - left, offsetY - top
+    else
+      node._scroll = nil
+    end
+
     for i = 1, #node.children do
-      paintNode(node.children[i], frame, childClip)
+      paintNode(node.children[i], frame, childClip, childOffsetX, childOffsetY)
     end
   elseif layout.kind == "text_block" then
     for i, line in ipairs(layout.lines) do
-      local cx = layout.x
-      local cy = layout.y + i - 1
+      local cx = layout.x + offsetX
+      local cy = layout.y + offsetY + i - 1
       for _, run in ipairs(line) do
         cx = paintClusters(frame, cx, cy, run.text, run, clip)
       end
@@ -995,13 +1050,13 @@ paintNode = function(node, frame, clip)
   elseif layout.kind == "text" then
     -- Bare text directly under a Box (no enclosing <Text>) -- see the
     -- "text" kind's doc comment on measure() above.
-    paintClusters(frame, layout.x, layout.y, node.text, nil, clip)
+    paintClusters(frame, layout.x + offsetX, layout.y + offsetY, node.text, nil, clip)
   elseif layout.kind == "transform_block" then
-    -- Plain, unstyled text -- see this node's own buildYogaTree branch
-    -- and this module's Transform doc comment for why (no ANSI
-    -- re-parsing of a transform's return value).
     for i, line in ipairs(layout.lines) do
-      paintClusters(frame, layout.x, layout.y + i - 1, line, nil, clip)
+      local cx = layout.x + offsetX
+      for _, run in ipairs(line) do
+        cx = paintClusters(frame, cx, layout.y + offsetY + i - 1, run.text, run, clip)
+      end
     end
   end
   -- "newline": nothing to paint -- it already reserved its space during
@@ -1011,13 +1066,13 @@ end
 local DEFAULT_STYLE_KEY = "-1:-1:0:0:0:0:0:0"
 
 local function styleKey(cell)
-  return (cell.fg or -1) .. ":" .. (cell.bg or -1) .. ":"
+  return terminalColor.key(cell.fg) .. ":" .. terminalColor.key(cell.bg) .. ":"
     .. (cell.bold and 1 or 0) .. ":" .. (cell.dim and 1 or 0) .. ":"
     .. (cell.italic and 1 or 0) .. ":" .. (cell.underline and 1 or 0) .. ":"
     .. (cell.strikethrough and 1 or 0) .. ":" .. (cell.inverse and 1 or 0)
 end
 
-local function sgrFor(cell)
+local function sgrFor(cell, colorCapability)
   local seq = "\27[0m"
   if cell.bold then seq = seq .. "\27[1m" end
   if cell.dim then seq = seq .. "\27[2m" end
@@ -1025,8 +1080,8 @@ local function sgrFor(cell)
   if cell.underline then seq = seq .. "\27[4m" end
   if cell.inverse then seq = seq .. "\27[7m" end
   if cell.strikethrough then seq = seq .. "\27[9m" end
-  if cell.fg then seq = seq .. "\27[3" .. cell.fg .. "m" end
-  if cell.bg then seq = seq .. "\27[4" .. cell.bg .. "m" end
+  seq = seq .. terminalColor.sgr(cell.fg, false, colorCapability)
+  seq = seq .. terminalColor.sgr(cell.bg, true, colorCapability)
   return seq
 end
 
@@ -1037,14 +1092,14 @@ end
 --- when the run ends on anything but the default, so a subsequent
 --- unrelated write (a shell prompt, a later diff run) never inherits a
 --- stray color.
-local function encodeRun(row, c1, c2)
+local function encodeRun(row, c1, c2, colorCapability)
   local parts = {}
   local lastKey = nil
   for x = c1, c2 do
     local cell = row[x]
     local key = styleKey(cell)
     if key ~= lastKey then
-      table.insert(parts, sgrFor(cell))
+      table.insert(parts, sgrFor(cell, colorCapability))
       lastKey = key
     end
     table.insert(parts, cell.ch)
@@ -1056,7 +1111,8 @@ local function encodeRun(row, c1, c2)
 end
 
 local function cellsDiffer(a, b)
-  return a.ch ~= b.ch or a.fg ~= b.fg or a.bg ~= b.bg or a.bold ~= b.bold
+  return a.ch ~= b.ch or terminalColor.key(a.fg) ~= terminalColor.key(b.fg)
+    or terminalColor.key(a.bg) ~= terminalColor.key(b.bg) or a.bold ~= b.bold
     or a.dim ~= b.dim or a.italic ~= b.italic or a.underline ~= b.underline
     or a.strikethrough ~= b.strikethrough or a.inverse ~= b.inverse
 end
@@ -1073,12 +1129,22 @@ end
 function M.createTerminalHost(writeFn)
   writeFn = writeFn or io.write
 
-  local host = {}
+  local host = { _colorCapability = terminalColor.capability("auto") }
 
   local root = { id = 0, type = "root", tag = "ROOT", props = {}, children = {}, parent = nil }
 
   function host.getRoot()
     return root
+  end
+
+  --- Selects the ANSI color target. "auto" uses conventional TERM/
+  --- COLORTERM hints; callers can force ansi16, ansi256, or truecolor.
+  function host.setColorCapability(capability)
+    local resolved = terminalColor.capability(capability)
+    if resolved ~= host._colorCapability then
+      host._colorCapability = resolved
+      host.invalidate()
+    end
   end
 
   --- Tells this host the real terminal size, so host.paint() constrains
@@ -1298,7 +1364,7 @@ function M.createTerminalHost(writeFn)
       table.insert(buf, "\27[2J\27[H")
       for y = 1, h do
         table.insert(buf, "\27[" .. y .. ";1H\27[K")
-        table.insert(buf, encodeRun(frame.rows[y], 1, w))
+        table.insert(buf, encodeRun(frame.rows[y], 1, w, host._colorCapability))
       end
     else
       for y = 1, h do
@@ -1312,7 +1378,7 @@ function M.createTerminalHost(writeFn)
               x = x + 1
             end
             table.insert(buf, "\27[" .. y .. ";" .. runStart .. "H")
-            table.insert(buf, encodeRun(newRow, runStart, x - 1))
+            table.insert(buf, encodeRun(newRow, runStart, x - 1, host._colorCapability))
           else
             x = x + 1
           end
