@@ -73,6 +73,37 @@
                  whitespace means no individual argument can contain a
                  space. Nothing meteorite dev takes does today (modes,
                  backends and the lua-root path are all space-free).
+    --vite       Start `vite dev` ALONGSIDE `meteorite dev`, the two
+                 merged into one dev loop (docs/HYDRONIUM_WEB_VITE_ADAPTER_
+                 PLAN.md's M2 "dual dev server", js/packages/vite/src/
+                 supervisor.mjs's `runDualDevServer` -- written and tested
+                 5/5 well before anything spawned it). Implied by
+                 --vite-args or --vite-dir. Spawns ONE child either way
+                 (a small Node wrapper, js/packages/vite/bin/dual-dev.mjs,
+                 running under this CLI's existing single-pid supervisor
+                 model), so `hydronium dev`'s own liveness/stop handling
+                 does not need to know two real servers are underneath it.
+    --vite-args "<flags>"
+                 Whitespace-split words appended after `vite` (no `dev`
+                 subcommand -- running `vite` bare IS its dev server, see
+                 js/examples/islands-tailwind's own `"dev": "vite"` npm
+                 script). Same whitespace-splitting limitation as
+                 --meteorite-args.
+    --vite-dir <path>
+                 Directory `vite dev` runs in (its cwd, so it finds the
+                 right vite.config/node_modules). Default ".".
+    --ballad     Run `ballad play partiture.lua` ONCE, to completion,
+                 BEFORE any dev server starts -- a build step, not one of
+                 runDualDevServer's supervised processes (that supervisor
+                 brings every process down the moment ANY one exits, which
+                 is right for two dev servers that are never supposed to
+                 exit and wrong for a build that is supposed to exit 0).
+                 A non-zero `ballad play` aborts `hydronium dev` before it
+                 spawns anything.
+    --ballad-args "<flags>"
+                 Whitespace-split words replacing "partiture.lua" after
+                 `ballad play`, e.g. --ballad-args "partiture.lua --jobs 4".
+                 Implies --ballad.
 
   ENVIRONMENT ESCAPE HATCHES (development/verification only, deliberately
   not flags -- the flag grammar above is the whole public surface):
@@ -119,6 +150,11 @@ io.stdout:setvbuf("no")
 local event_model = require("event_model")
 local dev_supervisor = require("dev_supervisor")
 local dev_log = require("dev_log")
+-- JSON encoder for the dual dev-server wrapper's `--specs` argument (see
+-- M.dual_dev_specs / M.dev's --vite branch below). Already a proven
+-- dependency of this same package -- dev_log.lua uses it to encode every
+-- line of .hydronium/dev.log -- so this adds no new package surface.
+local json = require("hydronium_router.history.state")
 
 local M = {}
 
@@ -134,9 +170,12 @@ M.USAGE = table.concat({
   "Usage:",
   "  hydronium dev [--verbose] [--show-ips] [--fullscreen]",
   "                [--meteorite-args \"<flags>\"]",
+  "                [--vite [--vite-args \"<flags>\"] [--vite-dir <path>]]",
+  "                [--ballad [--ballad-args \"<flags>\"]]",
   "",
   "Commands:",
-  "  dev            Run `meteorite dev` and render its dev-event stream.",
+  "  dev            Run `meteorite dev` (optionally with `vite dev`) and",
+  "                 render its dev-event stream.",
   "  lab            Compatibility alias for `hydronium-lab dev`.",
   "  lab init       Install the standalone Lab tool and host adapter.",
   "",
@@ -148,6 +187,16 @@ M.USAGE = table.concat({
   "                 Arguments for the spawned `meteorite dev`, e.g.",
   "                 \"--mode hybrid_dev --backend fast_http\". Required in",
   "                 practice: `meteorite dev` has no defaults of its own.",
+  "  --vite         Also start `vite dev`, merged into the same dev loop.",
+  "  --vite-args \"<flags>\"",
+  "                 Arguments for the spawned `vite` (implies --vite).",
+  "  --vite-dir <path>",
+  "                 Directory `vite dev` runs in. Default \".\".",
+  "  --ballad       Run `ballad play partiture.lua` once before any dev",
+  "                 server starts.",
+  "  --ballad-args \"<flags>\"",
+  "                 Arguments for that one-shot `ballad play` (implies",
+  "                 --ballad).",
   "  -h, --help     Print this help.",
   "  -v, --version  Print the version.",
   "",
@@ -209,6 +258,11 @@ function M.parse_args(argv)
     show_ips = false,
     fullscreen = false,
     meteorite_args = nil,
+    vite = false,
+    vite_args = nil,
+    vite_dir = nil,
+    ballad = false,
+    ballad_args = nil,
   }
   local index = 2
   while index <= #argv do
@@ -232,6 +286,41 @@ function M.parse_args(argv)
       index = index + 1
     elseif token:sub(1, 17) == "--meteorite-args=" then
       parsed.meteorite_args = token:sub(18)
+    elseif token == "--vite" then
+      parsed.vite = true
+    elseif token == "--vite-args" then
+      local value = argv[index + 1]
+      if value == nil then
+        return nil, "--vite-args requires a value (e.g. --vite-args \"--port 5174\")"
+      end
+      parsed.vite_args = value
+      parsed.vite = true
+      index = index + 1
+    elseif token:sub(1, 12) == "--vite-args=" then
+      parsed.vite_args = token:sub(13)
+      parsed.vite = true
+    elseif token == "--vite-dir" then
+      local value = argv[index + 1]
+      if value == nil then
+        return nil, "--vite-dir requires a value"
+      end
+      parsed.vite_dir = value
+      index = index + 1
+    elseif token:sub(1, 11) == "--vite-dir=" then
+      parsed.vite_dir = token:sub(12)
+    elseif token == "--ballad" then
+      parsed.ballad = true
+    elseif token == "--ballad-args" then
+      local value = argv[index + 1]
+      if value == nil then
+        return nil, "--ballad-args requires a value (e.g. --ballad-args \"partiture.lua --jobs 4\")"
+      end
+      parsed.ballad_args = value
+      parsed.ballad = true
+      index = index + 1
+    elseif token:sub(1, 14) == "--ballad-args=" then
+      parsed.ballad_args = token:sub(15)
+      parsed.ballad = true
     elseif token == "-h" or token == "--help" then
       return { command = "help" }
     else
@@ -269,6 +358,65 @@ function M.meteorite_argv(parsed, env_args)
   append(parsed and parsed.meteorite_args)
   append(env_args)
   return argv
+end
+
+--- Words for the spawned `vite` dev server. No leading "dev" subcommand:
+--- running `vite` bare IS its dev server (js/examples/islands-tailwind's
+--- own `"dev": "vite"` npm script), matching how M.meteorite_argv already
+--- spawns `meteorite dev` as two literal words rather than one.
+--- @param parsed table From M.parse_args.
+--- @return string[]
+function M.vite_argv(parsed)
+  local argv = {}
+  if parsed and type(parsed.vite_args) == "string" then
+    for word in parsed.vite_args:gmatch("%S+") do
+      argv[#argv + 1] = word
+    end
+  end
+  return argv
+end
+
+--- The `runDualDevServer` process-spec list (Meteorite, then Vite) for
+--- js/packages/vite/bin/dual-dev.mjs. Pure data -- no I/O, no repo_root,
+--- so a spec test can assert its shape without a real filesystem.
+--- @param meteorite_argv string[] From M.meteorite_argv (argv[1] is the
+---   program, e.g. "meteorite"; the rest are its own arguments).
+--- @param parsed table From M.parse_args.
+--- @return table[]
+function M.dual_dev_specs(meteorite_argv, parsed)
+  local meteorite_rest = {}
+  for i = 2, #meteorite_argv do
+    meteorite_rest[#meteorite_rest + 1] = meteorite_argv[i]
+  end
+  local vite_words = M.vite_argv(parsed)
+  local vite_args = { "vite" }
+  for _, word in ipairs(vite_words) do
+    vite_args[#vite_args + 1] = word
+  end
+  return {
+    { name = "meteorite", command = meteorite_argv[1], args = meteorite_rest },
+    -- `npx`, not a bare `vite`: this must work from a project that
+    -- declared vite as a local devDependency (js/examples/islands-tailwind
+    -- does) without requiring it on PATH globally. npx resolves
+    -- node_modules/.bin relative to `cwd`, which is `vite_dir` below.
+    { name = "vite", command = "npx", args = vite_args, cwd = (parsed and parsed.vite_dir) or "." },
+  }
+end
+
+--- The full argv for the ONE child `hydronium dev --vite` spawns: a small
+--- Node wrapper (js/packages/vite/bin/dual-dev.mjs) that runs Meteorite
+--- and Vite together via runDualDevServer. Kept separate from
+--- M.dual_dev_specs so the JSON encoding (the part that actually needs
+--- `json`, injected rather than hardcoded to `require`d module so a spec
+--- can pass a fake) is the only impure step.
+--- @param repo_root string This file's own repo root (see top-of-file `this_dir`/`repo_root`).
+--- @param meteorite_argv string[]
+--- @param parsed table
+--- @param encode fun(value: any): string JSON encoder, e.g. `json.encode`.
+--- @return string[]
+function M.dual_dev_argv(repo_root, meteorite_argv, parsed, encode)
+  local script = repo_root .. "/js/packages/vite/bin/dual-dev.mjs"
+  return { "node", script, "--specs", encode(M.dual_dev_specs(meteorite_argv, parsed)) }
 end
 
 --- Compatibility command only. Lab discovery and host planning live in the
@@ -355,8 +503,42 @@ function M.dev(parsed)
   -- flags and nothing has to be set in the environment.
   local argv = M.meteorite_argv(parsed, os.getenv("HYDRONIUM_METEORITE_ARGS"))
 
+  -- Optional one-shot build step, run to completion BEFORE anything else
+  -- spawns -- exactly what a person would type by hand first. Deliberately
+  -- NOT one of runDualDevServer's supervised processes below: that
+  -- supervisor brings every process down the instant ANY one exits, which
+  -- is correct for two dev servers that must never exit and wrong for a
+  -- build that is SUPPOSED to exit 0.
+  local ballad_ok, ballad_cmd
+  if parsed.ballad then
+    local ballad_argv = { "ballad", "play" }
+    for word in (parsed.ballad_args or "partiture.lua"):gmatch("%S+") do
+      ballad_argv[#ballad_argv + 1] = word
+    end
+    local quoted = {}
+    for i, word in ipairs(ballad_argv) do
+      quoted[i] = dev_supervisor.shell_quote(word)
+    end
+    ballad_cmd = table.concat(quoted, " ")
+    ballad_ok = dev_supervisor.exec_ok(os.execute, ballad_cmd)
+    if not ballad_ok then
+      io.stderr:write("hydronium dev: `" .. ballad_cmd .. "` failed; not starting the dev servers\n")
+      return 1
+    end
+  end
+
+  -- `--vite` spawns ONE child either way: a small Node wrapper
+  -- (js/packages/vite/bin/dual-dev.mjs) that runs `runDualDevServer` over
+  -- Meteorite + Vite together, so everything below this point -- liveness
+  -- polling, SIGTERM/SIGKILL stop, the events.log tailer -- is unchanged
+  -- and does not need to know two real servers are underneath it.
+  local supervisor_argv = argv
+  if parsed.vite then
+    supervisor_argv = M.dual_dev_argv(repo_root, argv, parsed, json.encode)
+  end
+
   local supervisor = dev_supervisor.new_supervisor({
-    argv = argv,
+    argv = supervisor_argv,
     events_path = events_path,
     spawn = should_spawn,
   })
@@ -411,6 +593,8 @@ function M.dev(parsed)
     events_path = events_path,
     child_pid = pid,
     spawned = should_spawn,
+    vite = parsed.vite,
+    ballad = parsed.ballad,
   }))
 
   local ctx = {

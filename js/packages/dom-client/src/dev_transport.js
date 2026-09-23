@@ -50,11 +50,37 @@
  */
 export function createDevTransport(url) {
   const pollDelayMs = 500;
+  // RELOAD-STORM FLOOR. A `reload` reconnects at delay 0 -- correct for a
+  // real edit, where the very next poll's fingerprint matches what the
+  // server just reported and the server answers `hello`+`bye`, dropping
+  // back to the slow `pollDelayMs` cadence. That assumes the watched set
+  // CONVERGES. It does not if something keeps rewriting a watched file on
+  // its own -- a generated artifact caught in the watch set (`.meteorite/`
+  // output, other build products, `.hydronium/vite-dev.json`) is the prime
+  // suspect -- in which case every poll's fingerprint differs from the
+  // last again, `reload` fires every time, and delay-0 reconnects become a
+  // hot loop: continuous connections, forever (see the module doc above
+  // for why polling is client-paced at all). A real edit is always ONE
+  // `reload` followed by convergence, never a long unbroken run of them,
+  // so a run past this threshold is the signal that something is not
+  // converging rather than that edits are arriving unusually fast.
+  const RELOAD_STORM_THRESHOLD = 3;
+  // Capped exponential backoff once a storm is detected, so a
+  // non-converging fingerprint degrades to slow polling instead of
+  // spinning -- never raised for everyone, only after sustained
+  // back-to-back reloads with no intervening idle (`bye`) poll.
+  const MAX_BACKOFF_MS = 8000;
   let closed = false;
   let listeners = [];
   let since = null;
   let source = null;
   let reconnectTimer = null;
+  // Consecutive `reload` events with no idle (`hello`/`bye`) poll between
+  // them. Reset on every `bye` (server saw nothing new) and on every fresh
+  // `hello` (a brand new connection's first frame) -- both mean the
+  // watched set was observed to be quiet at least once, so whatever run
+  // preceded it is over, storm or not.
+  let consecutiveReloads = 0;
   // Set by the `changed` frame that precedes each `reload`, consumed by
   // that `reload` and immediately cleared -- SSE frames are delivered in
   // order over one connection, so the pairing is safe, and clearing
@@ -115,6 +141,7 @@ export function createDevTransport(url) {
     source = new EventSource(fullUrl);
     source.addEventListener("hello", (ev) => {
       since = ev.data;
+      consecutiveReloads = 0;
       notify("hello", ev.data);
     });
     source.addEventListener("changed", (ev) => {
@@ -127,10 +154,21 @@ export function createDevTransport(url) {
       const paths = pendingPaths;
       pendingPaths = [];
       notify("reload", ev.data, paths);
-      reconnect();
+      consecutiveReloads += 1;
+      if (consecutiveReloads <= RELOAD_STORM_THRESHOLD) {
+        // A real edit: still instant, exactly as before this fix.
+        reconnect();
+      } else {
+        // consecutiveReloads has already run past the threshold at least
+        // once (RELOAD_STORM_THRESHOLD + 1), so this exponent starts at 0.
+        const steps = consecutiveReloads - RELOAD_STORM_THRESHOLD - 1;
+        const delay = Math.min(pollDelayMs * 2 ** steps, MAX_BACKOFF_MS);
+        reconnect(delay);
+      }
     });
     source.addEventListener("bye", (ev) => {
       since = ev.data;
+      consecutiveReloads = 0;
       reconnect(pollDelayMs);
     });
   }
