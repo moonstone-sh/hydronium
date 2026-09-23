@@ -23,6 +23,15 @@
   app is expected to serve the source tree directly. Same call site,
   no `if dev` branch needed in application code -- exactly the property
   that makes this usable identically in development and production.
+
+  BROWSER/SPA: `configure()` is a SERVER-SIDE entry point -- it calls
+  `loadfile`, and there is no filesystem inside wasmoon. A client-side
+  (SPA) app has to hand over an already-loaded table instead, which is
+  what `configure_table` is for; `mount()`'s `assetManifestUrl` option
+  fetches the build's own `hydronium-manifest.lua`, `load()`s it inside
+  the VM and calls exactly that. Without it a static SPA silently falls
+  back to the unhashed dev URL and every asset 404s -- with no SSR
+  fallback, that is a broken page and nothing in any log.
 --]]
 
 local M = {}
@@ -40,6 +49,15 @@ function M.configure(manifest_path)
   end
   local ok, result = pcall(chunk)
   manifest = (ok and type(result) == "table") and result or false
+end
+
+--- Configures from an already-loaded manifest table -- the browser path,
+--- where `configure()`'s `loadfile` has no filesystem to read (see the
+--- module header). Anything that is not a table is treated exactly like a
+--- missing manifest file: the dev fallback, not an error.
+--- @param manifest_table table A loaded `hydronium-manifest.lua` result.
+function M.configure_table(manifest_table)
+  manifest = type(manifest_table) == "table" and manifest_table or false
 end
 
 --- Real, explicit reset for tests/tooling -- not part of the normal app

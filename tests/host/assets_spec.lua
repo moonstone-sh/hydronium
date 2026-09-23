@@ -55,6 +55,33 @@ return { version = 1, assets = {}, styles = {} }
     assert.equal(assets.url("assets/logo.png"), "/assets/logo.png")
   end)
 
+  -- configure_table() is the BROWSER entry point: wasmoon has no filesystem,
+  -- so configure()'s loadfile() cannot run client-side. mount()'s
+  -- `assetManifestUrl` fetches the manifest, load()s it in the VM and calls
+  -- this. Without it a static SPA silently serves the dev fallback URL for
+  -- every asset -- a 404 with no SSR fallback behind it.
+  it("configure_table() resolves an already-loaded manifest -- the browser path", function()
+    assets.reset()
+    -- Loaded from source, not a hand-built literal: this is exactly what
+    -- mount() does to the real hydronium-manifest.lua inside the VM.
+    -- NOTE: `assert` is the runner's assertion table here, not Lua's builtin.
+    local chunk, err = load([[
+return { version = 1, assets = { ["logo.svg"] = { url = "/assets/logo.deadbeef.svg" } }, styles = {} }
+]])
+    if not chunk then error("spec fixture: " .. tostring(err), 0) end
+    local manifest = chunk()
+    assets.configure_table(manifest)
+    assert.equal(assets.url("logo.svg"), "/assets/logo.deadbeef.svg")
+    assert.equal(assets.url("other.svg"), "/other.svg")
+  end)
+
+  it("configure_table() with a non-table degrades to the dev fallback, like a missing file", function()
+    assets.configure_table(nil)
+    assert.equal(assets.url("logo.svg"), "/logo.svg")
+    assets.configure_table("not a manifest")
+    assert.equal(assets.url("logo.svg"), "/logo.svg")
+  end)
+
   it("reset() clears a previously configured manifest", function()
     local path = write_temp_manifest([[
 return { version = 1, assets = { ["x.png"] = { url = "/x.HASH.png" } }, styles = {} }
