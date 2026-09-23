@@ -17,14 +17,17 @@ function M.new(opts)
     last_revision = nil,
   }
 
-  function self:queue(module_id, source, revision)
+  function self:queue(module_id, source, revision, effects)
     if type(module_id) ~= "string" or type(source) ~= "string" then
       error("hydronium.core.hmr_host: queue requires string module_id and source", 2)
     end
     if revision ~= nil and type(revision) ~= "string" then
       error("hydronium.core.hmr_host: revision must be a string when provided", 2)
     end
-    self.pending[module_id] = { source = source, revision = revision }
+    if effects ~= nil and effects ~= "safe" and effects ~= "managed" and effects ~= "restart" then
+      error("hydronium.core.hmr_host: effects must be safe, managed, or restart", 2)
+    end
+    self.pending[module_id] = { source = source, revision = revision, effects = effects }
   end
 
   function self:queue_batch(sources, opts)
@@ -34,7 +37,8 @@ function M.new(opts)
     opts = opts or {}
     for module_id, source in pairs(sources) do
       local revision = opts.revisions and opts.revisions[module_id] or opts.revision
-      self:queue(module_id, source, revision)
+      local effects = opts.effects and opts.effects[module_id]
+      self:queue(module_id, source, revision, effects)
     end
   end
 
@@ -49,15 +53,17 @@ function M.new(opts)
       return { outcome = "skipped", reason = "duplicate_revision", revision = revision }
     end
 
-    local sources, revisions = {}, {}
+    local sources, revisions, effects = {}, {}, {}
     for module_id, update in pairs(pending) do
       sources[module_id] = update.source
       revisions[module_id] = update.revision
+      effects[module_id] = update.effects
     end
     local result = hmr.apply_batch(sources, {
       root = self.root,
       revision = revision,
       revisions = revisions,
+      effects = effects,
     })
     if result.outcome ~= "rejected" and result.outcome ~= "restart" then
       self.last_revision = revision

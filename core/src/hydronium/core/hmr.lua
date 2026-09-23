@@ -50,7 +50,7 @@ end
 --- rolled back and are intentionally reported only as a best-effort boundary.
 ---
 --- @param sources { [string]: string }
---- @param opts table? { root: any?, revision: string?, revisions: table? }
+--- @param opts table? { root: any?, revision: string?, revisions: table?, effects: table? }
 --- @return table outcome hot|installed|remount|restart|rejected
 function M.apply_batch(sources, opts)
   opts = opts or {}
@@ -65,6 +65,13 @@ function M.apply_batch(sources, opts)
   table.sort(changed)
   if #changed == 0 then
     return summarize("installed", {}, { modules = {} })
+  end
+
+  -- Promote only manifest-declared modules before planning. The graph still
+  -- rejects any observed importer outside this set, so no replacement is
+  -- evaluated across an unproven side-effect boundary.
+  for module_id, effects in pairs(opts.effects or {}) do
+    module_graph.manage(module_id, { effects = effects })
   end
 
   local plan = module_graph.plan(changed, opts)
@@ -91,7 +98,7 @@ function M.apply_batch(sources, opts)
     for module_id in pairs(sources) do
       local revision = revisions[module_id]
       if revision == nil then revision = opts.revision end
-      module_graph.manage(module_id, { revision = revision })
+      module_graph.manage(module_id, { revision = revision, effects = (opts.effects or {})[module_id] })
     end
     return summarize("installed", {}, { modules = plan.modules, revision = opts.revision })
   end
@@ -112,6 +119,7 @@ function M.apply_batch(sources, opts)
     module_graph.manage(module_id, {
       coverage = current and current.coverage or "managed",
       revision = revision,
+      effects = (opts.effects or {})[module_id],
     })
   end
   return summarize(plan.outcome, results, {

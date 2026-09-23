@@ -22,7 +22,7 @@ describe("runtime module graph observations", function()
       return { value = 41 }
     end
 
-    graph.manage(parent, { revision = "parent-r1" })
+    graph.manage(parent, { revision = "parent-r1", effects = "safe" })
     graph.enable()
     assert.equal(require(parent).value, 42)
     assert.equal(require(parent).value, 42, "the second require is an ordinary cache hit")
@@ -50,6 +50,8 @@ describe("runtime module graph observations", function()
     package.loaded[util], package.loaded[app] = nil, nil
     hmr.install(util, "return { label = 'old' }")
     hmr.install(app, "local u = require('" .. util .. "'); return function() return u.label end")
+    graph.manage(util, { effects = "safe" })
+    graph.manage(app, { effects = "safe" })
     family_loader.enable()
     local App = require(app)
     -- lookup is normally reached by ComponentInstance; this is the smallest
@@ -84,7 +86,7 @@ describe("runtime module graph observations", function()
 
   it("returns explicit installed, remount, and restart outcomes", function()
     graph.reset()
-    graph.manage("scratch.unloaded")
+    graph.manage("scratch.unloaded", { effects = "safe" })
     assert.equal(graph.plan({ "scratch.unloaded" }).outcome, "installed")
     package.loaded["scratch.unloaded"] = true
     assert.equal(graph.plan({ "scratch.unloaded" }, { root = "app-root" }).outcome, "remount")
@@ -95,7 +97,7 @@ describe("runtime module graph observations", function()
 
   it("offers hosts a frame-safe queued batch boundary", function()
     local host = hmr_host.new()
-    host:queue("scratch.queued", "return { value = 7 }", "module-r1")
+    host:queue("scratch.queued", "return { value = 7 }", "module-r1", "safe")
     local result = host:flush("batch-r1")
     assert.equal(result.outcome, "installed")
     assert.equal(result.revision, "batch-r1")
@@ -103,12 +105,31 @@ describe("runtime module graph observations", function()
     assert.equal(require("scratch.queued").value, 7)
     assert.equal(host:flush(), nil)
 
-    host:queue("scratch.queued", "return { value = 8 }", "module-r1")
+    host:queue("scratch.queued", "return { value = 8 }", "module-r1", "safe")
     local duplicate = host:flush("batch-r1")
     assert.equal(duplicate.outcome, "skipped")
     assert.equal(require("scratch.queued").value, 7, "a replayed revision must not be applied twice")
     package.preload["scratch.queued"] = nil
     package.loaded["scratch.queued"] = nil
     graph.reset()
+  end)
+
+  it("fails closed when any affected importer lacks an effect-safety declaration", function()
+    local util, app = "scratch.effect_boundary.util", "scratch.effect_boundary.app"
+    graph.reset(); family_loader.reset()
+    package.loaded[util], package.loaded[app] = nil, nil
+    hmr.install(util, "return { value = 1 }")
+    hmr.install(app, "local u = require('" .. util .. "'); return function() return u.value end")
+    graph.manage(util, { effects = "safe" })
+    family_loader.enable()
+    require(app)
+
+    local plan = graph.plan({ util })
+    assert.equal(plan.outcome, "restart")
+    assert.equal(plan.reason, "effect_boundary:" .. app)
+
+    package.preload[util], package.preload[app] = nil, nil
+    package.loaded[util], package.loaded[app] = nil, nil
+    graph.reset(); family_loader.reset()
   end)
 end)
