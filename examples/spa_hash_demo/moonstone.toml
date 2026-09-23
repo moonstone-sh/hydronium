@@ -1,0 +1,44 @@
+manifest_version = 2
+
+[package]
+name = "hydronium-spa-hash-demo"
+version = "0.1.0"
+kind = "script"
+description = "M2/M3 proof for docs/HYDRONIUM_SPA_MODE_PLAN.md: a real hydronium_router client bundle, and a real two-route hash-routed static SPA with no Meteorite process at all."
+
+[interpreter]
+name = "luajit"
+version = "2.1.0"
+abi = "5.1"
+
+[scripts]
+"build" = "moon exec -- ballad play partiture.lua"
+
+[[dependencies]]
+name = "moonstone/ballad"
+constraint = "^0.3.0"
+role = "tool"
+
+[[dependencies]]
+name = "hydronium/ballad"
+constraint = "path:../../build"
+registry = "path"
+role = "runtime"
+
+[[dependencies]]
+name = "hydronium/core"
+constraint = "path:../../core"
+registry = "path"
+role = "runtime"
+
+[[dependencies]]
+name = "hydronium/dom"
+constraint = "path:../../dom"
+registry = "path"
+role = "runtime"
+
+[[dependencies]]
+name = "hydronium/router"
+constraint = "path:../../router"
+registry = "path"
+role = "runtime"
