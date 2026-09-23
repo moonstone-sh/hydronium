@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+set -eu
+
+entry=$0
+while [ -L "$entry" ]; do
+  entry_dir=$(CDPATH= cd -- "$(dirname -- "$entry")" && pwd)
+  target=$(readlink "$entry")
+  case "$target" in
+    /*) entry=$target ;;
+    *) entry=$entry_dir/$target ;;
+  esac
+done
+root=$(CDPATH= cd -- "$(dirname -- "$entry")/.." && pwd)
+exec "${LUA_BIN:-luajit}" "$root/src/main.lua" "$@"
