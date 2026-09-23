@@ -117,6 +117,56 @@ describe("hydronium_dom.dev.watch -- per-file change identity", function()
       os.remove(path)
     end)
   end)
+
+  describe("read_snapshot", function()
+    it("returns a source value only when its watched revision remains stable", function()
+      local old_fingerprint = watch.fingerprint
+      local calls = 0
+      watch.fingerprint = function()
+        calls = calls + 1
+        return "revision-a"
+      end
+      local value, revision, reason = watch.read_snapshot({ "views/App.luax" }, "revision-a", function()
+        return "compiled source"
+      end)
+      watch.fingerprint = old_fingerprint
+      assert.equal(value, "compiled source")
+      assert.equal(revision, "revision-a")
+      assert.falsy(reason)
+      assert.equal(calls, 2)
+    end)
+
+    it("rejects a request that names an obsolete event revision before reading", function()
+      local old_fingerprint = watch.fingerprint
+      watch.fingerprint = function() return "revision-b" end
+      local read = false
+      local value, revision, reason = watch.read_snapshot({ "views/App.luax" }, "revision-a", function()
+        read = true
+        return "must not be read"
+      end)
+      watch.fingerprint = old_fingerprint
+      assert.falsy(value)
+      assert.equal(revision, "revision-b")
+      assert.equal(reason, "stale")
+      assert.falsy(read)
+    end)
+
+    it("rejects a source read when a watched file changes during it", function()
+      local old_fingerprint = watch.fingerprint
+      local calls = 0
+      watch.fingerprint = function()
+        calls = calls + 1
+        return calls == 1 and "revision-a" or "revision-b"
+      end
+      local value, revision, reason = watch.read_snapshot({ "views/App.luax" }, "revision-a", function()
+        return "mixed source"
+      end)
+      watch.fingerprint = old_fingerprint
+      assert.falsy(value)
+      assert.equal(revision, "revision-b")
+      assert.equal(reason, "stale")
+    end)
+  end)
 end)
 
 describe("hydronium_dom.dev.watch -- abandoned connections", function()
