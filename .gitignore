@@ -27,6 +27,10 @@ nvim.log
 node_modules/
 js/**/.vite/
 
-# Written by @hydronium/vite while its dev server is running.
-.hydronium/vite-dev.json
-js/**/.hydronium/
+# Host-private generated metadata: @hydronium/vite's running dev-server
+# descriptor (vite-dev.json, carries a bound port), Ballad's topology
+# source-inventory artifacts, and `hydronium lab init`'s generated host.
+# All are produced by a tool from checked-in declarations -- see
+# PENDING_HMR.md ("Private generated inventory": the public site manifest
+# is what ships, this tree never is).
+.hydronium/
