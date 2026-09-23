@@ -1,1 +1,1 @@
-return require("hydronium_luax").loader.load("views/Home.luax")
+return require("hydronium_luax").loader.load("src/views/Home.luax")

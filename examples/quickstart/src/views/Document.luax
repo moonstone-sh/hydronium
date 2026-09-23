@@ -31,19 +31,25 @@ local function Document(props)
           const routerState = pageStateText
             ? JSON.stringify(JSON.parse(pageStateText).hydronium_router)
             : undefined;
+          const sourceResponse = await fetch("/__hydronium/dev/manifest.json", { cache: "no-store" });
+          if (!sourceResponse.ok) throw new Error("Hydronium source manifest unavailable");
+          const sourceManifest = await sourceResponse.json();
+          const appModule = sourceManifest.modules[sourceManifest.entry];
+          if (!appModule) throw new Error("Hydronium source manifest has no browser entry");
+          const moduleUrls = Object.fromEntries(
+            Object.entries(sourceManifest.modules).map(([id, record]) => [id, record.url]),
+          );
+          const moduleEffects = Object.fromEntries(
+            Object.entries(sourceManifest.modules).map(([id, record]) => [id, record.effects]),
+          );
 
-          const { lua } = await mount({
+          const { lua, remount } = await mount({
             hydroniumBaseUrl: "/hydronium-src",
             manifestUrl: "/__hydronium/client_manifest.json",
-            appModuleId: "views.App",
-            appModuleUrl: "/__hydronium/dev/module/views.App",
-            moduleUrls: {
-              "views.Counter": "/__hydronium/dev/module/views.Counter",
-              "views.Home": "/__hydronium/dev/module/views.Home",
-              "views.About": "/__hydronium/dev/module/views.About",
-              "views.Site": "/__hydronium/dev/module/views.Site",
-              "views.Actions": "/__hydronium/dev/module/views.Actions",
-            },
+            appModuleId: sourceManifest.entry,
+            appModuleUrl: appModule.url,
+            moduleUrls,
+            moduleEffects,
             container: "#app",
             props: { title: "Hydronium + Meteorite", initial: 0 },
             hydrate: true,
@@ -58,14 +64,9 @@ local function Document(props)
 
           installHmr({
             lua,
+            remount,
             updates: {
-              "views/App.luax": { action: "hot", module: "views.App" },
-              "views/Counter.luax": { action: "hot", module: "views.Counter" },
-              "views/Home.luax": { action: "hot", module: "views.Home" },
-              "views/About.luax": { action: "hot", module: "views.About" },
-              "views/Site.lua": { action: "reload" },
-              "views/Actions.lua": { action: "reload" },
-              "views/Document.luax": { action: "reload" },
+              ...sourceManifest.updates,
               "public/style.css": { action: "style", href: "/public/style.css" },
             },
           });

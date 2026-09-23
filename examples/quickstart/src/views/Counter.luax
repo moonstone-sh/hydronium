@@ -43,7 +43,7 @@ local function Counter(props, scope)
     return (
       <d.div class="counter">
       <d.button id="counter-button" class="counter-button" onClick={function() setCount(count() + 2) end}>{"Count: "}{count}</d.button>
-        <d.p class="hint">Edit this{" "}<d.code>views/Counter.luax</d.code>{" "}and save to test HMR</d.p>
+        <d.p class="hint">Edit this{" "}<d.code>src/views/Counter.luax</d.code>{" "}and save to test HMR</d.p>
       </d.div>
     )
   end

@@ -3,4 +3,4 @@
 -- over a module local declared in src/main.lua.
 local loader = require("hydronium_luax").loader
 
-return loader.load("views/Document.luax")
+return loader.load("src/views/Document.luax")

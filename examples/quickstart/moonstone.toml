@@ -12,7 +12,7 @@ version = "2.1.0"
 abi = "5.1"
 
 [scripts]
-build = "moon exec --dev meteorite build --mode release-hybrid --backend fast_http"
+build = "moon exec --dev -- meteorite build --mode release-hybrid --backend fast_http"
 dev = "sh dev.sh"
 
 [[dependencies]]

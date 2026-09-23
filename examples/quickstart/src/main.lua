@@ -5,6 +5,11 @@ local app = meteorite.app({
 	name = "hydronium-quickstart",
 	host = "0.0.0.0",
 	port = 8080,
+	dev_watch = {
+		graph = { "src", "zig", "public", "build.zig", "moonstone.toml" },
+		passive = { "src/views/App.luax", "src/views/Counter.luax", "src/views/Home.luax", "src/views/About.luax" },
+		exclude = { "src/views/App.luax", "src/views/Counter.luax", "src/views/Home.luax", "src/views/About.luax" },
+	},
 })
 
 meteorite.site(app, {
@@ -148,6 +153,27 @@ app:get("/__hydronium/client_manifest.json", function(c)
 	return c:text(200, content)
 end)
 
+-- Prefer Ballad's generated private authority when a build produced one;
+-- the checked-in declaration keeps source-only development self-contained.
+local function dev_registry()
+	local source_registry = require("hydronium_dom.dev.source_registry")
+	local inventory_path = ".hydronium/source-inventory.lua"
+	local inventory = io.open(inventory_path, "r")
+	if inventory then
+		inventory:close()
+		return source_registry.load_inventory(inventory_path)
+	end
+	return source_registry.load("hydronium.sources.lua")
+end
+
+-- Public metadata for the project's own browser modules. Unlike the
+-- framework manifest above, it is derived from the project topology and
+-- contains no source paths or arbitrary filesystem lookup capability.
+app:get("/__hydronium/dev/manifest.json", function(c)
+	local registry = dev_registry()
+	return c:json(registry:browser_manifest())
+end)
+
 -- Serves ONE of this project's own view modules, by require() id, as
 -- compiled Lua source. `views.Counter` -> `views/Counter.luax`, compiled
 -- on demand by hydronium_luax's serve-time loader (content-cached, no
@@ -159,43 +185,41 @@ end)
 -- hydronium_dom/client/hmr.js re-fetches the same URL on each change. One
 -- source of truth, so the two can never drift apart.
 --
--- SCOPE, deliberately: `views.*` only. This is not the general
--- `/__hydronium/dev/module/:id` route with a `loader.install()` package
--- searcher behind it that the roadmap's M3 describes -- it resolves no
--- framework modules (those still come from the manifest + /hydronium-src)
--- and installs no searcher. Serving arbitrary dotted ids from the project
--- root would also hand out src/main.lua and anything else on disk, which
--- a dev convenience has no business doing.
+-- The registry is the sole authority for ID -> source mapping. A request can
+-- only name a declared client/shared record; it never becomes a path lookup.
 app:get("/__hydronium/dev/module/:id", function(c)
 	local id = c:param("id") or ""
-	if not id:match("^views%.[%w_]+$") then
-		return c:text(400, "invalid module id (expected views.<Name>)")
-	end
+	local registry = dev_registry()
+	local record = registry:module(id)
+	if not record or (record.target ~= "client" and record.target ~= "shared") then return c:text(404, "module not found") end
 
-	local rel = id:gsub("%.", "/")
-	local luax_path = rel .. ".luax"
-	local probe = io.open(luax_path, "r")
-	if probe then
-		probe:close()
-		local loader = require("hydronium_luax").loader
-		local ok, code = pcall(loader.source, luax_path)
-		if not ok then
-			-- 500 with the real compiler message in the body: hmr.js treats a
-			-- non-200 as "hot swap failed" and falls back to a full reload,
-			-- and the message is then readable in the network panel rather
-			-- than swallowed. (A real error overlay is roadmap M5.)
-			return c:text(500, "-- hydronium dev: compile failed for " .. id .. "\n-- " .. tostring(code))
+	-- A hot batch names the whole watch fingerprint it observed. Read the
+	-- module between two checks of that revision; if any watched file moves,
+	-- reject rather than handing the browser a mixed source set.
+	local watch = require("hydronium_dom.dev.watch")
+	local source, revision, reason, err = watch.read_snapshot(registry:watch_files({ "public/style.css" }), c:query("revision"), function()
+		if record.transform == "luax" then
+			local ok, code = pcall(require("hydronium_luax").loader.source, record.path)
+			if not ok then error("compile failed for " .. id .. ": " .. tostring(code), 0) end
+			return code
 		end
-		return c:text(200, code)
+		local f = assert(io.open(record.path, "r"), "not found")
+		local content = f:read("*a")
+		f:close()
+		return content
+	end)
+	if reason == "stale" then
+		return c:text(409, "HMR source snapshot is stale", { headers = {
+			["X-Hydronium-Revision"] = revision or "",
+			["Cache-Control"] = "no-store",
+		} })
+	elseif reason == "read_failed" then
+		return c:text(500, "-- hydronium dev: " .. tostring(err), { headers = { ["Cache-Control"] = "no-store" } })
 	end
-
-	local f = io.open(rel .. ".lua", "r")
-	if not f then
-		return c:text(404, "not found")
-	end
-	local content = f:read("*a")
-	f:close()
-	return c:text(200, content)
+	return c:text(200, source, { headers = {
+		["X-Hydronium-Revision"] = revision,
+		["Cache-Control"] = "no-store",
+	} })
 end)
 
 local pages = require("views.Site")
@@ -228,16 +252,8 @@ end)
 -- page HMR is trying to preserve.
 app:get("/__hydronium/watch", function(c)
 	local watch = require("hydronium_dom.dev.watch")
-	watch.serve_sse(c, {
-		"views/App.luax",
-		"views/Counter.luax",
-		"views/Home.luax",
-		"views/About.luax",
-		"views/Site.lua",
-		"views/Actions.lua",
-		"views/Document.luax",
-		"public/style.css",
-	})
+	local registry = dev_registry()
+	watch.serve_sse(c, registry:watch_files({ "public/style.css" }))
 end)
 
 router_adapter.validate_final(app, pages)
