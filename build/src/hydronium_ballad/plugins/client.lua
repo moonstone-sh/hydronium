@@ -17,6 +17,22 @@
   choice below (Form B chunk encoding vs. inline closures, the two
   amalgamation hazards, why `resolve` is cacheable=false, etc.) -- this
   file's comments summarize, not repeat, that design doc.
+
+  Require discipline (new): `resolve()`'s `visit()` walk below was
+  ALREADY real module-level tree-shaking by construction -- it only
+  emits modules reachable from `entries`, so anything unreached is
+  already excluded from the chunk. What was missing was a guarantee that
+  walk is complete: a `require()` call with a computed argument, or code
+  that reassigns `require`/`package.loaded`/`package.preload`, can make
+  the walk silently miss a real edge, producing an under-bundled chunk
+  that only fails at runtime in the browser. `scan_require_violations`
+  and `REQUIRE_DISCIPLINE_ALLOWLIST` below turn that into a named build
+  failure instead, for every module except a small, audited set of real
+  framework internals that legitimately do this. This is orthogonal to
+  `minify`'s OWN, separate, permanent "no tree shaking" scope limit
+  above -- `minify` still never removes code from within a module;
+  `resolve` already decides which whole MODULES are included at all, and
+  this addition only makes that existing decision provably sound.
 --]]
 
 local graph = require("ballad.graph")
@@ -49,7 +65,7 @@ end
 --- hydronium's plain-.lua framework modules in the same module graph,
 --- and only the former ever passes through plugins.luax.compile.
 --- @param asset Asset
---- @return { module_id: string, origin: string, target: string, content: string, sourcemap: string|nil }|nil
+--- @return { module_id: string, origin: string, target: string, transform: string|nil, update: string|nil, content: string, sourcemap: string|nil }|nil
 local function normalize_module_asset(asset)
   local vpath = asset.virtual_path
   if not vpath or not vpath:match("%.lua$") then
@@ -67,6 +83,8 @@ local function normalize_module_asset(asset)
     module_id = (h and h.module_id) or module_id_from_virtual_path(vpath),
     origin = (h and h.origin) or asset.source_path or vpath,
     target = (h and h.target) or "shared",
+    transform = h and h.transform or "lua",
+    update = h and h.update or "restart",
     content = content,
     sourcemap = h and h.sourcemap or nil,
   }
@@ -101,6 +119,170 @@ local function scan_requires(source)
   return order
 end
 
+--- `resolve()`'s `visit()` walk below is already, by construction, real
+--- module-level tree-shaking: only modules reachable from `entries` via
+--- `scan_requires()` end up in `order`, and only `order` is emitted into
+--- the returned AssetSet. That is sound only as long as every require()
+--- call site reachable client code can actually execute is a plain
+--- string literal, and `require`/`package.loaded`/`package.preload` are
+--- never reassigned outside a small, audited set of framework internals.
+--- A dynamic require silently produces an under-bundled chunk that fails
+--- at runtime in the browser with "module not found" -- not a build
+--- failure -- exactly the class of surprise this file's own `deny_getinfo`
+--- check and `assert_chunk_loads`/`minify`'s per-module `load()` gate all
+--- exist to convert into a named build error instead.
+---
+--- This allowlist is the complete, real set of files that legitimately
+--- do this today (verified by grepping core/src, dom/src, luax/src,
+--- router/src, ink/src, lab/src, ink-lab/src for `_G.require =`,
+--- `package.loaded[...] =`, and `package.preload[...] =` -- zero hits
+--- outside these three):
+local REQUIRE_DISCIPLINE_ALLOWLIST = {
+  -- Wraps `_G.require` to observe first-load instantiation for HMR
+  -- family discovery. core/src/hydronium/core/module_graph.lua.
+  ["hydronium.core.module_graph"] = true,
+  -- Writes `package.preload[module_id]` to install a hot-swapped
+  -- module's freshly compiled source. core/src/hydronium/core/hmr.lua.
+  ["hydronium.core.hmr"] = true,
+  -- Clears `package.loaded[module_id]` to force a real re-require on hot
+  -- swap. core/src/hydronium/core/family_loader.lua.
+  ["hydronium.core.family_loader"] = true,
+}
+
+local function is_trivia_tok(tok)
+  return tok and (tok.type == "WHITESPACE" or tok.type == "COMMENT")
+end
+
+--- Real lexer-based scan (not regex -- see `scan_requires` below for why
+--- that one stays regex-based; this is a graph VALIDATOR and must not
+--- silently miss a violation the way a looser scan could). Flags:
+---   - `require(<non-literal>)` / `require <non-literal-call-shape>`
+---   - `_G.require = ...`
+---   - bare `require = ...` with no `local` keyword (an implicit global
+---     reassignment -- identical effect to `_G.require = ...`)
+---   - `package.loaded[...] = ...` / `package.preload[...] = ...`
+--- Deliberately does NOT flag `require`/`package.loaded`/`package.preload`
+--- referenced in any other position (e.g. passed as a value) -- no real
+--- file in this workspace does that today (verified by grep), and a
+--- broader check would risk false positives on legitimate code this
+--- scanner hasn't been proven against. See the test spec for the exact
+--- shapes caught vs. not.
+--- @param content string
+--- @return { kind: string, line: integer, detail: string }[]
+local function scan_require_violations(content)
+  local lexer = require("hydronium_luax.lexer")
+  local tokens = lexer.tokenize(content, "@lint", { include_whitespace = false })
+  local violations = {}
+  local function add(kind, line, detail)
+    table.insert(violations, { kind = kind, line = line, detail = detail })
+  end
+
+  local function prev_real(i)
+    local j = i - 1
+    while j >= 1 and is_trivia_tok(tokens[j]) do
+      j = j - 1
+    end
+    return j
+  end
+  local function next_real(i)
+    local j = i + 1
+    while tokens[j] and is_trivia_tok(tokens[j]) do
+      j = j + 1
+    end
+    return j
+  end
+  local function is_eq_assign(punct_tok, after_tok)
+    -- `=` not immediately followed by another `=` (i.e. not `==`).
+    return punct_tok and punct_tok.type == "PUNCT" and punct_tok.value == "="
+      and not (after_tok and after_tok.type == "PUNCT" and after_tok.value == "=")
+  end
+
+  local n = #tokens
+  for i = 1, n do
+    local tok = tokens[i]
+    if not is_trivia_tok(tok) and tok.type ~= "EOF" then
+      if tok.type == "IDENT" and tok.value == "require" then
+        local before_i = prev_real(i)
+        local before = tokens[before_i]
+        local is_dot_access = before and before.type == "PUNCT" and before.value == "."
+
+        if is_dot_access then
+          local base = tokens[prev_real(before_i)]
+          if base and base.type == "IDENT" and base.value == "_G" then
+            local ni = next_real(i)
+            if is_eq_assign(tokens[ni], tokens[ni + 1]) then
+              add("require_monkeypatch", tok.line,
+                "_G.require is reassigned here -- every subsequent require() call anywhere in the "
+                .. "program observes this override, which resolve()'s static walk cannot see through")
+            end
+          end
+          -- Any other `<table>.require` is a plain field, not the global; nothing to check.
+        else
+          local ni = next_real(i)
+          local nxt = tokens[ni]
+          if nxt and nxt.type == "STRING" then
+            -- `require "literal"` sugar -- static, fine.
+          elseif nxt and nxt.type == "PUNCT" and nxt.value == "(" then
+            local arg_i = next_real(ni)
+            local arg = tokens[arg_i]
+            local close_i = next_real(arg_i)
+            local close = tokens[close_i]
+            local is_static = arg and arg.type == "STRING"
+              and close and close.type == "PUNCT" and close.value == ")"
+            if not is_static then
+              add("dynamic_require", tok.line,
+                "require() is called with a non-literal argument -- resolve()'s reachability walk "
+                .. "can only see require(\"literal\") edges, so a module reached only through this "
+                .. "call silently drops out of the bundle and fails at runtime in the browser "
+                .. "instead of at build time")
+            end
+          elseif is_eq_assign(nxt, tokens[ni + 1])
+            and not (before and before.type == "KEYWORD" and before.value == "local") then
+            add("require_monkeypatch", tok.line,
+              "`require` is reassigned here with no `local` keyword, which rebinds the GLOBAL "
+              .. "require for every subsequent module load")
+          end
+        end
+      elseif tok.type == "IDENT" and tok.value == "package" then
+        local dot_i = next_real(i)
+        if tokens[dot_i] and tokens[dot_i].type == "PUNCT" and tokens[dot_i].value == "." then
+          local field_i = next_real(dot_i)
+          local field = tokens[field_i]
+          if field and field.type == "IDENT" and (field.value == "loaded" or field.value == "preload") then
+            local bracket_i = next_real(field_i)
+            local bracket = tokens[bracket_i]
+            if bracket and bracket.type == "PUNCT" and bracket.value == "[" then
+              local depth = 1
+              local j = bracket_i + 1
+              while tokens[j] and depth > 0 do
+                local t = tokens[j]
+                if t.type == "PUNCT" and (t.value == "[" or t.value == "(" or t.value == "{") then
+                  depth = depth + 1
+                elseif t.type == "PUNCT" and (t.value == "]" or t.value == ")" or t.value == "}") then
+                  depth = depth - 1
+                end
+                if depth > 0 then
+                  j = j + 1
+                end
+              end
+              -- `j` already indexes the matching "]" itself (the loop
+              -- above stops without advancing once depth hits 0) --
+              -- `next_real` advances past its own argument, so the real
+              -- next token after the "]" is `next_real(j)`, not `next_real(j + 1)`.
+              local after_i = next_real(j)
+              if is_eq_assign(tokens[after_i], tokens[after_i + 1]) then
+                add("require_monkeypatch", tok.line,
+                  string.format("package.%s[...] is assigned here directly", field.value))
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return violations
+end
+
 -- mount.js's own final bootstrap script `require()`s these four modules
 -- DIRECTLY, itself -- independent of whatever the app's own root
 -- component happens to require. They are NOT reachable by walking from
@@ -127,6 +309,8 @@ local MOUNT_BOOTSTRAP_ENTRIES = {
 --- @field entries string[] REQUIRED. Module ids to walk from (the app's own root component, typically). `MOUNT_BOOTSTRAP_ENTRIES` above is always added on top of these, automatically.
 --- @field include? string[] Which `metadata.hydronium.target` values to consider. Default `{"client","shared"}`.
 --- @field deny_getinfo? boolean Refuse (ctx.fail) any reachable module whose source uses `debug.getinfo` for self-location -- amalgamation changes chunknames, breaking that pattern. Default true.
+--- @field enforce_require_discipline? boolean Refuse (ctx.fail) any reachable module outside `REQUIRE_DISCIPLINE_ALLOWLIST`/`require_discipline_allowlist` that contains a non-literal `require()` call or reassigns `require`/`package.loaded`/`package.preload` -- see `scan_require_violations`'s doc comment for why this is exactly the precondition that makes this function's reachability walk a sound module-level tree-shake. Default true.
+--- @field require_discipline_allowlist? string[] Module ids exempt from the above, in addition to the built-in framework allowlist.
 
 --- @param ctx PluginCtx
 --- @param inputs AssetSet[]
@@ -153,6 +337,17 @@ function M.resolve(ctx, inputs, opts)
   local deny_getinfo = opts.deny_getinfo
   if deny_getinfo == nil then
     deny_getinfo = true
+  end
+  local enforce_require_discipline = opts.enforce_require_discipline
+  if enforce_require_discipline == nil then
+    enforce_require_discipline = true
+  end
+  local require_discipline_allowlist = {}
+  for id in pairs(REQUIRE_DISCIPLINE_ALLOWLIST) do
+    require_discipline_allowlist[id] = true
+  end
+  for _, id in ipairs(opts.require_discipline_allowlist or {}) do
+    require_discipline_allowlist[id] = true
   end
 
   local by_id = {}
@@ -218,6 +413,17 @@ function M.resolve(ctx, inputs, opts)
         .. "amalgamated -- amalgamation changes its chunkname, breaking whatever path it derives "
         .. "from debug.getinfo(1,\"S\").source. See docs/HYDRONIUM_CLIENT_BUNDLER_MINIFIER_PLAN.md 'Hazard 2'.")
     end
+    if enforce_require_discipline and not require_discipline_allowlist[real_id] then
+      local violations = scan_require_violations(mod.content)
+      if #violations > 0 then
+        local first = violations[1]
+        ctx.fail("hydronium_ballad.plugins.client.resolve: module '" .. real_id
+          .. "' (" .. mod.origin .. ") line " .. tostring(first.line) .. ": " .. first.detail
+          .. (#violations > 1 and (" (+" .. (#violations - 1) .. " more violation(s) in this module)") or "")
+          .. " -- confine this pattern to an allowlisted framework module (see "
+          .. "REQUIRE_DISCIPLINE_ALLOWLIST in this file, or pass opts.require_discipline_allowlist)")
+      end
+    end
     table.insert(order, real_id)
     for _, req_id in ipairs(scan_requires(mod.content)) do
       visit(req_id)
@@ -242,6 +448,8 @@ function M.resolve(ctx, inputs, opts)
         module_id = id,
         origin = mod.origin,
         target = mod.target,
+        transform = mod.transform,
+        update = mod.update,
         sourcemap = mod.sourcemap,
       }},
     }))
@@ -271,6 +479,8 @@ function M.resolve(ctx, inputs, opts)
       id = id,
       origin = mod.origin,
       target = mod.target,
+      transform = mod.transform,
+      update = mod.update,
       requires = scan_requires(mod.content),
       revision = process.b3sum_string(mod.content),
     })
