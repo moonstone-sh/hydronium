@@ -1,4 +1,6 @@
-// Tests for dom/src/hydronium_dom/client/boundary_registry.js.
+// Tests for js/packages/dom-client/src/boundary_registry.js (canonical
+// source as of M0; dom/src/hydronium_dom/client/ is now a generated,
+// drift-checked copy -- see js/scripts/sync-dom-client.mjs).
 //
 // Uses Node's built-in test runner (`node --test`) and a minimal
 // hand-rolled DOM stand-in -- no jsdom, no new dependency. This is the
@@ -198,5 +200,5 @@ test("a 'root' boundary (d.lua.mount) uses the same marker mechanism with a diff
 let counter = 0;
 async function freshRegistry() {
   counter += 1;
-  return import(`../../dom/src/hydronium_dom/client/boundary_registry.js?test=${counter}`);
+  return import(`../../js/packages/dom-client/src/boundary_registry.js?test=${counter}`);
 }

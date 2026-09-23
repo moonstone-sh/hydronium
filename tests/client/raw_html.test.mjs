@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createDomBridge } from "../../dom/src/hydronium_dom/client/dom_bridge.js";
+import { createDomBridge } from "../../js/packages/dom-client/src/dom_bridge.js";
 
 test("DOM bridge treats explicit raw HTML as content, not an attribute", () => {
   const bridge = createDomBridge();

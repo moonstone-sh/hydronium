@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createFormGlobals, valuesFromForm } from "../../dom/src/hydronium_dom/client/forms.js";
-import { createDomBridge, shouldHandleNavigation } from "../../dom/src/hydronium_dom/client/dom_bridge.js";
+import { createFormGlobals, valuesFromForm } from "../../js/packages/dom-client/src/forms.js";
+import { createDomBridge, shouldHandleNavigation } from "../../js/packages/dom-client/src/dom_bridge.js";
 
 class FakeFormData {
   constructor(form) { this.form = form; }
