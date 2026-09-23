@@ -126,6 +126,49 @@ function M.changed_files(prev, next_fp)
   return changed
 end
 
+--- Read one source value against a stable watched-set revision.
+---
+--- The caller supplies the actual source read/compile operation.  We verify
+--- the whole watched set both immediately before and immediately after it,
+--- and reject the value unless it still names `expected_revision` (when one
+--- was supplied by the browser).  That turns a normal per-module route into
+--- a revision-addressed snapshot endpoint without keeping mutable snapshots
+--- in a request-local Lua VM.
+---
+--- A `nil` expected revision is the initial-load case: the value is accepted
+--- if the watched set stayed stable while it was read and the observed
+--- revision is returned to the caller for its response header.
+---
+--- @param files string[]
+--- @param expected_revision string|nil
+--- @param read fun(): any
+--- @return any|nil value
+--- @return string|nil revision
+--- @return string|nil reason "stale" | "read_failed"
+--- @return any|nil error
+function M.read_snapshot(files, expected_revision, read)
+  if expected_revision ~= nil and type(expected_revision) ~= "string" then
+    error("hydronium_dom.dev.watch: expected_revision must be a string or nil", 2)
+  end
+  if type(read) ~= "function" then
+    error("hydronium_dom.dev.watch: read_snapshot requires a read function", 2)
+  end
+
+  local before = M.fingerprint(files)
+  if expected_revision ~= nil and expected_revision ~= before then
+    return nil, before, "stale"
+  end
+
+  local ok, value = pcall(read)
+  if not ok then return nil, before, "read_failed", value end
+
+  local after = M.fingerprint(files)
+  if after ~= before or (expected_revision ~= nil and expected_revision ~= after) then
+    return nil, after, "stale"
+  end
+  return value, after
+end
+
 --- Drives one live-reload SSE request to completion.
 ---
 ---   app:get("/__hydronium/watch", function(c)
