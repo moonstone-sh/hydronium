@@ -31,6 +31,7 @@ app = c.create({
     c.option({ key = "name", aliases = { "-n", "--name" }, value = { schema = v.string() } }),
     c.option({ key = "interpreter", aliases = { "-i", "--interpreter" }, value = { schema = v.string() }, complete = c.values({ "luajit@2.1", "lua@5.4" }) }),
     c.flag({ key = "minimal", aliases = { "--minimal" } }),
+    c.flag({ key = "add_love", aliases = { "--add-love" } }),
     c.flag({ key = "force", aliases = { "-f", "--force" } }),
     c.flag({ key = "dry_run", aliases = { "--dry-run" } }),
 
@@ -50,15 +51,20 @@ app = c.create({
         ctx:fail("--minimal cannot be combined with --template", 1)
         return
       end
+      if ctx.args.add_love and (ctx.args.minimal or ctx.args.template) then
+        ctx:fail("--add-love cannot be combined with --minimal or --template", 1)
+        return
+      end
       if ctx.args.template == "minimal" then
         ctx:fail("minimal is selected with --minimal, not --template minimal", 1)
         return
       end
-      local template_id = ctx.args.minimal and "minimal" or ctx.args.template or "ssr"
+      local template_id = ctx.args.add_love and "love-addon" or ctx.args.minimal and "minimal" or ctx.args.template or "ssr"
 
       ctx:log("info", string.format("Scaffolding Hydronium project in '%s' using template '%s'...", target_dir, template_id))
 
-      local result, err = create.scaffold({
+      local action = ctx.args.add_love and create.add_love or create.scaffold
+      local result, err = action({
         directory = target_dir,
         template = template_id,
         name = ctx.args.name,
@@ -92,8 +98,11 @@ app = c.create({
       if result.target_dir ~= "." and result.target_dir ~= "./" then
         io.stdout:write(string.format("  cd %s\n", result.target_dir))
       end
-      io.stdout:write("  moon sync\n")
+      if not result.synced then io.stdout:write("  moon sync\n") end
       io.stdout:write("  moon run " .. result.next_script .. "\n\n")
+      if result.package_script then
+        io.stdout:write("Package with:\n  moon run " .. result.package_script .. "\n\n")
+      end
 
       return 0
     end),

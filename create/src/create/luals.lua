@@ -13,9 +13,10 @@ function luals.configure(target_dir, opts)
   config_path = config_path:gsub("/+", "/")
 
   local interpreter = opts.interpreter or "luajit@2.1"
+  local is_love = interpreter:match("^love@") ~= nil
   local is_luajit = interpreter:match("^luajit@") ~= nil
-  local lua_ver_str = is_luajit and "5.1" or (interpreter:match("5%.%d") or "5.4")
-  local runtime_version = is_luajit and "LuaJIT" or ("Lua " .. lua_ver_str)
+  local lua_ver_str = (is_luajit or is_love) and "5.1" or (interpreter:match("5%.%d") or "5.4")
+  local runtime_version = (is_luajit or is_love) and "LuaJIT" or ("Lua " .. lua_ver_str)
   local enable_luax = opts.luax ~= false
   local enable_dom = opts.dom ~= false
   local enable_bare_dom = opts.bare_dom == true
