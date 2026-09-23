@@ -38,6 +38,17 @@ local function write_file(path, text)
 end
 
 describe("hydronium-cli main -- parse_args", function()
+  it("parses the turnkey Lab command and validates its port", function()
+    local parsed = must(main.parse_args({ "lab", "--port", "6200", "--no-open" }))
+    assert.equal(parsed.command, "lab")
+    assert.equal(parsed.port, 6200)
+    assert.truthy(parsed.no_open)
+    assert.truthy(must(main.parse_args({ "lab", "init" })).init)
+    local invalid, err = main.parse_args({ "lab", "--port", "0" })
+    assert.is_nil(invalid)
+    assert.truthy(err:find("1 to 65535", 1, true))
+  end)
+
   it("defaults every display flag to off", function()
     local parsed = must(main.parse_args({ "dev" }))
     assert.equal(parsed.command, "dev")
@@ -93,6 +104,18 @@ describe("hydronium-cli main -- parse_args", function()
   end)
 end)
 
+describe("hydronium-cli Lab compatibility alias", function()
+  it("delegates launch flags to the standalone Lab CLI", function()
+    local command = main.lab_command({ host = "0.0.0.0", port = 6200, config = "config/lab.lua", adapter = "meteorite", no_open = true })
+    assert.truthy(command:find("hydronium%-lab dev"))
+    assert.truthy(command:find("%-%-host '0%.0%.0%.0'"))
+    assert.truthy(command:find("%-%-port 6200"))
+    assert.truthy(command:find("%-%-config 'config/lab%.lua'"))
+    assert.truthy(command:find("%-%-adapter 'meteorite'"))
+    assert.truthy(command:find("%-%-no%-open"))
+  end)
+end)
+
 describe("hydronium-cli main -- meteorite_argv", function()
   it("spawns a bare `meteorite dev` when nothing was passed", function()
     assert.same(main.meteorite_argv({ command = "dev" }, nil), { "meteorite", "dev" })
@@ -124,6 +147,85 @@ describe("hydronium-cli main -- meteorite_argv", function()
   it("collapses runs of whitespace rather than emitting empty arguments", function()
     local argv = main.meteorite_argv({ meteorite_args = "  --mode   hybrid_dev \t--backend fast_http " }, nil)
     assert.same(argv, { "meteorite", "dev", "--mode", "hybrid_dev", "--backend", "fast_http" })
+  end)
+end)
+
+describe("hydronium-cli main -- --vite/--ballad parsing", function()
+  it("defaults --vite and --ballad to off", function()
+    local parsed = must(main.parse_args({ "dev" }))
+    assert.falsy(parsed.vite)
+    assert.is_nil(parsed.vite_args)
+    assert.is_nil(parsed.vite_dir)
+    assert.falsy(parsed.ballad)
+    assert.is_nil(parsed.ballad_args)
+  end)
+
+  it("--vite-args and --vite-dir imply --vite", function()
+    local viaArgs = must(main.parse_args({ "dev", "--vite-args", "--port 5174" }))
+    assert.truthy(viaArgs.vite)
+    assert.equal(viaArgs.vite_args, "--port 5174")
+
+    local viaEquals = must(main.parse_args({ "dev", "--vite-args=--port 5174" }))
+    assert.truthy(viaEquals.vite)
+    assert.equal(viaEquals.vite_args, "--port 5174")
+
+    local viaDir = must(main.parse_args({ "dev", "--vite-dir=apps/web" }))
+    assert.equal(viaDir.vite_dir, "apps/web")
+  end)
+
+  it("--ballad-args implies --ballad", function()
+    local parsed = must(main.parse_args({ "dev", "--ballad-args=partiture.lua --jobs 4" }))
+    assert.truthy(parsed.ballad)
+    assert.equal(parsed.ballad_args, "partiture.lua --jobs 4")
+  end)
+
+  it("errors rather than guessing when a value-taking flag has no value", function()
+    local noVite, viteErr = main.parse_args({ "dev", "--vite-args" })
+    assert.is_nil(noVite)
+    assert.truthy(viteErr:find("requires a value", 1, true), viteErr)
+
+    local noDir, dirErr = main.parse_args({ "dev", "--vite-dir" })
+    assert.is_nil(noDir)
+    assert.truthy(dirErr:find("requires a value", 1, true), dirErr)
+
+    local noBallad, balladErr = main.parse_args({ "dev", "--ballad-args" })
+    assert.is_nil(noBallad)
+    assert.truthy(balladErr:find("requires a value", 1, true), balladErr)
+  end)
+end)
+
+describe("hydronium-cli main -- vite_argv / dual_dev_specs / dual_dev_argv", function()
+  it("vite_argv is empty by default and splits --vite-args like meteorite_argv does", function()
+    assert.same(main.vite_argv({}), {})
+    assert.same(main.vite_argv({ vite_args = "  --port   5174 \t--strictPort " }), { "--port", "5174", "--strictPort" })
+  end)
+
+  it("dual_dev_specs pairs meteorite's own argv with an npx-run vite, defaulting cwd to '.'", function()
+    local specs = main.dual_dev_specs(
+      { "meteorite", "dev", "--mode", "hybrid_dev" },
+      { vite_args = "--port 5174" }
+    )
+    assert.same(specs, {
+      { name = "meteorite", command = "meteorite", args = { "dev", "--mode", "hybrid_dev" } },
+      { name = "vite", command = "npx", args = { "vite", "--port", "5174" }, cwd = "." },
+    })
+  end)
+
+  it("dual_dev_specs honours --vite-dir as the vite process's cwd", function()
+    local specs = main.dual_dev_specs({ "meteorite", "dev" }, { vite_dir = "apps/web" })
+    assert.equal(specs[2].cwd, "apps/web")
+  end)
+
+  it("dual_dev_argv builds a node invocation of the dual-dev wrapper with the specs JSON-encoded", function()
+    local seen_value
+    local function fake_encode(value)
+      seen_value = value
+      return "ENCODED"
+    end
+    local argv = main.dual_dev_argv("/repo", { "meteorite", "dev" }, { vite_dir = "." }, fake_encode)
+    assert.same(argv, { "node", "/repo/js/packages/vite/bin/dual-dev.mjs", "--specs", "ENCODED" })
+    assert.equal(seen_value[1].name, "meteorite")
+    assert.equal(seen_value[2].name, "vite")
   end)
 end)
 
