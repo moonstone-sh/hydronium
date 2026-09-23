@@ -15,6 +15,7 @@ local json = require("hydronium_dom.server.json")
 local sink_protocol = require("hydronium_dom.server.sink")
 local resourceModule = require("hydronium.core.resource")
 local RefreshRegistry = require("hydronium.core.refresh").RefreshRegistry
+local vite_module = require("hydronium_dom.server.vite_module")
 
 local server = {}
 
@@ -46,7 +47,24 @@ local render_state = {
   pass = nil,
 }
 
+-- Non-nil while a `server.render_page` scope is open. Island ids and the
+-- client plan are PAGE-global concepts -- the browser resolves an island id
+-- against the whole document -- but a bare render_to_string owns neither
+-- beyond its own call. Composing two renders into one page therefore used to
+-- mint `hy:i1` twice and produce two disjoint client plans; the second
+-- island silently hydrated into the first one's DOM node. See
+-- docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md and
+-- js/examples/islands-tailwind/tests/dual-hmr.test.mjs, the gate that found it.
+local page_scope = nil
+
 local function reset_render_state()
+  if page_scope then
+    -- The page owns island_seq and client_plan for its whole extent; only
+    -- the genuinely per-pass fields reset between renders inside it.
+    render_state.island_stack = {}
+    render_state.pass = {}
+    return
+  end
   render_state.island_seq = 0
   render_state.client_plan = { version = "hydronium.client-plan.v1", islands = {}, scripts = {} }
   render_state.island_stack = {}
@@ -452,13 +470,28 @@ render_node = function(node, write_fn, parent_scope, raw_text_mode)
     local children = raw_props.children or node.children or {}
     local id = next_island_id()
 
+    -- M2 of docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md: resolve a JS
+    -- island's module specifier through hy_asset_ref at render time,
+    -- instead of passing raw_props.module straight through. Deliberately
+    -- scoped to interpreter == "js" only -- a "lua" island/mount's
+    -- `module` is a require() module id (e.g. "views.App", dotted, not
+    -- path-like), never a JS specifier, and must never reach the Vite
+    -- resolver. vite_module.resolve is a pure passthrough unless an app
+    -- opted in via vite_module.configure(...), so this is a no-op for
+    -- every existing caller that already writes a final absolute
+    -- URL/path (see that module's own header for why).
+    local resolved_module = raw_props.module
+    if descriptor.interpreter == "js" and type(resolved_module) == "string" then
+      resolved_module = vite_module.resolve(resolved_module)
+    end
+
     local plan = render_state.client_plan
     if plan then
       table.insert(plan.islands, {
         id = id,
         interpreter = descriptor.interpreter,
         root = raw_props.root == true,
-        module = raw_props.module,
+        module = resolved_module,
         mode = raw_props.mode,
         hydrate = raw_props.hydrate or "load",
         props = raw_props.props,
@@ -712,6 +745,68 @@ function server.render_to_string(vnode, options)
 end
 
 server.renderToString = server.render_to_string
+
+--- Renders several trees into ONE page, sharing island ids and one client plan.
+---
+--- A page composed of multiple `render_to_string` calls is the case the bare
+--- function cannot serve: each call restarts `island_seq` at 1 and builds its
+--- own plan, so ids collide across the composed document and the caller is
+--- left hand-merging plans (or discarding one via
+--- `suppress_client_plan_script`, which is what this codebase was doing).
+---
+--- Inside the callback, `render(vnode, options?)` behaves exactly like
+--- `render_to_string` except that island ids keep counting across calls and
+--- every island lands in a single plan, emitted once by the caller via the
+--- returned `plan_script`.
+---
+---     local html, plan, plan_script = server.render_page(function(render)
+---       local a = render(dom.d.lua.mount(h(App)))
+---       local b = render(h(d.js.island, { module = "./widget.js" }))
+---       return "<div>" .. a .. "</div><div>" .. b .. "</div>"
+---     end)
+---
+--- Not reentrant, for the same reason `render_state` itself is not: it is
+--- ambient module state, correct only for one synchronous render pass per Lua
+--- state at a time.
+--- @param fn fun(render: fun(vnode: table, options?: table): string): string
+--- @return string html Whatever the callback returned.
+--- @return table client_plan The merged plan covering every island rendered.
+--- @return string plan_script The `<script id="__HYDRONIUM_CLIENT_PLAN__">` tag, or "" when the page declared no client surface.
+function server.render_page(fn)
+  if page_scope then
+    error("Hydronium: server.render_page is not reentrant -- a page scope is already open", 0)
+  end
+  page_scope = {}
+  render_state.island_seq = 0
+  render_state.client_plan = { version = "hydronium.client-plan.v1", islands = {}, scripts = {} }
+
+  local ok, result = pcall(fn, function(vnode, options)
+    local opts = {}
+    for k, v in pairs(options or {}) do
+      opts[k] = v
+    end
+    -- One merged plan is emitted for the page; a per-render tag here would
+    -- be a fragment of it, repeated once per call.
+    opts.suppress_client_plan_script = true
+    return (server.render_to_string(vnode, opts))
+  end)
+
+  local plan = render_state.client_plan
+  page_scope = nil
+  if not ok then
+    error(result, 0)
+  end
+
+  local plan_script = ""
+  if plan and (#plan.islands > 0 or #plan.scripts > 0) then
+    plan_script = string.format(
+      '<script id="__HYDRONIUM_CLIENT_PLAN__" type="application/json">%s</script>',
+      json.encode(plan))
+  end
+  return result, plan, plan_script
+end
+
+server.renderPage = server.render_page
 
 --- Streams virtual DOM rendering chunks into a sink.
 --- The sink must implement `{ write = fun(chunk: string), flush = fun(), close = fun() }`.
