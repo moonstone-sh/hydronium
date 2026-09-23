@@ -6,6 +6,14 @@
 
 local M = {}
 
+-- Lua 5.1/LuaJIT expose `unpack` as a global; 5.2+ moved it to
+-- `table.unpack`. The browser runs this module on PUC Lua 5.4 (wasmoon),
+-- so the bare global is nil there -- see docs/BUNDLING.md section 4.1, and
+-- the 18 sibling modules under core/src/hydronium/ carrying this same line.
+-- Missing it is invisible to `luajit tests/runner.lua` (where the global
+-- does exist) and fails only in a real browser.
+local unpack = table.unpack or unpack
+
 local original_require = require
 local enabled = false
 local stack = {}
@@ -26,6 +34,9 @@ local function module_for(id)
       -- source-manifest guarantee.  Hosts/build tooling may promote it to
       -- "managed" with manage().
       coverage = "observed",
+      -- Evaluation during refresh is opt-in. A host must supply a manifest
+      -- proof for every affected reverse-dependency closure member.
+      effects = "restart",
     }
     modules[id] = entry
   end
@@ -47,6 +58,12 @@ function M.manage(module_id, opts)
   opts = opts or {}
   local entry = module_for(module_id)
   entry.coverage = opts.coverage or "managed"
+  if opts.effects ~= nil then
+    if opts.effects ~= "safe" and opts.effects ~= "managed" and opts.effects ~= "restart" then
+      error("hydronium.core.module_graph: effects must be safe, managed, or restart", 2)
+    end
+    entry.effects = opts.effects
+  end
   if opts.revision ~= nil then entry.revision = opts.revision end
   return entry
 end
@@ -114,19 +131,22 @@ function M.plan(changed, opts)
     end
   end
 
+  for id in pairs(affected) do
+    local entry = modules[id]
+    if not entry or entry.coverage == "opaque" then
+      return { outcome = "restart", modules = sorted_keys(affected), families = {}, reason = "opaque_module:" .. id }
+    end
+    if entry.effects ~= "safe" then
+      return { outcome = "restart", modules = sorted_keys(affected), families = {}, reason = "effect_boundary:" .. id }
+    end
+  end
+
   local all_unloaded = true
   for id in pairs(changed_set) do
     if package.loaded[id] ~= nil then all_unloaded = false break end
   end
   if all_unloaded then
     return { outcome = "installed", modules = sorted_keys(changed_set), families = {} }
-  end
-
-  for id in pairs(affected) do
-    local entry = modules[id]
-    if not entry or entry.coverage == "opaque" then
-      return { outcome = "restart", modules = sorted_keys(affected), families = {}, reason = "opaque_module:" .. id }
-    end
   end
 
   local marks, ordered, cyclic = {}, {}, false
