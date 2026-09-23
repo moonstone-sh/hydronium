@@ -2,7 +2,7 @@
 -- The repository root is an orbits workspace, not a package.  Test the
 -- member source roots explicitly; external-consumer coverage below verifies
 -- Moonstone materialization separately.
-package.path = "core/src/?.lua;core/src/?/init.lua;luax/src/?.lua;luax/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;ink/src/?.lua;ink/src/?/init.lua;router/src/?.lua;router/src/?/init.lua;cli/src/?.lua;cli/src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
+package.path = "core/src/?.lua;core/src/?/init.lua;luax/src/?.lua;luax/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;ink/src/?.lua;ink/src/?/init.lua;lab/src/?.lua;lab/src/?/init.lua;ink-lab/src/?.lua;ink-lab/src/?/init.lua;oklab-utils/src/?.lua;oklab-utils/src/?/init.lua;router/src/?.lua;router/src/?/init.lua;cli/src/?.lua;cli/src/?/init.lua;build/src/?.lua;build/src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
 
 local M = {}
 package.loaded["tests.runner"] = M
@@ -397,6 +397,13 @@ local function main()
       "tests/core/refresh_component_spec.lua",
       "tests/core/family_hmr_spec.lua",
       "tests/core/module_graph_spec.lua",
+      "tests/core/oklab_utils_spec.lua",
+      "tests/core/source_topology_spec.lua",
+      "tests/build/topology_spec.lua",
+      "tests/build/site_manifest_spec.lua",
+      "tests/build/client_require_discipline_spec.lua",
+      "tests/server/render_page_spec.lua",
+      "tests/build/vite_assets_spec.lua",
       "tests/core/hmr_spec.lua",
       "tests/core/hydration_spec.lua",
       "tests/core/family_identity_adversarial_spec.lua",
@@ -407,8 +414,12 @@ local function main()
       "tests/host/terminal_spec.lua",
       "tests/host/keys_spec.lua",
       "tests/host/render_spec.lua",
+      "tests/host/ink_session_spec.lua",
+      "tests/host/ink_lab_spec.lua",
       "tests/host/ink_hmr_spec.lua",
+      "tests/host/love_hmr_spec.lua",
       "tests/host/dev_watch_spec.lua",
+      "tests/host/source_registry_spec.lua",
       "tests/core/lua_mount_spec.lua",
       "tests/core/lazy_barrel_spec.lua",
       "tests/core/action_form_spec.lua",
@@ -419,6 +430,7 @@ local function main()
       "tests/server/ssr_spec.lua",
       "tests/server/server_spec.lua",
       "tests/server/islands_suspense_spec.lua",
+      "tests/server/vite_module_spec.lua",
       "tests/server/meteorite_spec.lua",
       "tests/interpreter/lua_spec.lua",
       "tests/meteorite/meteorite_integration_spec.lua",
@@ -450,6 +462,7 @@ local function main()
       "tests/router/router_spec.lua",
       "tests/router/http_spec.lua",
       "tests/router/site_spec.lua",
+      "tests/router/topology_spec.lua",
       "tests/router/meteorite_adapter_spec.lua",
       -- Developer CLI specs (orbit member `cli/`, whose src is on
       -- package.path above -- these live beside their own package rather

@@ -12,9 +12,15 @@ local M = {}
 M.plugins = {
   luax = require("hydronium_ballad.plugins.luax"),
   client = require("hydronium_ballad.plugins.client"),
+  topology = require("hydronium_ballad.plugins.topology"),
   style = require("hydronium_ballad.plugins.style"),
   assets = require("hydronium_ballad.plugins.assets"),
   site = require("hydronium_ballad.plugins.site"),
+  -- Ingests a built Vite dist/ and re-emits it as ordinary hy_asset entries
+  -- for site.manifest's merge -- see docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md
+  -- M3. Belongs in a consuming app's partiture, never the root one (it would
+  -- make the framework's own registry export depend on a JS build).
+  vite_assets = require("hydronium_ballad.plugins.vite_assets"),
 }
 
 return M
