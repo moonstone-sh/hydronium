@@ -80,6 +80,7 @@ local Hydronium = {
   family_loader = core.family_loader,
   module_graph = core.module_graph,
   hmr_host = core.hmr_host,
+  love_hmr = core.love_hmr,
 
   -- Testing & Test Host
   test = testModule,
