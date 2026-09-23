@@ -142,7 +142,7 @@ function renderDimensionPart(container, value) {
   const zeroCount = Math.max(0, digits.length - significant);
   if (zeroCount) {
     const zeros = container.ownerDocument.createElement("span");
-    zeros.className = "hydronium-ink-lab__dimension-zero";
+    zeros.className = "hydronium-lab__dimension-zero hydronium-ink-lab__dimension-zero";
     zeros.textContent = digits.slice(0, zeroCount);
     container.append(zeros);
   }
@@ -154,7 +154,7 @@ function renderDimensions(container, columns, rows) {
   container.replaceChildren();
   renderDimensionPart(container, columns);
   const separator = container.ownerDocument.createElement("span");
-  separator.className = "hydronium-ink-lab__dimension-separator";
+  separator.className = "hydronium-lab__dimension-separator hydronium-ink-lab__dimension-separator";
   separator.textContent = "×";
   container.append(separator);
   renderDimensionPart(container, rows);
@@ -180,11 +180,11 @@ function savePreferences(key, value) {
 }
 
 /**
- * Enhances the DOM tree emitted by `hydronium_ink_lab.dom.Shell`.
+ * Enhances the shared `hydronium_lab.workbench` DOM tree with Ink behavior.
  * `request(message)` is the only transport seam and may call an in-page Lua
  * runtime, `fetch`, a WebSocket RPC, or a Meteorite endpoint.
  */
-export async function createInkLab({ root, request, autoResize = false }) {
+export async function createInkLab({ root, request, autoResize = false, workbench = {} }) {
   if (typeof root === "string") root = document.querySelector(root);
   if (!root) throw new Error("hydronium/ink-lab: root was not found");
   if (typeof request !== "function") throw new Error("hydronium/ink-lab: request must be a function");
@@ -207,11 +207,11 @@ export async function createInkLab({ root, request, autoResize = false }) {
   if (stage && status) stage.append(status);
   // Keep the HUD order stable across a live client update and the SSR shell:
   // color profile, size preset, then the resolved terminal dimensions.
-  const canvasHud = root.querySelector(".hydronium-ink-lab__canvas-hud");
+  const canvasHud = query(root, "canvas-hud");
   if (canvasHud) {
-    const colorControl = colorSelect?.closest(".hydronium-ink-lab__icon-control");
-    const sizeControl = sizeSelect?.closest(".hydronium-ink-lab__icon-control");
-    const canvasActions = canvasHud.querySelector(".hydronium-ink-lab__canvas-actions");
+    const colorControl = colorSelect?.closest("[data-lab-meta-control]");
+    const sizeControl = sizeSelect?.closest("[data-lab-meta-control]");
+    const canvasActions = query(canvasHud, "canvas-actions");
     if (colorControl) canvasHud.append(colorControl);
     if (sizeControl) canvasHud.append(sizeControl);
     if (dimensions) canvasHud.append(dimensions);
@@ -219,8 +219,15 @@ export async function createInkLab({ root, request, autoResize = false }) {
   }
 
   const projectKey = root.dataset.labProject || "hydronium-lab";
-  const preferences = await preferencesFor(projectKey);
-  const persist = (patch) => { Object.assign(preferences, patch); savePreferences(projectKey, preferences); };
+  const preferences = workbench.loadProjectPreferences
+    ? await workbench.loadProjectPreferences(projectKey, { legacyDatabaseName: PREF_DB })
+    : await preferencesFor(projectKey);
+  const persist = (patch) => {
+    Object.assign(preferences, patch);
+    if (workbench.saveProjectPreferences) workbench.saveProjectPreferences(projectKey, preferences);
+    else savePreferences(projectKey, preferences);
+  };
+  const workbenchPreferences = workbench.installWorkbenchPreferences?.({ root, preferences, persist });
   let catalog = await request({ op: "catalog" });
   let activeStory = catalog.stories.find((story) => story.id === preferences.story) || catalog.stories[0];
   let activeSize = activeStory.sizes[0];
@@ -347,9 +354,9 @@ export async function createInkLab({ root, request, autoResize = false }) {
       groups.forEach((stories, name) => {
         const visibleStories = stories.filter((story) => matchesStorySearch(story.title, storySearch?.value || ""));
         if (!visibleStories.length) return;
-        const group = root.ownerDocument.createElement("section"); group.className = "hydronium-ink-lab__story-group";
+        const group = root.ownerDocument.createElement("section"); group.className = "hydronium-lab__story-group hydronium-ink-lab__story-group";
         const heading = root.ownerDocument.createElement("h2"); heading.textContent = name; group.append(heading);
-        visibleStories.forEach((story) => { const button = root.ownerDocument.createElement("button"); button.type = "button"; button.className = "hydronium-ink-lab__story"; button.textContent = story.title; button.setAttribute("aria-current", String(story.id === activeStory.id)); button.onclick = async () => { activeStory = story; persist({ story: story.id }); fillStories(); await open(); }; group.append(button); });
+        visibleStories.forEach((story) => { const button = root.ownerDocument.createElement("button"); button.type = "button"; button.className = "hydronium-lab__story hydronium-ink-lab__story"; button.textContent = story.title; button.setAttribute("aria-current", String(story.id === activeStory.id)); button.onclick = async () => { activeStory = story; persist({ story: story.id }); fillStories(); await open(); }; group.append(button); });
         storyRoot.append(group);
       });
     }
@@ -509,6 +516,38 @@ export async function createInkLab({ root, request, autoResize = false }) {
   let observer = null;
   let resizeTimer = null;
   let pendingResize = null;
+  // Like `scheduleAnimation` below, at most one `op: "resize"` request may be
+  // in flight at a time. `runtime.lua`'s `resize` op re-renders a full
+  // cell-by-cell snapshot synchronously, so on a large canvas it can easily
+  // outlast the 140ms debounce below: a slow drag then arms a second request
+  // before the first settles. Two in-flight resizes race, and since `paint()`
+  // renders whatever response lands, an older, slower response arriving after
+  // a newer one used to snap the terminal back to a stale, smaller size right
+  // as the user released the handle. Coalesce instead: while one is in
+  // flight, newer targets only update `pendingResize`, and the in-flight
+  // request's own completion re-arms it for whatever target is latest by
+  // then, so at most one resize request is ever outstanding.
+  let resizeBusy = false;
+  let resizeGeneration = 0;
+  async function runResize() {
+    if (resizeBusy) return;
+    const target = pendingResize;
+    pendingResize = null;
+    if (!target || closed || (target.columns === activeSize.columns && target.rows === activeSize.rows)) return;
+    resizeBusy = true;
+    const generation = ++resizeGeneration;
+    activeSize = { name: "custom", columns: target.columns, rows: target.rows };
+    try {
+      const frame = await request({ op: "resize", columns: target.columns, rows: target.rows });
+      if (!closed && generation === resizeGeneration) {
+        manualResizeRect = null;
+        paint(frame);
+      }
+    } finally {
+      resizeBusy = false;
+      if (pendingResize) runResize();
+    }
+  }
   function enableAutoResize() {
     if (!autoResize || typeof ResizeObserver === "undefined") return;
     terminal.style.resize = fillMode ? "none" : "both";
@@ -536,15 +575,7 @@ export async function createInkLab({ root, request, autoResize = false }) {
       manualResizeRect = { width: entry.contentRect.width, height: entry.contentRect.height };
       pendingResize = { columns, rows };
       window.clearTimeout(resizeTimer);
-      resizeTimer = window.setTimeout(async () => {
-        const target = pendingResize;
-        pendingResize = null;
-        if (!target || closed || (target.columns === activeSize.columns && target.rows === activeSize.rows)) return;
-        activeSize = { name: "custom", columns: target.columns, rows: target.rows };
-        const frame = await request({ op: "resize", columns: target.columns, rows: target.rows });
-        manualResizeRect = null;
-        paint(frame);
-      }, 140);
+      resizeTimer = window.setTimeout(runResize, 140);
     });
     observer.observe(terminal);
   }
@@ -564,7 +595,7 @@ export async function createInkLab({ root, request, autoResize = false }) {
     });
     fillObserver.observe(stage);
   }
-  root.querySelectorAll(".hydronium-ink-lab__icon-control").forEach((control) => control.addEventListener("click", (event) => {
+  root.querySelectorAll("[data-lab-meta-control]").forEach((control) => control.addEventListener("click", (event) => {
     const select = control.querySelector("select");
     if (!select || event.target === select) return;
     event.preventDefault();
@@ -634,6 +665,7 @@ export async function createInkLab({ root, request, autoResize = false }) {
       window.clearTimeout(animationTimer);
       observer?.disconnect();
       fillObserver?.disconnect();
+      workbenchPreferences?.destroy();
       return request({ op: "close" });
     },
   };
