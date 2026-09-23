@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { installHmr } from "../../dom/src/hydronium_dom/client/hmr.js";
+import { installHmr } from "../../js/packages/dom-client/src/hmr.js";
 
 const turn = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -166,6 +166,91 @@ test("HMR fetches a revisioned module set and commits it once at a frame boundar
     assert.equal(reports.at(-1).revision, "revision 2");
     assert.equal(reports.at(-1).status, "hot-swapped");
     hmr.close();
+  } finally {
+    globalThis.EventSource = originalEventSource;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("HMR reloads rather than committing sources from a different snapshot revision", async () => {
+  const originalEventSource = globalThis.EventSource;
+  const originalFetch = globalThis.fetch;
+  const sources = [];
+  let reloads = 0;
+  let evaluations = 0;
+
+  class FakeEventSource {
+    constructor() { this.listeners = new Map(); sources.push(this); }
+    addEventListener(type, listener) { this.listeners.set(type, listener); }
+    emit(type, data) { this.listeners.get(type)?.({ data }); }
+    close() {}
+  }
+  globalThis.EventSource = FakeEventSource;
+  globalThis.fetch = async () => ({
+    ok: true,
+    headers: { get: (name) => name === "x-hydronium-revision" ? "newer-revision" : null },
+    text: async () => "return function() end",
+  });
+
+  const lua = {
+    global: { set() {}, get() { return undefined; } },
+    async doString() { evaluations += 1; },
+  };
+  try {
+    installHmr({
+      lua,
+      updates: { "views/App.luax": { action: "hot", module: "views.App" } },
+      onFullReload: () => { reloads += 1; },
+    });
+    sources[0].emit("changed", "views/App.luax");
+    sources[0].emit("reload", "old-revision");
+    await turn();
+    await turn();
+    assert.equal(reloads, 1);
+    assert.equal(evaluations, 0);
+  } finally {
+    globalThis.EventSource = originalEventSource;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("HMR delegates a planned remount to the mount handle instead of reloading", async () => {
+  const originalEventSource = globalThis.EventSource;
+  const originalFetch = globalThis.fetch;
+  const sources = [];
+  let remounts = 0;
+  let reloads = 0;
+  class FakeEventSource {
+    constructor() { this.listeners = new Map(); sources.push(this); }
+    addEventListener(type, listener) { this.listeners.set(type, listener); }
+    emit(type, data) { this.listeners.get(type)?.({ data }); }
+    close() {}
+  }
+  globalThis.EventSource = FakeEventSource;
+  globalThis.fetch = async () => ({ ok: true, headers: { get: () => null }, text: async () => "return {}" });
+  const globals = new Map();
+  const lua = {
+    global: { set(key, value) { globals.set(key, value); }, get(key) { return globals.get(key); } },
+    async doString() {
+      globals.set("__hydronium_hmr_outcome", "remount");
+      globals.set("__hydronium_hmr_families", 0);
+      globals.set("__hydronium_hmr_refreshed", 0);
+      globals.set("__hydronium_hmr_failed", 0);
+    },
+  };
+  try {
+    installHmr({
+      lua,
+      updates: { "lib/config.lua": { action: "hot", module: "lib.config" } },
+      remount: async () => { remounts += 1; },
+      onFullReload: () => { reloads += 1; },
+    });
+    sources[0].emit("changed", "lib/config.lua");
+    sources[0].emit("reload", "revision-remount");
+    await turn();
+    await turn();
+    assert.equal(remounts, 1);
+    assert.equal(reloads, 0);
   } finally {
     globalThis.EventSource = originalEventSource;
     globalThis.fetch = originalFetch;
