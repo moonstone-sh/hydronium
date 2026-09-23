@@ -1,0 +1,28 @@
+local runner = require("tests.runner")
+local describe, it, assert = runner.describe, runner.it, runner.assert
+local color = require("hydronium_oklab_utils")
+
+describe("OKLab utilities", function()
+  it("round-trips opaque sRGB through OKLab within one byte", function()
+    local source = color.srgb(34, 120, 210)
+    local result = color.to_srgb(color.to_oklab(source))
+    assert.truthy(math.abs(result.r - source.r) <= 1)
+    assert.truthy(math.abs(result.g - source.g) <= 1)
+    assert.truthy(math.abs(result.b - source.b) <= 1)
+  end)
+
+  it("parses hex and maps out-of-gamut OKLCH to opaque sRGB", function()
+    local hex = color.hex("#d67cff")
+    assert.same(hex, { space = "srgb", r = 214, g = 124, b = 255 })
+    local mapped = color.to_srgb(color.oklch(0.72, 0.8, 310))
+    assert.truthy(mapped.r >= 0 and mapped.r <= 255)
+    assert.truthy(mapped.g >= 0 and mapped.g <= 255)
+    assert.truthy(mapped.b >= 0 and mapped.b <= 255)
+  end)
+
+  it("mixes in perceptual space and reports WCAG contrast", function()
+    local mixed = color.to_srgb(color.mix(color.hex("#000000"), color.hex("#ffffff"), 0.5))
+    assert.truthy(mixed.r > 80 and mixed.r < 220)
+    assert.equal(color.contrast(color.hex("#000000"), color.hex("#ffffff")), 21)
+  end)
+end)
