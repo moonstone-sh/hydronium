@@ -680,6 +680,11 @@ app:get("/__hydronium/dual-hmr/dev/module/:id", function(c)
     "hmr_demo/family_counter.lua",
     "hmr_demo/arbitrary_tree_counter.lua",
   }), c:query("revision"), function()
+    -- ?map=1 returns the module's Source Map v3 instead of its code, so the
+    -- dev error overlay can resolve a Lua traceback line back to the .luax
+    -- line the developer actually wrote. The compiler has always emitted this
+    -- map; nothing served it until now, which is why the overlay labelled
+    -- every frame "(generated Lua)".
     -- Serve the module through hydronium_luax.loader, NOT a raw io.open.
     -- The loader is path-based, not extension-based: it happily compiles a
     -- plain `.lua` file, and that compile runs hydronium_luax.transforms.refresh,
@@ -689,7 +694,13 @@ app:get("/__hydronium/dual-hmr/dev/module/:id", function(c)
     -- lets RefreshRegistry carry the live value across a hot swap. Reading the
     -- file raw skipped the transform, which is why this example's component
     -- used to need a hand-written descriptor to keep its state.
-    return (require("hydronium_luax.loader").source(record.path))
+    local code, compiled = require("hydronium_luax.loader").source(record.path)
+    if c:query("map") then
+      -- No map (a plain .lua module was never compiled from .luax): say so
+      -- with an empty body rather than inventing one.
+      return compiled and compiled.map_json or ""
+    end
+    return code
   end)
   if reason == "stale" then
     return c:text(409, "HMR source snapshot is stale", { headers = {

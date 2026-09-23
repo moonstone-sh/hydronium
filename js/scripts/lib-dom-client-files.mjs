@@ -20,6 +20,8 @@ export const RUNTIME_FILES = [
   // from /js/bootstrap/ without a bundler; it does nothing unless a host
   // explicitly calls installErrorOverlay().
   "overlay.js",
+  // Source Map v3 reader backing the overlay's resolveFrame hook.
+  "sourcemap.js",
 ];
 
 // The hand-authored ESM wrapper around wasmoon's UMD bundle. Committed
