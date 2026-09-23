@@ -27,6 +27,16 @@ function writer.write_project(target_dir, files, opts)
     directories = {},
   }
 
+  local function fail(message)
+    if opts.cleanup_on_error then
+      for index = #results.created, 1, -1 do
+        os.remove(results.created[index].full_path)
+      end
+      results.created = {}
+    end
+    return nil, message
+  end
+
   -- Sort filenames for deterministic output
   local sorted_names = {}
   for name in pairs(files) do
@@ -39,13 +49,21 @@ function writer.write_project(target_dir, files, opts)
     local full_path = target_dir .. "/" .. rel_path
     full_path = full_path:gsub("/+", "/")
 
+    if opts.no_overwrite and not is_dry_run then
+      local existing = io.open(full_path, "r")
+      if existing then
+        existing:close()
+        return fail(string.format("Refusing to overwrite existing file %s", rel_path))
+      end
+    end
+
     -- Check directory
     local dir = full_path:match("(.+)/[^/]+$")
     if dir and not results.directories[dir] then
       if not is_dry_run then
         local ok = os.execute(string.format('mkdir -p %s', shell_quote(dir)))
         if not ok then
-          return nil, string.format("Failed to create directory %s", dir)
+          return fail(string.format("Failed to create directory %s", dir))
         end
       end
       results.directories[dir] = true
@@ -55,7 +73,7 @@ function writer.write_project(target_dir, files, opts)
     if not is_dry_run then
       local ok, err = write_file(full_path, content)
       if not ok then
-        return nil, string.format("Failed to write %s: %s", full_path, tostring(err))
+        return fail(string.format("Failed to write %s: %s", full_path, tostring(err)))
       end
     end
 
