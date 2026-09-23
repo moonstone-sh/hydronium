@@ -2,17 +2,17 @@
   "name": "@hydronium-js/dom-client",
   "version": "0.1.0",
   "type": "module",
-  "description": "Hydronium's browser client runtime: WASM Lua VM boot (wasmoon), DOM bridge, mount/hydrate, dev HMR client, JS-island bootstrap. Canonical source for what used to be hand-maintained directly under dom/src/hydronium_dom/client/ -- that tree is now a generated, drift-checked copy of this package's src/ (see ../../scripts/sync-dom-client.mjs and ../../scripts/check-dom-client-drift.mjs). Must keep working with NO bundler at all (a bare `<script type=\"module\">`), which is why this package has exactly one runtime dependency and no build step of its own.",
+  "description": "Hydronium's browser client runtime: WASM Lua VM boot, DOM bridge, mount/hydrate, dev HMR client, JS-island bootstrap, and the dev error overlay. Canonical source for what used to be hand-maintained under dom/src/hydronium_dom/client/ -- that tree is now a generated, drift-checked copy of this package's src/. Ships with ZERO runtime dependencies: the Lua VM (wasmoon) is vendored into src/vendor/wasmoon/ rather than depended on, so the runtime works with no bundler at all (a bare <script type=\"module\">) and a consumer that DOES bundle does not download the same 423KB twice. wasmoon is a devDependency because the sync script vendors FROM it; consumers never resolve it.",
   "files": [
     "src"
   ],
   "scripts": {
     "test": "node --test ../../../tests/client/*.test.mjs"
   },
-  "dependencies": {
-    "wasmoon": "1.16.0"
-  },
   "publishConfig": {
     "access": "public"
+  },
+  "devDependencies": {
+    "wasmoon": "1.16.0"
   }
 }

@@ -35,7 +35,7 @@ importers:
         version: 8.3.0(@types/node@26.6.2)(jiti@2.7.0)
 
   packages/dom-client:
-    dependencies:
+    devDependencies:
       wasmoon:
         specifier: 1.16.0
         version: 1.16.0
