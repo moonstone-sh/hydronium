@@ -289,6 +289,17 @@ function toLuaLiteral(value) {
  *   requiring the app entry. This is the application-side counterpart to
  *   the framework manifest: use it when the root component imports other
  *   project modules.
+ * @param {string} [options.assetManifestUrl] URL of the build's own
+ *   `hydronium-manifest.lua` (the Lua table literal, NOT the `.json`
+ *   sibling). Fetched as text and `load()`ed inside the VM, then handed to
+ *   `hydronium_dom.assets.configure_table` before the app module is
+ *   required -- so `assets.url("logo.svg")` returns the real content-hashed
+ *   URL client-side. Needed because `assets.configure()` reads a FILE and
+ *   wasmoon has no filesystem. Omit it and `assets.url()` keeps its
+ *   documented dev fallback (the raw, unhashed path), which in a static SPA
+ *   means a 404 with no SSR fallback behind it. Requires that something in
+ *   the bundle actually requires `hydronium_dom.assets`; if nothing does,
+ *   this throws rather than silently doing nothing.
  * @param {string} options.appModuleId The `require()` id your app's root component module registers under (required in both paths).
  * @param {string|Element} options.container CSS selector or a real DOM element to mount/hydrate into.
  * @param {object} [options.props] Props passed to the root component.
@@ -612,6 +623,7 @@ export async function boot(options) {
     chunkUrls,
     hydroniumBaseUrl,
     manifestUrl,
+    assetManifestUrl,
     appModuleId,
     appModuleUrl,
     moduleUrls = {},
@@ -675,7 +687,7 @@ export async function boot(options) {
     // engine boot and a fetch both reject, neither becomes an unhandled
     // rejection -- the first error is thrown and the other stays observed.
     mark("sources:start");
-    const [lua, sources] = await Promise.all([
+    const [lua, sources, assetManifestSrc] = await Promise.all([
       createLuaEngine(wasmoonUrl, wasmoonWasmUrl),
       (bundled
         ? fetchChunkSources(chunkUrls)
@@ -688,6 +700,19 @@ export async function boot(options) {
         mark("sources:end");
         return result;
       }),
+      // Fetched alongside the chunks rather than after them: it is an
+      // independent static file, and serialising it would add a whole
+      // round trip to first paint for no reason.
+      assetManifestUrl
+        ? fetch(assetManifestUrl).then((res) => {
+            if (!res.ok) {
+              throw new Error(
+                `hydronium.client.mount: failed to fetch assetManifestUrl ${assetManifestUrl}: ${res.status}`
+              );
+            }
+            return res.text();
+          })
+        : null,
     ]);
     mark("boot:end");
 
@@ -741,6 +766,24 @@ export async function boot(options) {
       );
     }
     mark("preload:end");
+
+    // After preload (the module has to be registered before it can be
+    // required) and before REQUIRE_LUA (the app module's own top level may
+    // call assets.url() while it is being required).
+    if (assetManifestSrc !== null) {
+      lua.global.set("__hydronium_asset_manifest_src", assetManifestSrc);
+      await lua.doString(`
+        local ok, assets = pcall(require, "hydronium_dom.assets")
+        if not ok then
+          error("hydronium.client.mount: assetManifestUrl was given but "
+            .. "hydronium_dom.assets is not in this bundle -- nothing in the "
+            .. "app's require graph reaches it, so the bundler dropped it ("
+            .. tostring(assets) .. ")", 0)
+        end
+        local chunk = assert(load(__hydronium_asset_manifest_src, "@hydronium-manifest"))
+        assets.configure_table(chunk())
+      `);
+    }
 
     lua.global.set("__hydronium_app_module_id", appModuleId);
     lua.global.set("__hydronium_hydrate", hydrate === true);

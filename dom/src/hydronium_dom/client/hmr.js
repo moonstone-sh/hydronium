@@ -67,14 +67,17 @@ import { createDevTransport } from "./dev_transport.js";
 const APPLY_BATCH_LUA = `
   local host = _G.__hydronium_hmr_host
   if not host then
-    host = require("hydronium.core.hmr_host").new()
+    host = require("hydronium.core.hmr_host").new({
+      root = __hydronium_hmr_can_remount and "browser-root" or nil,
+    })
     _G.__hydronium_hmr_host = host
   end
   for i = 1, __hydronium_hmr_count do
     host:queue(
       _G["__hydronium_hmr_id_" .. i],
       _G["__hydronium_hmr_src_" .. i],
-      _G["__hydronium_hmr_module_revision_" .. i]
+      _G["__hydronium_hmr_module_revision_" .. i],
+      _G["__hydronium_hmr_module_effects_" .. i]
     )
   end
   local result = host:flush(__hydronium_hmr_batch_revision)
@@ -91,7 +94,7 @@ const APPLY_BATCH_LUA = `
  *   `mount({ hmr: true, ... })` is required: that flag is what enables
  *   `family_loader` BEFORE the app module is first required, which is
  *   the only moment its components can be discovered.
- * @param {{ [watchedPath: string]: { action: "hot", module: string }|{ action: "reload" }|{ action: "style", href: string }|{ action: "ignore" } }} options.updates
+ * @param {{ [watchedPath: string]: { action: "hot", module: string, effects?: "safe"|"managed"|"restart" }|{ action: "reload" }|{ action: "style", href: string }|{ action: "ignore" } }} options.updates
  *   Explicit policy for every path named by the watch endpoint.
  * @param {string} [options.watchUrl] SSE endpoint (default `/__hydronium/watch`).
  * @param {string} [options.moduleUrl] Base URL serving one compiled module's
@@ -102,6 +105,9 @@ const APPLY_BATCH_LUA = `
  *   families, refreshed, failed, error }`.
  * @param {() => void} [options.onFullReload] Overrides the reload action
  *   (tests use this; defaults to `location.reload()`).
+ * @param {(result: object) => Promise<void>|void} [options.remount] Explicit
+ *   root remount boundary, normally the `remount` function returned by
+ *   `mount()`. It may use the Lua VM's optional snapshot/restore hooks.
  * @param {(apply: () => void) => void} [options.schedule] Runs an accepted
  *   batch at a host-safe boundary. Defaults to `requestAnimationFrame`.
  * @returns {{ close: () => void }}
@@ -114,6 +120,7 @@ export function installHmr(options) {
     moduleUrl = "/__hydronium/dev/module",
     onUpdate,
     onFullReload,
+    remount,
     schedule,
   } = options || {};
 
@@ -188,6 +195,12 @@ export function installHmr(options) {
     const responseRevision = res.headers?.get?.("x-hydronium-revision")
       || res.headers?.get?.("etag")
       || batchRevision;
+    // A snapshot-aware endpoint proves that it read this source against the
+    // same watcher revision that announced the batch. Older endpoints remain
+    // compatible, but a disagreeing proof is never silently accepted.
+    if (responseRevision !== batchRevision) {
+      throw new Error(`module ${id} belongs to revision ${responseRevision}, expected ${batchRevision}`);
+    }
     return { id, src, revision: String(responseRevision) };
   }
 
@@ -208,11 +221,13 @@ export function installHmr(options) {
     // completed before this point, and hmr_host flushes the queue once.
     lua.global.set("__hydronium_hmr_count", modules.length);
     lua.global.set("__hydronium_hmr_batch_revision", batchRevision);
+    lua.global.set("__hydronium_hmr_can_remount", typeof remount === "function");
     modules.forEach((module, index) => {
       const slot = index + 1;
       lua.global.set(`__hydronium_hmr_id_${slot}`, module.id);
       lua.global.set(`__hydronium_hmr_src_${slot}`, module.src);
       lua.global.set(`__hydronium_hmr_module_revision_${slot}`, module.revision);
+      lua.global.set(`__hydronium_hmr_module_effects_${slot}`, module.effects || "restart");
     });
     await safeBoundary();
     await lua.doString(APPLY_BATCH_LUA);
@@ -274,7 +289,12 @@ export function installHmr(options) {
 
     let modules;
     try {
-      modules = await Promise.all(ids.map((id) => fetchModule(id, event.fingerprint)));
+      modules = await Promise.all(ids.map(async (id) => {
+        const module = await fetchModule(id, event.fingerprint);
+        const rule = rules.find((candidate) => candidate.action === "hot" && candidate.module === id);
+        module.effects = rule?.effects || "restart";
+        return module;
+      }));
     } catch (err) {
       fullReload({ reason: "hot batch fetch failed", paths, ids, error: String(err && err.message ? err.message : err) });
       return;
@@ -286,6 +306,16 @@ export function installHmr(options) {
     } catch (err) {
       fullReload({ reason: "hot batch threw", paths, ids, error: String(err && err.message ? err.message : err) });
       return;
+    }
+    if (result.outcome === "remount" && typeof remount === "function") {
+      try {
+        await remount(result);
+        report({ status: "remounted", paths, ids, ...result });
+        return;
+      } catch (err) {
+        fullReload({ reason: "root remount failed", paths, ids, error: String(err && err.message ? err.message : err), ...result });
+        return;
+      }
     }
     if (result.outcome === "restart" || result.outcome === "remount" || result.outcome === "rejected") {
       fullReload({ reason: result.reason || `HMR requested ${result.outcome}`, paths, ids, ...result });

@@ -289,6 +289,17 @@ function toLuaLiteral(value) {
  *   requiring the app entry. This is the application-side counterpart to
  *   the framework manifest: use it when the root component imports other
  *   project modules.
+ * @param {string} [options.assetManifestUrl] URL of the build's own
+ *   `hydronium-manifest.lua` (the Lua table literal, NOT the `.json`
+ *   sibling). Fetched as text and `load()`ed inside the VM, then handed to
+ *   `hydronium_dom.assets.configure_table` before the app module is
+ *   required -- so `assets.url("logo.svg")` returns the real content-hashed
+ *   URL client-side. Needed because `assets.configure()` reads a FILE and
+ *   wasmoon has no filesystem. Omit it and `assets.url()` keeps its
+ *   documented dev fallback (the raw, unhashed path), which in a static SPA
+ *   means a 404 with no SSR fallback behind it. Requires that something in
+ *   the bundle actually requires `hydronium_dom.assets`; if nothing does,
+ *   this throws rather than silently doing nothing.
  * @param {string} options.appModuleId The `require()` id your app's root component module registers under (required in both paths).
  * @param {string|Element} options.container CSS selector or a real DOM element to mount/hydrate into.
  * @param {object} [options.props] Props passed to the root component.
@@ -342,7 +353,7 @@ function toLuaLiteral(value) {
  *   container. See PLACEHOLDERS below. Defaults to removing every
  *   `[data-hydronium-placeholder]` element inside the container at the
  *   exact moment the component is mounted.
- * @returns {Promise<{ lua: unknown, containerEl: Element, mounted: Promise<void>, timings: object }>}
+ * @returns {Promise<{ lua: unknown, containerEl: Element, mounted: Promise<void>, timings: object, remount: () => Promise<void> }>}
  */
 export async function mount(options) {
   const handle = await boot(options);
@@ -355,6 +366,7 @@ export async function mount(options) {
       containerEl: handle.containerEl,
       mounted: Promise.resolve(),
       timings: handle.timings,
+      remount: handle.remount,
     };
   }
 
@@ -377,7 +389,7 @@ export async function mount(options) {
   // reaches anyone who does await it, and the hydronium:error DOM event.
   mounted.catch(() => {});
 
-  return { lua: handle.lua, containerEl: handle.containerEl, mounted, timings: handle.timings };
+  return { lua: handle.lua, containerEl: handle.containerEl, mounted, timings: handle.timings, remount: handle.remount };
 }
 
 /*
@@ -560,6 +572,32 @@ const RENDER_LUA = `
   end
 `;
 
+// A remount is deliberately an explicit, opt-in HMR boundary. Application
+// code may install __hydronium_hmr_snapshot / __hydronium_hmr_restore in its
+// Lua VM; the value stays in that VM and is passed to the new root only after
+// old scopes have been disposed. Without hooks a remount is still safe, but
+// state resets rather than being guessed from arbitrary user tables.
+const REMOUNT_PREPARE_LUA = `
+  local snapshot = rawget(_G, "__hydronium_hmr_snapshot")
+  _G.__hydronium_hmr_transfer = type(snapshot) == "function" and snapshot() or nil
+  if _G.__hydronium_tree then
+    _G.__hydronium_reconciler:unmount(_G.__hydronium_tree)
+  end
+`;
+
+const REMOUNT_RENDER_LUA = `
+  local element = _G.__hydronium_element
+  local dom = _G.__hydronium_dom
+  _G.__hydronium_App = require(__hydronium_app_module_id)
+  local props = assert(load(__hydronium_props_src, "hydronium.client.remount props"))()
+  _G.__hydronium_tree = dom.lua.mount(element.h(_G.__hydronium_App, props))
+  _G.__hydronium_root_host_node = _G.__hydronium_reconciler:mount(
+    _G.__hydronium_tree, __hydronium_container, nil, nil)
+  local restore = rawget(_G, "__hydronium_hmr_restore")
+  if type(restore) == "function" then restore(_G.__hydronium_hmr_transfer) end
+  _G.__hydronium_hmr_transfer = nil
+`;
+
 /**
  * Boots the Lua VM, loads every module, and runs the app's require graph
  * -- everything EXCEPT rendering into the DOM, which the returned
@@ -573,7 +611,7 @@ const RENDER_LUA = `
  * Accepts every `mount()` option except `defer` (meaningless here: not
  * rendering IS the point) and returns:
  *
- *   { lua, containerEl, timings, render() }
+ *   { lua, containerEl, timings, render(), remount() }
  *
  * `timings` is live -- the render phases are filled into the SAME object
  * once `render()` runs, so a reference taken now stays current.
@@ -585,9 +623,11 @@ export async function boot(options) {
     chunkUrls,
     hydroniumBaseUrl,
     manifestUrl,
+    assetManifestUrl,
     appModuleId,
     appModuleUrl,
     moduleUrls = {},
+    moduleEffects = {},
     container,
     props = {},
     hydrate = false,
@@ -647,7 +687,7 @@ export async function boot(options) {
     // engine boot and a fetch both reject, neither becomes an unhandled
     // rejection -- the first error is thrown and the other stays observed.
     mark("sources:start");
-    const [lua, sources] = await Promise.all([
+    const [lua, sources, assetManifestSrc] = await Promise.all([
       createLuaEngine(wasmoonUrl, wasmoonWasmUrl),
       (bundled
         ? fetchChunkSources(chunkUrls)
@@ -660,6 +700,19 @@ export async function boot(options) {
         mark("sources:end");
         return result;
       }),
+      // Fetched alongside the chunks rather than after them: it is an
+      // independent static file, and serialising it would add a whole
+      // round trip to first paint for no reason.
+      assetManifestUrl
+        ? fetch(assetManifestUrl).then((res) => {
+            if (!res.ok) {
+              throw new Error(
+                `hydronium.client.mount: failed to fetch assetManifestUrl ${assetManifestUrl}: ${res.status}`
+              );
+            }
+            return res.text();
+          })
+        : null,
     ]);
     mark("boot:end");
 
@@ -714,9 +767,49 @@ export async function boot(options) {
     }
     mark("preload:end");
 
+    // After preload (the module has to be registered before it can be
+    // required) and before REQUIRE_LUA (the app module's own top level may
+    // call assets.url() while it is being required).
+    if (assetManifestSrc !== null) {
+      lua.global.set("__hydronium_asset_manifest_src", assetManifestSrc);
+      await lua.doString(`
+        local ok, assets = pcall(require, "hydronium_dom.assets")
+        if not ok then
+          error("hydronium.client.mount: assetManifestUrl was given but "
+            .. "hydronium_dom.assets is not in this bundle -- nothing in the "
+            .. "app's require graph reaches it, so the bundler dropped it ("
+            .. tostring(assets) .. ")", 0)
+        end
+        local chunk = assert(load(__hydronium_asset_manifest_src, "@hydronium-manifest"))
+        assets.configure_table(chunk())
+      `);
+    }
+
     lua.global.set("__hydronium_app_module_id", appModuleId);
     lua.global.set("__hydronium_hydrate", hydrate === true);
     lua.global.set("__hydronium_hmr_enabled", hmr === true);
+
+    // Source topology, not a filename heuristic, proves which application
+    // modules may be evaluated during a live replacement. Install this before
+    // the first require so observed importers inherit the declaration.
+    if (hmr) {
+      const managedEffects = { ...moduleEffects };
+      if (!managedEffects[appModuleId]) managedEffects[appModuleId] = "restart";
+      const entries = Object.entries(managedEffects);
+      entries.forEach(([id, effects], index) => {
+        lua.global.set(`__hydronium_hmr_managed_id_${index}`, id);
+        lua.global.set(`__hydronium_hmr_managed_effects_${index}`, effects);
+      });
+      lua.global.set("__hydronium_hmr_managed_count", entries.length);
+      await lua.doString(`
+        local graph = require("hydronium.core.module_graph")
+        for i = 0, __hydronium_hmr_managed_count - 1 do
+          graph.manage(_G["__hydronium_hmr_managed_id_" .. i], {
+            effects = _G["__hydronium_hmr_managed_effects_" .. i],
+          })
+        end
+      `);
+    }
 
     mark("require:start");
     await lua.doString(REQUIRE_LUA);
@@ -762,7 +855,27 @@ export async function boot(options) {
       }
     }
 
-    return { lua, containerEl, timings, render };
+    async function remount() {
+      if (!rendered) {
+        await render();
+        return;
+      }
+      try {
+        await lua.doString(REMOUNT_PREPARE_LUA);
+        // Reconciler unmount disposes scopes and bindings; clearing the
+        // container removes the now-unowned host nodes before mounting the
+        // replacement root. Do not use innerHTML: it would reparse content.
+        if (typeof containerEl.replaceChildren === "function") containerEl.replaceChildren();
+        else while (containerEl.firstChild) containerEl.removeChild(containerEl.firstChild);
+        lua.global.set("__hydronium_props_src", `return ${toLuaLiteral(props)}`);
+        await lua.doString(REMOUNT_RENDER_LUA);
+        dispatch(containerEl, "hydronium:remount", { lua, timings });
+      } catch (err) {
+        throw fail("remount", err);
+      }
+    }
+
+    return { lua, containerEl, timings, render, remount };
   } catch (err) {
     // aria-busy must not outlive a failed boot: a container stuck at
     // aria-busy="true" forever tells assistive tech the page is still
