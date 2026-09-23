@@ -22,13 +22,9 @@
   hydronium-ballad's moonstone.toml) never needs to be required by
   application code at all.
 
-  NOT YET DONE (real, separate future work, not silently faked): merging
-  compiled-module/require-graph info into the manifest (the `modules`
-  field docs/LUAX_BALLAD_CSS_ASSETS_PLAN.md section 3.3 sketches) --
-  hydronium_ballad.plugins.client already has its own real chunk manifest
-  concept (docs/HYDRONIUM_BALLAD_ARCHITECTURE_PLAN.md's "Contract 5"),
-  and reconciling the two manifest shapes needs a real design pass, not
-  a guess made here.
+  The optional `modules` section is a public seed for client graph tooling.
+  It exposes logical IDs and build semantics only: never `origin` or a source
+  path, which are host-private details even in development.
 --]]
 
 local graph = require("ballad.graph")
@@ -99,7 +95,7 @@ function M.manifest(ctx, inputs, opts)
   local name = opts.name or "hydronium-manifest"
 
   local out = graph.AssetSet.new()
-  local assets_map, styles_info = {}, {}
+  local assets_map, styles_info, modules = {}, {}, {}
 
   for _, input_set in ipairs(inputs or {}) do
     for _, asset in ipairs(input_set.assets) do
@@ -110,6 +106,14 @@ function M.manifest(ctx, inputs, opts)
           assets_map[h.source] = { url = h.url, integrity = h.integrity }
         elseif asset.kind == "hy_style_bundle" then
           styles_info = { url = h.url, sheet_count = h.sheet_count, reset = h.reset }
+        elseif asset.kind == "hy_module" and h.module_id then
+          modules[h.module_id] = {
+            target = h.target,
+            transform = h.transform or "lua",
+            update = h.update or "restart",
+            effects = h.effects or "restart",
+            revision = h.revision,
+          }
         end
       end
     end
@@ -119,6 +123,7 @@ function M.manifest(ctx, inputs, opts)
     version = 1,
     assets = assets_map,
     styles = styles_info,
+    modules = modules,
   }
 
   out:add(ctx.graph:add_asset({
