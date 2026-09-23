@@ -1,0 +1,9 @@
+/* Scoped at build time by hydronium_ballad.plugins.style, and at runtime by
+   hydronium_dom.css.sheet("app.css"). The browser gate asserts both arrive at
+   the same class name by checking the rule below actually applies. */
+.card {
+  /* A value nothing else could produce by accident, so a passing computed
+     style cannot be a coincidence or a browser default. */
+  outline-color: rgb(7, 113, 199);
+  padding: 11px;
+}

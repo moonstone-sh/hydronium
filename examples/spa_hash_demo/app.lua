@@ -34,6 +34,16 @@ local dom = require("hydronium_dom")
 local d = dom.d
 local R = require("hydronium_router")
 local hash_history = require("hydronium_router.history.hash")
+-- M4: the same stylesheet the build scopes. css.sheet indexes to the scoped
+-- class name at runtime; plugins.style rewrites the selector at build time.
+-- The browser gate proves they agree by checking the rule actually applies.
+local styles = require("hydronium_dom.css").sheet("app.css")
+-- M4: the OTHER half. Unlike css.sheet (a pure function -- the scoped name is
+-- derivable), a content hash is not computable without the file's bytes, so
+-- this needs the build's real manifest. mount()'s `assetManifestUrl` is what
+-- gets it into the VM; without that, url() returns its documented dev
+-- fallback ("/logo.svg"), which in a static SPA is a 404 and nothing else.
+local assets = require("hydronium_dom.assets")
 
 -- A plain `<button>`, not an `<a href>` -- deliberately: dom_bridge.js's
 -- set_listener documents that "wasmoon cannot safely marshal a browser
@@ -67,7 +77,8 @@ end
 local function HomeScreen()
   local navigate = R.use_navigate()
   return function()
-    return d.div({ id = "home-screen" },
+    return d.div({ id = "home-screen", class = styles.card },
+      d.img({ id = "logo", src = assets.url("logo.svg"), alt = "Hydronium" }),
       d.h1({}, "Home"),
       d.p({ id = "home-marker" }, "This is the home route."),
       nav_button("go-second", "Go to Second", navigate, "/second")

@@ -18,6 +18,9 @@ local hb = require("hydronium_ballad")
 
 return ballad.partiture(function(p)
   local client = p:use(hb.plugins.client)
+  local style = p:use(hb.plugins.style)
+  local assets = p:use(hb.plugins.assets)
+  local site = p:use(hb.plugins.site)
 
   local app_src = p.source.files({ "app.lua" }, {
     root = ".",
@@ -49,5 +52,19 @@ return ballad.partiture(function(p)
   local minified = client.minify(resolved, { level = "safe" })
   local bundled = client.bundle(minified, { entry = "app" })
 
-  p.sink.directory(bundled, { out = "dist", file_graph = true })
+  -- M4: the asset half of an SPA. A static SPA has no SSR fallback, so a
+  -- wrong asset URL or an unscoped class is a blank or unstyled page with
+  -- nothing in any log -- which is why these are built and gated here rather
+  -- than assumed.
+  local css_src = p.source.files({ "app.css" }, { root = "." })
+  local styles = style.bundle(css_src, { reset = false })
+
+  local static_src = p.source.files({ "logo.svg" }, { root = "." })
+  local hashed = assets.hash(static_src, {})
+
+  -- One sink for the whole site: p.sink.directory removes its out tree first,
+  -- so two sinks on the same dist/ would destroy each other.
+  local merged = site.manifest(hashed, { depends_on = { bundled, styles } })
+
+  p.sink.directory(merged, { out = "dist", file_graph = true })
 end)
