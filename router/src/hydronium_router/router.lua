@@ -70,10 +70,30 @@ local function make_proxy(map, label)
   })
 end
 
+--- The chain of nodes Outlet renders, innermost last.
+---
+--- `site()` builds a real nesting and records it as `meta.chain`. A FLAT
+--- `routes` declaration passed straight to `create_router` has no nesting and
+--- so no chain, and the fallback must then produce something Outlet can
+--- actually render -- it reads `node.component` (plus optional `node.load`
+--- and `node.error_component`).
+---
+--- The caller's own declaration is that node: create_router stores
+--- `declaration.meta or declaration` as the route's meta, so for a flat
+--- declaration the meta IS the table the caller wrote, `component` and all.
+--- The matcher's internal record is NOT -- it carries id/path/pattern/meta
+--- and no component. Returning the record, as this did, meant Outlet read a
+--- nil component and `render_component` returned nil for it WITHOUT error:
+--- the page rendered nothing at all, while `router.match().id` still
+--- reported the right route, so everything looked correct from the outside.
+--- Silent, and only on the flat path -- every existing spec goes through
+--- site(), which is why nothing caught it.
 local function match_chain(match_result)
   if not match_result then return {} end
-  local chain = match_result.route.meta and match_result.route.meta.chain
+  local meta = match_result.route.meta
+  local chain = meta and meta.chain
   if type(chain) == "table" then return chain end
+  if type(meta) == "table" then return { meta } end
   return { match_result.route }
 end
 

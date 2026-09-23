@@ -460,6 +460,7 @@ local function main()
       "tests/router/history_memory_spec.lua",
       "tests/router/history_browser_spec.lua",
       "tests/router/history_hash_spec.lua",
+      "tests/router/flat_routes_spec.lua",
       "tests/router/router_spec.lua",
       "tests/router/http_spec.lua",
       "tests/router/site_spec.lua",
