@@ -21,6 +21,7 @@ local route_resource = require("hydronium_router.resource")
 local result = require("hydronium_router.result")
 local state = require("hydronium_router.state")
 local http = require("hydronium_router.http")
+local topology = require("hydronium_router.topology")
 
 local Router = {
   _VERSION = "0.1.0",
@@ -40,6 +41,8 @@ local Router = {
   RouteResource = route_resource.Resource,
   state = state,
   http = http,
+  topology = topology,
+  routes_from_topology = topology.routes,
 
   -- Pattern parsing
   parse_pattern = pattern.parse,
