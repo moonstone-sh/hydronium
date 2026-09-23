@@ -1,4 +1,4 @@
-// @hydronium/vite -- public entry point.
+// @hydronium-js/vite -- public entry point.
 //
 // The plugin body is real; see plugin.ts.
 // in this file is wired into a real Vite config yet -- examples/islands-tailwind

@@ -743,7 +743,7 @@ app:get("/dual-hmr", function(c)
   local d = dom.d
   local vite_module = require("hydronium_dom.server.vite_module")
 
-  -- @hydronium/vite publishes the origin it actually bound to
+  -- @hydronium-js/vite publishes the origin it actually bound to
   -- .hydronium/vite-dev.json while its dev server runs (and removes it on
   -- shutdown, so a stale file cannot point at a dead port). Reading it means
   -- the port is configured in exactly one place -- the Vite config -- instead

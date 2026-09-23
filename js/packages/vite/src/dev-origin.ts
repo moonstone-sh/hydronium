@@ -32,7 +32,7 @@ export interface DevOriginConfig {
  */
 export function resolveDevOrigin(config: DevOriginConfig): string {
   if (!config || typeof config.port !== "number" || !Number.isFinite(config.port)) {
-    throw new Error("@hydronium/vite: resolveDevOrigin requires a numeric `port`");
+    throw new Error("@hydronium-js/vite: resolveDevOrigin requires a numeric `port`");
   }
   const protocol = config.protocol ?? "http";
   const host = config.host ?? "localhost";

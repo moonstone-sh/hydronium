@@ -12,7 +12,7 @@
 //                     bundled chunk -- build it first: see prerequisite
 //                     below)
 //   /js/bootstrap/*   dom/src/hydronium_dom/client/ (the real, synced
-//                     @hydronium/dom-client: mount.js + vendored wasmoon)
+//                     @hydronium-js/dom-client: mount.js + vendored wasmoon)
 //   /js/router/*      router/client/ (hash_history.js, the real M1 bridge)
 //
 // PREREQUISITE (this test does not build it; it fails with a clear

@@ -74,7 +74,7 @@ if (!existsSync(WASMOON_NODE_MODULES)) {
   throw new Error(
     "sync-dom-client: packages/dom-client/node_modules/wasmoon not found -- run " +
       "`pnpm install` in hydronium/js first (wasmoon is a real dependency of " +
-      "@hydronium/dom-client now, not a hand-vendored file)."
+      "@hydronium-js/dom-client now, not a hand-vendored file)."
   );
 }
 for (const { from, to } of WASMOON_NPM_FILES) {

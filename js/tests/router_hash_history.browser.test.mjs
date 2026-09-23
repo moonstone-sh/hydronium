@@ -13,7 +13,7 @@
 // workspace and cannot resolve the "playwright" devDependency hoisted to
 // js/node_modules) -- see docs/HYDRONIUM_SPA_MODE_PLAN.md hazard 2 on
 // router/client/ being an unpackaged second pile of client JS outside
-// @hydronium/dom-client; this test's own location is the same hazard.
+// @hydronium-js/dom-client; this test's own location is the same hazard.
 //
 // Run: node --test js/tests/router_hash_history.browser.test.mjs
 

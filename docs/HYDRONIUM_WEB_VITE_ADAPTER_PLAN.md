@@ -1,4 +1,4 @@
-# `@hydronium/vite`: the web-asset adapter plan
+# `@hydronium-js/vite`: the web-asset adapter plan
 
 **Scope:** bring real JS/TS/CSS tooling (Vite 8 + Tailwind v4) to Hydronium DOM apps, as a first-party adapter, without touching the Lua bundling pipeline `hydronium_ballad` already owns.
 
@@ -33,7 +33,7 @@ Established by real commands this session, not from memory:
 ## 1. Decisions taken (2026-09-22)
 
 1. **In-repo, not a sibling repo.** The adapter consumes `dom/`'s client JS and the explicitly-provisional `client_plan` **v1** contract at internal-API depth. Same reasoning that moved `create` into this repo.
-2. **Two packages:** `@hydronium/dom-client` (the runtime: mount, bridge, HMR client, islands bootstrap) and `@hydronium/vite` (the build/dev adapter). Split because `dom-client` must keep working with **no bundler at all** — a bare `<script type="module">` — which `bootstrap.js`'s own header claims today; folding the plugin in would force a `vite` dependency on every consumer.
+2. **Two packages:** `@hydronium-js/dom-client` (the runtime: mount, bridge, HMR client, islands bootstrap) and `@hydronium-js/vite` (the build/dev adapter). Split because `dom-client` must keep working with **no bundler at all** — a bare `<script type="module">` — which `bootstrap.js`'s own header claims today; folding the plugin in would force a `vite` dependency on every consumer.
 3. **Ship M0–M3**, through the production manifest merge.
 4. **Move the client JS now**, with a drift check.
 
@@ -83,11 +83,11 @@ Meteorite deliberately cannot serve websockets, so Vite's HMR socket must reach 
 hydronium/js/                         # npm workspace root (pnpm or bun), NOT a moonstone package
   package.json                        # private: true, workspaces: ["packages/*"]
   packages/
-    dom-client/                       # "@hydronium/dom-client"
+    dom-client/                       # "@hydronium-js/dom-client"
       package.json                    # dep: wasmoon (replaces the 432K vendored copy)
       src/  mount.js  dom_bridge.js  bootstrap.js  hmr.js  dev_transport.js
             dev_reload.js  priority.js  boundary_registry.js  forms.js
-    vite/                             # "@hydronium/vite"
+    vite/                             # "@hydronium-js/vite"
       package.json                    # peer: vite ^8; dep: none beyond its own
       src/  index.ts  islands.ts  manifest.ts  dev-origin.ts
   examples/
@@ -122,7 +122,7 @@ Build `examples/islands-tailwind`: a real JS island (same `hydrate`/`mount`/`dis
 
 1. Implement `hy_asset_ref` for real (`asset_id` + `specifier`, per the shape already specified in `HYDRONIUM_BALLAD_ARCHITECTURE_PLAN.md:217,250`). Do **not** invent a parallel mechanism.
 2. Resolve it at render time in `dom/src/hydronium_dom/server/init.lua`, where `raw_props.module` is currently passed straight through: dev → Vite origin URL, prod → hashed `dist/` URL. Compiled modules must not inline final URLs.
-3. CORS/dev-origin config in `@hydronium/vite`; a supervisor that starts Meteorite dev + `vite dev` together, forwards signals, and merges logs.
+3. CORS/dev-origin config in `@hydronium-js/vite`; a supervisor that starts Meteorite dev + `vite dev` together, forwards signals, and merges logs.
 
 **Gate:** a Playwright run where a JS island hydrates from a module served off Vite's port, a click drives real state, editing that JS file HMR-patches without reload, **while** a co-located `.luax` component's Lua-side HMR is undisturbed on the same page. The two HMR systems visibly coexisting is the single highest-value experiment in this plan.
 

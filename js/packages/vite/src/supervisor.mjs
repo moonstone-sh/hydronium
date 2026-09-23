@@ -3,7 +3,7 @@
 // Meteorite dev + vite dev together, forwards signals, and merges logs").
 //
 // Plain JS (.mjs), not TypeScript: this package has no build step yet
-// (see its own package.json description -- M0/M1 left @hydronium/vite as
+// (see its own package.json description -- M0/M1 left @hydronium-js/vite as
 // a type-checked skeleton with nothing compiling it), and this file is
 // meant to be run directly with `node`, e.g. as the actual dev entry
 // point for an app that wired both a Meteorite backend and a Vite

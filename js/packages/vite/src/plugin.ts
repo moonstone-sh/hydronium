@@ -1,4 +1,4 @@
-// The @hydronium/vite plugin.
+// The @hydronium-js/vite plugin.
 //
 // Everything here exists because a Hydronium page is served by Meteorite and
 // only *references* Vite's output -- Vite never serves the HTML. That single

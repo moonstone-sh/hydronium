@@ -1,4 +1,4 @@
-// Unit tests for the @hydronium/vite plugin's config contribution.
+// Unit tests for the @hydronium-js/vite plugin's config contribution.
 //
 // These call the plugin's `config()` hook directly rather than booting Vite:
 // the hook is a pure function of the user's config, and the browser-level

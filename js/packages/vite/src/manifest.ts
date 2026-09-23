@@ -34,7 +34,7 @@ export function readViteManifest(manifestPath: string): ViteManifest {
   const parsed = JSON.parse(raw) as unknown;
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error(
-      `@hydronium/vite: ${manifestPath} is not a Vite manifest object`
+      `@hydronium-js/vite: ${manifestPath} is not a Vite manifest object`
     );
   }
   return parsed as ViteManifest;

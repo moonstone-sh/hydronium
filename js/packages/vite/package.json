@@ -1,9 +1,8 @@
 {
-  "name": "@hydronium/vite",
+  "name": "@hydronium-js/vite",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
-  "description": "Vite 8 build/dev adapter for Hydronium: the plugin wires island entry points into the build (islands are fetched at runtime by bootstrap.js, so nothing in Vite's graph imports them), enables the build manifest hydronium_ballad.plugins.vite_assets ingests, sets the cross-origin dev policy the Meteorite-served page needs, and publishes the bound dev origin for the Lua server to read. Kept separate from @hydronium/dom-client so consuming that runtime never pulls in a `vite` dependency.",
+  "description": "Vite 8 build/dev adapter for Hydronium: the plugin wires island entry points into the build (islands are fetched at runtime by bootstrap.js, so nothing in Vite's graph imports them), enables the build manifest hydronium_ballad.plugins.vite_assets ingests, sets the cross-origin dev policy the Meteorite-served page needs, and publishes the bound dev origin for the Lua server to read. Kept separate from @hydronium-js/dom-client so consuming that runtime never pulls in a `vite` dependency.",
   "main": "./dist/index.js",
   "peerDependencies": {
     "vite": "^8.0.0"
@@ -27,5 +26,8 @@
   "scripts": {
     "build": "tsc",
     "prepare": "tsc"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

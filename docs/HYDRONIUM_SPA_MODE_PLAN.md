@@ -66,7 +66,7 @@ Meteorite SSRs the initial route; the same chunks hydrate; the router takes over
 
 **The JS half.** `browser.lua` reads `_G.__router_*` globals that `router/client/history.js` supplies. A hash adapter needs the same shape of bridge — a `hashchange` listener and hash read/write. Two things to decide while doing it:
 
-- `router/client/*.js` sits outside `@hydronium/dom-client`, so a browser SPA currently has a second, unpackaged pile of client JS. It should move into the package alongside `mount.js`, with the same generated-copy + drift check.
+- `router/client/*.js` sits outside `@hydronium-js/dom-client`, so a browser SPA currently has a second, unpackaged pile of client JS. It should move into the package alongside `mount.js`, with the same generated-copy + drift check.
 - The globals contract (`__router_*`) is ambient and unvalidated on the JS side. Hash mode doubles the number of implementations reading it, which is the moment to give it a named export instead.
 
 **Selection.** Make the mode explicit and documented — `create_router { history = hydronium_router.createHashHistory() }` is already possible; what is missing is (a) the hash implementation, (b) a documented recommendation per deployment target, and (c) the scaffold choosing correctly. Avoid a magic "detect the environment" default: a silent fallback between pushState and hash is precisely the kind of thing that works in dev and 404s in production.
@@ -116,7 +116,7 @@ Only after A is green. Meteorite SSRs the initial route into the same shell; the
 ## 5. Hazards
 
 1. **`h.mount` naming.** Resolve it once, in M5, and make the docs and template agree. Right now `spa.lua` asserts an API gap that is really a shape difference.
-2. **Two piles of client JS.** `router/client/` is outside `@hydronium/dom-client`. Fold it in during M1 or the SPA ships an unpackaged, undrift-checked second copy.
+2. **Two piles of client JS.** `router/client/` is outside `@hydronium-js/dom-client`. Fold it in during M1 or the SPA ships an unpackaged, undrift-checked second copy.
 3. **The `__router_*` ambient globals** are unvalidated and about to gain a second consumer.
 4. **No SSR fallback.** Every asset-path defect in Mode A is a blank page. This is why M4 is in scope rather than deferred.
 5. **Tree-shaking and the router.** `resolve()` drops unreached modules. A router that resolves route components dynamically is exactly the shape that looks unreachable to a static walk — the require-discipline lint will now *fail the build* rather than silently under-bundle, which is the desired behaviour, but expect to hit it and to need explicit entries.

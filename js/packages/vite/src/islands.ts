@@ -40,10 +40,10 @@ export function resolveIslandModule(
     | { mode: "dev"; origin: string }
     | { mode: "prod"; manifest: ViteManifest; base?: string }
 ): string {
-  if (!specifier) throw new Error("@hydronium/vite: island specifier is required");
+  if (!specifier) throw new Error("@hydronium-js/vite: island specifier is required");
   if (options.mode === "dev") {
     if (!options.origin) {
-      throw new Error("@hydronium/vite: dev island resolution requires an `origin`");
+      throw new Error("@hydronium-js/vite: dev island resolution requires an `origin`");
     }
     return (
       options.origin.replace(/\/+$/, "") + "/" + specifier.replace(/^\.?\/+/, "")
@@ -52,7 +52,7 @@ export function resolveIslandModule(
   const url = manifestUrl(options.manifest, specifier, options.base ?? "/");
   if (!url) {
     throw new Error(
-      `@hydronium/vite: island "${specifier}" is not in the build manifest -- ` +
+      `@hydronium-js/vite: island "${specifier}" is not in the build manifest -- ` +
         "declare it in the plugin's `islands` option so Vite builds it"
     );
   }

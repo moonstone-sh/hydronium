@@ -1,7 +1,6 @@
 {
-  "name": "@hydronium/dom-client",
+  "name": "@hydronium-js/dom-client",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "Hydronium's browser client runtime: WASM Lua VM boot (wasmoon), DOM bridge, mount/hydrate, dev HMR client, JS-island bootstrap. Canonical source for what used to be hand-maintained directly under dom/src/hydronium_dom/client/ -- that tree is now a generated, drift-checked copy of this package's src/ (see ../../scripts/sync-dom-client.mjs and ../../scripts/check-dom-client-drift.mjs). Must keep working with NO bundler at all (a bare `<script type=\"module\">`), which is why this package has exactly one runtime dependency and no build step of its own.",
   "files": [
@@ -12,5 +11,8 @@
   },
   "dependencies": {
     "wasmoon": "1.16.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

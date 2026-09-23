@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
-import hydronium from "@hydronium/vite";
+import hydronium from "@hydronium-js/vite";
 
 export default defineConfig({
   plugins: [

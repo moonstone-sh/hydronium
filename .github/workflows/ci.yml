@@ -66,7 +66,7 @@ jobs:
       - name: Export all registry packages
         run: moon exec -- ballad play partiture.lua
 
-  # The JS/CSS adapter (hydronium/js -- @hydronium/dom-client, @hydronium/vite)
+  # The JS/CSS adapter (hydronium/js -- @hydronium-js/dom-client, @hydronium-js/vite)
   # shares no toolchain with `validate` above: no zig, no moonstone, no ballad.
   # Kept as its own job so it runs in parallel and a failure names the right
   # half of the codebase. Before this job existed, NOTHING mechanically checked
@@ -96,17 +96,17 @@ jobs:
         run: node --test js/packages/vite/tests/supervisor.test.mjs
       - name: dom-client drift check
         # Fails when dom/src/hydronium_dom/client/ has diverged from the
-        # @hydronium/dom-client package it is generated from. Exits 1 on drift.
+        # @hydronium-js/dom-client package it is generated from. Exits 1 on drift.
         run: node js/scripts/check-dom-client-drift.mjs
 
       - name: Install web workspace
         working-directory: js
         run: pnpm install --frozen-lockfile
-      - name: Build @hydronium/vite
+      - name: Build @hydronium-js/vite
         # pnpm does NOT run a workspace package's `prepare` on install, so the
         # compiled output the plugin is consumed through does not exist until
         # this runs. Without it `vite build` in the example cannot resolve
-        # @hydronium/vite at all on a fresh checkout.
+        # @hydronium-js/vite at all on a fresh checkout.
         working-directory: js
         run: pnpm build
       - name: Plugin unit tests
