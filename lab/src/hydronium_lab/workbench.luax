@@ -1,0 +1,93 @@
+-- Host-neutral browser workbench for Hydronium story renderers.
+--
+-- The shell owns navigation and canvas chrome. A renderer adapter supplies
+-- the toolbar controls, preview surface, optional metrics, preferences and
+-- shortcut copy. Keeping these slots as ordinary Hydronium elements means a
+-- DOM preview and an Ink virtual terminal share one workbench without sharing
+-- rendering semantics.
+local H = require("hydronium")
+
+local function Icon(props)
+  return <span class="material-symbols-outlined" aria-hidden="true">{props.name}</span>
+end
+
+local function class_name(suffix, legacy_prefix)
+  local value = "hydronium-lab" .. suffix
+  if legacy_prefix and legacy_prefix ~= "" then
+    value = value .. " " .. legacy_prefix .. suffix
+  end
+  return value
+end
+
+local function Shell(props)
+  local legacy = props.legacy_class_prefix
+  local root_class = class_name("", legacy)
+  if props.class then root_class = root_class .. " " .. props.class end
+
+  return (
+    <main class={root_class} data-hydronium-lab data-lab-project={props.project_id or "hydronium-lab"} data-lab-renderer={props.renderer or "dom"} {...(props.root_attributes or {})}>
+      <section class={class_name("__canvas", legacy)}>
+        <header class={class_name("__canvas-toolbar", legacy)}>
+          <span class={class_name("__active-story", legacy)} data-lab-active-story aria-live="polite" />
+          <div class={class_name("__canvas-hud", legacy)} data-lab-canvas-hud>
+            {props.renderer_controls}
+            {props.metrics}
+            <div class={class_name("__canvas-actions", legacy)} data-lab-canvas-actions>
+              <button type="button" data-lab-zoom-out aria-label="Zoom out"><Icon name="zoom_out" /></button>
+              <button type="button" data-lab-zoom-in aria-label="Zoom in"><Icon name="zoom_in" /></button>
+              <button type="button" data-lab-canvas-reset aria-label="Center canvas"><Icon name="my_location" /></button>
+              <button type="button" data-lab-sidebar-toggle aria-label="Hide stories"><Icon name="menu" /></button>
+            </div>
+          </div>
+        </header>
+        <section class={class_name("__stage", legacy)} data-lab-stage tabindex="0" aria-label={props.canvas_label or "Preview canvas. Space drag pans; C centers; F toggles fullscreen; Control plus or minus zooms."}>
+          <div class={class_name("__viewport", legacy)} data-lab-viewport>
+            <div class={class_name("__world-grid", legacy)} data-lab-grid aria-hidden="true" />
+            {props.preview}
+          </div>
+          <p class={class_name("__hint", legacy)}>{props.shortcut_legend or <span><kbd>Space</kbd> drag · <kbd>C</kbd> center · <kbd>F</kbd> fullscreen · <kbd>Ctrl</kbd> <kbd>+</kbd>/<kbd>−</kbd> zoom</span>}</p>
+          <output class={class_name("__status", legacy)} data-lab-status aria-live="polite">Connecting</output>
+        </section>
+        <div class={class_name("__interactions", legacy)} data-lab-interactions />
+      </section>
+      <aside class={class_name("__sidebar", legacy)} data-lab-sidebar aria-label="Stories">
+        <header><strong>{props.project_name or "Hydronium Lab"}</strong><span>
+          <button type="button" data-lab-preferences-toggle aria-label="Preferences" aria-expanded="false"><Icon name="settings" /></button>
+          <button type="button" data-lab-sidebar-toggle aria-label="Hide stories" aria-expanded="true"><Icon name="close" /></button>
+        </span></header>
+        <input type="search" data-lab-story-search aria-label="Search stories" placeholder="Search stories" autocomplete="off" />
+        <nav data-lab-stories aria-label="Story catalog" />
+      </aside>
+      <aside class={class_name("__preferences", legacy)} data-lab-preferences hidden aria-label="Lab preferences">
+        <header><strong>Preferences</strong><button type="button" data-lab-preferences-close aria-label="Close preferences"><Icon name="close" /></button></header>
+        <p>Saved locally for this project.</p>
+        <fieldset class={class_name("__preference-group", legacy)}>
+          <legend>Canvas grid</legend>
+          <div class={class_name("__preference-row", legacy)}>
+            <label class={class_name("__toggle", legacy)}><input type="checkbox" data-lab-grid-enabled /><span>Show grid</span></label>
+            <button type="button" class={class_name("__reset", legacy)} data-lab-grid-reset="enabled" aria-label="Reset grid visibility" title="Reset grid visibility"><Icon name="restart_alt" /></button>
+          </div>
+          <div class={class_name("__preference-row", legacy)}>
+            <label class={class_name("__control", legacy)}>Grid color<input type="color" data-lab-grid-color aria-label="Grid color" /></label>
+            <button type="button" class={class_name("__reset", legacy)} data-lab-grid-reset="color" aria-label="Reset grid color" title="Reset grid color"><Icon name="restart_alt" /></button>
+          </div>
+          <div class={class_name("__preference-row", legacy)}>
+            <label class={class_name("__control", legacy)}>Cell width<input type="number" min="8" max="160" step="1" inputmode="numeric" data-lab-grid-width aria-label="Grid cell width in pixels" /></label>
+            <button type="button" class={class_name("__reset", legacy)} data-lab-grid-reset="width" aria-label="Reset grid cell width" title="Reset grid cell width"><Icon name="restart_alt" /></button>
+          </div>
+          <div class={class_name("__preference-row", legacy)}>
+            <label class={class_name("__control", legacy)}>Cell height<input type="number" min="8" max="160" step="1" inputmode="numeric" data-lab-grid-height aria-label="Grid cell height in pixels" /></label>
+            <button type="button" class={class_name("__reset", legacy)} data-lab-grid-reset="height" aria-label="Reset grid cell height" title="Reset grid cell height"><Icon name="restart_alt" /></button>
+          </div>
+          <div class={class_name("__preference-row", legacy)}>
+            <label class={class_name("__control", legacy)}>Cell shape<select data-lab-grid-shape aria-label="Grid cell shape"><option value="square">Square</option><option value="hexagonal">Hexagonal</option></select></label>
+            <button type="button" class={class_name("__reset", legacy)} data-lab-grid-reset="shape" aria-label="Reset grid cell shape" title="Reset grid cell shape"><Icon name="restart_alt" /></button>
+          </div>
+        </fieldset>
+        {props.preferences}
+      </aside>
+    </main>
+  )
+end
+
+return { Shell = Shell, Icon = Icon }

@@ -1,0 +1,556 @@
+:root {
+  color-scheme: dark;
+  --hy-lab-page: #0b1020;
+  --hy-lab-panel: #121a2d;
+  --hy-lab-panel-raised: #19243b;
+  --hy-lab-text: #e8edf7;
+  --hy-lab-muted: #93a4bf;
+  --hy-lab-line: #2a3958;
+  --hy-lab-accent: #7c9cff;
+  --hy-lab-focus: #a9c4ff;
+  --hy-lab-radius: 12px;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--hy-lab-page);
+}
+
+.hydronium-lab,
+.hydronium-lab * {
+  box-sizing: border-box;
+}
+
+.hydronium-lab {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 288px;
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--hy-lab-text);
+  background: var(--hy-lab-page);
+  font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  transition: grid-template-columns 180ms ease;
+}
+
+.hydronium-lab[hidden],
+.hydronium-lab [hidden] {
+  display: none !important;
+}
+
+.hydronium-lab[data-sidebar-collapsed="true"] {
+  grid-template-columns: minmax(0, 1fr) 0;
+}
+
+.hydronium-lab button,
+.hydronium-lab select,
+.hydronium-lab input {
+  min-height: 34px;
+  border: 1px solid var(--hy-lab-line);
+  border-radius: 8px;
+  color: var(--hy-lab-text);
+  background: var(--hy-lab-panel-raised);
+  font: inherit;
+}
+
+.hydronium-lab button {
+  padding: 0 11px;
+  cursor: pointer;
+}
+
+.hydronium-lab button:hover,
+.hydronium-lab__icon-control:hover {
+  border-color: var(--hy-lab-accent);
+}
+
+.hydronium-lab select,
+.hydronium-lab input {
+  min-width: 11rem;
+  padding: 0 9px;
+}
+
+.hydronium-lab input::placeholder {
+  color: var(--hy-lab-muted);
+}
+
+.hydronium-lab :is(select, input, button, [data-lab-stage], [data-lab-terminal]):focus-visible {
+  outline: 3px solid var(--hy-lab-focus);
+  outline-offset: 2px;
+}
+
+.hydronium-lab__canvas {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--hy-lab-line);
+  background: var(--hy-lab-panel);
+}
+
+.hydronium-lab__canvas-toolbar {
+  display: flex;
+  min-height: 58px;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hy-lab-line);
+  background: rgb(18 26 45 / 90%);
+}
+
+.hydronium-lab__active-story {
+  min-width: 0;
+  margin-right: auto;
+  overflow: hidden;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hydronium-lab__canvas-hud,
+.hydronium-lab__canvas-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.hydronium-lab__canvas-hud {
+  gap: 10px;
+  margin-left: auto;
+}
+
+.hydronium-lab__canvas-actions {
+  flex: none;
+  gap: 5px;
+}
+
+.hydronium-lab__canvas-actions button,
+.hydronium-lab__sidebar header button,
+.hydronium-lab__preferences header button {
+  display: grid;
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  place-items: center;
+}
+
+.hydronium-lab__renderer-controls {
+  display: contents;
+}
+
+.hydronium-lab__icon-control {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--hy-lab-line);
+  border-radius: 8px;
+  color: var(--hy-lab-muted);
+  background: var(--hy-lab-panel-raised);
+  cursor: pointer;
+}
+
+.hydronium-lab__icon-control select {
+  width: auto;
+  min-width: 0;
+  max-width: 132px;
+  min-height: 32px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.hydronium-lab__icon-control select:focus-visible {
+  outline: 0;
+}
+
+.hydronium-lab__dimensions {
+  flex: none;
+  color: var(--hy-lab-text);
+  font: 700 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hydronium-lab__dimension-zero {
+  opacity: 0.4;
+}
+
+.hydronium-lab__dimension-separator {
+  padding: 0 0.32em;
+  opacity: 0.7;
+}
+
+.hydronium-lab__stage {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  overflow: hidden;
+  touch-action: none;
+  background-color: #101827;
+  background-image: radial-gradient(circle at 55% 45%, rgb(42 67 111 / 32%), transparent 48%);
+}
+
+.hydronium-lab__stage:focus-visible {
+  outline: 3px solid var(--hy-lab-focus);
+  outline-offset: -3px;
+}
+
+.hydronium-lab__stage[data-panning="true"] {
+  cursor: grabbing;
+}
+
+.hydronium-lab__stage:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--hy-lab-page);
+}
+
+.hydronium-lab__viewport {
+  position: relative;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+  transform-origin: center;
+  will-change: transform;
+}
+
+.hydronium-lab__viewport > :not(.hydronium-lab__world-grid) {
+  position: relative;
+  z-index: 1;
+}
+
+.hydronium-lab__world-grid {
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: 50%;
+  width: 20000px;
+  height: 20000px;
+  opacity: 0.22;
+  transform: translate(-50%, -50%);
+  transform-origin: center;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+
+.hydronium-lab__world-grid[data-grid-enabled="false"] {
+  opacity: 0;
+}
+
+.hydronium-lab__hint,
+.hydronium-lab__status {
+  position: absolute;
+  z-index: 2;
+  margin: 0;
+  color: var(--hy-lab-muted);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.hydronium-lab__hint {
+  bottom: 10px;
+  left: 14px;
+}
+
+.hydronium-lab__hint kbd {
+  padding: 1px 4px;
+  border: 1px solid rgb(147 164 191 / 50%);
+  border-radius: 4px;
+  color: var(--hy-lab-text);
+  background: rgb(11 16 32 / 52%);
+  font: inherit;
+  font-size: 10px;
+}
+
+.hydronium-lab__status {
+  right: 14px;
+  bottom: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--hy-lab-line);
+  border-radius: 999px;
+  background: rgb(11 16 32 / 84%);
+  backdrop-filter: blur(8px);
+  white-space: nowrap;
+}
+
+.hydronium-lab__interactions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--hy-lab-line);
+}
+
+.hydronium-lab__interactions:empty {
+  display: none;
+}
+
+.hydronium-lab__sidebar {
+  min-width: 0;
+  min-height: 0;
+  padding: 14px;
+  overflow: auto;
+  background: var(--hy-lab-panel);
+  transition: opacity 150ms ease, padding 180ms ease;
+}
+
+.hydronium-lab[data-sidebar-collapsed="true"] .hydronium-lab__sidebar {
+  overflow: hidden;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hydronium-lab__sidebar header,
+.hydronium-lab__preferences header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.hydronium-lab__sidebar header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hydronium-lab__sidebar header > span {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.hydronium-lab__sidebar > input {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+.hydronium-lab__story-group {
+  margin: 0 0 16px;
+}
+
+.hydronium-lab__story-group h2 {
+  margin: 0 0 6px;
+  color: var(--hy-lab-muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hydronium-lab__story {
+  display: block;
+  width: 100%;
+  margin: 2px 0;
+  border-color: transparent;
+  text-align: left;
+}
+
+.hydronium-lab__story[aria-current="true"] {
+  border-color: var(--hy-lab-accent);
+  background: #213258;
+}
+
+.hydronium-lab__preferences {
+  position: fixed;
+  z-index: 5;
+  top: 12px;
+  right: 12px;
+  width: min(320px, calc(100vw - 24px));
+  padding: 16px;
+  border: 1px solid var(--hy-lab-line);
+  border-radius: var(--hy-lab-radius);
+  background: var(--hy-lab-panel);
+  box-shadow: 0 22px 64px rgb(0 0 0 / 42%);
+}
+
+.hydronium-lab__preferences p {
+  margin: 0 0 16px;
+  color: var(--hy-lab-muted);
+  font-size: 12px;
+}
+
+.hydronium-lab__control {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+  color: var(--hy-lab-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.hydronium-lab__preference-group {
+  min-width: 0;
+  margin: 0 0 18px;
+  padding: 12px;
+  border: 1px solid var(--hy-lab-line);
+  border-radius: 10px;
+}
+
+.hydronium-lab__preference-group legend {
+  padding: 0 5px;
+  color: var(--hy-lab-text);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.hydronium-lab__preference-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.hydronium-lab__preference-row:last-child {
+  margin-bottom: 0;
+}
+
+.hydronium-lab__preference-row .hydronium-lab__control,
+.hydronium-lab__preference-row .hydronium-lab__toggle {
+  min-width: 0;
+  margin: 0;
+}
+
+.hydronium-lab__preference-row :is(input, select) {
+  width: 100%;
+  min-width: 0;
+}
+
+.hydronium-lab__preference-row input[type="color"] {
+  padding: 4px;
+}
+
+.hydronium-lab__reset {
+  display: grid;
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  place-items: center;
+}
+
+.hydronium-lab__toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 9px 10px;
+  border: 1px solid var(--hy-lab-line);
+  border-radius: 8px;
+  color: var(--hy-lab-text);
+  cursor: pointer;
+}
+
+.hydronium-lab__toggle input {
+  min-width: auto;
+  min-height: auto;
+  accent-color: var(--hy-lab-accent);
+}
+
+.material-symbols-outlined {
+  font-size: 19px;
+  line-height: 1;
+  font-variation-settings: "opsz" 20, "wght" 400, "FILL" 0, "GRAD" 0;
+}
+
+@media (max-width: 820px) {
+  .hydronium-lab,
+  .hydronium-lab[data-sidebar-collapsed="true"] {
+    display: flex;
+  }
+
+  .hydronium-lab__canvas {
+    width: 100%;
+    border-right: 0;
+  }
+
+  .hydronium-lab__canvas-toolbar {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .hydronium-lab__active-story {
+    max-width: 38vw;
+  }
+
+  .hydronium-lab__canvas-hud {
+    gap: 7px;
+  }
+
+  .hydronium-lab__icon-control select {
+    max-width: 90px;
+  }
+
+  .hydronium-lab__dimensions {
+    font-size: 12px;
+  }
+
+  .hydronium-lab__canvas-actions {
+    gap: 3px;
+  }
+
+  .hydronium-lab__canvas-actions button {
+    width: 30px;
+    min-width: 30px;
+  }
+
+  .hydronium-lab__sidebar {
+    position: absolute;
+    z-index: 4;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+    max-height: 42vh;
+    border: 1px solid var(--hy-lab-line);
+    border-radius: 14px;
+    box-shadow: 0 20px 50px rgb(0 0 0 / 45%);
+  }
+
+  .hydronium-lab[data-sidebar-collapsed="true"] .hydronium-lab__sidebar {
+    display: none;
+  }
+
+  .hydronium-lab__hint {
+    right: 12px;
+    bottom: 10px;
+    max-width: calc(100% - 24px);
+    font-size: 11px;
+    text-align: center;
+  }
+
+  .hydronium-lab__status {
+    right: 10px;
+    bottom: 42px;
+  }
+
+  .hydronium-lab__preferences {
+    top: 8px;
+    right: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hydronium-lab,
+  .hydronium-lab__sidebar,
+  .hydronium-lab__world-grid {
+    transition: none;
+  }
+}
