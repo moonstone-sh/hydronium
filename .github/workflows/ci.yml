@@ -17,8 +17,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: moonstone-sh/moonstone
-          # Includes `moon artifact create`, required by Ballad registry export.
-          ref: aa8513801dc1ac970686d5efb71c40dece2e9594
+          # v0.5.3 validates lock dependencies against the active target
+          # profile, which this multi-profile workspace requires.
+          ref: v0.5.3
           path: .ci/moonstone
       - uses: actions/checkout@v4
         with:
