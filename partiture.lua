@@ -5,14 +5,8 @@ return ballad.partiture(function(p)
     local layout = p:use(ballad.plugins.layout)
 
     local function package_orbit(name)
-        -- hydronium/create's valid multi-profile lock currently fails an
-        -- immediate `moon sync --locked` replay because Moonstone validates
-        -- the first global realization for a package instead of the active
-        -- profile. See ../moonstone/ISSUE-LOCKFILE.md. Keep this exception
-        -- local until that defect is fixed.
-        local sync_mode = name == "create" and "update" or "locked"
         return moonstone.orbit(name):partiture("partiture.lua"):run({
-            sync = sync_mode,
+            sync = "locked",
             inputs = {
                 "moonstone.toml",
                 "moonstone.lock",
