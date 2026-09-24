@@ -48,7 +48,7 @@ descriptor_count=0
 create_descriptor_count=0
 while IFS= read -r descriptor; do
   descriptor_count=$((descriptor_count + 1))
-  if rg -q '^name = "hydronium/create"$' "$descriptor"; then
+  if grep -qx 'name = "hydronium/create"' "$descriptor"; then
     create_descriptor_count=$((create_descriptor_count + 1))
   fi
   package_dir=$(dirname "$descriptor")
@@ -84,10 +84,10 @@ mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$tool_project"
 
   # The application must be materialized from package artifacts, not be able
   # to fall through to this repository via an accidentally inherited path.
-  if rg -n --fixed-strings "$root" .moonstone moonstone.lock; then
+  if grep -rnF "$root" .moonstone moonstone.lock; then
     fail "consumer environment references this Hydronium checkout"
   fi
-  if rg -n 'constraint = "path:|registry = "path"' moonstone.toml moonstone.lock; then
+  if grep -nE 'constraint = "path:|registry = "path"' moonstone.toml moonstone.lock; then
     fail "consumer manifest or lock retained a path dependency"
   fi
 
@@ -106,7 +106,7 @@ for _ in $(seq 1 100); do
   sleep 0.1
 done
 [[ -s "$scratch/index.html" ]] || { cat "$scratch/server.log" >&2 || true; fail "built server never returned /"; }
-rg -q 'consumer-islands' "$scratch/index.html" || fail "SSR response lacks scaffolded application markup"
+grep -q 'consumer-islands' "$scratch/index.html" || fail "SSR response lacks scaffolded application markup"
 
 HYDRONIUM_CONSUMER_URL=http://127.0.0.1:8080 HYDRONIUM_CONSUMER_LOG="$scratch/server.log" \
   bash -lc "$browser_gate"
