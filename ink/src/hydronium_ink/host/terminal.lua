@@ -409,12 +409,13 @@ local function collectTextLines(node, style)
 end
 
 -- Truncation modes this module implements. Unlike `wrap = "wrap"`/`"hard"`
--- (real reflow, see WRAP_MODES/wrapLine below), truncation only ever
--- applies when `Text` has its own explicit `width` prop: it cuts the text
--- to fit AFTER that width is already known, with no need to learn one
--- from Yoga's own layout pass first. A `Text` whose width is merely
--- inherited from a container's own layout is NOT truncated (it would
--- need the same width-resolved-by-Yoga two-pass machinery `wrap` uses).
+-- (real reflow, see WRAP_MODES/wrapLine below), truncation never changes
+-- the line count -- it only cuts each line to fit.
+--
+-- With an explicit `width` prop it resolves in one pass, since the width
+-- is known up front. Without one it defers to the same two-pass reflow
+-- `wrap` uses (see REFLOW_MODES and host.paint()), so a `Text` sized by
+-- its container truncates to the width Yoga actually resolved.
 local TRUNCATE_MODES = {
   truncate = true, ["truncate-start"] = true, ["truncate-middle"] = true, ["truncate-end"] = true,
 }
@@ -511,6 +512,20 @@ end
 -- line to `width`, splitting mid-word if it has to -- matching real
 -- Ink's own documented distinction between the two.
 local WRAP_MODES = { wrap = true, hard = true }
+
+-- Every mode that needs a width before it can produce its final lines.
+-- With an explicit `width` prop all of them resolve in one pass; without
+-- one they all defer to host.paint()'s two-pass reflow, which learns the
+-- real width from Yoga and then reflows against it.
+--
+-- Truncation used to be excluded here, which meant `wrap = "truncate"` on
+-- a Text sized by its container did nothing at all: it fell through every
+-- branch and overflowed, with no error and no warning. Asking for
+-- truncation and silently getting overflow is worse than not offering it,
+-- and the two-pass machinery wrap already needed answers it exactly.
+local REFLOW_MODES = {}
+for mode in pairs(WRAP_MODES) do REFLOW_MODES[mode] = true end
+for mode in pairs(TRUNCATE_MODES) do REFLOW_MODES[mode] = true end
 
 local function isSpaceCluster(text)
   return text == " "
@@ -793,7 +808,7 @@ local function buildYogaTree(node)
     -- including explicit-width wrap and all truncate modes, whose
     -- content genuinely depends only on their own props -- gets the
     -- normal skip-when-unchanged treatment.
-    local isWrapNoWidth = WRAP_MODES[props.wrap] and not props.width
+    local isWrapNoWidth = REFLOW_MODES[props.wrap] and not props.width
 
     if isNew or node._styleDirty or isWrapNoWidth then
       local lines = collectTextLines(node, textStyleOf(props))
@@ -813,16 +828,17 @@ local function buildYogaTree(node)
           end
         end
         lines = wrapped
-      elseif node._prewrapWidth and WRAP_MODES[props.wrap] then
-        -- Pass 2 of the two-pass reflow host.paint() runs for a wrap mode
-        -- with no explicit width (see its own doc comment): use the lines
-        -- already wrapped there, against pass 1's real resolved width.
+      elseif node._prewrapWidth and REFLOW_MODES[props.wrap] then
+        -- Pass 2 of the two-pass reflow host.paint() runs for a wrap or
+        -- truncate mode with no explicit width (see its own doc comment):
+        -- use the lines already reflowed there, against pass 1's real
+        -- resolved width.
         lines = node._prewrapLines
-      elseif WRAP_MODES[props.wrap] then
-        -- Pass 1: no explicit width yet, so there is nothing to wrap
-        -- against -- give Yoga the natural (unwrapped) width so its own
+      elseif REFLOW_MODES[props.wrap] then
+        -- Pass 1: no explicit width yet, so there is nothing to reflow
+        -- against -- give Yoga the natural (unreflowed) width so its own
         -- flex/stretch can resolve this node's real available width, and
-        -- flag it for host.paint() to rewrap and rerun layout once more.
+        -- flag it for host.paint() to reflow and rerun layout once more.
         node._pendingWrap = props.wrap
       end
 
@@ -846,7 +862,7 @@ local function buildYogaTree(node)
       local yogaWidth = w
       if props.width then
         yogaWidth = props.width
-      elseif node._prewrapWidth and WRAP_MODES[props.wrap] then
+      elseif node._prewrapWidth and REFLOW_MODES[props.wrap] then
         yogaWidth = node._prewrapWidth
       elseif node._pendingWrap then
         yogaWidth = nil
@@ -1651,14 +1667,23 @@ function M.createTerminalHost(writeFn)
     if #pendingWrap > 0 then
       for _, n in ipairs(pendingWrap) do
         local resolvedWidth = math.max(n._layout.clientW or n._layout.w, 0)
-        local wrapped = {}
-        for _, line in ipairs(n._layoutLines) do
-          for _, wline in ipairs(wrapLine(line, resolvedWidth, n._pendingWrap == "hard")) do
-            table.insert(wrapped, wline)
+        local reflowed = {}
+        if TRUNCATE_MODES[n._pendingWrap] then
+          -- Truncation keeps the line count fixed, so pass 2 only ever
+          -- narrows this node -- it can never push it taller and disturb
+          -- the layout Yoga just resolved.
+          for i, line in ipairs(n._layoutLines) do
+            reflowed[i] = truncateLine(line, resolvedWidth, n._pendingWrap)
+          end
+        else
+          for _, line in ipairs(n._layoutLines) do
+            for _, wline in ipairs(wrapLine(line, resolvedWidth, n._pendingWrap == "hard")) do
+              table.insert(reflowed, wline)
+            end
           end
         end
         n._prewrapWidth = resolvedWidth
-        n._prewrapLines = wrapped
+        n._prewrapLines = reflowed
       end
 
       rootYoga = buildYogaTree(root)

@@ -981,6 +981,51 @@ describe("hydronium.host.terminal -- real Host contract + real ANSI output", fun
     assert.equal(rowText(grid, 3, 1, 5):gsub("%s+$", ""), "three")
   end)
 
+  it("truncates Text against a container's real resolved width when Text itself has no explicit width", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    -- Same shape as the wrap case above, and for the same reason: the Box
+    -- fixes the cross-axis width at 8 and stretch hands the Text that
+    -- width. Truncation used to be skipped entirely here -- it only ran
+    -- when Text carried its OWN width prop -- so this overflowed silently
+    -- rather than cutting. It must now cut to the resolved 8 cells.
+    local vnode = H.h(ink.Box, { width = 8 },
+      H.h(ink.Text, { wrap = "truncate" }, "abcdefghijklm")
+    )
+    reconciler:mount(vnode, root)
+    host.flush()
+
+    local grid = interpretAnsi(table.concat(writes), 8, 1)
+    -- 8 cells: 5 kept + the 3-cell "..." marker.
+    assert.equal(rowText(grid, 1, 1, 8), "abcde...")
+  end)
+
+  it("truncates a no-explicit-width Text from the start and middle against the resolved width", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    reconciler:mount(H.h(ink.Box, { width = 8 },
+      H.h(ink.Text, { wrap = "truncate-start" }, "abcdefghijklm")
+    ), root)
+    host.flush()
+    assert.equal(rowText(interpretAnsi(table.concat(writes), 8, 1), 1, 1, 8), "...ijklm")
+
+    clearWrites()
+    local host2 = terminalHostModule.createTerminalHost(capture)
+    local reconciler2 = H.Reconciler.new(host2)
+    reconciler2:mount(H.h(ink.Box, { width = 8 },
+      H.h(ink.Text, { wrap = "truncate-middle" }, "abcdefghijklm")
+    ), host2.getRoot())
+    host2.flush()
+    -- keep = 5, split head/tail as floor(5/2) = 2 then 3.
+    assert.equal(rowText(interpretAnsi(table.concat(writes), 8, 1), 1, 1, 8), "ab...klm")
+  end)
+
   it("constrains the root layout to a terminal size set via host.setSize, instead of auto-sizing to content", function()
     local writes, capture, clearWrites = newCapture()
     local host = terminalHostModule.createTerminalHost(capture)

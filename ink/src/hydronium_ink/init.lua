@@ -67,12 +67,18 @@
                8 bytes are emitted at all (default: plain, unlinked text on
                a terminal not affirmatively known to support it).
              width (integer, optional) + wrap ("truncate" |
-               "truncate-start" | "truncate-middle" | "truncate-end") --
-               truncates (with a plain ASCII "..." marker, not a real
-               Unicode ellipsis -- this module has no wide-character
-               width accounting anywhere yet) to fit `width` when both
-               are set. `wrap = "wrap"` word-wraps and `"hard"` splits
-               long words, including when Yoga resolves the width.
+               "truncate-start" | "truncate-middle" | "truncate-end" |
+               "wrap" | "hard") -- how this Text handles content wider
+               than the space it has. The truncate modes cut each line
+               to fit, marking the cut with a plain ASCII "..." (not a
+               Unicode ellipsis, so the marker costs the same cells on
+               every terminal). `wrap` breaks at word boundaries and
+               `hard` splits long words.
+               `width` is optional for ALL of them: with it, the reflow
+               happens up front; without it, Yoga resolves the real
+               width first and the reflow runs against that. Cuts are
+               grapheme-cluster aligned and measured in display cells,
+               so a 2-cell character is dropped rather than split.
     Newline: no props -- a line-break marker, meaningful as a child of
              Text (forces a new line within that Text's own layout) or,
              in a reduced "occupies space, paints nothing" sense, as a
