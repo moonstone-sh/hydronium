@@ -30,6 +30,8 @@
   not vanish or filter everything away).
 --]]
 
+local event_model = require("event_model")
+
 local M = {}
 
 --- Lowercase, nil-safe.
@@ -37,17 +39,38 @@ local function lower(s)
   return type(s) == "string" and s:lower() or nil
 end
 
---- The value of a header, case-insensitively by name.
+--- The request's headers as a normalised {name, value} list, or nil.
+---
+--- Goes through event_model rather than reading `event.headers` directly, so
+--- there is ONE interpretation of the wire shape in this CLI. Meteorite emits
+--- headers as an ARRAY of {name, value} pairs and says so explicitly in
+--- zig/server/dev_events.zig: order and duplicates are meaningful in HTTP, so
+--- it is "an array of pairs, never a map".
+---
+--- An earlier version of this file assumed a map and iterated it with pairs()
+--- looking for string keys. Against real Meteorite output that found nothing,
+--- every time, with no error -- `mime:`, `origin:` and `header:` would simply
+--- never have matched. The specs passed because their fixtures encoded the
+--- same wrong assumption.
+--- @param event table
+--- @return table[]|nil
+local function header_pairs(event)
+  local list = event_model.normalize_headers(event.headers)
+  return list
+end
+
+--- The value of a header, case-insensitively by name. First match wins;
+--- duplicates are preserved in the list above for anything that needs them.
 --- @param event table
 --- @param name string
 --- @return string|nil
 local function header(event, name)
-  local headers = event.headers
-  if type(headers) ~= "table" then return nil end
+  local list = header_pairs(event)
+  if not list then return nil end
   local want = name:lower()
-  for k, v in pairs(headers) do
-    if type(k) == "string" and k:lower() == want then
-      return tostring(v)
+  for _, entry in ipairs(list) do
+    if entry.name:lower() == want then
+      return entry.value
     end
   end
   return nil
@@ -156,17 +179,16 @@ M.FIELDS = {
     test = function(actual, want) return trigramMatch(actual, want:lower()) end,
   },
   header = {
-    get = function(e) return e.headers end,
+    get = header_pairs,
     test = function(actual, want)
-      if type(actual) ~= "table" then return false end
       local name, value = want:match("^([^=]+)=(.*)$")
-      for k, v in pairs(actual) do
-        local ks = tostring(k):lower()
+      for _, entry in ipairs(actual) do
+        local ename = entry.name:lower()
         if name then
-          if ks == name:lower() and tostring(v):lower():find(value:lower(), 1, true) then
+          if ename == name:lower() and entry.value:lower():find(value:lower(), 1, true) then
             return true
           end
-        elseif ks:find(want:lower(), 1, true) then
+        elseif ename:find(want:lower(), 1, true) then
           return true
         end
       end

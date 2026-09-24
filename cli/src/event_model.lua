@@ -384,6 +384,13 @@ local function normalize_headers(headers)
   return out, true
 end
 
+--- Exported so other consumers (query.lua's filter language) share ONE
+--- interpretation of the wire shape instead of each re-deriving it.
+--- Meteorite emits headers as an ARRAY of {name,value} pairs, deliberately --
+--- order and duplicates are meaningful in HTTP -- and a consumer that assumes
+--- a map silently matches nothing at all.
+M.normalize_headers = normalize_headers
+
 --- One `request` event as the fullscreen inspector's row+detail record.
 ---
 --- FORWARD COMPATIBILITY IS THE WHOLE POINT OF THIS FUNCTION. Meteorite's

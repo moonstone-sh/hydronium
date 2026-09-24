@@ -11,7 +11,18 @@ local function req(over)
   local e = {
     kind = "request", method = "GET", path = "/api/users", status = 200,
     duration_ms = 12, remote_addr = "127.0.0.1",
-    headers = { ["Content-Type"] = "application/json", Origin = "http://localhost:5174" },
+    -- The REAL wire shape: meteorite emits an ARRAY of {name,value} pairs,
+    -- never a map, because order and duplicates are meaningful in HTTP
+    -- (zig/server/dev_events.zig says so explicitly). Fixtures used a map
+    -- until this was checked against the emitter, and every header-derived
+    -- field silently matched nothing.
+    headers = {
+      { name = "Content-Type", value = "application/json" },
+      { name = "Origin", value = "http://localhost:5174" },
+      { name = "Set-Cookie", value = "a=1" },
+      { name = "Set-Cookie", value = "b=2" },
+      { name = "Authorization", value = "[redacted]" },
+    },
     body = '{"message":"user not found"}',
   }
   for k, v in pairs(over or {}) do e[k] = v end
@@ -82,6 +93,25 @@ describe("hydronium_cli.query -- per-field match strategies", function()
     assert.equal(matches("origin:5174", req()), true)
   end)
 
+  it("still reads a map, for any emitter that sends one", function()
+    -- normalize_headers accepts both shapes; this proves the fallback path
+    -- rather than assuming it.
+    local mapped = req({ headers = { ["Content-Type"] = "text/html" } })
+    assert.equal(matches("mime:html", mapped), true)
+  end)
+
+  it("finds a repeated header, which a map could not represent", function()
+    assert.equal(matches("header:set-cookie=b=2", req()), true)
+    assert.equal(matches("header:set-cookie=zzz", req()), false)
+  end)
+
+  it("can filter on a redacted header being present", function()
+    -- Meteorite always redacts authorization/cookie values but KEEPS the
+    -- header, so "was this request authenticated at all" stays answerable.
+    assert.equal(matches("header:authorization", req()), true)
+    assert.equal(matches("header:authorization=[redacted]", req()), true)
+  end)
+
   it("matches headers by name, or by name=value", function()
     assert.equal(matches("header:content-type", req()), true)
     assert.equal(matches("header:content-type=json", req()), true)
@@ -95,6 +125,20 @@ describe("hydronium_cli.query -- per-field match strategies", function()
     assert.equal(matches('body:"user not fuond"', req()), true)
     -- Something genuinely absent still does not match.
     assert.equal(matches("body:unauthorized", req()), false)
+  end)
+
+  it("does not match a body that meteorite measured but did not include", function()
+    -- A body over max_body_bytes, or not valid UTF-8, is emitted as
+    -- `body_bytes` with no `body` at all (zig/server/dev_events.zig). That is
+    -- "measured but not captured", and must not be treated as an empty body
+    -- that matches nothing-in-particular.
+    local measured = req({ body = nil, body_bytes = 40000 })
+    assert.equal(matches("body:anything", measured), false)
+    -- And a request whose body was never read at all.
+    local unread = req({ body = nil })
+    assert.equal(matches("body:anything", unread), false)
+    -- The rest of the request is still filterable.
+    assert.equal(matches("method:GET", measured), true)
   end)
 
   it("falls back to substring for a body query too short to have trigrams", function()
