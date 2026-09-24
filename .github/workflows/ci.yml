@@ -42,7 +42,36 @@ jobs:
       - name: Synchronize Hydronium workspace and package locks
         run: |
           moon sync --update
-          for orbit in core dom luax ink router build create cli; do
+          # Read the member list from moonstone.toml rather than hardcoding it.
+          # The hardcoded list said 8; the manifest declares 16, and the drift
+          # is what made CI red -- an unsynced member's lock has no profile for
+          # this runner's target, so `moon orbit sync --locked` fails on the
+          # first one the graph reaches. Maintaining the list by hand means it
+          # re-breaks every time a member is added, which happens often enough
+          # to have happened mid-week.
+          #
+          # `path`, not `name`: they differ (the member named "ballad" lives in
+          # build/). Plain awk, no gawk extensions, so it behaves the same on
+          # any runner image.
+          orbits="$(awk '
+            /^\[\[orbits\.member\]\]/ { inm = 1; next }
+            /^\[/ { inm = 0 }
+            inm && /^path[ \t]*=/ {
+              line = $0
+              sub(/^path[ \t]*=[ \t]*"/, "", line)
+              sub(/"[ \t]*$/, "", line)
+              print line
+            }' moonstone.toml)"
+          if [ -z "$orbits" ]; then
+            echo "no orbit members found in moonstone.toml -- refusing to sync nothing" >&2
+            exit 1
+          fi
+          echo "syncing orbit members:" $orbits
+          for orbit in $orbits; do
+            if [ ! -f "$orbit/moonstone.toml" ]; then
+              echo "declared orbit member '$orbit' has no moonstone.toml" >&2
+              exit 1
+            fi
             (cd "$orbit" && moon sync --update)
           done
       - name: Prepare locked Ballad integration checkout
