@@ -42,6 +42,9 @@ local ink = require("hydronium_ink")
 local hooks = require("hydronium_ink.hooks")
 local inspector = require("inspector")
 local inspector_view = require("ui.inspector_view")
+local search_field = require("ui.search_field")
+local search_bar = require("ui.search_bar")
+local query = require("query")
 
 -- LuaJIT/5.1 spell it `unpack`; 5.2+ moved it to `table.unpack`. This
 -- package is LuaJIT-only (hydronium_ink is), but the two-line guard costs
@@ -106,6 +109,11 @@ function M.new_state(opts)
   -- Displayed, not swallowed: a filter you cannot see is indistinguishable
   -- from a dev server that has stopped receiving traffic.
   local get_hidden_hmr, set_hidden_hmr = hydronium.signal(0)
+  -- Filter bar: the editing state itself, a revision counter to make an
+  -- in-place mutation observable, and focus.
+  local get_search, set_search = hydronium.signal(search_field.new_state(""))
+  local get_search_revision, set_search_revision = hydronium.signal(0)
+  local get_search_focused, set_search_focused = hydronium.signal(false)
   local get_fullscreen, set_fullscreen = hydronium.signal(opts.fullscreen and true or false)
   local get_revision, set_revision = hydronium.signal(0)
   local get_selection, set_selection = hydronium.signal(0)
@@ -117,6 +125,9 @@ function M.new_state(opts)
     url = get_url, set_url = set_url,
     entries = get_entries, set_entries = set_entries,
     hidden_hmr = get_hidden_hmr, set_hidden_hmr = set_hidden_hmr,
+    search = get_search, set_search = set_search,
+    search_revision = get_search_revision, set_search_revision = set_search_revision,
+    search_focused = get_search_focused, set_search_focused = set_search_focused,
     note = get_note, set_note = set_note,
     fullscreen = get_fullscreen, set_fullscreen = set_fullscreen,
     requests_revision = get_revision, set_requests_revision = set_revision,
@@ -241,6 +252,9 @@ function M.create_app(state, opts)
     local spinner = hooks.useAnimation({ interval = 110 })
     local exit = hooks.useApp().exit
     local alt = hooks.useAltScreen()
+    -- OSC 52 write, for the filter bar's copy binding. Set up here at the
+    -- component's one-time setup call, like every other hook in this file.
+    local clipboard = hooks.useClipboard()
 
     -- The REACTIVE window-size getter, not a snapshot of its value the way
     -- `hooks.useWindowSize()` would hand back. The key handler below runs
@@ -284,6 +298,39 @@ function M.create_app(state, opts)
 
     hooks.useInput(function(input, key)
       key = key or {}
+
+      -- The filter bar swallows input FIRST while focused, before any of the
+      -- single-letter shortcuts below. Otherwise typing `q` into a filter
+      -- would quit the process and typing `f` would drop out of the view --
+      -- a text field that loses your work to a hotkey is worse than no text
+      -- field at all.
+      if state.search_focused() then
+        if key.escape then
+          state.set_search_focused(false)
+          return
+        end
+        if key["return"] then
+          -- Enter commits by blurring; the filter itself is already live,
+          -- since it reapplies on every keystroke.
+          state.set_search_focused(false)
+          return
+        end
+        local next_state, intent = search_field.handle_key(state.search(), { input = input, key = key })
+        state.set_search(next_state)
+        state.set_search_revision(state.search_revision() + 1)
+        if intent and intent.type == "copy" and clipboard then
+          clipboard.write(intent.text)
+        end
+        return
+      end
+
+      -- `/` focuses the filter, the convention every pager and log viewer
+      -- shares. Only meaningful in the fullscreen view, which is where the
+      -- request list lives.
+      if input == "/" and state.fullscreen() then
+        state.set_search_focused(true)
+        return
+      end
 
       -- `q` always quits, on either screen. Escape is screen-sensitive:
       -- in the inspector it means "back to the status view", which is what

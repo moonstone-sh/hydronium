@@ -462,4 +462,48 @@ function M.detail_lines(event, opts)
   return out
 end
 
+--- A read-only History-shaped view over the subset of `history` matching
+--- `predicate`.
+---
+--- Returned rather than filtering in the view itself so that every piece of
+--- windowing arithmetic above (clamp_selection, window, page_size,
+--- follow_tail) keeps operating on a single coherent count/get/slice
+--- contract. A filter that only hid rows at paint time would leave the
+--- selection indexing into the unfiltered list, which is how a "filtered"
+--- list ends up opening the wrong detail pane.
+---
+--- Materialised eagerly: the caller re-renders on every keystroke, and 2000
+--- capped entries is a cheap walk next to the reflow it triggers anyway.
+--- @param history table
+--- @param predicate fun(event: table): boolean
+--- @return table view
+function M.filtered_view(history, predicate)
+  local matched = {}
+  for i = 1, history:count() do
+    local event = history:get(i)
+    if event and predicate(event) then
+      matched[#matched + 1] = event
+    end
+  end
+  return {
+    dropped = history.dropped,
+    -- True count of the underlying list, so a view can say "3 of 412".
+    total = history:count(),
+    count = function() return #matched end,
+    get = function(_, index) return matched[index] end,
+    -- Same shape History:slice returns -- {index, event} pairs, NOT raw
+    -- events. The view keys rows and compares the selection by `index`, so a
+    -- view returning bare events renders nothing but a concatenation error.
+    -- Indices are positions within the FILTERED list, which is what keeps the
+    -- selection and the visible rows agreeing with each other.
+    slice = function(_, first, last)
+      local out = {}
+      for i = math.max(1, first or 1), math.min(#matched, last or #matched) do
+        out[#out + 1] = { index = i, event = matched[i] }
+      end
+      return out
+    end,
+  }
+end
+
 return M

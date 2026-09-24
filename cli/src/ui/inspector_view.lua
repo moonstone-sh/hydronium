@@ -9,7 +9,7 @@
 
   WHAT IT PAINTS:
 
-    Requests 1-24 of 127         f/esc exit | j/k up/down scroll | q quit
+    Requests 1-24 of 127    / filter | f/esc exit | j/k scroll | q quit
       METHOD PATH                                   STATUS    TIME
     > GET    /home                                     200    47ms
       GET    /__hydronium/watch                        200     2ms
@@ -41,6 +41,8 @@ local hydronium = require("hydronium")
 local ink = require("hydronium_ink")
 local hooks = require("hydronium_ink.hooks")
 local inspector = require("inspector")
+local query = require("query")
+local search_bar = require("ui.search_bar")
 
 local unpack = unpack or table.unpack
 
@@ -97,8 +99,17 @@ function M.create_view(state)
       -- to copy into a signal on every event); the revision counter is
       -- what makes reading it reactive.
       state.requests_revision()
+      -- Subscribe to the filter too, so a keystroke in the bar re-windows the
+      -- list immediately rather than waiting for the next request.
+      state.search_revision()
 
+      local parsed = query.parse(state.search and state.search().text or "")
       local history = state.history
+      if not parsed.empty then
+        history = inspector.filtered_view(state.history, function(event)
+          return query.matches(event, parsed)
+        end)
+      end
       local count = history:count()
       local selection = inspector.clamp_selection(state.selection(), count)
       local height = M.visible_rows(rows)
@@ -116,10 +127,17 @@ function M.create_view(state)
         title = "Requests - none captured yet"
       else
         title = string.format("Requests %d-%d of %d", first, last, count)
+        if history.total then
+          title = title .. string.format(" (filtered from %d)", history.total)
+        end
       end
       if history.dropped > 0 then
         title = title .. string.format(" (%d older dropped)", history.dropped)
       end
+
+      children[#children + 1] = hydronium.h(ink.Box, { flexDirection = "row" },
+        hydronium.h(ink.Text, { dimColor = not state.search_focused() }, " / "),
+        search_bar.render(state.search(), parsed.tokens, { focused = state.search_focused() }))
 
       children[#children + 1] = hydronium.h(ink.Box, { flexDirection = "row" },
         hydronium.h(ink.Text, { bold = true }, " " .. title),
@@ -128,7 +146,7 @@ function M.create_view(state)
         -- src/inspector.lua's note on why (the host's incremental diff
         -- positions runs by frame column, and it paints one cell per BYTE).
         hydronium.h(ink.Text, { dimColor = true },
-          "f/esc exit | j/k up/down scroll | g/G ends | q quit ")
+          "/ filter | f/esc exit | j/k scroll | g/G ends | q quit ")
       )
 
       children[#children + 1] = hydronium.h(ink.Text, { dimColor = true, bold = true },
