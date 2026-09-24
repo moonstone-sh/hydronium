@@ -73,13 +73,23 @@ end
 
 --- @class hydronium_ink.UseInputOptions
 --- @field isActive? boolean Default true. Read once at setup (see this module's own doc comment for why this isn't reactive yet).
+--- @field layer? "overlay"|"focus"|"view"|"global" Dispatch layer, highest
+---   first; hydronium_ink.session.LAYERS documents what each one means.
+---   Default "view". Handlers run in layer order and stop as soon as one
+---   calls `evt.stop()`, so a focused text field takes a key before a screen
+---   shortcut, and a screen shortcut before an app-wide binding.
+--- @field focusId? string Bind this handler to a focus id (from
+---   `useFocus().id`). Only meaningful on the "focus" layer, where the
+---   handler runs ONLY while that component holds focus -- so a component
+---   never has to test `isFocused()` inside its own handler, and a key
+---   cannot leak to an unfocused field.
 
 --- Registers `handler(input, key)` to be called for every real keypress
 --- while this component is mounted (and `isActive` was true at setup
 --- time). Unregistered automatically on unmount via `hydronium.onCleanup`
 --- -- see core/scope.lua's onCleanup/Scope:defer, the same mechanism
 --- createEffect already relies on for its own cleanup.
---- @param handler fun(input: string, key: hydronium_ink.Key)
+--- @param handler fun(input: string, key: hydronium_ink.Key, evt: hydronium_ink.InputEvent)
 --- @param opts? hydronium_ink.UseInputOptions
 function M.useInput(handler, opts)
   opts = opts or {}
@@ -92,9 +102,16 @@ function M.useInput(handler, opts)
   end
 
   local ctx = requireAppContext("useInput")
-  local unregister = ctx.registerInputHandler(handler)
+  local unregister = ctx.registerInputHandler(handler, {
+    layer = opts.layer,
+    focusId = opts.focusId,
+  })
   hydronium.onCleanup(unregister)
 end
+
+--- @class hydronium_ink.InputEvent
+--- @field stop fun() Consume the event: no lower-layer handler will see it.
+--- @field isConsumed fun(): boolean
 
 --- @class hydronium_ink.UsePasteOptions
 --- @field isActive? boolean Default true. Read once at setup (see this module's own doc comment for why this isn't reactive yet) -- matches real Ink's own documented purpose: "useful when multiple components use usePaste."
@@ -121,7 +138,10 @@ function M.usePaste(handler, opts)
   end
 
   local ctx = requireAppContext("usePaste")
-  local unregister = ctx.registerPasteHandler(handler)
+  local unregister = ctx.registerPasteHandler(handler, {
+    layer = opts.layer,
+    focusId = opts.focusId,
+  })
   hydronium.onCleanup(unregister)
 end
 
@@ -176,6 +196,7 @@ function M.useFocus(opts)
   hydronium.onCleanup(unregister)
 
   return {
+    id = id,
     isFocused = function()
       return ctx.isFocused(id)
     end,

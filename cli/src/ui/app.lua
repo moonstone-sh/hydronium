@@ -296,33 +296,51 @@ function M.create_app(state, opts)
       state.set_selection(inspector.move_selection(state.selection(), delta, state.history:count()))
     end
 
-    hooks.useInput(function(input, key)
+    -- The filter bar, on its OWN handler at the `overlay` layer rather than
+    -- as an early return inside the shortcut handler below. Layer ordering is
+    -- what guarantees it sees a key first; `evt.stop()` is what guarantees
+    -- the shortcuts never also see it. Typing `q` into a filter must not quit
+    -- the process, and that must hold no matter what other handlers get
+    -- added later -- which an early return in one shared function cannot
+    -- promise, since it only orders the branches it happens to contain.
+    --
+    -- STILL TO DO: the bar is not yet a focusable component, so it gates on
+    -- its own `search_focused` signal instead of a real focus id. Once it
+    -- calls useFocus, this becomes `{ layer = "focus", focusId = ... }` and
+    -- the gate disappears entirely -- see hydronium_ink.session.LAYERS.
+    hooks.useInput(function(input, key, evt)
       key = key or {}
-
-      -- The filter bar swallows input FIRST while focused, before any of the
-      -- single-letter shortcuts below. Otherwise typing `q` into a filter
-      -- would quit the process and typing `f` would drop out of the view --
-      -- a text field that loses your work to a hotkey is worse than no text
-      -- field at all.
-      if state.search_focused() then
-        if key.escape then
-          state.set_search_focused(false)
-          return
-        end
-        if key["return"] then
-          -- Enter commits by blurring; the filter itself is already live,
-          -- since it reapplies on every keystroke.
-          state.set_search_focused(false)
-          return
-        end
-        local next_state, intent = search_field.handle_key(state.search(), { input = input, key = key })
-        state.set_search(next_state)
-        state.set_search_revision(state.search_revision() + 1)
-        if intent and intent.type == "copy" and clipboard then
-          clipboard.write(intent.text)
-        end
+      if not state.search_focused() then
         return
       end
+      evt.stop()
+
+      if key.escape or key["return"] then
+        -- Enter commits by blurring; the filter is already live, since it
+        -- reapplies on every keystroke.
+        state.set_search_focused(false)
+        return
+      end
+      local next_state, intent = search_field.handle_key(state.search(), { input = input, key = key })
+      state.set_search(next_state)
+      state.set_search_revision(state.search_revision() + 1)
+      if intent and intent.type == "copy" and clipboard then
+        clipboard.write(intent.text)
+      end
+    end, { layer = "overlay" })
+
+    -- Pasting into the filter, same layer and the same reasoning.
+    hooks.usePaste(function(text, evt)
+      if not state.search_focused() then
+        return
+      end
+      evt.stop()
+      state.set_search(search_field.handle_key(state.search(), { type = "paste", text = text }))
+      state.set_search_revision(state.search_revision() + 1)
+    end, { layer = "overlay" })
+
+    hooks.useInput(function(input, key)
+      key = key or {}
 
       -- `/` focuses the filter, the convention every pager and log viewer
       -- shares. Only meaningful in the fullscreen view, which is where the

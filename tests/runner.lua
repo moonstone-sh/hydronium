@@ -2,7 +2,7 @@
 -- The repository root is an orbits workspace, not a package.  Test the
 -- member source roots explicitly; external-consumer coverage below verifies
 -- Moonstone materialization separately.
-package.path = "core/src/?.lua;core/src/?/init.lua;query/src/?.lua;query/src/?/init.lua;luax/src/?.lua;luax/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;ink/src/?.lua;ink/src/?/init.lua;lab/src/?.lua;lab/src/?/init.lua;ink-lab/src/?.lua;ink-lab/src/?/init.lua;oklab-utils/src/?.lua;oklab-utils/src/?/init.lua;router/src/?.lua;router/src/?/init.lua;cli/src/?.lua;cli/src/?/init.lua;build/src/?.lua;build/src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
+package.path = "core/src/?.lua;core/src/?/init.lua;query/src/?.lua;query/src/?/init.lua;virtual/src/?.lua;virtual/src/?/init.lua;table/src/?.lua;table/src/?/init.lua;luax/src/?.lua;luax/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;ink/src/?.lua;ink/src/?/init.lua;lab/src/?.lua;lab/src/?/init.lua;ink-lab/src/?.lua;ink-lab/src/?/init.lua;oklab-utils/src/?.lua;oklab-utils/src/?/init.lua;router/src/?.lua;router/src/?/init.lua;cli/src/?.lua;cli/src/?/init.lua;build/src/?.lua;build/src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
 
 local M = {}
 package.loaded["tests.runner"] = M
@@ -438,6 +438,7 @@ local function main()
       "tests/host/assets_spec.lua",
       "tests/host/terminal_spec.lua",
       "tests/host/keys_spec.lua",
+      "tests/host/input_layers_spec.lua",
       "tests/host/render_spec.lua",
       "tests/host/ink_session_spec.lua",
       "tests/host/ink_lab_spec.lua",
@@ -493,6 +494,8 @@ local function main()
       "tests/router/topology_spec.lua",
       "tests/router/meteorite_adapter_spec.lua",
       "tests/query/query_spec.lua",
+      "tests/virtual/virtual_spec.lua",
+      "tests/table/table_spec.lua",
       -- Developer CLI specs (orbit member `cli/`, whose src is on
       -- package.path above -- these live beside their own package rather
       -- than under tests/, matching ink/'s and create/'s own layout).
