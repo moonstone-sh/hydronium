@@ -476,6 +476,8 @@ local function main()
       "cli/tests/dev_supervisor_spec.lua",
       "cli/tests/inspector_spec.lua",
       "cli/tests/main_spec.lua",
+      "cli/tests/build_runner_spec.lua",
+      "cli/tests/build_verify_spec.lua",
     }
   end
 

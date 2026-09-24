@@ -288,3 +288,73 @@ describe("hydronium-cli dev_log -- read_events", function()
     assert.equal(skipped, 0)
   end)
 end)
+
+describe("hydronium-cli main -- parse_build_args", function()
+  it("defaults to the Ink view, verify on, no vite, partiture.lua", function()
+    local parsed = must(main.parse_args({ "build" }))
+    assert.equal(parsed.command, "build")
+    assert.is_nil(parsed.file)
+    assert.equal(parsed.output, "ink")
+    assert.truthy(parsed.verify)
+    assert.falsy(parsed.vite)
+  end)
+
+  it("--plain and --ndjson select the headless output modes", function()
+    assert.equal(must(main.parse_args({ "build", "--plain" })).output, "plain")
+    assert.equal(must(main.parse_args({ "build", "--ndjson" })).output, "ndjson")
+  end)
+
+  it("rejects --plain and --ndjson together", function()
+    local parsed, err = main.parse_args({ "build", "--plain", "--ndjson" })
+    assert.is_nil(parsed)
+    assert.truthy(err:find("mutually exclusive", 1, true))
+    parsed, err = main.parse_args({ "build", "--ndjson", "--plain" })
+    assert.is_nil(parsed)
+    assert.truthy(err:find("mutually exclusive", 1, true))
+  end)
+
+  it("--no-verify turns verification off", function()
+    assert.falsy(must(main.parse_args({ "build", "--no-verify" })).verify)
+  end)
+
+  it("--file (both spellings) overrides the default partiture path", function()
+    assert.equal(must(main.parse_args({ "build", "--file", "other.lua" })).file, "other.lua")
+    assert.equal(must(main.parse_args({ "build", "--file=other.lua" })).file, "other.lua")
+  end)
+
+  it("--vite-args implies --vite; --vite-dir only sets the directory (same asymmetry as `dev`'s own flags)", function()
+    local parsed = must(main.parse_args({ "build", "--vite-args", "--mode production" }))
+    assert.truthy(parsed.vite)
+    assert.equal(parsed.vite_args, "--mode production")
+
+    parsed = must(main.parse_args({ "build", "--vite-dir", "web" }))
+    assert.falsy(parsed.vite)
+    assert.equal(parsed.vite_dir, "web")
+  end)
+
+  it("errors rather than guessing when a value-taking flag has no value", function()
+    for _, flag in ipairs({ "--file", "--vite-args", "--vite-dir" }) do
+      local parsed, err = main.parse_args({ "build", flag })
+      assert.is_nil(parsed, flag .. " should require a value")
+      assert.truthy(err:find("requires a value", 1, true))
+    end
+  end)
+
+  it("still rejects an unknown flag", function()
+    local parsed, err = main.parse_args({ "build", "--bogus" })
+    assert.is_nil(parsed)
+    assert.truthy(err:find("unknown argument", 1, true))
+  end)
+
+  it("routes -h/--help to the build-specific usage topic", function()
+    local parsed = must(main.parse_args({ "build", "--help" }))
+    assert.equal(parsed.command, "help")
+    assert.equal(parsed.topic, "build")
+  end)
+
+  it("documents every exit code hydronium build can return", function()
+    for _, code in ipairs({ "0", "1", "2", "3", "4", "5" }) do
+      assert.truthy(main.BUILD_USAGE:find("\n  " .. code .. "  ", 1, true), "missing exit code " .. code)
+    end
+  end)
+end)

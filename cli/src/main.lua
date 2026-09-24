@@ -172,10 +172,14 @@ M.USAGE = table.concat({
   "                [--meteorite-args \"<flags>\"]",
   "                [--vite [--vite-args \"<flags>\"] [--vite-dir <path>]]",
   "                [--ballad [--ballad-args \"<flags>\"]]",
+  "  hydronium build [--file <path>] [--plain | --ndjson] [--no-verify]",
+  "                  [--vite [--vite-args \"<flags>\"] [--vite-dir <path>]]",
   "",
   "Commands:",
   "  dev            Run `meteorite dev` (optionally with `vite dev`) and",
   "                 render its dev-event stream.",
+  "  build          Run the project's declared partiture.lua once, to",
+  "                 completion, and exit. See `hydronium build --help`.",
   "  lab            Compatibility alias for `hydronium-lab dev`.",
   "  lab init       Install the standalone Lab tool and host adapter.",
   "",
@@ -208,6 +212,60 @@ M.USAGE = table.concat({
   "  q, ctrl-c      Quit.",
 }, "\n")
 
+--- @param exit_code_table table<string, integer>
+--- @return string
+local function render_exit_codes(exit_code_table)
+  local rows = {}
+  for _, entry in ipairs(exit_code_table) do
+    rows[#rows + 1] = string.format("  %d  %s", entry[1], entry[2])
+  end
+  return table.concat(rows, "\n")
+end
+
+M.BUILD_USAGE = table.concat({
+  "hydronium build " .. M.VERSION,
+  "",
+  "Loads the project's declared partiture.lua, plans it (ballad's own",
+  "Pipeline:plan()), executes it (ballad's own Pipeline:execute(), in-",
+  "process -- no `ballad` subprocess is spawned), and exits. Nothing about",
+  "what runs is inferred from a template name, directory layout, or which",
+  "dependencies happen to be installed: no partiture.lua is a clear error,",
+  "never a guess.",
+  "",
+  "Usage:",
+  "  hydronium build [--file <path>] [--plain | --ndjson] [--no-verify]",
+  "                  [--vite [--vite-args \"<flags>\"] [--vite-dir <path>]]",
+  "",
+  "Options:",
+  "  --file <path>  Partiture file to load. Default: partiture.lua.",
+  "  --plain        Line-oriented output, no cursor control -- safe for CI",
+  "                 logs and pipes. Default without a TTY.",
+  "  --ndjson       The build's event stream on stdout, one JSON object per",
+  "                 line (the same events M0 writes to",
+  "                 .ballad/runs/<run_id>/events.ndjson, plus one final",
+  "                 build_finished/build_failed summary event).",
+  "  --no-verify    Skip M3's isolated-chunk verification. Verification",
+  "                 runs by default after a successful build.",
+  "  --vite         Run `vite build` once, to completion, before verifying.",
+  "                 A one-shot build, not a supervised dev process -- see",
+  "                 `hydronium dev --vite` for the live-reload equivalent.",
+  "  --vite-args \"<flags>\"",
+  "                 Arguments for the one-shot `vite build` (implies --vite).",
+  "  --vite-dir <path>",
+  "                 Directory `vite build` runs in. Default \".\".",
+  "  -h, --help     Print this help.",
+  "",
+  "Exit codes:",
+  render_exit_codes({
+    { 0, "success" },
+    { 1, "usage error (bad flags)" },
+    { 2, "the partiture failed to load or evaluate (missing file, syntax error, partiture construction error)" },
+    { 3, "the pipeline failed while executing (a node raised)" },
+    { 4, "verification failed (a produced chunk did not load/execute cleanly); skipped by --no-verify" },
+    { 5, "the one-shot `vite build` failed (--vite only)" },
+  }),
+}, "\n")
+
 --- @param argv string[]
 --- @return table|nil parsed, string|nil err
 function M.parse_args(argv)
@@ -222,6 +280,9 @@ function M.parse_args(argv)
   end
   if first == "-v" or first == "--version" or first == "version" then
     return { command = "version" }
+  end
+  if first == "build" then
+    return M.parse_build_args(argv)
   end
   if first ~= "dev" then
     if first == "lab" then
@@ -325,6 +386,66 @@ function M.parse_args(argv)
       return { command = "help" }
     else
       return nil, "unknown argument '" .. tostring(token) .. "' for `hydronium dev`"
+    end
+    index = index + 1
+  end
+  return parsed
+end
+
+--- @param argv string[] argv[1] == "build".
+--- @return table|nil parsed, string|nil err
+function M.parse_build_args(argv)
+  local parsed = {
+    command = "build",
+    file = nil, -- default: build_runner.DEFAULT_PARTITURE ("partiture.lua")
+    output = "ink", -- "ink" | "plain" | "ndjson"
+    verify = true,
+    vite = false,
+    vite_args = nil,
+    vite_dir = nil,
+  }
+  local index = 2
+  while index <= #argv do
+    local token = argv[index]
+    if token == "--plain" then
+      if parsed.output == "ndjson" then return nil, "--plain and --ndjson are mutually exclusive" end
+      parsed.output = "plain"
+    elseif token == "--ndjson" then
+      if parsed.output == "plain" then return nil, "--plain and --ndjson are mutually exclusive" end
+      parsed.output = "ndjson"
+    elseif token == "--no-verify" then
+      parsed.verify = false
+    elseif token == "--file" then
+      local value = argv[index + 1]
+      if value == nil then return nil, "--file requires a value" end
+      parsed.file = value
+      index = index + 1
+    elseif token:sub(1, 7) == "--file=" then
+      parsed.file = token:sub(8)
+    elseif token == "--vite" then
+      parsed.vite = true
+    elseif token == "--vite-args" then
+      local value = argv[index + 1]
+      if value == nil then
+        return nil, "--vite-args requires a value (e.g. --vite-args \"--mode production\")"
+      end
+      parsed.vite_args = value
+      parsed.vite = true
+      index = index + 1
+    elseif token:sub(1, 12) == "--vite-args=" then
+      parsed.vite_args = token:sub(13)
+      parsed.vite = true
+    elseif token == "--vite-dir" then
+      local value = argv[index + 1]
+      if value == nil then return nil, "--vite-dir requires a value" end
+      parsed.vite_dir = value
+      index = index + 1
+    elseif token:sub(1, 11) == "--vite-dir=" then
+      parsed.vite_dir = token:sub(12)
+    elseif token == "-h" or token == "--help" then
+      return { command = "help", topic = "build" }
+    else
+      return nil, "unknown argument '" .. tostring(token) .. "' for `hydronium build`"
     end
     index = index + 1
   end
@@ -680,21 +801,179 @@ function M.dev(parsed)
   return 0
 end
 
+--- One line per newly-drained event, human-readable, no cursor control --
+--- safe for CI logs and piping (M1's `--plain`).
+--- @param events table[]
+local function print_plain_events(events)
+  for _, event in ipairs(events) do
+    if event.kind == "node" then
+      local label = (event.plugin or "?") .. "." .. (event.method or "?") .. " (" .. (event.id or "?") .. ")"
+      if event.type == "task_started" then
+        io.stdout:write("[build] started   " .. label .. "\n")
+      elseif event.type == "task_finished" then
+        io.stdout:write("[build] finished  " .. label
+          .. string.format(" (%.1fms, %d asset(s))\n", event.duration_ms or 0, event.asset_count or 0))
+      elseif event.type == "task_skipped" then
+        io.stdout:write("[build] skipped   " .. label .. " (" .. (event.reason or "?") .. ")\n")
+      elseif event.type == "task_failed" then
+        io.stdout:write("[build] FAILED    " .. label .. ": " .. tostring(event.error) .. "\n")
+      end
+    elseif event.kind == "native" then
+      local label = event.tool or event.id or "?"
+      if event.type == "task_started" then
+        io.stdout:write("[build] native started  " .. tostring(label) .. "\n")
+      elseif event.type == "task_finished" or event.type == "task_incomplete" then
+        io.stdout:write("[build] native finished " .. tostring(label) .. "\n")
+      elseif event.type == "task_failed" then
+        io.stdout:write("[build] native FAILED   " .. tostring(label) .. "\n")
+      end
+    end
+  end
+end
+
+--- @param events table[]
+--- @param encode fun(value: any): string
+local function print_ndjson_events(events, encode)
+  for _, event in ipairs(events) do
+    io.stdout:write(encode(event) .. "\n")
+  end
+end
+
+--- One-shot `vite build`, run to completion before the partiture (M5).
+--- Symmetric with `hydronium dev`'s --vite/--vite-args/--vite-dir, but a
+--- single child this function simply waits on -- NOT one of
+--- runDualDevServer's supervised processes: that machinery is for two
+--- live servers that must never exit; a build step is supposed to exit 0
+--- and stop, so `hydronium build` does not copy any of the dev
+--- supervisor's liveness/stop machinery for it.
+--- @param parsed table From M.parse_build_args.
+--- @return boolean ok
+local function run_vite_build(parsed)
+  local vite_args = { "vite", "build" }
+  for word in (parsed.vite_args or ""):gmatch("%S+") do
+    vite_args[#vite_args + 1] = word
+  end
+  local quoted = {}
+  for i, word in ipairs(vite_args) do
+    quoted[i] = dev_supervisor.shell_quote(word)
+  end
+  -- npx, not a bare `vite`: same reasoning as M.dual_dev_specs -- a project
+  -- that declared vite as a local devDependency has no globally installed
+  -- `vite` binary, and npx resolves node_modules/.bin relative to cwd.
+  local cmd = "cd " .. dev_supervisor.shell_quote(parsed.vite_dir or ".") .. " && npx "
+    .. table.concat(quoted, " ")
+  io.stdout:write("hydronium build: running `" .. table.concat(vite_args, " ") .. "` in "
+    .. (parsed.vite_dir or ".") .. "\n")
+  return dev_supervisor.exec_ok(os.execute, cmd)
+end
+
+--- @param parsed table From M.parse_build_args.
+--- @return integer exit code
+function M.build(parsed)
+  local build_runner = require("build_runner")
+  local file = parsed.file or build_runner.DEFAULT_PARTITURE
+
+  -- Explicit --plain/--ndjson always win; otherwise the Ink view (M2).
+  -- hydronium_ink.render itself already detects a non-interactive stdin
+  -- (ink/src/hydronium_ink/render.lua's own `ffi.C.isatty(0)` check) and
+  -- degrades to plain `io.write` with no raw mode/cursor control there --
+  -- `hydronium build` does not need a second TTY check of its own on top
+  -- of that.
+  local output = parsed.output
+  -- --ndjson's stdout contract is "the event stream, one object per line"
+  -- ONLY -- every human-readable status line this function would otherwise
+  -- print to stdout goes to stderr instead, so `hydronium build --ndjson |
+  -- some-json-consumer` never has to filter out prose.
+  local say = (output == "ndjson")
+    and function(msg) io.stderr:write(msg .. "\n") end
+    or function(msg) io.stdout:write(msg .. "\n") end
+  local json = require("hydronium_router.history.state")
+  local function say_ndjson_summary(event)
+    if output == "ndjson" then
+      io.stdout:write(json.encode(event) .. "\n")
+    end
+  end
+
+  if parsed.vite then
+    if not run_vite_build(parsed) then
+      io.stderr:write("hydronium build: `vite build` failed; not running the partiture\n")
+      say_ndjson_summary({ type = "build_failed", stage = "vite" })
+      return build_runner.EXIT_VITE_FAILED
+    end
+  end
+
+  local p, load_err = build_runner.load(file, 1, {})
+  if not p then
+    io.stderr:write("hydronium build: " .. tostring(load_err) .. "\n")
+    say_ndjson_summary({ type = "build_failed", stage = "load", error = tostring(load_err) })
+    return build_runner.EXIT_PARTITURE_ERROR
+  end
+
+  local status, result, sink_results
+  if output == "ink" then
+    local build_view = require("ui.build_view")
+    status, result, sink_results = build_view.run(p, build_runner)
+  else
+    local runner = build_runner.new_runner(p)
+    say("hydronium build: " .. #runner.plan.order .. " step(s) planned")
+    status, result = build_runner.drain(runner, function(events)
+      if output == "ndjson" then
+        print_ndjson_events(events, json.encode)
+      else
+        print_plain_events(events)
+      end
+    end)
+    sink_results = status == "done" and result or nil
+  end
+
+  if status == "error" then
+    local message = require("ballad.diagnostic").is(result) and require("ballad.diagnostic").render(result)
+      or tostring(result)
+    io.stderr:write("hydronium build: pipeline failed: " .. message .. "\n")
+    say_ndjson_summary({ type = "build_failed", stage = "execute", error = message })
+    return build_runner.EXIT_PIPELINE_FAILED
+  end
+
+  if parsed.verify then
+    local build_verify = require("build_verify")
+    local ok, failures, checked = build_verify.verify(p)
+    if checked > 0 then
+      say("hydronium build: verified " .. checked .. " chunk(s) in a fresh isolated Lua state")
+    end
+    if not ok then
+      for _, failure in ipairs(failures) do
+        io.stderr:write("hydronium build: VERIFY FAILED " .. failure.chunk.output_path .. "\n"
+          .. failure.output .. "\n")
+      end
+      say_ndjson_summary({ type = "build_failed", stage = "verify", failed_chunks = #failures })
+      return build_runner.EXIT_VERIFY_FAILED
+    end
+  end
+
+  say("hydronium build: done (" .. #sink_results .. " sink(s))")
+  say_ndjson_summary({ type = "build_finished", sinks = #sink_results })
+  return build_runner.EXIT_OK
+end
+
 --- @param argv string[]
 --- @return integer exit code
 function M.main(argv)
   local parsed, err = M.parse_args(argv)
   if not parsed then
-    io.stderr:write("hydronium: " .. tostring(err) .. "\n\n" .. M.USAGE .. "\n")
+    local usage = argv[1] == "build" and M.BUILD_USAGE or M.USAGE
+    io.stderr:write("hydronium: " .. tostring(err) .. "\n\n" .. usage .. "\n")
     return 1
   end
   if parsed.command == "help" then
-    io.stdout:write(M.USAGE .. "\n")
+    io.stdout:write((parsed.topic == "build" and M.BUILD_USAGE or M.USAGE) .. "\n")
     return 0
   end
   if parsed.command == "version" then
     io.stdout:write("hydronium " .. M.VERSION .. "\n")
     return 0
+  end
+  if parsed.command == "build" then
+    return M.build(parsed)
   end
   if parsed.command == "lab" then
     if parsed.init then
