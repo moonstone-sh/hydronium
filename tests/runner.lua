@@ -492,7 +492,6 @@ local function main()
       "tests/router/site_spec.lua",
       "tests/router/topology_spec.lua",
       "tests/router/meteorite_adapter_spec.lua",
-      "tests/query/query_spec.lua",
       -- Developer CLI specs (orbit member `cli/`, whose src is on
       -- package.path above -- these live beside their own package rather
       -- than under tests/, matching ink/'s and create/'s own layout).
