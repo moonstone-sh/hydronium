@@ -1,0 +1,48 @@
+{
+  "luax functional component + export": {
+    "prefix": "lfce",
+    "description": "Typed LUAX component with a ---@class Props block, lexical d.* tags, and a module export. The name is written once and filled into all four places.",
+    "body": [
+      "---@class $1Props",
+      "---@field ${2:label} ${3:string}",
+      "",
+      "--- ${4:What this component renders.}",
+      "---@param props $1Props",
+      "local function $1(props)",
+      "\treturn (",
+      "\t\t<>",
+      "\t\t\t$0",
+      "\t\t</>",
+      "\t)",
+      "end",
+      "",
+      "return { $1 = $1 }"
+    ]
+  },
+  "luax functional component (local, no export)": {
+    "prefix": "lfc",
+    "description": "Typed LUAX component without the module export -- for a sub-component defined alongside others in the same file.",
+    "body": [
+      "---@class $1Props",
+      "---@field ${2:label} ${3:string}",
+      "",
+      "--- ${4:What this component renders.}",
+      "---@param props $1Props",
+      "local function $1(props)",
+      "\treturn (",
+      "\t\t<>",
+      "\t\t\t$0",
+      "\t\t</>",
+      "\t)",
+      "end"
+    ]
+  },
+  "luax requires (hydronium + lexical d)": {
+    "prefix": "lreq",
+    "description": "The two requires a lexical-tag LUAX file needs: the hydronium barrel and the d intrinsic table. Without the d binding, <d.button> is a nil index at runtime.",
+    "body": [
+      "local H = require(\"hydronium\")",
+      "local d = require(\"hydronium_dom\").d"
+    ]
+  }
+}
