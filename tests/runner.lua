@@ -493,9 +493,12 @@ local function main()
       "tests/router/site_spec.lua",
       "tests/router/topology_spec.lua",
       "tests/router/meteorite_adapter_spec.lua",
-      "tests/query/query_spec.lua",
-      "tests/virtual/virtual_spec.lua",
-      "tests/table/table_spec.lua",
+      -- Library specs live with their package. The monorepo runner remains
+      -- the shared executor; cross-package consumer scenarios live under
+      -- tests/e2e instead of becoming a dependency of core.
+      "query/tests/query_spec.lua",
+      "virtual/tests/virtual_spec.lua",
+      "table/tests/table_spec.lua",
       -- Developer CLI specs (orbit member `cli/`, whose src is on
       -- package.path above -- these live beside their own package rather
       -- than under tests/, matching ink/'s and create/'s own layout).
