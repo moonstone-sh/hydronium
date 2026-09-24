@@ -147,7 +147,11 @@ build = "moon exec --dev -- meteorite build --mode release-hybrid --backend fast
 
 [[dependencies]]
 name = "moonstone/meteorite"
-constraint = "^0.2.5"
+# 0.2.9 is the first release whose dev-event stream carries request headers
+# and bodies (redacted and capped -- zig/server/dev_events.zig). `hydronium
+# dev`'s filter bar can query them (mime:, origin:, header:, body:), and on an
+# older meteorite those fields are simply absent, so the filters never match.
+constraint = "^0.2.9"
 role = "tool"
 
 [[dependencies]]

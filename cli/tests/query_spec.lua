@@ -183,3 +183,64 @@ describe("hydronium_cli.query -- tokenizing for the UI", function()
     end
   end)
 end)
+
+describe("hydronium_cli.query -- against a REAL meteorite event line", function()
+  local event_model = require("event_model")
+
+  -- Captured verbatim from .meteorite/dev/events.log with meteorite 0.2.9
+  -- serving a real request. Kept as a golden fixture because every other
+  -- fixture in this file is synthetic, and a synthetic fixture only proves
+  -- the code agrees with the assumption it was written from -- which is
+  -- exactly how mime:/origin:/header: shipped matching nothing.
+  local REAL_LINE = [==[{"v":1,"ts":1790257345229,"source":"server","kind":"request","method":"GET","path":"/","status":200,"duration_ms":36.999,"remote_addr":"127.0.0.1","headers":[{"name":"Host","value":"127.0.0.1:8080"},{"name":"User-Agent","value":"curl/8.7.1"},{"name":"Accept","value":"*/*"},{"name":"X-Probe","value":"hydronium"},{"name":"Authorization","value":"[redacted]"}]}]==]
+
+  local function real_event()
+    local event, why = event_model.parse_line(REAL_LINE)
+    assert.truthy(event, "the recorded line must still parse: " .. tostring(why))
+    return event
+  end
+
+  local function m(filter)
+    return query.matches(real_event(), query.parse(filter))
+  end
+
+  it("parses as a request with the envelope fields", function()
+    local e = real_event()
+    assert.equal(e.kind, "request")
+    assert.equal(e.method, "GET")
+    assert.equal(e.status, 200)
+  end)
+
+  it("carries headers as an array of name/value pairs", function()
+    local list = event_model.normalize_headers(real_event().headers)
+    assert.truthy(list and #list > 0, "0.2.9 emits headers; a bare five-field line means an older meteorite")
+    assert.equal(type(list[1].name), "string")
+    assert.equal(type(list[1].value), "string")
+  end)
+
+  it("filters on a real header, by name and by name=value", function()
+    assert.equal(m("header:x-probe"), true)
+    assert.equal(m("header:x-probe=hydronium"), true)
+    assert.equal(m("header:x-probe=nope"), false)
+    assert.equal(m("header:user-agent=curl"), true)
+  end)
+
+  it("sees a redacted header as present", function()
+    -- Meteorite replaces the value but keeps the header, so "was this
+    -- authenticated" stays answerable without the secret being on disk.
+    assert.equal(m("header:authorization"), true)
+    local list = event_model.normalize_headers(real_event().headers)
+    for _, h in ipairs(list) do
+      if h.name:lower() == "authorization" then
+        assert.equal(h.value, "[redacted]")
+      end
+    end
+  end)
+
+  it("combines tags and negation on the real event", function()
+    assert.equal(m("method:GET status:2xx"), true)
+    assert.equal(m("-header:x-probe"), false)
+    -- A header this request genuinely does not carry.
+    assert.equal(m("mime:json"), false)
+  end)
+end)
