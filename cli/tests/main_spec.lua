@@ -358,3 +358,96 @@ describe("hydronium-cli main -- parse_build_args", function()
     end
   end)
 end)
+
+describe("hydronium-cli dev -- HMR/dev-endpoint display filtering", function()
+
+  local function request(path)
+    return { kind = "request", method = "GET", path = path, status = 200, ts = 1 }
+  end
+
+  it("classifies every hydronium dev endpoint as dev traffic", function()
+    assert.equal(event_model.is_dev_endpoint(request("/__hydronium/watch")), true)
+    assert.equal(event_model.is_dev_endpoint(request("/__hydronium/hmr")), true)
+    assert.equal(event_model.is_dev_endpoint(request("/__hydronium/dev/module/app")), true)
+    assert.equal(event_model.is_dev_endpoint(request("/__hydronium/client")), true)
+    assert.equal(event_model.is_dev_endpoint(request("/__hydronium/client_manifest")), true)
+  end)
+
+  it("leaves real application traffic alone", function()
+    assert.equal(event_model.is_dev_endpoint(request("/")), false)
+    assert.equal(event_model.is_dev_endpoint(request("/api/users")), false)
+    -- A path that merely mentions the prefix as a segment of something the
+    -- app serves itself must not be swallowed.
+    assert.equal(event_model.is_dev_endpoint(request("/docs/__hydronium-guide")), false)
+  end)
+
+  it("only ever classifies request events", function()
+    assert.equal(event_model.is_dev_endpoint({ kind = "startup", path = "/__hydronium/watch" }), false)
+    assert.equal(event_model.is_dev_endpoint({ kind = "reload" }), false)
+    assert.equal(event_model.is_dev_endpoint(nil), false)
+    assert.equal(event_model.is_dev_endpoint("nonsense"), false)
+  end)
+
+  it("parses --show-hmr, and defaults it off", function()
+    assert.equal(must(main.parse_args({ "dev" })).show_hmr, false)
+    assert.equal(must(main.parse_args({ "dev", "--show-hmr" })).show_hmr, true)
+  end)
+end)
+
+describe("hydronium-cli drain -- durable log keeps what the views hide", function()
+  local function encode(t)
+    local json = require("hydronium_router.history.state")
+    return json.encode(t)
+  end
+
+  --- A ctx with recording stubs for every collaborator drain touches.
+  local function fake_ctx(opts)
+    local logged, pushed, recorded = {}, {}, {}
+    local lines = {}
+    for _, e in ipairs(opts.events) do lines[#lines + 1] = encode(e) end
+    return {
+      show_hmr = opts.show_hmr,
+      hidden_hmr = 0,
+      skipped = 0,
+      supervisor = { poll = function() return lines end },
+      log = { append = function(_, e) logged[#logged + 1] = e.path or e.kind end },
+      buffer = {
+        push = function(_, e) pushed[#pushed + 1] = e.path or e.kind end,
+        snapshot = function() return {} end,
+      },
+      state = {
+        set_entries = function() end,
+        set_hidden_hmr = function() end,
+        record_request = function(_, e) recorded[#recorded + 1] = e.path or e.kind end,
+        apply = function() end,
+      },
+    }, logged, pushed, recorded
+  end
+
+  local events = {
+    { v = require("event_model").SCHEMA_VERSION, source = "meteorite", kind = "request", method = "GET", path = "/", status = 200, ts = 1 },
+    { v = require("event_model").SCHEMA_VERSION, source = "meteorite", kind = "request", method = "GET", path = "/__hydronium/watch", status = 200, ts = 2 },
+    { v = require("event_model").SCHEMA_VERSION, source = "meteorite", kind = "request", method = "GET", path = "/api/users", status = 200, ts = 3 },
+    { v = require("event_model").SCHEMA_VERSION, source = "meteorite", kind = "request", method = "GET", path = "/__hydronium/dev/module/app", status = 200, ts = 4 },
+  }
+
+  it("hides dev-endpoint requests from both views but logs every one", function()
+    local ctx, logged, pushed, recorded = fake_ctx({ events = events, show_hmr = false })
+    main.drain(ctx)
+    -- Durable log: the complete record, always.
+    assert.same(logged, { "/", "/__hydronium/watch", "/api/users", "/__hydronium/dev/module/app" })
+    -- Both views: application traffic only.
+    assert.same(pushed, { "/", "/api/users" })
+    assert.same(recorded, { "/", "/api/users" })
+    -- Counted, so the UI can say so rather than the traffic just vanishing.
+    assert.equal(ctx.hidden_hmr, 2)
+  end)
+
+  it("includes them everywhere under --show-hmr", function()
+    local ctx, logged, pushed = fake_ctx({ events = events, show_hmr = true })
+    main.drain(ctx)
+    assert.equal(#logged, 4)
+    assert.equal(#pushed, 4)
+    assert.equal(ctx.hidden_hmr, 0)
+  end)
+end)

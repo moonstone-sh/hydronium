@@ -102,6 +102,10 @@ function M.new_state(opts)
   local get_url, set_url = hydronium.signal(opts.url or M.DEFAULT_URL)
   local get_entries, set_entries = hydronium.signal({})
   local get_note, set_note = hydronium.signal(nil)
+  -- Count of hydronium dev-endpoint requests filtered out of the views.
+  -- Displayed, not swallowed: a filter you cannot see is indistinguishable
+  -- from a dev server that has stopped receiving traffic.
+  local get_hidden_hmr, set_hidden_hmr = hydronium.signal(0)
   local get_fullscreen, set_fullscreen = hydronium.signal(opts.fullscreen and true or false)
   local get_revision, set_revision = hydronium.signal(0)
   local get_selection, set_selection = hydronium.signal(0)
@@ -112,6 +116,7 @@ function M.new_state(opts)
     ready_ms = get_ready_ms, set_ready_ms = set_ready_ms,
     url = get_url, set_url = set_url,
     entries = get_entries, set_entries = set_entries,
+    hidden_hmr = get_hidden_hmr, set_hidden_hmr = set_hidden_hmr,
     note = get_note, set_note = set_note,
     fullscreen = get_fullscreen, set_fullscreen = set_fullscreen,
     requests_revision = get_revision, set_requests_revision = set_revision,
@@ -368,6 +373,17 @@ function M.render_status(state, spinner)
       children[#children + 1] =
         hydronium.h(ink.Text, { key = index, dimColor = true }, "    " .. text)
     end
+  end
+
+  -- Hidden dev-endpoint traffic. Shown as a single dim line rather than
+  -- omitted entirely, because a quiet events pane should not be ambiguous
+  -- between "nothing is hitting the server" and "everything hitting it is
+  -- being filtered". The durable log has all of it regardless.
+  local hidden = state.hidden_hmr and state.hidden_hmr() or 0
+  if hidden > 0 then
+    children[#children + 1] = hydronium.h(ink.Text, { dimColor = true },
+      string.format("    %d hmr/dev request%s hidden \226\128\148 --show-hmr to include",
+        hidden, hidden == 1 and "" or "s"))
   end
 
   -- The one discoverability line for the fullscreen view.

@@ -107,6 +107,31 @@ function M.alias_for(path, aliases)
   return nil
 end
 
+--- True for a request against one of hydronium's own dev endpoints -- the
+--- HMR watch stream, module fetches, the client bundle and its manifest.
+---
+--- These are not a distinct event kind (see DEV_ENDPOINT_ALIASES above):
+--- they are ordinary `request` events whose path happens to be framework
+--- machinery rather than anything the application serves. The watch endpoint
+--- in particular is a long-poll that reconnects continuously, so in a normal
+--- session these outnumber real requests by a wide margin and bury them.
+---
+--- The collapse buffer already merges consecutive repeats, which is not
+--- enough on its own: HMR traffic interleaves with real requests, and
+--- collapsing only ever merges into the CURRENT TAIL entry, so an
+--- alternating stream collapses to nothing.
+---
+--- Callers use this to filter the DISPLAY only. The durable log at
+--- .hydronium/dev.log keeps every event either way.
+--- @param event table|nil
+--- @return boolean
+function M.is_dev_endpoint(event)
+  if type(event) ~= "table" or event.kind ~= "request" then
+    return false
+  end
+  return M.alias_for(event.path) ~= nil
+end
+
 --- Parses one raw line into an event table, or returns nil plus a reason
 --- when the line is not a usable event. Never raises: a decode failure on
 --- a partially-written line is an ordinary, expected outcome.

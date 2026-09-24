@@ -1,7 +1,7 @@
 --[[
   `hydronium` -- the Hydronium developer CLI.
 
-    hydronium dev [--verbose] [--show-ips] [--fullscreen]
+    hydronium dev [--verbose] [--show-ips] [--show-hmr] [--fullscreen]
                   [--meteorite-args "<flags>"]
 
   `dev` spawns `meteorite dev` as a child process, tails the structured
@@ -14,7 +14,7 @@
   it is a handful of tokens and every one of them must be exact: an
   unknown subcommand or an unknown flag is an error with a usage message,
   never a silent no-op. The only defaults are `verbose = false`,
-  `show_ips = false` and `fullscreen = false`.
+  `show_ips = false`, `show_hmr = false` and `fullscreen = false`.
 
     --verbose    DISPLAY DENSITY ONLY. Shows more rows in the collapsed
                  events pane (event_model.VERBOSE_CAPACITY instead of
@@ -31,6 +31,20 @@
                  address is already in meteorite's event and is already
                  written to .hydronium/dev.log regardless -- this only
                  controls whether it is shown on screen.
+    --show-hmr   Include requests to hydronium's OWN dev endpoints
+                 (/__hydronium/watch, /__hydronium/hmr,
+                 /__hydronium/dev/module/..., the client bundle and its
+                 manifest) in the events pane and the fullscreen view.
+                 Hidden by default: the watch endpoint is a long-poll that
+                 reconnects continuously, so in a normal session this
+                 traffic outnumbers real requests heavily and buries them.
+                 The collapse buffer cannot absorb it on its own, because
+                 it interleaves with real requests and collapsing only ever
+                 merges into the current tail entry.
+                 DISPLAY ONLY, like the two flags above: every one of these
+                 events is written to .hydronium/dev.log either way, and
+                 the status view reports how many it is hiding rather than
+                 dropping them silently.
     --fullscreen Start in the FULLSCREEN REQUEST-DEBUG VIEW instead of
                  the compact status view (`f` toggles either way at
                  runtime, `esc` leaves it, `q` quits). The view takes
@@ -185,6 +199,9 @@ M.USAGE = table.concat({
   "",
   "Options:",
   "  --verbose      Show more rows in the events pane (display density only).",
+  "  --show-hmr     Include hydronium dev-endpoint requests (HMR watch,",
+  "                 module fetches, client bundle) in the events pane.",
+  "                 Hidden by default; the durable log always has them.",
   "  --show-ips     Show each request's remote address.",
   "  --fullscreen   Start in the fullscreen request-debug view.",
   "  --meteorite-args \"<flags>\"",
@@ -317,6 +334,7 @@ function M.parse_args(argv)
     command = "dev",
     verbose = false,
     show_ips = false,
+    show_hmr = false,
     fullscreen = false,
     meteorite_args = nil,
     vite = false,
@@ -332,6 +350,8 @@ function M.parse_args(argv)
       parsed.verbose = true
     elseif token == "--show-ips" then
       parsed.show_ips = true
+    elseif token == "--show-hmr" then
+      parsed.show_hmr = true
     elseif token == "--fullscreen" then
       parsed.fullscreen = true
     elseif token == "--meteorite-args" then
@@ -578,9 +598,27 @@ local function drain(ctx)
     local event = event_model.parse_line(line)
     if event then
       -- Durable superset first, uncollapsed, every event, always.
+      -- Hiding HMR below is a DISPLAY decision and must never reach here:
+      -- .hydronium/dev.log stays the complete record.
       if ctx.log then
         ctx.log:append(event)
       end
+
+      -- Hydronium's own dev endpoints (the HMR watch long-poll, module
+      -- fetches, the client bundle) are hidden from both views by default.
+      -- They are framework machinery, they outnumber real requests heavily,
+      -- and the collapse buffer cannot fold them away because they interleave
+      -- with real traffic and collapsing only merges into the current tail.
+      -- Counted rather than silently dropped -- the status view reports how
+      -- many were hidden, so this is never a mystery.
+      if not ctx.show_hmr and event_model.is_dev_endpoint(event) then
+        ctx.hidden_hmr = (ctx.hidden_hmr or 0) + 1
+        ctx.state.set_hidden_hmr(ctx.hidden_hmr)
+        ctx.state:apply(event)
+        applied = applied + 1
+        goto continue
+      end
+
       -- Display second, collapsed, capped at the visible row count.
       ctx.buffer:push(event)
       -- The fullscreen view's own history: uncollapsed, one row per
@@ -589,6 +627,7 @@ local function drain(ctx)
       ctx.state:record_request(event)
       ctx.state:apply(event)
       applied = applied + 1
+      ::continue::
     else
       ctx.skipped = ctx.skipped + 1
     end
@@ -599,6 +638,12 @@ local function drain(ctx)
   end
   return applied
 end
+
+--- Exposed for tests. `drain` is where the HMR/dev-endpoint display filter
+--- actually takes effect, and the invariant that matters -- durable log gets
+--- everything, the views do not -- is only observable here, not from
+--- is_dev_endpoint alone.
+M.drain = drain
 
 --- @param parsed table From M.parse_args.
 --- @return integer exit code
@@ -724,6 +769,9 @@ function M.dev(parsed)
     state = state,
     log = log,
     skipped = 0,
+    -- Display filter only; ctx.log above is written before it is consulted.
+    show_hmr = parsed.show_hmr,
+    hidden_hmr = 0,
   }
 
   -- Real wall-clock, not a count of loop turns. render.lua's loop paces
