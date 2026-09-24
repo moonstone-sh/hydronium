@@ -8,6 +8,8 @@ local scheduler = require("hydronium.core.scheduler")
 local terminalHost = require("hydronium_ink.host.terminal")
 local hooks = require("hydronium_ink.hooks")
 local keys = require("hydronium_ink.keys")
+-- Wall-clock (gettimeofday), NOT os.clock()'s CPU time -- see Session:step.
+local clock = require("hydronium_ink.clock")
 
 local M = {}
 local Session = {}
@@ -317,9 +319,22 @@ function Session:setHyperlinkCapability(capability)
 end
 
 --- Advances animations and development polling with a caller-owned clock.
+---
+--- The default is WALL-CLOCK time, via hydronium_ink.clock. It used to fall
+--- back to `os.clock() * 1000`, which is CPU time consumed by this process --
+--- and render.lua's loop calls `step()` with no argument, so that fallback was
+--- the live path for every real app. That loop spends virtually all of its
+--- time blocked in `select()` and burns almost no CPU, so `os.clock()` crawled
+--- forward a millisecond or two per second of real time: a `useAnimation`
+--- ticker asking for a 110ms interval advanced roughly once a minute. Measured
+--- on a real pty, a spinner painted ONE frame in 20 seconds.
+---
+--- clock.lua exists precisely for this and already documents the trap in its
+--- own header; keys.lua's ESC timeout was moved across to it. This call site
+--- was the one left behind.
 function Session:step(nowMs)
   self:_assertOpen("step")
-  nowMs = tonumber(nowMs) or os.clock() * 1000
+  nowMs = tonumber(nowMs) or clock.nowMs()
   for _, ticker in ipairs(self._tickers) do
     if ticker.isActive then ticker.tick(nowMs) end
   end

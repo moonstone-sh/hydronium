@@ -294,10 +294,15 @@ end
 --- @field delta fun(): number REACTIVE GETTER. Ms since the previous tick (render.lua's loop only checks tickers once per ~33ms poll iteration -- see POLL_INTERVAL_MS -- so `delta` reflects real elapsed time, not exactly `interval`, matching real Ink's own "accounts for throttled renders" documented behavior).
 --- @field reset fun() Zeroes frame/time/delta and restarts timing from now.
 
---- Registers a real timer ticker with render.lua's event loop (checked
---- once per loop iteration against `os.clock() * 1000` -- the same clock
---- source keys.lua's own ESC-alone timeout already uses, kept consistent
---- rather than introducing a second one). Must be called once at a
+--- Registers a real timer ticker with render.lua's event loop (checked once
+--- per loop iteration against WALL-CLOCK time from hydronium_ink.clock, the
+--- same source keys.lua's ESC-alone timeout uses).
+---
+--- This comment used to say `os.clock() * 1000`, and so did Session:step's
+--- default -- which is CPU time, not wall time. A loop that sits in select()
+--- burns almost no CPU: measured across a real 2013 ms wait, os.clock()
+--- advanced 0.37 ms, i.e. 0.0002x real time, which turns a 110 ms interval
+--- into one tick per ~600 seconds. Must be called once at a
 --- component's one-time setup call, like useInput/useFocus above -- NOT
 --- from inside the returned per-render closure -- since it registers a
 --- real `hydronium.onCleanup` for unmount.

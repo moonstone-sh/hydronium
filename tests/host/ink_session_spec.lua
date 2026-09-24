@@ -106,3 +106,95 @@ describe("hydronium_ink.session", function()
     app:close()
   end)
 end)
+
+-- Session:step()'s DEFAULT clock. Called with no argument by render.lua's own
+-- loop, so this is the live path for every real app -- and it used to default
+-- to `os.clock() * 1000`, which is CPU time. A loop blocked in select() burns
+-- almost no CPU (measured: 0.37ms of os.clock across a real 2013ms wait), so a
+-- 110ms useAnimation interval ticked about once every 600 SECONDS. The spinner
+-- looked frozen.
+describe("hydronium_ink.session -- Session:step default clock is wall-clock", function()
+  local sessionModule = require("hydronium_ink.session")
+  local clock = require("hydronium_ink.clock")
+  local H = require("hydronium")
+  local ink = require("hydronium_ink")
+
+  it("passes onTick a wall-clock reading, not a CPU-time one", function()
+    local seen = nil
+    local s = sessionModule.create(H.h(ink.Text, {}, "x"), {
+      writeFn = function() end,
+      columns = 20,
+      rows = 3,
+      onTick = function(nowMs) seen = nowMs end,
+    })
+    local wall_before = clock.nowMs()
+    s:step() -- no argument: the default path render.lua actually uses
+    local wall_after = clock.nowMs()
+    s:close()
+
+    assert.truthy(seen, "onTick must receive a clock reading")
+    -- Wall-clock is a large epoch-based number; CPU time since process start
+    -- is a handful of milliseconds. Bracketing by real wall readings taken
+    -- either side distinguishes them without asserting on an absolute value.
+    assert.truthy(seen >= wall_before and seen <= wall_after,
+      string.format("expected a wall-clock reading in [%.0f, %.0f], got %.0f -- a CPU-time "
+        .. "default would be orders of magnitude smaller", wall_before, wall_after, seen))
+  end)
+
+  it("advances an animation ticker across real elapsed wall time", function()
+    local ticks = 0
+    local s = sessionModule.create(H.h(ink.Text, {}, "x"), {
+      writeFn = function() end,
+      columns = 20,
+      rows = 3,
+    })
+    -- Drive the ticker contract directly with explicit wall-style readings:
+    -- 400ms of real time must yield several 110ms intervals, which the old
+    -- CPU-time default could never have produced.
+    local base = clock.nowMs()
+    s._tickers[#s._tickers + 1] = {
+      isActive = true,
+      tick = function() ticks = ticks + 1 end,
+    }
+    for i = 1, 4 do s:step(base + i * 110) end
+    s:close()
+    assert.equal(ticks, 4)
+  end)
+end)
+
+-- clock.sleepMs replaced `os.execute("sleep 0.033")` in render.lua's
+-- non-interactive pacing branch, which forked a shell and a `sleep` binary
+-- ~30 times a second. Measured over 30 ticks: nanosleep 1092ms wall / 1.1ms
+-- CPU, the shell version 1451ms / 18.2ms -- 12ms of overhead per 33ms tick.
+describe("hydronium_ink.clock -- in-process sleep", function()
+  local clock = require("hydronium_ink.clock")
+
+  it("sleeps at least the requested wall time", function()
+    local before = clock.nowMs()
+    clock.sleepMs(40)
+    local elapsed = clock.nowMs() - before
+    -- Lower bound with 2ms slack for gettimeofday granularity; upper bound is
+    -- generous because a loaded CI box can be late, but a shell fork per call
+    -- would blow well past it.
+    assert.truthy(elapsed >= 38,
+      string.format("expected >= 38ms of real sleep, got %.1fms", elapsed))
+    assert.truthy(elapsed < 400,
+      string.format("expected the sleep to return promptly, took %.1fms", elapsed))
+  end)
+
+  it("is a no-op for zero, negative and missing durations", function()
+    local before = clock.nowMs()
+    clock.sleepMs(0)
+    clock.sleepMs(-5)
+    clock.sleepMs(nil)
+    assert.truthy(clock.nowMs() - before < 30, "none of these should sleep")
+  end)
+
+  it("handles a sub-millisecond duration without hanging", function()
+    -- tv_nsec must stay a normalized integer; a fractional value would be a
+    -- truncation, not an EINVAL loop.
+    local before = clock.nowMs()
+    clock.sleepMs(0.4)
+    assert.truthy(clock.nowMs() - before < 30, "a sub-ms sleep must return promptly")
+  end)
+end)

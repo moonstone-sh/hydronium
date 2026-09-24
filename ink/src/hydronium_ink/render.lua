@@ -3,6 +3,12 @@
 local ffi = require("ffi")
 local sessionModule = require("hydronium_ink.session")
 
+-- Wall-clock + in-process sleep. Loaded defensively: hydronium_ink.clock is
+-- POSIX-only and raises on Windows, and the non-interactive render path below
+-- is the one context that previously had no FFI dependency at all.
+local clockOk, clockModule = pcall(require, "hydronium_ink.clock")
+local sleepMs = clockOk and clockModule.sleepMs or nil
+
 ffi.cdef([[int isatty(int fd);]])
 
 local M = {}
@@ -201,7 +207,18 @@ function M.render(element, opts)
           app:resize(size.columns, size.rows)
         end
       else
-        os.execute("sleep 0." .. string.format("%03d", POLL_INTERVAL_MS))
+        -- Non-interactive pacing (piped stdout, CI). nanosleep, not
+        -- `os.execute("sleep ...")`: that forked a shell and a `sleep` binary
+        -- ~30 times a second for the whole run. See clock.sleepMs.
+        --
+        -- pcall-guarded so this path keeps working where the FFI clock cannot
+        -- load (it is POSIX-only by its own doc comment) -- the shell fallback
+        -- is slow, but it is better than failing to render at all.
+        if sleepMs then
+          sleepMs(POLL_INTERVAL_MS)
+        else
+          os.execute("sleep 0." .. string.format("%03d", POLL_INTERVAL_MS))
+        end
       end
       app:step()
     end
