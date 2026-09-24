@@ -50,16 +50,16 @@ function luals.configure(target_dir, opts)
   local plugin_rel_path = ".moonstone/env/share/lua/" .. lua_ver_str .. "/hydronium_luax/luals/init.lua"
   local library_paths = {
     ".moonstone/env/share/lua/" .. lua_ver_str,
-    ".moonstone/env/libexec/hydronium-core/types",
+    ".moonstone/env/libexec/core/types",
   }
   if enable_luax then
-    table.insert(library_paths, ".moonstone/env/libexec/hydronium-luax/types")
+    table.insert(library_paths, ".moonstone/env/libexec/luax/types")
   end
   if enable_dom then
-    table.insert(library_paths, ".moonstone/env/libexec/hydronium-dom/types")
+    table.insert(library_paths, ".moonstone/env/libexec/dom/types")
   end
   if enable_bare_dom then
-    table.insert(library_paths, ".moonstone/env/libexec/hydronium-dom/ambient-types")
+    table.insert(library_paths, ".moonstone/env/libexec/dom/ambient-types")
   end
   if enable_meteorite then
     table.insert(library_paths, meteorite_aids_dir)

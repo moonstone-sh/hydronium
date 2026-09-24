@@ -194,9 +194,9 @@ such as `<div>` and `<button>`.
   },
   "workspace": {
     "library": [
-      ".moonstone/env/libexec/hydronium-luax/types",
-      ".moonstone/env/libexec/hydronium-dom/types",
-      ".moonstone/env/libexec/hydronium-dom/ambient-types"
+      ".moonstone/env/libexec/luax/types",
+      ".moonstone/env/libexec/dom/types",
+      ".moonstone/env/libexec/dom/ambient-types"
     ]
   },
   "files": { "associations": { "*.luax": "lua" } }

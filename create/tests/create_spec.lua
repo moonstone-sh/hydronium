@@ -261,11 +261,21 @@ test("scaffold dry-run produces expected files for ssr template", function()
     "SSR client manifest must include the browser HMR host coordinator")
   assert(manifest:find('"hydronium.core.module_graph"', 1, true),
     "SSR client manifest must include the runtime module graph")
+  assert(manifest:find('"hydronium.core.love_hmr"', 1, true),
+    "SSR client manifest must include the core barrel's LÖVE HMR dependency")
+  assert(manifest:find('"hydronium.core.source_topology"', 1, true),
+    "SSR client manifest must include the core barrel's source topology dependency")
+  assert(manifest:find('"hydronium_router.topology"', 1, true),
+    "SSR client manifest must include the router's topology dependency")
   assert(not generated["moonstone.toml"]:find("path:../", 1, true), "SSR dependencies must install without sibling checkouts")
   assert(generated["build.zig"]:find("meteorite/meteorite/zig/build_api.zig", 1, true),
     "SSR build must use the installed Meteorite package layout")
-  assert(generated["src/main.lua"]:find("libexec/hydronium-router/hydronium_router/client/history.js", 1, true),
+  assert(generated["src/main.lua"]:find("libexec/router/hydronium_router/client/history.js", 1, true),
     "SSR must serve the packaged router client assets")
+  assert(generated["src/main.lua"]:find("libexec/dom/hydronium_dom/client/vendor", 1, true),
+    "SSR must serve DOM client assets from Moonstone's package-leaf libexec layout")
+  assert(not generated["src/main.lua"]:find("dev_registry", 1, true),
+    "SSR hybrid handlers must not capture an outer registry helper")
   assert(generated["src/main.lua"]:find("hydronium_dom.dev.source_registry", 1, true),
     "SSR must resolve browser modules through the source registry")
   assert(generated["src/main.lua"]:find("load_inventory", 1, true),
@@ -403,9 +413,9 @@ test("luals.configure uses alter to update .luarc.json with Hydronium LuaX plugi
 
   assert(content:find("hydronium_luax/luals/init.lua"), "missing hydronium_luax plugin in .luarc.json")
   assert(content:find("%.moonstone/env/share/lua/5.4"), "missing workspace library in .luarc.json")
-  assert(content:find("%.moonstone/env/libexec/hydronium%-core/types"), "missing Hydronium core form types library")
-  assert(content:find("hydronium%-luax/types"), "missing packaged LUAX types in .luarc.json")
-  assert(content:find("hydronium%-dom/types"), "missing packaged DOM types in .luarc.json")
+  assert(content:find("%.moonstone/env/libexec/core/types"), "missing Hydronium core form types library")
+  assert(content:find("libexec/luax/types", 1, true), "missing packaged LUAX types in .luarc.json")
+  assert(content:find("libexec/dom/types", 1, true), "missing packaged DOM types in .luarc.json")
   assert(content:find("%*%.luax"), "missing *.luax association in .luarc.json")
 
   -- Idempotency check: running again should succeed without redundant duplicates
@@ -689,17 +699,17 @@ test("every template's generated content actually parses/compiles (content-valid
     local luals_config = luals_file:read("*a")
     luals_file:close()
     if tmpl.id ~= "ink" and tmpl.id ~= "love" then
-      assert(luals_config:find("hydronium%-dom/types"), "[" .. tmpl.id .. "] missing packaged DOM types")
+      assert(luals_config:find("libexec/dom/types", 1, true), "[" .. tmpl.id .. "] missing packaged DOM types")
     else
       assert(luals_config:find("share/lua/5%.1"), "[" .. tmpl.id .. "] missing LuaJIT workspace library")
-      assert(not luals_config:find("hydronium%-dom/types"), "[" .. tmpl.id .. "] must not configure DOM types")
+      assert(not luals_config:find("libexec/dom/types", 1, true), "[" .. tmpl.id .. "] must not configure DOM types")
     end
     if tmpl.id == "minimal" or tmpl.id == "love" then
       assert(not luals_config:find("hydronium_luax", 1, true), "[" .. tmpl.id .. "] must not configure an unavailable LUAX plugin")
       assert(not luals_config:find("ambient%-types"), "[" .. tmpl.id .. "] must not opt into bare DOM globals")
     else
       assert(luals_config:find("hydronium_luax/luals/init.lua", 1, true), "[" .. tmpl.id .. "] missing LUAX plugin")
-      assert(luals_config:find("hydronium%-luax/types"), "[" .. tmpl.id .. "] missing packaged LUAX types")
+      assert(luals_config:find("libexec/luax/types", 1, true), "[" .. tmpl.id .. "] missing packaged LUAX types")
       if tmpl.id == "ink" then
         assert(not luals_config:find("ambient%-types"), "[ink] must not configure ambient DOM globals")
       else

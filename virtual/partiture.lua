@@ -6,9 +6,12 @@ return ballad.partiture(function(p)
   local artifact = moonstone.registry.source_package(project, {
     readme = "REGISTRY_README.md",
     include_add = { "types/**" },
-    collect = { lua_modules = { ballad.conventions.tree("src", {
-      prefix = "hydronium_virtual", strip_prefix = "hydronium_virtual/",
-    }) } },
+    collect = {
+      assets = { ballad.conventions.tree("types", { prefix = "types" }) },
+      lua_modules = { ballad.conventions.tree("src", {
+        prefix = "hydronium_virtual", strip_prefix = "hydronium_virtual/",
+      }) },
+    },
   })
   p.sink.artifact(artifact, { out = "dist/registry", product = "package" })
 end)

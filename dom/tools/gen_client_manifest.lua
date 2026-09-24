@@ -1,11 +1,10 @@
 --[[
   tools/gen_client_manifest.lua -- derives the real, real client runtime
-  module list for `hydronium.client.mount` from the ACTUAL require()
-  graph, by wrapping the global `require` and recording every module id
-  it resolves while requiring a given set of entry modules -- the same
-  established rule this whole codebase already follows for HMR's
-  `family_loader` (never hand-maintain a source list the runtime already
-  knows) applied here to the client manifest problem instead
+  module list for `hydronium.client.mount` from the static literal
+  require() graph of a given set of entry modules. It follows every local
+  `require("module.id")` deterministically without executing application
+  code -- so the manifest neither runs host-only initialization nor misses
+  nested imports because a loader captured require before instrumentation.
   (docs/HMR_DOM_HOST.md's gap list calls this out by name: "no bundler
   exists ... EMBEDDED_MODULES is a hand-pasted blob").
 
@@ -25,61 +24,73 @@
 
 package.path = "core/src/?.lua;core/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;router/src/?.lua;router/src/?/init.lua;" .. package.path
 
-local function to_relpath(mod_id)
+local function source_path(mod_id)
   local p = mod_id:gsub("%.", "/")
   local candidates = {
-    { root = "core/src/", path = "core/src/" .. p .. ".lua" },
-    { root = "core/src/", path = "core/src/" .. p .. "/init.lua" },
-    { root = "dom/src/", path = "dom/src/" .. p .. ".lua" },
-    { root = "dom/src/", path = "dom/src/" .. p .. "/init.lua" },
-    { root = "router/src/", path = "router/src/" .. p .. ".lua" },
-    { root = "router/src/", path = "router/src/" .. p .. "/init.lua" },
+    "core/src/" .. p .. ".lua",
+    "core/src/" .. p .. "/init.lua",
+    "dom/src/" .. p .. ".lua",
+    "dom/src/" .. p .. "/init.lua",
+    "router/src/" .. p .. ".lua",
+    "router/src/" .. p .. "/init.lua",
   }
-  for _, c in ipairs(candidates) do
-    local f = io.open(c.path, "r")
+  for _, candidate in ipairs(candidates) do
+    local f = io.open(candidate, "r")
     if f then
       f:close()
-      -- The Meteorite example mounts both member source roots under the
-      -- client-runtime route, preserving their distinct package namespaces.
-      return c.path:gsub("^core/src/", ""):gsub("^dom/src/", ""):gsub("^router/src/", "")
+      return candidate
     end
   end
   return nil
+end
+
+local function to_relpath(source)
+  -- The Meteorite example mounts all three member source roots under the
+  -- client-runtime route, preserving their distinct package namespaces.
+  return source:gsub("^core/src/", ""):gsub("^dom/src/", ""):gsub("^router/src/", "")
+end
+
+local function literal_requires(source)
+  local ids, seen = {}, {}
+  for id in source:gmatch("require%s*%(%s*['\"]([%w_.%-]+)['\"]%s*%)") do
+    if not seen[id] then
+      seen[id] = true
+      ids[#ids + 1] = id
+    end
+  end
+  return ids
 end
 
 local manifest = {}      -- module_id -> relative path (order-preserving)
 local order = {}
 local seen = {}
 
-local real_require = require
-
-local function tracing_require(mod_id)
-  if not seen[mod_id] then
-    seen[mod_id] = true
-    local path = to_relpath(mod_id)
-    if path then
-      manifest[mod_id] = path
-      table.insert(order, mod_id)
-    end
-  end
-  return real_require(mod_id)
-end
-
 if #arg < 1 then
     io.stderr:write("usage: lua dom/tools/gen_client_manifest.lua <entry_module_id> [...]\n")
   os.exit(1)
 end
 
-_G.require = tracing_require
-for i = 1, #arg do
-  local ok, err = pcall(tracing_require, arg[i])
-  if not ok then
-    _G.require = real_require
-    io.stderr:write(string.format("gen_client_manifest: failed to require '%s': %s\n", arg[i], tostring(err)))
-    os.exit(1)
+local pending = {}
+for i = 1, #arg do pending[#pending + 1] = arg[i] end
+local next_pending = 1
+while next_pending <= #pending do
+  local mod_id = pending[next_pending]
+  next_pending = next_pending + 1
+  if not seen[mod_id] then
+    seen[mod_id] = true
+    local source = source_path(mod_id)
+    if source then
+      manifest[mod_id] = to_relpath(source)
+      order[#order + 1] = mod_id
+      local f = assert(io.open(source, "r"))
+      local contents = f:read("*a")
+      f:close()
+      for _, dependency in ipairs(literal_requires(contents)) do
+        pending[#pending + 1] = dependency
+      end
+    end
   end
 end
-_G.require = real_require
 
 -- Minimal, dependency-free JSON object emission (this codebase has zero
 -- non-stdlib Lua dependencies anywhere -- a real JSON library would be

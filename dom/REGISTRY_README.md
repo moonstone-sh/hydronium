@@ -138,8 +138,8 @@ on `d.button`, event objects, and DOM props:
 {
   "workspace": {
     "library": [
-      ".moonstone/env/libexec/hydronium-luax/types",
-      ".moonstone/env/libexec/hydronium-dom/types"
+      ".moonstone/env/libexec/luax/types",
+      ".moonstone/env/libexec/dom/types"
     ]
   }
 }

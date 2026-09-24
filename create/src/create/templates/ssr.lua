@@ -472,7 +472,7 @@ meteorite.site(app, {
 -- self-heals as soon as the day expires.
 app:get("/js/bootstrap/vendor/:path*", {
   memory = { request_arena = "1mb" },
-}, meteorite.dir(".moonstone/env/libexec/hydronium-dom/hydronium_dom/client/vendor", {
+}, meteorite.dir(".moonstone/env/libexec/dom/hydronium_dom/client/vendor", {
   param = "path",
   cache = "public, max-age=86400, must-revalidate",
 }))
@@ -483,16 +483,16 @@ app:get("/js/bootstrap/vendor/:path*", {
 -- small (~35KB combined) -- the caching win was never here.
 app:get("/js/bootstrap/:path*", {
   memory = { request_arena = "1mb" },
-}, meteorite.dir(".moonstone/env/libexec/hydronium-dom/hydronium_dom/client", {
+}, meteorite.dir(".moonstone/env/libexec/dom/hydronium_dom/client", {
   param = "path",
   cache = "no-cache",
 }))
 
-app:get("/js/router/history.js", meteorite.file(".moonstone/env/libexec/hydronium-router/hydronium_router/client/history.js", {
+app:get("/js/router/history.js", meteorite.file(".moonstone/env/libexec/router/hydronium_router/client/history.js", {
   cache = "no-cache",
 }))
 
-app:get("/js/router/http.js", meteorite.file(".moonstone/env/libexec/hydronium-router/hydronium_router/client/http.js", {
+app:get("/js/router/http.js", meteorite.file(".moonstone/env/libexec/router/hydronium_router/client/http.js", {
   cache = "no-cache",
 }))
 
@@ -507,11 +507,11 @@ app:get("/hydronium-src/:path*", function(c)
   end
   local source_root
   if rel:match("^hydronium/") then
-    source_root = ".moonstone/env/libexec/hydronium/"
+    source_root = ".moonstone/env/libexec/core/"
   elseif rel:match("^hydronium_dom/") then
-    source_root = ".moonstone/env/libexec/hydronium-dom/"
+    source_root = ".moonstone/env/libexec/dom/"
   elseif rel:match("^hydronium_router/") then
-    source_root = ".moonstone/env/libexec/hydronium-router/"
+    source_root = ".moonstone/env/libexec/router/"
   else
     return c:text(404, "not found")
   end
@@ -536,22 +536,13 @@ app:get("/__hydronium/client_manifest.json", function(c)
   return c:text(200, content)
 end)
 
--- Ballad-backed layouts materialize this private authority during their
--- build. The starter remains runnable before its first build, so it falls
--- back to the checked-in declaration rather than scanning the project.
-local function dev_registry()
+app:get("/__hydronium/dev/manifest.json", function(c)
   local source_registry = require("hydronium_dom.dev.source_registry")
   local inventory_path = ".hydronium/source-inventory.lua"
   local inventory = io.open(inventory_path, "r")
-  if inventory then
-    inventory:close()
-    return source_registry.load_inventory(inventory_path)
-  end
-  return source_registry.load("hydronium.sources.lua")
-end
-
-app:get("/__hydronium/dev/manifest.json", function(c)
-  local registry = dev_registry()
+  local registry = inventory and source_registry.load_inventory(inventory_path)
+    or source_registry.load("hydronium.sources.lua")
+  if inventory then inventory:close() end
   return c:json(registry:browser_manifest())
 end)
 
@@ -570,7 +561,12 @@ end)
 -- only name a declared client/shared record; it never becomes a path lookup.
 app:get("/__hydronium/dev/module/:id", function(c)
   local id = c:param("id") or ""
-  local registry = dev_registry()
+  local source_registry = require("hydronium_dom.dev.source_registry")
+  local inventory_path = ".hydronium/source-inventory.lua"
+  local inventory = io.open(inventory_path, "r")
+  local registry = inventory and source_registry.load_inventory(inventory_path)
+    or source_registry.load("hydronium.sources.lua")
+  if inventory then inventory:close() end
   local record = registry:module(id)
   if not record or (record.target ~= "client" and record.target ~= "shared") then return c:text(404, "module not found") end
 
@@ -632,7 +628,12 @@ end)
 -- page HMR is trying to preserve.
 app:get("/__hydronium/watch", function(c)
   local watch = require("hydronium_dom.dev.watch")
-  local registry = dev_registry()
+  local source_registry = require("hydronium_dom.dev.source_registry")
+  local inventory_path = ".hydronium/source-inventory.lua"
+  local inventory = io.open(inventory_path, "r")
+  local registry = inventory and source_registry.load_inventory(inventory_path)
+    or source_registry.load("hydronium.sources.lua")
+  if inventory then inventory:close() end
   watch.serve_sse(c, registry:watch_files({ "public/style.css" }))
 end)
 
@@ -844,6 +845,9 @@ return Counter
   "hydronium.core.family_loader": "hydronium/core/family_loader.lua",
   "hydronium.core.hmr": "hydronium/core/hmr.lua",
   "hydronium.core.hmr_host": "hydronium/core/hmr_host.lua",
+  "hydronium.core.love_hmr": "hydronium/core/love_hmr.lua",
+  "hydronium.core.source_topology": "hydronium/core/source_topology.lua",
+  "hydronium.core.source_inventory": "hydronium/core/source_inventory.lua",
   "hydronium.core.module_graph": "hydronium/core/module_graph.lua",
   "hydronium.core.family": "hydronium/core/family.lua",
   "hydronium.core.refresh": "hydronium/core/refresh.lua",
@@ -874,6 +878,7 @@ return Counter
   "hydronium_router.history.memory": "hydronium_router/history/memory.lua",
   "hydronium_router.history.browser": "hydronium_router/history/browser.lua",
   "hydronium_router.router": "hydronium_router/router.lua",
+  "hydronium_router.topology": "hydronium_router/topology.lua",
   "hydronium_router.outlet": "hydronium_router/outlet.lua",
   "hydronium_router.hooks": "hydronium_router/hooks.lua",
   "hydronium_router.site": "hydronium_router/site.lua"

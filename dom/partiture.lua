@@ -8,6 +8,10 @@ return ballad.partiture(function(p)
         readme = "REGISTRY_README.md",
         include_add = { "ambient-types/**", "types/**", "tools/**" },
         collect = {
+            assets = {
+                convention.tree("types", { prefix = "types" }),
+                convention.tree("ambient-types", { prefix = "ambient-types" }),
+            },
             lua_modules = {
                 convention.tree("src", {
                     prefix = "hydronium_dom",

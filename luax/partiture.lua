@@ -21,6 +21,9 @@ return ballad.partiture(function(p)
             "package.json",
         },
         collect = {
+            assets = {
+                convention.tree("types", { prefix = "types" }),
+            },
             lua_modules = {
                 convention.tree("src", {
                     prefix = "hydronium_luax",
