@@ -14,11 +14,6 @@ abi = "5.1"
 [scripts]
 package = "moon exec -- ballad play partiture.lua"
 
-[[dependencies]]
-name = "moonstone/ballad"
-constraint = "^0.3.7"
-role = "tool"
-
 [[orbits.member]]
 name = "core"
 path = "core"
@@ -70,3 +65,24 @@ path = "create"
 [[orbits.member]]
 name = "cli"
 path = "cli"
+
+# role = "tool" restores this workspace's own pre-existing `package` script
+# above (`ballad play partiture.lua`, needs the `ballad` binary on PATH).
+# role = "runtime" is needed because `moon exec -- luajit tests/runner.lua`
+# runs cli/tests/build_runner_spec.lua and cli/tests/build_verify_spec.lua,
+# which require("ballad.partiture")/require("ballad.pipeline") in-process --
+# see cli/moonstone.toml's own, longer comment on this same pair of entries
+# for why two entries (not one) and how that was verified.
+#
+# Ballad 0.3.13 exposes the ordinary-node progress events and cooperative
+# checkpoints consumed by hydronium build. Keep both roles: the workspace
+# packages itself with Ballad and the build-runner specs require it in-process.
+[[dependencies]]
+name = "moonstone/ballad"
+constraint = "^0.3.13"
+role = "tool"
+
+[[dependencies]]
+name = "moonstone/ballad"
+constraint = "^0.3.13"
+role = "runtime"

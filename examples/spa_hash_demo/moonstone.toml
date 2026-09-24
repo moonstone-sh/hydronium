@@ -12,11 +12,17 @@ version = "2.1.0"
 abi = "5.1"
 
 [scripts]
-"build" = "moon exec -- ballad play partiture.lua"
+build = "moon exec -- ballad play partiture.lua"
+
+[[dependencies]]
+name = "hydronium/cli"
+constraint = "path:../../cli"
+registry = "path"
+role = "tool"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.3.0"
+constraint = "^0.3.13"
 role = "tool"
 
 [[dependencies]]
