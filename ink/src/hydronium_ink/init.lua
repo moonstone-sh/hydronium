@@ -59,6 +59,13 @@
     Text:    color / backgroundColor (terminal palette names, opaque
                #RRGGBB sRGB, or values from hydronium_oklab_utils)
              bold / dimColor / italic / underline / strikethrough / inverse (boolean)
+             href (string, optional) -- OSC 8 hyperlink target. See "Public
+               API for hyperlinks" below for why this rides on Text rather
+               than a separate `<Link>` element, and
+               hydronium_ink.host.terminal's "Hyperlink capability" section
+               for the true/false/"auto" gate that decides whether real OSC
+               8 bytes are emitted at all (default: plain, unlinked text on
+               a terminal not affirmatively known to support it).
              width (integer, optional) + wrap ("truncate" |
                "truncate-start" | "truncate-middle" | "truncate-end") --
                truncates (with a plain ASCII "..." marker, not a real
@@ -81,6 +88,23 @@
              (no ANSI/style codes from its children). ANSI SGR styling in
              the transform's return value is parsed into
              terminal cells (standard 8 colors and host text styles).
+
+  Public API for hyperlinks (OSC 8): a link is `<Text href="https://...">`,
+  not a separate `<Link>`/`<A>` element the way real Ink's own ecosystem
+  (`ink-link`, various user snippets) or the DOM's `<a href>` model it.
+  Chosen deliberately, not by default: everywhere else in this module a
+  hyperlink is exactly the same *kind* of thing as `color`/`bold`/
+  `underline` -- a zero-width text-range style attribute, not a layout
+  node with its own box model (it never wraps, never has padding/border,
+  never participates in flex sizing on its own). `href` on Text reuses the
+  exact style-inheritance machinery those props already have (see
+  host/terminal.lua's textStyleOf -- a nested `<Text>` inherits its
+  parent's `href` unless it sets its own, exactly like `color`), instead
+  of inventing a second, parallel "wrap children in an element" mechanism
+  that would need its own layout/paint branch in host/terminal.lua for a
+  concept that host already treats every other run-level style as. See
+  host/terminal.lua's own "OSC 8 HYPERLINK GRID REPRESENTATION" comment
+  for how this decision carries all the way down to the character grid.
 --]]
 
 local symbols = require("hydronium.core.symbols")
@@ -174,6 +198,12 @@ end
 ---@field underline? boolean
 ---@field strikethrough? boolean
 ---@field inverse? boolean
+---@field href? string OSC 8 hyperlink target for this run of text. Inherited by
+--- nested Text the same way `color` is (a nested `href` overrides; `href = ""`
+--- explicitly clears an inherited one). Degrades to plain, unlinked text when
+--- the terminal isn't known to support OSC 8 -- see
+--- hydronium_ink.host.terminal's "Hyperlink capability" section and
+--- hydronium_ink.session's `hyperlinks` option.
 ---@field width? integer
 ---@field wrap? "truncate"|"truncate-start"|"truncate-middle"|"truncate-end"|"wrap"|"hard"
 

@@ -55,6 +55,8 @@ M.InkAppContext = hydronium.createContext(nil)
 --- @field registerPasteHandler fun(handler: fun(text: string)): fun() Returns an unregister function.
 --- @field setAltScreen fun(enabled: boolean): boolean Switches the terminal's alternate screen buffer on/off. Returns whether this call changed anything.
 --- @field altScreen fun(): boolean A reactive signal getter.
+--- @field setTerminalTitle fun(title: string) Sets the terminal window/icon title (OSC 0).
+--- @field writeClipboard fun(text: string) Writes to the system clipboard (OSC 52, write-only -- see render.lua's OSC evaluation comment for why there is no read).
 
 --- @return hydronium_ink.InkAppContextValue
 local function requireAppContext(hookName)
@@ -202,7 +204,7 @@ function M.useFocusManager()
 end
 
 --- @class hydronium_ink.UseCursorResult
---- @field setCursorPosition fun(position: { x: number, y: number }|nil) `position` is 0-based and relative to Ink's own rendered output (`x` = column, `y` = row, `y = 0` is the first line) -- matching real Ink's own documented shape. Pass `nil` to hide the cursor. Writes a real cursor-move+show (or hide) ANSI escape sequence directly, bypassing the terminal host's own diff/paint pipeline entirely (there is no "cursor" in the character grid it paints). STATED LIMITATION: every repaint that actually changes something re-parks the cursor below the frame (see host/terminal.lua's own paint() comment on why) -- a persistent custom position needs re-calling this after each of your own updates that might trigger one, same as a real terminal text-input implementation has to.
+--- @field setCursorPosition fun(position: { x: number, y: number }|nil) `position` is 0-based and relative to Ink's own rendered output (`x` = column, `y` = row, `y = 0` is the first line) -- matching real Ink's own documented shape. Pass `nil` to hide the cursor. Writes a real cursor-move+show (or hide) ANSI escape sequence directly, bypassing the terminal host's own diff/paint pipeline entirely (there is no "cursor" in the character grid it paints). STATED LIMITATION: every repaint that actually changes something re-parks the cursor below the frame (see host/terminal.lua's own paint() comment on why) -- a persistent custom position needs re-calling this after each of your own updates that might trigger one, same as a real terminal text-input implementation has to. Every changed repaint ALSO transiently hides the cursor for the duration of its own write (flicker fix -- see host/terminal.lua's "CURSOR HIDE/SHOW" comment) and restores it to whatever visibility YOU last set here, not unconditionally visible -- calling `setCursorPosition(nil)` still keeps the cursor hidden across subsequent repaints, it does not get silently re-shown.
 
 --- @return hydronium_ink.UseCursorResult
 function M.useCursor()
@@ -246,6 +248,39 @@ function M.useAltScreen()
       return ctx.setAltScreen(not ctx.altScreen())
     end,
     isActive = ctx.altScreen,
+  }
+end
+
+--- @class hydronium_ink.UseTerminalTitleResult
+--- @field setTitle fun(title: string) Sets the terminal's window/icon title (OSC 0, which covers both the window and icon title in one write -- see render.lua's own OSC evaluation comment for why OSC 1/2 don't need separate calls). Writes a real escape sequence directly, bypassing the character-grid diff/paint pipeline entirely -- same rationale as useCursor's setCursorPosition above (there is no "title" cell in the grid host/terminal.lua paints). Pass an empty string to clear it. Fire-and-forget, like useAltScreen's enter/leave: no reactive getter, since nothing here ever reads a title back FROM the terminal (there is no portable query for it).
+
+--- The terminal's window/icon title. Genuinely useful for this package's
+--- own stated build-UI use case (showing overall progress in the tab/
+--- window title while the live frame below shows step detail), and safe
+--- to call from a component's one-time setup call, its render closure, or
+--- an input/tick handler alike -- unlike useFocus/useInput/useAnimation
+--- above, this registers nothing and needs no cleanup, so there is no
+--- "must be called once at setup" restriction here.
+--- @return hydronium_ink.UseTerminalTitleResult
+function M.useTerminalTitle()
+  local ctx = requireAppContext("useTerminalTitle")
+  return {
+    setTitle = ctx.setTerminalTitle,
+  }
+end
+
+--- @class hydronium_ink.UseClipboardResult
+--- @field write fun(text: string) Writes `text` to the system clipboard via OSC 52 (terminals that don't support it silently ignore an unrecognized OSC, same as any other unknown escape -- there is no plain-text degradation path needed the way OSC 8 hyperlinks have one, since a clipboard write has no visible on-screen representation to fall back to).
+
+--- Clipboard WRITE only -- see render.lua's own top-of-file OSC evaluation
+--- comment for why `read()` is not implemented (it needs a round-trip
+--- through keys.lua's input parser that does not exist yet, and most
+--- terminals disable OSC 52 read by default for security regardless).
+--- @return hydronium_ink.UseClipboardResult
+function M.useClipboard()
+  local ctx = requireAppContext("useClipboard")
+  return {
+    write = ctx.writeClipboard,
   }
 end
 

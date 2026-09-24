@@ -32,10 +32,17 @@ end
 --- @field columns? integer Initial terminal width. Default 80.
 --- @field rows? integer Initial terminal height. Default 24.
 --- @field color? "auto"|"ansi16"|"ansi256"|"truecolor"
+--- @field hyperlinks? boolean|"auto" Whether `<Text href>` emits real OSC 8
+---   escapes. Default "auto" (NO_COLOR/TERM/TERM_PROGRAM-based detection,
+---   see hydronium_ink.host.terminal's "Hyperlink capability" section) --
+---   deliberately NOT tied to `color` above, since OSC 8 support does not
+---   correlate with color depth support.
 --- @field exitOnCtrlC? boolean Default true.
 --- @field writeFn? fun(bytes: string) Optional ANSI sink. The Lab normally omits it.
 --- @field onCursor? fun(position: {x: integer, y: integer}|nil)
 --- @field onAltScreen? fun(enabled: boolean)
+--- @field onTitle? fun(title: string) See hydronium_ink.hooks.useTerminalTitle.
+--- @field onClipboardWrite? fun(text: string) See hydronium_ink.hooks.useClipboard.
 --- @field onTick? fun(nowMs: number)
 
 --- @param element LuaxElement
@@ -48,6 +55,8 @@ function M.create(element, opts)
   self._exitReason = nil
   self._cursor = nil
   self._altScreen = false
+  self._title = ""
+  self._lastClipboardWrite = nil
   self._handlers = {}
   self._pasteHandlers = {}
   self._focusEntries = {}
@@ -60,10 +69,17 @@ function M.create(element, opts)
   self._exitOnCtrlC = opts.exitOnCtrlC ~= false
   self._onCursor = opts.onCursor
   self._onAltScreen = opts.onAltScreen
+  self._onTitle = opts.onTitle
+  self._onClipboardWrite = opts.onClipboardWrite
   self._onTick = opts.onTick
 
   self._host = terminalHost.createTerminalHost(opts.writeFn or function() end)
   self._host.setColorCapability(opts.color or "auto")
+  -- `opts.hyperlinks == nil and "auto" or opts.hyperlinks`, not `opts.hyperlinks
+  -- or "auto"`: the latter would silently turn an explicit `hyperlinks = false`
+  -- into "auto" (Lua's `or` can't distinguish "absent" from "falsy"), which
+  -- would make it impossible for a caller to force hyperlinks OFF.
+  self._host.setHyperlinkCapability(opts.hyperlinks == nil and "auto" or opts.hyperlinks)
   self._columns = positiveInteger(opts.columns, 80)
   self._rows = positiveInteger(opts.rows, 24)
   self._host.setSize(self._columns, self._rows)
@@ -162,7 +178,31 @@ function M.create(element, opts)
     end,
     setCursorPosition = function(position)
       self._cursor = position and { x = position.x or 0, y = position.y or 0 } or nil
+      -- Tells the terminal host whether the cursor is CURRENTLY meant to
+      -- be visible, so its own paint()-time hide/show (see
+      -- host/terminal.lua's "CURSOR HIDE/SHOW" comment) restores this same
+      -- steady state afterward instead of unconditionally showing it --
+      -- otherwise an app that just called setCursorPosition(nil) to hide
+      -- the cursor would see it reappear the next time anything repaints.
+      self._host.setCursorVisible(self._cursor ~= nil)
       if self._onCursor then self._onCursor(self._cursor) end
+    end,
+    -- Both of these are, like setCursorPosition above, raw side channels
+    -- that bypass the character-grid diff/paint pipeline entirely -- there
+    -- is no "title" or "clipboard" cell in host/terminal.lua's grid, so
+    -- there is nothing here for host.flush() to do. `self._title`/
+    -- `self._lastClipboardWrite` are tracked regardless of whether a
+    -- caller supplied onTitle/onClipboardWrite, purely so a deterministic
+    -- test (see tests/host/ink_session_spec.lua) can assert on them
+    -- without wiring a real writeFn -- the same reason Session:cursor()
+    -- exists alongside onCursor.
+    setTerminalTitle = function(title)
+      self._title = tostring(title or "")
+      if self._onTitle then self._onTitle(self._title) end
+    end,
+    writeClipboard = function(text)
+      self._lastClipboardWrite = tostring(text or "")
+      if self._onClipboardWrite then self._onClipboardWrite(self._lastClipboardWrite) end
     end,
     registerTicker = function(ticker)
       self._tickers[#self._tickers + 1] = ticker
@@ -266,6 +306,16 @@ function Session:setColorCapability(capability)
   return self:frame()
 end
 
+--- @param capability boolean|"auto" See hydronium_ink.host.terminal's
+---   setHyperlinkCapability. Independent of setColorCapability -- see this
+---   file's own `hyperlinks` SessionOption doc comment for why.
+function Session:setHyperlinkCapability(capability)
+  self:_assertOpen("setHyperlinkCapability")
+  self._host.setHyperlinkCapability(capability)
+  self:_flush()
+  return self:frame()
+end
+
 --- Advances animations and development polling with a caller-owned clock.
 function Session:step(nowMs)
   self:_assertOpen("step")
@@ -288,9 +338,33 @@ function Session:cursor()
   return self._cursor and { x = self._cursor.x, y = self._cursor.y } or nil
 end
 
+--- The current terminal title (empty string if never set), tracked
+--- regardless of whether opts.onTitle was supplied -- see
+--- context.setTerminalTitle's own doc comment.
+--- @return string
+function Session:title()
+  self:_assertOpen("title")
+  return self._title
+end
+
+--- The text most recently sent through `useClipboard().write(...)`, or
+--- nil if never called -- tracked regardless of whether
+--- opts.onClipboardWrite was supplied. There is no `lastClipboardRead`:
+--- see this package's render.lua for why OSC 52 read isn't implemented.
+--- @return string|nil
+function Session:lastClipboardWrite()
+  self:_assertOpen("lastClipboardWrite")
+  return self._lastClipboardWrite
+end
+
 function Session:colorCapability()
   self:_assertOpen("colorCapability")
   return self._host._colorCapability
+end
+
+function Session:hyperlinkCapability()
+  self:_assertOpen("hyperlinkCapability")
+  return self._host._hyperlinkCapability
 end
 
 function Session:setAltScreen(enabled)

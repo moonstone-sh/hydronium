@@ -32,7 +32,17 @@ local textMetrics = require("hydronium_ink.text_metrics")
 -- assert on the REAL rendered picture instead of raw bytes. Understands
 -- exactly the escape vocabulary host/terminal.lua emits: cursor moves
 -- (\27[<row>;<col>H), full clear (\27[2J), clear-to-end-of-line (\27[K),
--- and SGR reset/bold/fg-color (\27[0m, \27[1m, \27[3<n>m). A UTF-8
+-- SGR reset/bold/fg-color (\27[0m, \27[1m, \27[3<n>m), and DEC private
+-- modes (\27[?25l/h cursor hide/show, \27[?2026h/l synchronized-update
+-- brackets -- see host/terminal.lua's "CURSOR HIDE/SHOW"/flicker-fix
+-- comment). The private-mode ones are recognized ONLY so they're
+-- correctly consumed as one escape sequence rather than mis-tokenized as
+-- literal printable text (which would shift every subsequent column) --
+-- they have no grid effect to apply, matching how a real terminal would
+-- silently act on \27[?25l/h (genuinely invisible to a grid model that,
+-- like this one, has no cursor cell) and \27[?2026h/l (a real terminal's
+-- OWN internal render-buffering signal, again nothing a static
+-- reconstructed grid would ever show either way). A UTF-8
 -- continuation-byte-aware character scanner ensures a 3-byte
 -- box-drawing character (e.g. "\226\148\140" = U+250C) is reconstructed
 -- as ONE grid cell/terminal column, not three -- proving the emitted
@@ -84,11 +94,16 @@ local function interpretAnsi(bytes, w, h, grid)
 
   while i <= n do
     if bytes:byte(i) == 27 and bytes:sub(i + 1, i + 1) == "[" then
-      local s, e, params, cmd = bytes:find("^%[([%d;]*)(%a)", i + 1)
+      local s, e, params, cmd = bytes:find("^%[(%??[%d;]*)(%a)", i + 1)
       if not s then
         i = i + 1
       else
-        if cmd == "H" then
+        if cmd == "h" or cmd == "l" then
+          -- DEC private mode set/reset (\27[?25l, \27[?25h, \27[?2026h,
+          -- \27[?2026l, ...): consumed above via the `%??` in the pattern
+          -- so it doesn't get mis-tokenized as text, and deliberately a
+          -- no-op here -- see this section's own top comment.
+        elseif cmd == "H" then
           local rs, cs = params:match("(%d*);?(%d*)")
           row = tonumber(rs) or 1
           col = tonumber(cs) or 1
@@ -312,6 +327,7 @@ describe("hydronium.host.terminal -- real Host contract + real ANSI output", fun
     host.flush()
     local initialWrites = #writes
     assert.truthy(initialWrites > 0)
+    local initialByteLen = #table.concat(writes)
 
     local initialGrid = interpretAnsi(table.concat(writes), 20, 10)
     assert.equal(rowText(initialGrid, 2, 2, 9), "Count: 1")
@@ -354,7 +370,18 @@ describe("hydronium.host.terminal -- real Host contract + real ANSI output", fun
     -- ever emits).
     local updateBytes = table.concat(writes)
     assert.falsy(updateBytes:find("\27%[2J", 1, false), "a same-size update must never re-clear the whole screen")
-    assert.truthy(#updateBytes < 40, "a single-character diff must be a small handful of bytes, not a full-frame redraw")
+    -- A relative bound, not a magic absolute one: every changed paint now
+    -- carries a small FIXED per-paint wrapper (DEC 2026 synchronized-
+    -- update brackets + cursor hide/show, see host/terminal.lua's "CURSOR
+    -- HIDE/SHOW" comment) on top of its actual diff content, so an
+    -- absolute byte ceiling here would need updating every time that
+    -- fixed overhead changes for an unrelated reason. What actually
+    -- matters -- and what a real regression back to full-redraw-on-every-
+    -- update would blow through -- is that a one-character diff stays a
+    -- small fraction of what the SAME host's own real initial full
+    -- redraw cost, not some independently-chosen constant.
+    assert.truthy(#updateBytes < initialByteLen / 2,
+      "a single-character diff (" .. #updateBytes .. " bytes) must be far smaller than a full-frame redraw (" .. initialByteLen .. " bytes), not comparable to one")
   end)
 
   it("never emits a wrong-order intermediate frame when a multi-child Box re-renders (regression: reconcileChildren's unconditional re-append)", function()
@@ -1082,5 +1109,404 @@ describe("hydronium.host.terminal -- real Host contract + real ANSI output", fun
     H.act(function() setShowFirst(true) end)
     host.flush()
     assert.equal(rowText(interpretAnsi(table.concat(writes), 10, 1), 1, 1, 6), "AAABBB")
+  end)
+end)
+
+-- ===================== OSC 8 hyperlinks =====================
+-- See host/terminal.lua's own "OSC 8 HYPERLINK GRID REPRESENTATION" and
+-- "Hyperlink capability" comments for the design this exercises: `href`
+-- is a per-run/per-cell style attribute (not bytes embedded in `.text`),
+-- and whether it is ever emitted as real OSC 8 escapes is gated by
+-- host.setHyperlinkCapability, independent of setColorCapability. Byte
+-- assertions here are deliberately literal string finds (`, 1, true`),
+-- not run through interpretAnsi above -- that interpreter has no OSC
+-- vocabulary at all, and the whole point of these specs is to prove the
+-- EXACT escape bytes (Task 1's own "verified at the byte level" bar), not
+-- a reconstructed picture.
+describe("hydronium.host.terminal -- OSC 8 hyperlinks", function()
+  it("wraps a href Text run in the exact OSC 8 open/close bytes when hyperlink capability is forced on", function()
+    local writes, capture = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    host.setHyperlinkCapability(true)
+    reconciler:mount(H.h(ink.Text, { href = "https://example.com" }, "click"), root)
+    host.flush()
+
+    local bytes = table.concat(writes)
+    local expectedOpen = "\27]8;;https://example.com\27\\"
+    local expectedClose = "\27]8;;\27\\"
+    local openAt = bytes:find(expectedOpen, 1, true)
+    local textAt = bytes:find("click", 1, true)
+    local closeAt = bytes:find(expectedClose, 1, true)
+    assert.truthy(openAt, "expected the exact OSC 8 open sequence ESC]8;;<uri>ESC\\")
+    assert.truthy(textAt, "expected the visible text to still be painted")
+    assert.truthy(closeAt, "expected the exact OSC 8 close sequence ESC]8;;ESC\\")
+    assert.truthy(openAt < textAt, "the open sequence must precede the linked text")
+    assert.truthy(textAt < closeAt, "the close sequence must follow the linked text")
+  end)
+
+  it("degrades to plain visible text with zero OSC 8 bytes when hyperlink capability is off", function()
+    local writes, capture = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    host.setHyperlinkCapability(false)
+    reconciler:mount(H.h(ink.Text, { href = "https://example.com" }, "click"), root)
+    host.flush()
+
+    local bytes = table.concat(writes)
+    assert.truthy(bytes:find("click", 1, true), "the visible text must still render even when the link is suppressed")
+    assert.falsy(bytes:find("]8;;", 1, true),
+      "no OSC 8 bytes at all when the capability is off -- not even a partial/garbage sequence a non-supporting terminal would show")
+  end)
+
+  it("splits adjacent same-styled cells into separate OSC 8 spans when their href differs", function()
+    local writes, capture = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    host.setHyperlinkCapability(true)
+    reconciler:mount(
+      H.h(ink.Text, nil,
+        H.h(ink.Text, { href = "https://a.example" }, "A"),
+        H.h(ink.Text, { href = "https://b.example" }, "B")
+      ),
+      root
+    )
+    host.flush()
+
+    local bytes = table.concat(writes)
+    assert.truthy(bytes:find("\27]8;;https://a.example\27\\A\27]8;;\27\\", 1, true),
+      "the first link's span must close before the second one's opens, even with no style change between them")
+    assert.truthy(bytes:find("\27]8;;https://b.example\27\\B\27]8;;\27\\", 1, true))
+  end)
+
+  it("a nested Text without its own href inherits the outer one, matching color's own inheritance", function()
+    local writes, capture = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    host.setHyperlinkCapability(true)
+    reconciler:mount(
+      H.h(ink.Text, { href = "https://example.com" }, H.h(ink.Text, { bold = true }, "bold link")),
+      root
+    )
+    host.flush()
+
+    local bytes = table.concat(writes)
+    assert.truthy(bytes:find("\27]8;;https://example.com\27\\", 1, true), "the inherited href must still open a real OSC 8 span")
+    assert.truthy(bytes:find("bold link", 1, true))
+  end)
+
+  it("measures and paints href text at the same width as the same visible text with no link -- OSC 8 bytes are zero-width", function()
+    local plainWrites, plainCapture = newCapture()
+    local plainHost = terminalHostModule.createTerminalHost(plainCapture)
+    local plainRoot = plainHost.getRoot()
+    local plainRef = H.createRef()
+    plainHost.setHyperlinkCapability(true)
+    H.Reconciler.new(plainHost):mount(H.h(ink.Box, { ref = plainRef }, H.h(ink.Text, nil, "click")), plainRoot)
+    plainHost.flush()
+
+    local linkWrites, linkCapture = newCapture()
+    local linkHost = terminalHostModule.createTerminalHost(linkCapture)
+    local linkRoot = linkHost.getRoot()
+    local linkRef = H.createRef()
+    linkHost.setHyperlinkCapability(true)
+    H.Reconciler.new(linkHost):mount(
+      H.h(ink.Box, { ref = linkRef }, H.h(ink.Text, { href = "https://example.com/a/very/long/path?q=1" }, "click")),
+      linkRoot
+    )
+    linkHost.flush()
+
+    local plainMetrics = measure.measureElement(plainRef)
+    local linkMetrics = measure.measureElement(linkRef)
+    assert.equal(linkMetrics.width, plainMetrics.width,
+      "a linked Text's measured layout width must equal the same visible text with no link at all -- " ..
+      "a regression here means OSC 8 escape bytes leaked into the width computation (see Task 1's own " ..
+      "'Width' design note): every layout containing a link would silently be wrong")
+    assert.equal(linkMetrics.height, plainMetrics.height)
+    assert.equal(plainMetrics.width, textMetrics.displayWidth("click"), "sanity: the plain baseline itself must be the real visible-text width")
+
+    -- Not cross-checked against interpretAnsi's reconstructed grid here:
+    -- that helper only understands the CSI (`\27[`) vocabulary
+    -- host/terminal.lua emits for cursor moves/SGR (see its own doc
+    -- comment above), not OSC (`\27]`) -- feeding it OSC 8 bytes would
+    -- make IT misparse the stream, not exercise a real bug in the host.
+    -- The width/height equality above, plus the exact-byte assertions in
+    -- the specs before this one, already cover both halves of the actual
+    -- invariant (visible content unchanged, width unaffected by the link).
+    assert.truthy(table.concat(linkWrites):find("click", 1, true))
+  end)
+
+  it("setHyperlinkCapability is independent of setColorCapability -- forcing color does not turn hyperlinks on", function()
+    local writes, capture = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    host.setColorCapability("truecolor")
+    host.setHyperlinkCapability(false)
+    reconciler:mount(H.h(ink.Text, { color = "#112233", href = "https://example.com" }, "X"), root)
+    host.flush()
+
+    local bytes = table.concat(writes)
+    assert.truthy(bytes:find("\27[38;2;17;34;51m", 1, true), "truecolor SGR must still be emitted")
+    assert.falsy(bytes:find("]8;;", 1, true), "hyperlink capability being off must suppress OSC 8 regardless of color capability")
+  end)
+end)
+
+-- ===================== Cursor hide/show + synchronized output =====================
+-- See host/terminal.lua's own "CURSOR HIDE/SHOW" comment inside paint()'s
+-- `if changed then` block for the full design rationale: hiding the real
+-- cursor for the duration of a redraw (restoring to whatever
+-- host._cursorVisible last was, NOT unconditionally showing) removes the
+-- cursor-darting flicker a scattered multi-run diff produces, and
+-- bracketing the whole write in DEC 2026 (`\27[?2026h`/`l`) prevents a
+-- large single write() (worst case: the full-redraw path) from tearing
+-- across the terminal's own reads. Both MUST live inside the `changed`
+-- guard -- the entire point of these specs is proving the zero-byte
+-- no-op guarantee survives adding them, not just that the bytes exist.
+describe("hydronium.host.terminal -- paint() cursor hide/show + synchronized output", function()
+  it("wraps a changed FULL-REDRAW paint in DEC 2026 sync brackets with cursor hide/show innermost, in the right order", function()
+    local writes, capture = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    reconciler:mount(H.h(ink.Text, nil, "hi"), root)
+    host.flush()
+
+    local bytes = table.concat(writes)
+    assert.truthy(bytes:find("\27[2J", 1, true), "sanity: this must be the full-redraw path (first paint)")
+
+    local syncOpenAt = bytes:find("\27[?2026h", 1, true)
+    local hideAt = bytes:find("\27[?25l", 1, true)
+    local clearAt = bytes:find("\27[2J", 1, true)
+    local showAt = bytes:find("\27[?25h", 1, true)
+    local syncCloseAt = bytes:find("\27[?2026l", 1, true)
+    assert.truthy(syncOpenAt, "expected the synchronized-update open bracket")
+    assert.truthy(hideAt, "expected the cursor-hide sequence")
+    assert.truthy(showAt, "expected the cursor-show sequence (default host cursor visibility is true)")
+    assert.truthy(syncCloseAt, "expected the synchronized-update close bracket")
+    assert.truthy(syncOpenAt < hideAt, "the sync bracket must be OUTERMOST, opening before the cursor is hidden")
+    assert.truthy(hideAt < clearAt, "the cursor must be hidden before the full-redraw content is written")
+    assert.truthy(clearAt < showAt, "the cursor must be shown again only after the frame content")
+    assert.truthy(showAt < syncCloseAt, "the sync bracket must close only after the cursor is shown again")
+
+    -- Exact byte adjacency, not just ordering: the write must OPEN with
+    -- sync-then-hide and CLOSE with show-then-sync, with nothing else
+    -- interleaved at either end.
+    assert.equal(bytes:sub(1, 8), "\27[?2026h")
+    assert.equal(bytes:sub(9, 14), "\27[?25l")
+    assert.equal(bytes:sub(-14), "\27[?25h\27[?2026l")
+  end)
+
+  it("wraps a changed INCREMENTAL diff paint in the same brackets, with no full-clear", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    local count, setCount = H.signal(1)
+    local function Counter()
+      return function() return H.h(ink.Text, nil, "n=" .. tostring(count())) end
+    end
+    reconciler:mount(H.h(Counter), root)
+    host.flush()
+
+    clearWrites()
+    H.act(function() setCount(2) end)
+    host.flush()
+
+    local bytes = table.concat(writes)
+    assert.falsy(bytes:find("\27[2J", 1, true), "sanity: this must be the incremental-diff path, not a full redraw")
+    assert.truthy(#bytes > 0, "sanity: the count change must still produce a real write")
+    assert.equal(bytes:sub(1, 8), "\27[?2026h", "the diff path must be sync-bracketed exactly like the full-redraw path")
+    assert.equal(bytes:sub(9, 14), "\27[?25l")
+    assert.equal(bytes:sub(-14), "\27[?25h\27[?2026l")
+  end)
+
+  it("restores to HIDDEN, not shown, when the app had explicitly hidden the cursor via host.setCursorVisible(false)", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    local count, setCount = H.signal(1)
+    local function Counter()
+      return function() return H.h(ink.Text, nil, "n=" .. tostring(count())) end
+    end
+    reconciler:mount(H.h(Counter), root)
+    host.flush()
+
+    -- Simulates what session.lua's context.setCursorPosition(nil) does:
+    -- informs the host the app explicitly wants the cursor hidden, fully
+    -- independent of this host's own paint()-time hide/show.
+    host.setCursorVisible(false)
+
+    clearWrites()
+    H.act(function() setCount(2) end)
+    host.flush()
+
+    local bytes = table.concat(writes)
+    assert.truthy(bytes:find("\27[?25l", 1, true), "the transient paint-time hide must still happen")
+    assert.falsy(bytes:find("\27[?25h", 1, true),
+      "must NOT re-show the cursor after the redraw -- the app explicitly hid it, and paint() restoring to \"visible\" unconditionally would silently undo that (see host/terminal.lua's own doc comment on this exact trap)")
+    assert.truthy(bytes:find("\27[?2026h", 1, true) and bytes:find("\27[?2026l", 1, true), "sync brackets must still wrap the write regardless of cursor visibility")
+  end)
+
+  it("an unchanged paint (nothing visually different) writes ZERO bytes -- not even the hide/sync-open bytes", function()
+    local writes, capture, clearWrites = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local root = host.getRoot()
+    local reconciler = H.Reconciler.new(host)
+
+    reconciler:mount(H.h(ink.Text, nil, "static"), root)
+    host.flush()
+    assert.truthy(#writes > 0, "sanity: the first paint must write something")
+
+    clearWrites()
+    -- Reconciling to an IDENTICAL tree still re-runs commitTextUpdate/
+    -- appendChild (see host/terminal.lua's own "REPAINT STRATEGY" comment
+    -- -- core/reconciler.lua's reconcileChildren always re-appends "to
+    -- ensure sibling order" even when nothing moved), so this is a real
+    -- structurally-non-trivial call, not a hand-wavy no-op -- yet nothing
+    -- VISIBLE changed. Calling host.paint() directly (not host.flush())
+    -- proves the `changed` flag INSIDE paint() itself is what suppresses
+    -- output, independent of the dirty-flag gate flush() has -- the exact
+    -- guarantee item 1/2's hide/show and sync brackets must not break.
+    reconciler:reconcile(H.h(ink.Text, nil, "static"), root)
+    host.paint()
+
+    assert.equal(#writes, 0,
+      "a visually no-op paint must write NOTHING -- not even the new cursor-hide or sync-open bytes -- " ..
+      "or every structurally-harmless reconciler commit would spam the output stream with escape sequences that have no visible effect")
+  end)
+end)
+
+-- ===================== O(N) re-render (was O(N^2)) =====================
+-- See host/terminal.lua's own "FIXED SCALING COST"/"Sibling list" comments
+-- for the full history: core/reconciler.lua's reconcileChildren calls
+-- host.appendChild for EVERY child on EVERY re-render "to ensure sibling
+-- order," even when nothing moved, and the OLD appendChild/detachFromParent
+-- implemented that via a plain array (linear scan + table.remove shift),
+-- making a Box with N children re-render in O(N^2). Both specs below are
+-- self-contained (measure only the CURRENT code's own scaling behavior
+-- against itself at different N, not a comparison against a historical
+-- version) so they need nothing outside this repo to run.
+--
+-- A real before/after comparison against the actual pre-fix code (loaded
+-- via `git show HEAD:ink/src/hydronium_ink/host/terminal.lua`, calling the
+-- REAL old `host.appendChild` directly, not a reimplementation) was run
+-- once during development, not committed as a permanent spec (a historical
+-- comparison isn't something a future checkout can reproduce on its own):
+--
+--   N      OLD host.appendChild (x N)   NEW host.appendChild (x N)   speedup
+--   500    0.19 ms                      0.02 ms                      9.9x
+--   1000   0.66 ms                      0.03 ms                     24.4x
+--   2000   2.53 ms                      0.04 ms                     66.3x
+--   4000   9.60 ms                      0.05 ms                    186.0x
+--   8000  38.94 ms                      0.11 ms                    365.3x
+--
+-- OLD scaling ~3.5-4.1x per doubling (textbook O(N^2)); NEW well under
+-- 2x per doubling. The growing speedup (not a flat constant factor) is
+-- the actual signature of a complexity-CLASS change, not just a faster
+-- constant. See this session's own final report for the exact commands.
+describe("hydronium.host.terminal -- O(N) re-render (was O(N^2))", function()
+  it("host.appendChild, called for every child in order (the exact core/reconciler.lua pattern), scales roughly linearly with N", function()
+    local function timeReappendAll(n, iterations)
+      local host = terminalHostModule.createTerminalHost(function() end)
+      local root = host.getRoot()
+      local kids = {}
+      for i = 1, n do
+        kids[i] = host.createInstance("Text", {})
+        host.appendChild(root, kids[i])
+      end
+      host.flush()
+
+      local start = os.clock()
+      for _ = 1, iterations do
+        for i = 1, n do
+          host.appendChild(root, kids[i])
+        end
+      end
+      return (os.clock() - start) / iterations
+    end
+
+    local tSmall = timeReappendAll(500, 20)
+    local tLarge = timeReappendAll(8000, 20) -- 16x the N of tSmall
+    print(string.format("[bench] host.appendChild x N: N=500 -> %.5fms, N=8000 -> %.5fms (ratio %.2fx for 16x N)",
+      tSmall * 1000, tLarge * 1000, tLarge / tSmall))
+
+    -- O(N) predicts ~16x for a 16x increase in N; O(N^2) predicts ~256x.
+    -- 40x leaves generous headroom for timing noise/GC/JIT warmup while
+    -- still flatly rejecting quadratic behavior, which this bound is
+    -- actually wide enough to have caught on the OLD code (it measured
+    -- ~205x for this exact 500->8000 comparison during development).
+    assert.truthy(tLarge / tSmall < 40,
+      string.format("expected roughly linear scaling (~16x for 16x N), got %.1fx -- looks quadratic again", tLarge / tSmall))
+  end)
+
+  it("a real Box with N children, re-rendered repeatedly via the ordinary reconciler path, does not exhibit quadratic blowup", function()
+    local unpack_ = table.unpack or unpack
+
+    local function timeOneUpdate(n, iterations)
+      local host = terminalHostModule.createTerminalHost(function() end)
+      local root = host.getRoot()
+      local reconciler = H.Reconciler.new(host)
+
+      local count, setCount = H.signal(0)
+      local function App()
+        return function()
+          -- N keyed Text children -- only the first's own text actually
+          -- changes across renders, but core/reconciler.lua's
+          -- reconcileChildren re-appends ALL of them "to ensure sibling
+          -- order" every single time regardless (see this file's own
+          -- REPAINT STRATEGY comment) -- the exact scenario this fix
+          -- targets, driven through the REAL public render path (mount +
+          -- signal update + flush), not a host-internals shortcut.
+          local kids = {}
+          for i = 1, n do
+            kids[i] = H.h(ink.Text, { key = "t" .. i }, i == 1 and ("n=" .. tostring(count())) or ("row" .. i))
+          end
+          return H.h(ink.Box, nil, unpack_(kids))
+        end
+      end
+
+      reconciler:mount(H.h(App), root)
+      host.flush()
+
+      local start = os.clock()
+      for i = 1, iterations do
+        H.act(function() setCount(i) end)
+        host.flush()
+      end
+      return (os.clock() - start) / iterations
+    end
+
+    local tSmall = timeOneUpdate(250, 5)
+    local tLarge = timeOneUpdate(2000, 5) -- 8x the N of tSmall
+    print(string.format("[bench] real Box re-render: N=250 -> %.3fms/update, N=2000 -> %.3fms/update (ratio %.2fx for 8x N)",
+      tSmall * 1000, tLarge * 1000, tLarge / tSmall))
+
+    -- HONEST NOTE (see this session's final report for the full writeup):
+    -- at this N range, END-TO-END wall-clock is dominated by costs this
+    -- fix does NOT touch -- rebuilding N fresh vnodes via H.h() every
+    -- render, and core/reconciler.lua's own O(N) keyed-diff bookkeeping
+    -- -- not by host.appendChild's own array-vs-linked-list cost (that
+    -- part's real, dramatic, isolated speedup is the spec above). This
+    -- assertion is deliberately a much looser sanity bound than the
+    -- isolated one above: it only rules out the full pipeline going
+    -- quadratic (which it would, eventually, without this fix, just at
+    -- an N far larger than is realistic for a terminal UI -- see the
+    -- report for the crossover estimate), not a claim that this fix
+    -- alone makes end-to-end re-renders faster at N=2000.
+    assert.truthy(tLarge / tSmall < 16,
+      string.format("expected sub-quadratic end-to-end scaling (linear would be ~8x for 8x N), got %.1fx", tLarge / tSmall))
   end)
 end)

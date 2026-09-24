@@ -201,6 +201,70 @@ describe("hydronium_ink.render -- alternate screen", function()
   end)
 end)
 
+describe("hydronium_ink.render -- useTerminalTitle", function()
+  it("writes a real OSC 0 window/icon-title escape with the exact title bytes", function()
+    local captured = {}
+    local function fakeWrite(s) table.insert(captured, s) end
+
+    local function App()
+      local title = hooks.useTerminalTitle()
+      local exit = hooks.useApp().exit
+      title.setTitle("Building my-project")
+      exit()
+      return function() return hydronium.h(ink.Text, {}, "hi") end
+    end
+
+    render.render(hydronium.h(App), { writeFn = fakeWrite })
+
+    local all = table.concat(captured)
+    assert.truthy(all:find("\27]0;Building my-project\7", 1, true), "expected the exact OSC 0 sequence, BEL-terminated")
+  end)
+
+  it("strips embedded ESC/BEL from the title so a caller string cannot inject its own terminator", function()
+    local captured = {}
+    local function fakeWrite(s) table.insert(captured, s) end
+
+    local function App()
+      local title = hooks.useTerminalTitle()
+      local exit = hooks.useApp().exit
+      title.setTitle("evil\7\27]0;pwned\7 title")
+      exit()
+      return function() return hydronium.h(ink.Text, {}, "hi") end
+    end
+
+    render.render(hydronium.h(App), { writeFn = fakeWrite })
+
+    local all = table.concat(captured)
+    assert.truthy(all:find("\27]0;evil]0;pwned title\7", 1, true), "ESC and BEL bytes must be stripped from the title text itself")
+  end)
+end)
+
+describe("hydronium_ink.render -- useClipboard", function()
+  it("writes a real OSC 52 clipboard-write escape with the base64-encoded payload", function()
+    local captured = {}
+    local function fakeWrite(s) table.insert(captured, s) end
+
+    local function App()
+      local clipboard = hooks.useClipboard()
+      local exit = hooks.useApp().exit
+      clipboard.write("npm install my-project")
+      exit()
+      return function() return hydronium.h(ink.Text, {}, "hi") end
+    end
+
+    render.render(hydronium.h(App), { writeFn = fakeWrite })
+
+    local all = table.concat(captured)
+    -- "npm install my-project" base64-encoded (verified independently: RFC
+    -- 4648 standard alphabet, no line wrapping).
+    local expectedBase64 = "bnBtIGluc3RhbGwgbXktcHJvamVjdA=="
+    assert.truthy(
+      all:find("\27]52;c;" .. expectedBase64 .. "\27\\", 1, true),
+      "expected the exact OSC 52 sequence with 'c' (clipboard) selection and ST terminator"
+    )
+  end)
+end)
+
 describe("hydronium_ink.render -- host extensions", function()
   it("runs onTick inside the live loop before flushing", function()
     local stop

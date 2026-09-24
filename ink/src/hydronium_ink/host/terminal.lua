@@ -95,23 +95,35 @@
   and grapheme-cluster segmentation, not byte
   count. See docs/HYDRONIUM_INK_TERMINAL_HOST.md.
 
-  KNOWN REMAINING SCALING COST, discovered profiling the persistence work
-  above rather than assumed: detachFromParent's `table.remove(siblings, i)`
-  is O(remaining siblings), and core/reconciler.lua's own reconcileChildren
-  calls appendChild for EVERY child on EVERY re-render "to ensure sibling
-  order" (see this file's own "REPAINT STRATEGY" doc comment above) even
-  when the order didn't change -- so a Box with N children re-renders in
-  O(N^2), dominated by table.remove, not by anything Yoga-related. Sampling
-  profiler evidence: for N=2000 siblings with one child's text changing,
-  table.remove accounted for over half of all samples taken during a
-  single update, and the persistent-Yoga-tree work above measured as
-  functionally free by comparison (calculateLayout over 2000 already-built
-  nodes: ~1 microsecond; the OLD full-rebuild code's 2000 newNode+free
-  calls: ~1.5ms -- both dwarfed by table.remove's cost at this N). Fixing
-  this needs parent.children to stop being a plain shifting array (an
-  intrusive doubly-linked list, or similar O(1)-move structure), which
-  ripples through every place in this file that walks it by index --
-  a separate, larger change not attempted here.
+  FIXED SCALING COST (was "KNOWN REMAINING", discovered profiling the
+  persistence work above rather than assumed, fixed 2026-09-23): the OLD
+  detachFromParent's `table.remove(siblings, i)` was O(remaining
+  siblings), and core/reconciler.lua's own reconcileChildren calls
+  appendChild for EVERY child on EVERY re-render "to ensure sibling order"
+  (see this file's own "REPAINT STRATEGY" doc comment above) even when the
+  order didn't change -- so a Box with N children re-rendered in O(N^2),
+  dominated by table.remove, not by anything Yoga-related. Sampling
+  profiler evidence at the time: for N=2000 siblings with one child's text
+  changing, table.remove accounted for over half of all samples taken
+  during a single update, and the persistent-Yoga-tree work above measured
+  as functionally free by comparison (calculateLayout over 2000
+  already-built nodes: ~1 microsecond; the OLD full-rebuild code's 2000
+  newNode+free calls: ~1.5ms -- both dwarfed by table.remove's cost at
+  this N).
+
+  The fix, exactly as anticipated here at the time: `parent.children`
+  stopped being a plain shifting array as the ground truth for mutation.
+  See this file's own "Sibling list" section (right before
+  detachFromParent below) for the real structure (an intrusive
+  doubly-linked list) and childrenArray()'s own doc comment for how every
+  OTHER function in this file that walks `.children` by index keeps
+  working completely unchanged -- the ripple this comment used to warn
+  about turned out to be containable to childrenArray() itself, not
+  something that touched every call site's own logic. Measured
+  before/after with a real benchmark (see the "O(N) re-render" describe
+  block in tests/host/terminal_spec.lua for the exact numbers this session
+  captured): re-rendering a single changed child among N siblings went
+  from scaling quadratically with N to scaling roughly linearly.
 
   LuaJIT-only: see hydronium_ink/init.lua's doc comment for why (Yoga is
   bound via LuaJIT's `ffi`, which plain PUC Lua has no equivalent of).
@@ -203,22 +215,63 @@ local function markChildrenDirty(node)
   end
 end
 
+-- ===================== Sibling list (intrusive doubly-linked, O(1) structural ops) =====================
+-- See this file's own former "KNOWN REMAINING SCALING COST" comment
+-- above (now "FIXED SCALING COST") for the full history of why this
+-- exists. The MUTATION-facing ground truth for a node's children is now
+-- an intrusive doubly-linked list: `parent._firstChild`/`parent._lastChild`
+-- point at the ends, and each child carries its own
+-- `child._prevSibling`/`child._nextSibling` -- so detachFromParent/
+-- appendChild/insertBefore/removeChild below are all O(1) (insertBefore
+-- was previously an O(siblings) linear scan for `beforeChild`'s index
+-- too, not just an O(siblings) shift -- splicing next to a direct node
+-- reference needs neither).
+--
+-- `node.children`, the plain 1-based Lua array EVERY OTHER function in
+-- this file has always consumed (`#node.children`, `node.children[i]` --
+-- buildYogaTree, paintNode, resolvePositions, collectTextLines, the
+-- scroll-bounds walk, collectPendingWrap, and Transform's isolated
+-- sub-render), keeps that exact same name and shape. It is now a LAZILY
+-- REBUILT CACHE over the linked list above (see childrenArray() below),
+-- invalidated (set to `nil`, not eagerly recomputed) by every mutator on
+-- every structural change, and rebuilt at most once per node per paint --
+-- the first time something actually reads it as an array -- rather than
+-- once per appendChild call. This is what turns the profiled O(N^2)
+-- pattern (N appendChild calls in core/reconciler.lua's own
+-- "Ensure physical sibling order" loop, each previously touching the
+-- array) into real O(N): N O(1) linked-list splices, plus one O(k)
+-- (k = that node's own child count, not the whole tree) array rebuild the
+-- next time childrenArray() is called for it.
+local function childrenArray(node)
+  local cached = node.children
+  if cached then return cached end
+  local list = {}
+  local child = node._firstChild
+  while child do
+    list[#list + 1] = child
+    child = child._nextSibling
+  end
+  node.children = list
+  return list
+end
+
 --- Detaches `child` from whatever parent it currently has (a no-op if
 --- none). Used by appendChild/insertBefore to handle a MOVE (Yoga-owning
 --- ancestors on both the old and new side each need their child list
 --- resynced) as well as a fresh insert (nothing to detach from yet).
+--- O(1): unlinks `child` from its neighbors directly via its own stored
+--- `_prevSibling`/`_nextSibling`, no scan needed (see this section's own
+--- top comment).
 local function detachFromParent(child)
-  if child.parent and child.parent.children then
-    local siblings = child.parent.children
-    for i = 1, #siblings do
-      if siblings[i] == child then
-        table.remove(siblings, i)
-        break
-      end
-    end
-    markChildrenDirty(child.parent)
-    child.parent = nil
-  end
+  local parent = child.parent
+  if not parent then return end
+  local prev, nextSibling = child._prevSibling, child._nextSibling
+  if prev then prev._nextSibling = nextSibling else parent._firstChild = nextSibling end
+  if nextSibling then nextSibling._prevSibling = prev else parent._lastChild = prev end
+  child._prevSibling, child._nextSibling = nil, nil
+  parent.children = nil -- invalidate the OLD parent's array cache
+  markChildrenDirty(parent)
+  child.parent = nil
 end
 
 --- Frees `node`'s own persistent Yoga node (if it has one) and recurses
@@ -236,8 +289,9 @@ local function freeYogaSubtree(node)
     node._yoga:free()
     node._yoga = nil
   end
-  for i = 1, #(node.children or {}) do
-    freeYogaSubtree(node.children[i])
+  local kids = childrenArray(node)
+  for i = 1, #kids do
+    freeYogaSubtree(kids[i])
   end
 end
 
@@ -249,6 +303,7 @@ local function textStyleOf(props, inherited)
     fg = inherited.fg, bg = inherited.bg, bold = inherited.bold,
     dim = inherited.dim, italic = inherited.italic, underline = inherited.underline,
     strikethrough = inherited.strikethrough, inverse = inherited.inverse,
+    href = inherited.href,
   }
   if props then
     if props.color ~= nil then style.fg = terminalColor.resolve(props.color) end
@@ -259,6 +314,14 @@ local function textStyleOf(props, inherited)
     if props.underline ~= nil then style.underline = props.underline and true or false end
     if props.strikethrough ~= nil then style.strikethrough = props.strikethrough and true or false end
     if props.inverse ~= nil then style.inverse = props.inverse and true or false end
+    -- `href` is a text-range style attribute exactly like `color`/`bold`
+    -- above (see hydronium_ink/init.lua's HydroniumInkTextProps for why
+    -- this rides on Text rather than a separate `<Link>` element), so it
+    -- inherits/overrides the same way: a nested `<Text href="...">`
+    -- overrides an outer one, and `href = ""` explicitly clears an
+    -- inherited link (mirrors `color = "default"` clearing an inherited
+    -- fg via terminalColor.resolve above) rather than being ignored.
+    if props.href ~= nil then style.href = props.href ~= "" and props.href or nil end
   end
   return style
 end
@@ -266,7 +329,18 @@ end
 -- Parses the small, style-only SGR vocabulary this host can paint back into
 -- cell runs. Transform receives plain text, but its result may use ordinary
 -- ANSI styling (as gradient/chalk-style helpers do) without leaking escape
--- bytes into the terminal grid.
+-- bytes into the terminal grid. Deliberately does NOT also parse OSC 8
+-- (`\27]8;;uri\27\`) out of `transform()`'s return value -- unlike the SGR
+-- vocabulary here, an OSC 8 run has no natural place in this function's
+-- output (`runs[n].href` would need a matching close sequence tracked
+-- across `append()` calls, and a nested/nonsensical close with no matching
+-- open is a real possibility from arbitrary transform() output). A link
+-- placed with `<Text href>` around a `<Transform>` is unaffected by this --
+-- it is style.href on the OUTER Text's own runs, resolved entirely outside
+-- this function; only a link a `transform()` callback tries to fabricate
+-- itself from raw escape bytes is not supported, matching this function's
+-- existing "standard 8 colors and host text styles" scope statement (see
+-- docs/HYDRONIUM_INK_TERMINAL_HOST.md).
 local function ansiRuns(text)
   local runs, style, cursor = {}, {}, 1
   local function append(chunk)
@@ -310,13 +384,15 @@ local function collectTextLines(node, style)
   local current = {}
 
   local function walk(n, localStyle)
-    for i = 1, #n.children do
-      local c = n.children[i]
+    local kids = childrenArray(n)
+    for i = 1, #kids do
+      local c = kids[i]
       if c.type == "text" then
         table.insert(current, {
           text = c.text, fg = localStyle.fg, bg = localStyle.bg, bold = localStyle.bold,
           dim = localStyle.dim, italic = localStyle.italic, underline = localStyle.underline,
           strikethrough = localStyle.strikethrough, inverse = localStyle.inverse,
+          href = localStyle.href,
         })
       elseif c.type == "element" and c.tag == "Newline" then
         table.insert(lines, current)
@@ -347,7 +423,7 @@ local function copyRunWith(run, text)
   return {
     text = text, fg = run.fg, bg = run.bg, bold = run.bold, dim = run.dim,
     italic = run.italic, underline = run.underline, strikethrough = run.strikethrough,
-    inverse = run.inverse,
+    inverse = run.inverse, href = run.href,
   }
 end
 
@@ -640,17 +716,25 @@ local function buildYogaTree(node)
     -- a genuinely fresh, throwaway Lua table on every single call (never
     -- the same object twice, never referenced again after this branch
     -- returns), so its own Yoga node is always brand new and always safe
-    -- to free again immediately below. Its `children` field, though, is
-    -- the REAL `node.children` -- the actual persistent host nodes,
-    -- reused across paints and potentially still holding a `_yoga` from
-    -- a PRIOR Transform call. `removeAllChildren()` before freeing
-    -- `isolatedRootYg` detaches them cleanly without touching their own
-    -- persistent Yoga nodes at all, so they stay valid and reusable for
-    -- next time (or for freeYogaSubtree, whenever they're genuinely
+    -- to free again immediately below. Its `_firstChild`/`_lastChild`,
+    -- though, point into the REAL sibling linked list `node`'s own
+    -- children live on (see this file's own "Sibling list" section) --
+    -- the actual persistent host nodes, reused across paints and
+    -- potentially still holding a `_yoga` from a PRIOR Transform call.
+    -- This works without copying anything because childrenArray()/
+    -- buildYogaTree() below only ever walk FORWARD via each child's own
+    -- `_nextSibling`, which is a property of the child, not of whichever
+    -- object is doing the reading -- `anonymousRoot` never needs its own
+    -- copy of the list, just a starting pointer into the shared one.
+    -- `removeAllChildren()` before freeing `isolatedRootYg` detaches the
+    -- childrens' YOGA nodes cleanly without touching this shared sibling
+    -- linked list or `.parent` at all, so they stay valid and reusable
+    -- for next time (or for freeYogaSubtree, whenever they're genuinely
     -- unmounted via host.removeChild -- never triggered from here).
     local anonymousRoot = {
       id = nextNodeId(), type = "root", tag = "TransformRoot",
-      props = {}, children = node.children, parent = nil,
+      props = {}, parent = nil,
+      _firstChild = node._firstChild, _lastChild = node._lastChild,
     }
     local isolatedRootYg = buildYogaTree(anonymousRoot)
     isolatedRootYg:calculateLayout(YG_UNDEFINED, YG_UNDEFINED)
@@ -821,8 +905,9 @@ local function buildYogaTree(node)
   if childListChanged then
     yg:removeAllChildren()
   end
-  for i = 1, #node.children do
-    local childYg = buildYogaTree(node.children[i])
+  local kids = childrenArray(node)
+  for i = 1, #kids do
+    local childYg = buildYogaTree(kids[i])
     if childListChanged then
       yg:insertChild(childYg, i - 1) -- Yoga child indices are 0-based
     end
@@ -876,8 +961,9 @@ resolvePositions = function(node, parentX, parentY)
   -- text/newline/text_block node's `node.children`, if any, were never
   -- given their own Yoga node and must not be recursed into here.
   if node._layoutKind == "box" then
-    for i = 1, #node.children do
-      resolvePositions(node.children[i], x, y)
+    local kids = childrenArray(node)
+    for i = 1, #kids do
+      resolvePositions(kids[i], x, y)
     end
   end
 end
@@ -892,6 +978,7 @@ newFrame = function(w, h)
       row[c] = {
         ch = " ", fg = nil, bg = nil, bold = false, dim = false,
         italic = false, underline = false, strikethrough = false, inverse = false,
+        href = nil,
       }
     end
     frame.rows[r] = row
@@ -899,7 +986,27 @@ newFrame = function(w, h)
   return frame
 end
 
---- @param style table|nil {fg, bg, bold, dim, italic, underline, strikethrough, inverse}
+--- OSC 8 HYPERLINK GRID REPRESENTATION (design decision, read before
+--- touching `href` anywhere in this file): a link is a PER-CELL STYLE
+--- ATTRIBUTE, exactly like `fg`/`bold` above -- not a separate span/segment
+--- list layered on top of the grid, and not bytes embedded in `ch`/`.text`.
+--- This was the natural choice, not an arbitrary one: every other piece of
+--- Text styling in this module (color, bold, underline, ...) already flows
+--- as a plain field on the same run/cell tables all the way from
+--- `textStyleOf` through `collectTextLines`/`copyRunWith` to `setCell`, and
+--- reuses the exact same "coalesce a run of cells sharing a style" logic
+--- `encodeRun` below already has for SGR (see `styleKey`/`cellsDiffer`,
+--- both extended to include `href`). A separate span list would have needed
+--- its own coalescing, its own diffing, and its own reconciliation with the
+--- character grid's own edits -- solving the same problem `styleKey` already
+--- solves, a second time, for no real benefit. Treating it as a style
+--- attribute (rather than encoding it into `ch`) is also what keeps it
+--- zero-width for free: `textMetrics.displayWidth`/`clusters` only ever see
+--- `run.text`, which never contains the URI or any OSC bytes -- see
+--- `host.paint()`'s own hyperlink-capability handling below for where the
+--- OSC 8 bytes actually get synthesized (only at encode time, per run).
+---
+--- @param style table|nil {fg, bg, bold, dim, italic, underline, strikethrough, inverse, href}
 --- @param clip table|nil {x1, y1, x2, y2} -- cells outside this rect are
 ---   silently dropped, same as cells outside the frame itself. Set by
 ---   paintNode() for a `Box` with `overflow = "hidden"` or `"scroll"`.
@@ -913,7 +1020,7 @@ local function setCell(frame, x, y, ch, style, clip)
     ch = ch, fg = style.fg, bg = style.bg, bold = style.bold or false,
     dim = style.dim or false, italic = style.italic or false,
     underline = style.underline or false, strikethrough = style.strikethrough or false,
-    inverse = style.inverse or false,
+    inverse = style.inverse or false, href = style.href,
   }
 end
 
@@ -1014,8 +1121,9 @@ paintNode = function(node, frame, clip, offsetX, offsetY)
       -- Controlled offsets compose with a signal and useInput; the host does
       -- not impose a hidden keyboard policy on a scrollable view.
       local contentRight, contentBottom = layout.x - 1, layout.y - 1
-      for i = 1, #node.children do
-        local childLayout = node.children[i]._layout
+      local scrollKids = childrenArray(node)
+      for i = 1, #scrollKids do
+        local childLayout = scrollKids[i]._layout
         if childLayout then
           contentRight = math.max(contentRight, childLayout.x + childLayout.w - 1)
           contentBottom = math.max(contentBottom, childLayout.y + childLayout.h - 1)
@@ -1036,8 +1144,9 @@ paintNode = function(node, frame, clip, offsetX, offsetY)
       node._scroll = nil
     end
 
-    for i = 1, #node.children do
-      paintNode(node.children[i], frame, childClip, childOffsetX, childOffsetY)
+    local paintKids = childrenArray(node)
+    for i = 1, #paintKids do
+      paintNode(paintKids[i], frame, childClip, childOffsetX, childOffsetY)
     end
   elseif layout.kind == "text_block" then
     for i, line in ipairs(layout.lines) do
@@ -1065,11 +1174,20 @@ end
 
 local DEFAULT_STYLE_KEY = "-1:-1:0:0:0:0:0:0"
 
+-- Includes `href` (or the empty string for "no link") so a run of cells
+-- that share every SGR attribute but differ in their hyperlink target
+-- still get coalesced into SEPARATE encodeRun() groups below -- otherwise
+-- two adjacent same-colored links (or a link immediately followed by
+-- plain text of the same color) would merge into one OSC 8 span covering
+-- both, which is wrong regardless of `hyperlinkCapability` (see
+-- host.paint()'s own hyperlink handling: capability only gates whether
+-- the OSC 8 bytes are ever emitted, not whether runs are split by href).
 local function styleKey(cell)
   return terminalColor.key(cell.fg) .. ":" .. terminalColor.key(cell.bg) .. ":"
     .. (cell.bold and 1 or 0) .. ":" .. (cell.dim and 1 or 0) .. ":"
     .. (cell.italic and 1 or 0) .. ":" .. (cell.underline and 1 or 0) .. ":"
-    .. (cell.strikethrough and 1 or 0) .. ":" .. (cell.inverse and 1 or 0)
+    .. (cell.strikethrough and 1 or 0) .. ":" .. (cell.inverse and 1 or 0) .. ":"
+    .. (cell.href or "")
 end
 
 local function sgrFor(cell, colorCapability)
@@ -1085,24 +1203,58 @@ local function sgrFor(cell, colorCapability)
   return seq
 end
 
+-- OSC 8 hyperlink open/close, exactly the two sequences named in this
+-- package's own mission brief (`ESC ]8;;<uri>ESC \<text>ESC ]8;;ESC \`):
+-- the closing form repeats the same `ESC ]8;;` header with an empty URI,
+-- which is what tells a real terminal "hyperlink span ends here" rather
+-- than "here is a link to the empty string". ST (`ESC \`) is used as the
+-- terminator (not BEL) to match that literal spec text and because ST is
+-- the more broadly-recommended terminator in the wild (iTerm2, kitty,
+-- WezTerm, and tmux's passthrough all accept it; BEL is the older,
+-- less-preferred alternative some of the same docs still mention).
+local OSC8_HEADER = "\27]8;;"
+local OSC8_TERMINATOR = "\27\\"
+local function oscHyperlinkOpen(uri)
+  return OSC8_HEADER .. uri .. OSC8_TERMINATOR
+end
+local OSC8_CLOSE = OSC8_HEADER .. OSC8_TERMINATOR
+
 --- Encodes columns [c1..c2] of `row` as a byte string, switching SGR
 --- state only when the active style actually changes cell-to-cell (real
 --- style-run coalescing, not a fresh reset+code pair on every
 --- character) and leaving the terminal in the default (reset) style
 --- when the run ends on anything but the default, so a subsequent
 --- unrelated write (a shell prompt, a later diff run) never inherits a
---- stray color.
-local function encodeRun(row, c1, c2, colorCapability)
+--- stray color. `hyperlinkCapability` (see host.setHyperlinkCapability's
+--- own doc comment) gates OSC 8 emission independently of `colorCapability`:
+--- when it is false, `cell.href` is read for run-splitting purposes only
+--- (via styleKey above) and NO escape bytes are ever written for it -- the
+--- run's plain visible text comes out exactly as it would with no link at
+--- all, which is the whole point of the capability gate (a terminal not
+--- known to support OSC 8 must never see raw `]8;;...` bytes as garbage).
+local function encodeRun(row, c1, c2, colorCapability, hyperlinkCapability)
   local parts = {}
   local lastKey = nil
+  local openLink = nil -- the href (if any) the currently-open OSC 8 span covers
   for x = c1, c2 do
     local cell = row[x]
     local key = styleKey(cell)
     if key ~= lastKey then
+      if openLink then
+        table.insert(parts, OSC8_CLOSE)
+        openLink = nil
+      end
       table.insert(parts, sgrFor(cell, colorCapability))
       lastKey = key
+      if hyperlinkCapability and cell.href then
+        table.insert(parts, oscHyperlinkOpen(cell.href))
+        openLink = cell.href
+      end
     end
     table.insert(parts, cell.ch)
+  end
+  if openLink then
+    table.insert(parts, OSC8_CLOSE)
   end
   if lastKey ~= DEFAULT_STYLE_KEY then
     table.insert(parts, "\27[0m")
@@ -1114,7 +1266,65 @@ local function cellsDiffer(a, b)
   return a.ch ~= b.ch or terminalColor.key(a.fg) ~= terminalColor.key(b.fg)
     or terminalColor.key(a.bg) ~= terminalColor.key(b.bg) or a.bold ~= b.bold
     or a.dim ~= b.dim or a.italic ~= b.italic or a.underline ~= b.underline
-    or a.strikethrough ~= b.strikethrough or a.inverse ~= b.inverse
+    or a.strikethrough ~= b.strikethrough or a.inverse ~= b.inverse or a.href ~= b.href
+end
+
+-- ===================== Hyperlink capability =====================
+-- OSC 8 support does NOT correlate with color capability -- a terminal
+-- that reports COLORTERM=truecolor can be running inside a multiplexer or
+-- CI log viewer with zero OSC 8 support, and vice versa -- so this is
+-- resolved completely independently of `_colorCapability`/
+-- `terminalColor.capability` above, never derived from it (see
+-- host.setHyperlinkCapability's own doc comment, and Task 4's "Capability"
+-- design note this module's callers were built against).
+--
+-- The default MUST be safe: a terminal not affirmatively known to support
+-- OSC 8 gets plain visible text, never raw `]8;;...` escape bytes that
+-- would show up as garbage. This mirrors the real-world practice of
+-- terminal-hyperlink libraries like npm's `supports-hyperlinks` --
+-- conservative allow-list of known-good terminals/multiplexer wrappers,
+-- everything else defaults to off.
+local KNOWN_HYPERLINK_TERM_PROGRAMS = {
+  ["iterm.app"] = true, -- iTerm2, the terminal OSC 8 hyperlinks originated on
+  wezterm = true,
+  vscode = true, -- VS Code's integrated terminal
+  hyper = true,
+  tabby = true,
+  rio = true,
+}
+
+--- `TERM`/`TERM_PROGRAM`/`NO_COLOR` are the same env-convention family
+--- `terminalColor.capability("auto")` above is documented to use for
+--- color -- but note that module's own `term_capability` never actually
+--- reads `NO_COLOR` (see this file's own doc comment header: "check what
+--- the repo already does for color before inventing something new" turned
+--- up that this repo's existing color auto-detection has never respected
+--- NO_COLOR either, a pre-existing gap, not something this function
+--- should silently inherit). `NO_COLOR` (https://no-color.org) asks a
+--- program to skip ALL non-essential visual embellishment, not only SGR
+--- color -- most real terminal-hyperlink libraries (e.g. `supports-
+--- hyperlinks`) treat it as an opt-out for OSC 8 too, so this function
+--- honors it even though the sibling color function does not.
+local function autoHyperlinkCapability()
+  if os.getenv("NO_COLOR") then return false end
+  local term = (os.getenv("TERM") or ""):lower()
+  if term == "" or term == "dumb" then return false end
+  local termProgram = (os.getenv("TERM_PROGRAM") or ""):lower()
+  if KNOWN_HYPERLINK_TERM_PROGRAMS[termProgram] then return true end
+  if term:find("kitty", 1, true) or term:find("wezterm", 1, true) or term:find("alacritty", 1, true) then
+    return true
+  end
+  if os.getenv("WT_SESSION") then return true end -- Windows Terminal
+  if os.getenv("VTE_VERSION") then return true end -- GNOME Terminal and other VTE-based terminals >= 0.50
+  return false
+end
+
+local function hyperlinkCapability(value)
+  if value == true or value == false then return value end
+  if value ~= nil and value ~= "auto" then
+    error("hydronium_ink.host.terminal: unsupported hyperlink capability '" .. tostring(value) .. "' (expected true, false, or \"auto\")", 3)
+  end
+  return autoHyperlinkCapability()
 end
 
 -- ===================== Host =====================
@@ -1129,9 +1339,21 @@ end
 function M.createTerminalHost(writeFn)
   writeFn = writeFn or io.write
 
-  local host = { _colorCapability = terminalColor.capability("auto") }
+  local host = {
+    _colorCapability = terminalColor.capability("auto"),
+    _hyperlinkCapability = autoHyperlinkCapability(),
+    -- Real terminal cursors start visible; see host.setCursorVisible's own
+    -- doc comment for what this actually gates (paint()'s own transient
+    -- hide-during-redraw, NOT the app-facing useCursor position/visibility
+    -- mechanism, which lives entirely in session.lua/render.lua and is
+    -- unaware of this field except by informing it -- see there).
+    _cursorVisible = true,
+  }
 
-  local root = { id = 0, type = "root", tag = "ROOT", props = {}, children = {}, parent = nil }
+  local root = {
+    id = 0, type = "root", tag = "ROOT", props = {}, children = {}, parent = nil,
+    _firstChild = nil, _lastChild = nil, -- see this file's own "Sibling list" section
+  }
 
   function host.getRoot()
     return root
@@ -1145,6 +1367,49 @@ function M.createTerminalHost(writeFn)
       host._colorCapability = resolved
       host.invalidate()
     end
+  end
+
+  --- Selects whether OSC 8 hyperlinks (`<Text href>`, see
+  --- hydronium_ink/init.lua's HydroniumInkTextProps) are emitted at all.
+  --- `true`/`false` force it; `"auto"`/`nil` resolves it from
+  --- NO_COLOR/TERM/TERM_PROGRAM the same way a real terminal-hyperlink
+  --- library would (see this file's own "Hyperlink capability" section
+  --- above for exactly what "auto" checks and why it is NOT the same gate
+  --- setColorCapability uses). A terminal not affirmatively known to
+  --- support OSC 8 renders `href` text as plain, unlinked text -- see
+  --- encodeRun's own doc comment for exactly where that degradation
+  --- happens.
+  function host.setHyperlinkCapability(capability)
+    local resolved = hyperlinkCapability(capability)
+    if resolved ~= host._hyperlinkCapability then
+      host._hyperlinkCapability = resolved
+      host.invalidate()
+    end
+  end
+
+  --- Tells this host whether the terminal's cursor is CURRENTLY meant to
+  --- be visible, so a changed host.paint() knows whether to leave it
+  --- hidden or show it again after its own transient hide-during-redraw
+  --- (see paint()'s own doc comment on the flicker this prevents, and why
+  --- unconditionally re-showing would be wrong).
+  ---
+  --- This does NOT itself write anything -- hydronium_ink.hooks.useCursor
+  --- (via session.lua's context.setCursorPosition) is what actually shows/
+  --- hides the real cursor and moves it to an app-requested position, by
+  --- writing `\27[?25l`/`\27[?25h` directly through render.lua's onCursor
+  --- callback, entirely independent of this host's own diff/paint
+  --- pipeline (there is no "cursor" cell in the character grid, same as
+  --- the reason `host.paint()`'s own cursor-PARK sequence at the end of a
+  --- changed paint only ever moves the cursor, never touches visibility,
+  --- and always lands below the frame rather than at any app-requested
+  --- position -- see hooks.lua's useCursor doc comment's own "STATED
+  --- LIMITATION" for that pre-existing, unrelated gap). This setter only
+  --- lets paint() learn what that OUTSIDE mechanism last decided, so its
+  --- own hide/show wrapping can restore the same steady state rather than
+  --- always ending on "visible" -- session.lua calls this every time
+  --- context.setCursorPosition does, immediately alongside it.
+  function host.setCursorVisible(visible)
+    host._cursorVisible = visible and true or false
   end
 
   --- Tells this host the real terminal size, so host.paint() constrains
@@ -1185,8 +1450,13 @@ function M.createTerminalHost(writeFn)
       type = "element",
       tag = tostring(tagStr),
       props = copiedProps,
-      children = {},
+      children = {}, -- cached array, see childrenArray() -- correctly "0 children" until something appends
       parent = nil,
+      -- Sibling-list fields (see this file's own "Sibling list" section):
+      -- `_firstChild`/`_lastChild` because this node can itself be a
+      -- parent; `_prevSibling`/`_nextSibling` because it can itself be a
+      -- child of another element/root node.
+      _firstChild = nil, _lastChild = nil, _prevSibling = nil, _nextSibling = nil,
     }
   end
 
@@ -1196,50 +1466,78 @@ function M.createTerminalHost(writeFn)
       type = "text",
       text = tostring(text or ""),
       parent = nil,
+      -- A text node is never a parent (no `_firstChild`/`_lastChild` --
+      -- childrenArray() on one still works, see its own doc comment,
+      -- since a missing `_firstChild` field just reads as nil), but it
+      -- CAN be a child, so it still needs sibling links.
+      _prevSibling = nil, _nextSibling = nil,
     }
   end
 
+  --- O(1): splices `child` onto the tail of `parent`'s sibling linked
+  --- list directly via `parent._lastChild`, rather than scanning/shifting
+  --- a plain array (see this file's own "Sibling list" section for why
+  --- this specific call, invoked once per child on EVERY re-render by
+  --- core/reconciler.lua's reconcileChildren regardless of whether
+  --- anything actually moved, used to be this host's O(N^2) hot spot).
   function host.appendChild(parent, child)
     if not parent or not child then return end
-    detachFromParent(child) -- marks the OLD parent dirty too, if this is a move
+    detachFromParent(child) -- marks the OLD parent dirty too, if this is a move; O(1), see its own doc comment
     child.parent = parent
-    table.insert(parent.children, child)
+    child._prevSibling, child._nextSibling = parent._lastChild, nil
+    if parent._lastChild then
+      parent._lastChild._nextSibling = child
+    else
+      parent._firstChild = child
+    end
+    parent._lastChild = child
+    parent.children = nil -- invalidate the array cache -- see childrenArray()
     markChildrenDirty(parent)
     host._dirty = true
   end
 
+  --- O(1): splices `child` in immediately before `beforeChild` via direct
+  --- node references (`beforeChild._prevSibling`), rather than scanning a
+  --- plain array for `beforeChild`'s index first (the OLD implementation's
+  --- own separate O(siblings) cost, on top of the shift `table.insert(t,
+  --- i, ...)` in the middle of an array also has) -- see this file's own
+  --- "Sibling list" section.
   function host.insertBefore(parent, child, beforeChild)
     if not parent or not child then return end
     detachFromParent(child) -- marks the OLD parent dirty too, if this is a move
     child.parent = parent
 
-    local inserted = false
-    if beforeChild and parent.children then
-      for i = 1, #parent.children do
-        if parent.children[i] == beforeChild then
-          table.insert(parent.children, i, child)
-          inserted = true
-          break
-        end
-      end
+    if beforeChild and beforeChild.parent == parent then
+      local prev = beforeChild._prevSibling
+      child._prevSibling, child._nextSibling = prev, beforeChild
+      beforeChild._prevSibling = child
+      if prev then prev._nextSibling = child else parent._firstChild = child end
+    else
+      -- No valid beforeChild belonging to this parent -- append at the
+      -- end, matching the original array-based implementation's own
+      -- fallback ("if not inserted then table.insert(parent.children,
+      -- child) end").
+      child._prevSibling, child._nextSibling = parent._lastChild, nil
+      if parent._lastChild then parent._lastChild._nextSibling = child else parent._firstChild = child end
+      parent._lastChild = child
     end
-    if not inserted then
-      table.insert(parent.children, child)
-    end
+    parent.children = nil -- invalidate the array cache -- see childrenArray()
     markChildrenDirty(parent)
     host._dirty = true
   end
 
+  --- O(1): unlinks `child` from the sibling list directly, rather than
+  --- scanning/shifting a plain array -- see this file's own "Sibling
+  --- list" section.
   function host.removeChild(parent, child)
     if not parent or not child then return end
-    if parent.children then
-      for i = 1, #parent.children do
-        if parent.children[i] == child then
-          table.remove(parent.children, i)
-          child.parent = nil
-          break
-        end
-      end
+    if child.parent == parent then
+      local prev, nextSibling = child._prevSibling, child._nextSibling
+      if prev then prev._nextSibling = nextSibling else parent._firstChild = nextSibling end
+      if nextSibling then nextSibling._prevSibling = prev else parent._lastChild = prev end
+      child._prevSibling, child._nextSibling = nil, nil
+      child.parent = nil
+      parent.children = nil -- invalidate the array cache -- see childrenArray()
     end
     markChildrenDirty(parent)
     -- Real, permanent removal (unlike a move through detachFromParent) --
@@ -1311,7 +1609,8 @@ function M.createTerminalHost(writeFn)
     local function collectPendingWrap(n)
       if n._pendingWrap then table.insert(pendingWrap, n) end
       if n._layoutKind == "box" then
-        for i = 1, #n.children do collectPendingWrap(n.children[i]) end
+        local kids = childrenArray(n)
+        for i = 1, #kids do collectPendingWrap(kids[i]) end
       end
     end
     collectPendingWrap(root)
@@ -1364,7 +1663,7 @@ function M.createTerminalHost(writeFn)
       table.insert(buf, "\27[2J\27[H")
       for y = 1, h do
         table.insert(buf, "\27[" .. y .. ";1H\27[K")
-        table.insert(buf, encodeRun(frame.rows[y], 1, w, host._colorCapability))
+        table.insert(buf, encodeRun(frame.rows[y], 1, w, host._colorCapability, host._hyperlinkCapability))
       end
     else
       for y = 1, h do
@@ -1378,7 +1677,7 @@ function M.createTerminalHost(writeFn)
               x = x + 1
             end
             table.insert(buf, "\27[" .. y .. ";" .. runStart .. "H")
-            table.insert(buf, encodeRun(newRow, runStart, x - 1, host._colorCapability))
+            table.insert(buf, encodeRun(newRow, runStart, x - 1, host._colorCapability, host._hyperlinkCapability))
           else
             x = x + 1
           end
@@ -1394,7 +1693,57 @@ function M.createTerminalHost(writeFn)
       -- exit, ^C) doesn't land inside the rendered picture -- ordinary
       -- real-Ink behavior too, not specific to this implementation.
       table.insert(buf, "\27[" .. (h + 1) .. ";1H\27[0m")
-      writeFn(table.concat(buf))
+
+      -- CURSOR HIDE/SHOW (flicker fix): without this, the real terminal
+      -- cursor visibly darts to every changed run's position as each
+      -- `\27[<row>;<col>H` move lands, for the entire duration of this
+      -- redraw, before finally landing on the park sequence above -- on a
+      -- frame with many small scattered changed runs (the common case for
+      -- a heavy-refresh section) this is the single most visible "flicker"
+      -- this host produces. Hiding for the duration of the write and
+      -- restoring after removes it, at the cost of the terminal not
+      -- knowing exactly where a real hardware/IME cursor should sit while
+      -- the redraw is in flight -- an acceptable trade since this host
+      -- already has no notion of showing the true cursor mid-redraw
+      -- anyway (see the park sequence just above, which relocates it
+      -- unconditionally on every changed paint regardless of this fix).
+      --
+      -- MUST restore to `host._cursorVisible`, NOT unconditionally show:
+      -- an app that called `useCursor().setCursorPosition(nil)` to
+      -- explicitly hide the cursor (see hooks.lua's UseCursorResult doc
+      -- comment) has that state entirely outside this host's paint
+      -- pipeline -- session.lua informs this host of it via
+      -- host.setCursorVisible so this restore can put things back exactly
+      -- how they were, rather than always ending on "visible" and
+      -- silently overriding an app's explicit hide the next time anything
+      -- repaints. This does NOT restore the app's requested cursor
+      -- POSITION (only visibility) -- the park sequence above already
+      -- unconditionally relocates the cursor below the frame regardless
+      -- of this fix, which is the same pre-existing, already-documented
+      -- gap hooks.lua's useCursor doc comment calls out ("every repaint
+      -- that actually changes something re-parks the cursor below the
+      -- frame... a persistent custom position needs re-calling this").
+      --
+      -- Wrapped OUTSIDE that in DEC 2026 synchronized-output brackets
+      -- (`\27[?2026h`/`l`): a single write() to a tty is not guaranteed
+      -- atomic, so without this a large buffer (worst case: the full-
+      -- redraw branch above, on first paint/resize/invalidate) can be
+      -- split across the terminal's own reads and render as a torn,
+      -- partial frame. Emitted UNCONDITIONALLY, with no capability gate,
+      -- unlike setColorCapability/setHyperlinkCapability above -- DEC
+      -- private modes are specified so that a terminal not implementing a
+      -- given mode number silently ignores the DECSET/DECRST for it (no
+      -- visible side effect, unlike an unrecognized OSC, which some real
+      -- terminals mishandle by echoing raw bytes -- see this file's own
+      -- "Hyperlink capability" section for why OSC 8 needed a gate and
+      -- this doesn't). This repo already relies on that exact convention
+      -- for other DEC private modes without gating them (bracketed paste
+      -- `\27[?2004h` in render.lua's M.render, alternate screen
+      -- `\27[?1049h`/`l` via onAltScreen) -- mode 2026 gets the same
+      -- treatment, not a new policy invented for it.
+      local body = "\27[?25l" .. table.concat(buf)
+      if host._cursorVisible then body = body .. "\27[?25h" end
+      writeFn("\27[?2026h" .. body .. "\27[?2026l")
     end
   end
 
