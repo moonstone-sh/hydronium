@@ -8,19 +8,28 @@
 // below, including that the build-time and runtime scoped class AGREE.
 //
 // This test IS the static host: a plain node:http server on a free
-// (OS-assigned) port, serving these straight off disk, none of them
-// copies:
-//   /                 a generated index.html shell (the only thing not
-//                     read from disk -- a static SPA's shell has no
-//                     server-side templating to do)
-//   /client/*         examples/spa_hash_demo/dist/client/ (M2's real
-//                     bundled chunk -- build it first: see prerequisite
-//                     below)
-//   /js/bootstrap/*   dom/src/hydronium_dom/client/ (the real, synced
-//                     @hydronium-js/dom-client: mount.js + vendored wasmoon)
-//   /js/router/*      router/client/ (hash_history.js, the real M1 bridge)
-//   /assets/*         examples/spa_hash_demo/dist/assets/ (M4's real
-//                     scoped CSS bundle and content-hashed static file)
+// (OS-assigned) port, serving ONLY examples/spa_hash_demo/dist/ -- the
+// real, complete build output, nothing supplemented from the source tree.
+// This is the actual M4 deliverable (docs/HYDRONIUM_SPA_MODE_PLAN.md
+// section 2.1: "One HTML shell, served by anything (`python -m
+// http.server` is a valid host)"): dist/index.html references
+// /js/bootstrap/mount.js and /js/router/hash_history.js as absolute site
+// paths, and until hydronium_ballad.plugins.site's `mount.vendor` option
+// (build/src/hydronium_ballad/plugins/site.lua) existed, NEITHER of those
+// was actually in dist/ -- verified for real: `python3 -m http.server`
+// rooted at dist/ 404'd on both before this, a blank page with nothing in
+// any log, exactly the failure class this milestone exists to prevent.
+// examples/spa_hash_demo/partiture.lua's `mount.vendor` now copies
+// dom/src/hydronium_dom/client/ (the real, synced @hydronium-js/dom-client)
+// to dist/js/bootstrap/ and router/client/ (a second, unpackaged pile --
+// see the SPA plan's own hazard list for why that should eventually fold
+// into dom-client; not done here) to dist/js/router/, so this server's
+// ONE route (serve a file under dist/, or 404) is now sufficient:
+//   /                 dist/index.html, unmodified
+//   /client/*         dist/client/ (M2's real bundled chunk)
+//   /js/bootstrap/*   dist/js/bootstrap/ (vendored by the build itself)
+//   /js/router/*      dist/js/router/ (vendored by the build itself)
+//   /assets/*         dist/assets/ (M4's real scoped CSS + hashed asset)
 //   /hydronium-manifest.lua
 //                     the build's own manifest, fetched by mount()'s
 //                     `assetManifestUrl` and loaded INSIDE the Lua VM --
@@ -38,19 +47,14 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, join, extname } from "node:path";
+import { dirname, join, extname, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "../..");
-const DIST_CLIENT_DIR = join(REPO_ROOT, "examples/spa_hash_demo/dist/client");
-const BOOTSTRAP_DIR = join(REPO_ROOT, "dom/src/hydronium_dom/client");
-const ROUTER_CLIENT_DIR = join(REPO_ROOT, "router/client");
-// M4: the real built asset output -- the scoped CSS bundle and the
-// content-hashed static file, both produced by the plugins under test.
 const DIST_DIR = join(REPO_ROOT, "examples/spa_hash_demo/dist");
-const DIST_ASSETS_DIR = join(DIST_DIR, "assets");
+const DIST_CLIENT_DIR = join(DIST_DIR, "client");
 
 const MIME = {
   ".js": "text/javascript; charset=utf-8",
@@ -62,89 +66,37 @@ const MIME = {
   ".html": "text/html; charset=utf-8",
 };
 
-function indexHtml(chunkFile, styleUrl) {
-  return `<!doctype html>
-<html><head><meta charset="utf-8"><title>Hydronium SPA hash demo (static, no Meteorite)</title></head>
-<body>
-<link rel="stylesheet" href="${styleUrl}">
-<div id="app"></div>
-<script>
-  // Set once, synchronously, before mount.js ever runs -- the same
-  // boot-id pattern js/examples/islands-tailwind/tests/dual-hmr.test.mjs
-  // uses to prove a client-side route change did NOT reload the page.
-  window.__pageBootId = Math.random().toString(36).slice(2) + "-" + Date.now();
-</script>
-<script type="module">
-  import { mount } from "/js/bootstrap/mount.js";
-  import { createHashHistoryGlobals } from "/js/router/hash_history.js";
-
-  mount({
-    chunkUrls: ["/client/${chunkFile}"],
-    appModuleId: "app",
-    container: "#app",
-    hydrate: false,
-    assetManifestUrl: "/hydronium-manifest.lua",
-    luaGlobals: createHashHistoryGlobals(),
-  }).then(() => { window.__mounted = true; })
-    .catch((e) => {
-      window.__mountError = String((e && e.stack) || e);
-      window.__mounted = true;
-      console.error(e);
-    });
-</script>
-</body></html>`;
-}
-
-async function serveFrom(root, urlPath, res) {
-  try {
-    const body = await readFile(join(root, urlPath));
-    res.writeHead(200, { "content-type": MIME[extname(urlPath)] || "application/octet-stream" });
-    res.end(body);
-  } catch {
-    res.writeHead(404);
-    res.end("not found");
-  }
-}
-
-async function startServer(chunkFile, styleUrl) {
+async function startServer() {
   const server = createServer(async (req, res) => {
     const url = req.url.split("?")[0];
-    if (url === "/") {
-      res.writeHead(200, { "content-type": MIME[".html"] });
-      res.end(indexHtml(chunkFile, styleUrl));
+    const urlPath = url === "/" ? "index.html" : url.replace(/^\/+/, "");
+    // Refuses anything that would walk out of DIST_DIR (e.g. "../..") --
+    // this is a test harness standing in for "any dumb static file
+    // server", not a hardening exercise, but it must not silently serve
+    // files OUTSIDE dist/ and make the gate meaningless.
+    const resolved = join(DIST_DIR, normalize(urlPath));
+    if (resolved !== DIST_DIR && !resolved.startsWith(DIST_DIR + sep)) {
+      res.writeHead(400);
+      res.end("bad path");
       return;
     }
-    if (url.startsWith("/assets/")) {
-      await serveFrom(DIST_ASSETS_DIR, url.slice("/assets/".length), res);
-      return;
+    try {
+      const body = await readFile(resolved);
+      res.writeHead(200, { "content-type": MIME[extname(resolved)] || "application/octet-stream" });
+      res.end(body);
+    } catch {
+      res.writeHead(404);
+      res.end("not found");
     }
-    if (url === "/hydronium-manifest.lua") {
-      await serveFrom(DIST_DIR, "hydronium-manifest.lua", res);
-      return;
-    }
-    if (url.startsWith("/client/")) {
-      await serveFrom(DIST_CLIENT_DIR, url.slice("/client/".length), res);
-      return;
-    }
-    if (url.startsWith("/js/bootstrap/")) {
-      await serveFrom(BOOTSTRAP_DIR, url.slice("/js/bootstrap/".length), res);
-      return;
-    }
-    if (url.startsWith("/js/router/")) {
-      await serveFrom(ROUTER_CLIENT_DIR, url.slice("/js/router/".length), res);
-      return;
-    }
-    res.writeHead(404);
-    res.end("not found");
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   return server;
 }
 
 test("M3+M4: a real two-route hash-routed static SPA -- routing, scoped CSS and hashed assets -- no Meteorite process, gated in a real browser", async (t) => {
-  if (!existsSync(DIST_CLIENT_DIR)) {
+  if (!existsSync(DIST_CLIENT_DIR) || !existsSync(join(DIST_DIR, "index.html"))) {
     assert.fail(
-      `${DIST_CLIENT_DIR} does not exist.\nBuild it first:\n` +
+      `${DIST_CLIENT_DIR} and/or ${join(DIST_DIR, "index.html")} do not exist.\nBuild it first:\n` +
       "  cd examples/spa_hash_demo && moon exec -- ballad play partiture.lua"
     );
   }
@@ -163,12 +115,21 @@ test("M3+M4: a real two-route hash-routed static SPA -- routing, scoped CSS and 
   assert.ok(logoUrl, `manifest has no assets["logo.svg"].url; rebuild the partiture`);
   assert.notEqual(logoUrl, "/logo.svg", "the manifest url must be the HASHED one, not the dev fallback");
 
-  const server = await startServer(chunkFile, styleUrl);
+  const server = await startServer();
   const { port } = server.address();
   const ORIGIN = `http://127.0.0.1:${port}`;
 
   const browser = await chromium.launch();
   const page = await browser.newPage();
+  // The real dist/index.html has no boot-id script of its own (that would
+  // be test-only scaffolding baked into a production shell) -- Playwright's
+  // addInitScript runs before ANY of the page's own scripts, on every real
+  // navigation including a hard reload, which is exactly what proving "no
+  // full-page reload occurred" needs (js/examples/islands-tailwind/tests/
+  // dual-hmr.test.mjs uses the same pattern for the same reason).
+  await page.addInitScript(() => {
+    window.__pageBootId = Math.random().toString(36).slice(2) + "-" + Date.now();
+  });
   const pageErrors = [];
   page.on("pageerror", (e) => pageErrors.push(String(e)));
   const requestOrigins = new Set();
@@ -187,8 +148,8 @@ test("M3+M4: a real two-route hash-routed static SPA -- routing, scoped CSS and 
 
   // --- initial route renders ---------------------------------------------
   await page.goto(ORIGIN + "/", { waitUntil: "networkidle" });
-  await page.waitForFunction(() => window.__mounted === true, null, { timeout: 30_000 });
-  assert.equal(await page.evaluate(() => window.__mountError ?? null), null, "mount() must not have errored");
+  await page.waitForFunction(() => window.__hydroniumMounted === true, null, { timeout: 30_000 });
+  assert.equal(await page.evaluate(() => window.__hydroniumMountError ?? null), null, "mount() must not have errored");
   assert.equal((await page.textContent("#home-marker")).trim(), "This is the home route.");
   assert.equal(await page.locator("#second-screen").count(), 0, "second screen must not be present on /");
 
@@ -257,8 +218,8 @@ test("M3+M4: a real two-route hash-routed static SPA -- routing, scoped CSS and 
   //     first -- the assertion that actually proves hash routing rather
   //     than a click handler that happens to also work -------------------
   await page.reload({ waitUntil: "networkidle" });
-  await page.waitForFunction(() => window.__mounted === true, null, { timeout: 30_000 });
-  assert.equal(await page.evaluate(() => window.__mountError ?? null), null, "mount() must not have errored on reload");
+  await page.waitForFunction(() => window.__hydroniumMounted === true, null, { timeout: 30_000 });
+  assert.equal(await page.evaluate(() => window.__hydroniumMountError ?? null), null, "mount() must not have errored on reload");
   assert.notEqual(
     await page.evaluate(() => window.__pageBootId), bootId,
     "a real reload MUST get a new boot id -- otherwise this isn't testing a real navigation"

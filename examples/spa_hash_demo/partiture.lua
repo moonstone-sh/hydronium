@@ -64,7 +64,36 @@ return ballad.partiture(function(p)
 
   -- One sink for the whole site: p.sink.directory removes its out tree first,
   -- so two sinks on the same dist/ would destroy each other.
-  local merged = site.manifest(hashed, { depends_on = { bundled, styles } })
+  --
+  -- M4: mount is opted into explicitly (site.manifest's default is no
+  -- index.html at all -- see its own doc comment) because THIS partiture,
+  -- unlike examples/meteorite_ssr's, really is a static SPA with nothing
+  -- else serving "/". lua_globals wires up hydronium_router's hash-history
+  -- adapter, which app.lua actually requires (history/hash.lua's own doc
+  -- comment: it is an opt-in adapter an app requires itself, never a
+  -- barrel default) -- site.manifest has no router awareness of its own,
+  -- so a partiture that needs one supplies it here.
+  local merged = site.manifest(hashed, {
+    depends_on = { bundled, styles },
+    mount = {
+      title = "Hydronium SPA hash demo (static, no Meteorite)",
+      lua_globals = { module = "/js/router/hash_history.js", import = "createHashHistoryGlobals" },
+      -- Ships the real bytes index.html's own <script> tags reference, so
+      -- dist/ is deployable to a plain static file server with nothing else
+      -- running (docs/HYDRONIUM_SPA_MODE_PLAN.md section 2.1's "one HTML
+      -- shell, served by anything" -- verified for real: a bare `python3 -m
+      -- http.server` inside dist/ 404'd on both of these before this).
+      -- dom/src/hydronium_dom/client/ is the generated-but-committed copy
+      -- of @hydronium-js/dom-client (js/scripts/sync-dom-client.mjs,
+      -- check-dom-client-drift.mjs -- not touched here); router/client/ is
+      -- a second, unpackaged pile the SPA plan's own hazard list already
+      -- flags for folding into dom-client later (not done here either).
+      vendor = {
+        { dir = "../../dom/src/hydronium_dom/client", url_prefix = "js/bootstrap" },
+        { dir = "../../router/client", url_prefix = "js/router" },
+      },
+    },
+  })
 
   p.sink.directory(merged, { out = "dist", file_graph = true })
 end)

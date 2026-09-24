@@ -78,8 +78,87 @@ local function serialize_lua_value(v, indent)
   error("hydronium_ballad.plugins.site: cannot serialize a " .. t .. " value into the manifest", 0)
 end
 
+--- @class HydroniumBalladMountOptions
+--- @field title? string Page `<title>`. Default "Hydronium App".
+--- @field container? string CSS id selector mount() targets, e.g. "#app". Default "#app".
+--- @field hydrate? boolean Passed straight through to mount()'s `hydrate`. Default false (a static SPA has no SSR markup to claim).
+--- @field js_bootstrap_url? string URL of the real `mount.js` (`@hydronium-js/dom-client`) the page imports. Default "/js/bootstrap/mount.js" -- this plugin does not vendor that file into the sink itself; the project is responsible for serving it at that URL (or overriding this to wherever it does).
+--- @field asset_manifest_url? string Passed as mount()'s `assetManifestUrl`. Default "/<name>.lua" (the Lua-table sibling this same node emits, since wasmoon has no filesystem for `loadfile()`).
+--- @field lua_globals? { module: string, import: string } Optional extra ESM import whose named export is CALLED (`import()()`) and passed as mount()'s `luaGlobals` -- e.g. `{ module = "/js/router/hash_history.js", import = "createHashHistoryGlobals" }` for an app that uses hydronium_router's hash history adapter. This plugin has no router awareness of its own; a partiture that needs one supplies it explicitly.
+--- @field vendor? { dir: string, url_prefix: string }[] Real, on-disk directory trees to copy into the sink VERBATIM (recursively, preserving relative paths) under `url_prefix` (a site-relative path with no leading "/", e.g. "js/bootstrap"). Exists because `index.html` references `js_bootstrap_url`/`lua_globals.module` as absolute site paths, and this plugin does not assume anything serves those bytes except what the build itself produces (a plain `ballad play`'s dist/ must be deployable to a dumb static file server with nothing else running -- docs/HYDRONIUM_SPA_MODE_PLAN.md section 2.1). Declared here, not copied by a CLI, for the same reason `mount` itself is declared here: the partiture that knows it needs `/js/bootstrap/mount.js` and `/js/router/hash_history.js` is the one that says where those real files live on disk, e.g. `{ dir = "../../dom/src/hydronium_dom/client", url_prefix = "js/bootstrap" }`. No default: an app that serves its own bootstrap JS some other way (a CDN, a bundler-owned path) is not forced to vendor anything.
+
 --- @class HydroniumBalladSiteManifestOptions
 --- @field name? string Default "hydronium-manifest". Both emitted files share this basename (`.json`/`.lua`).
+--- @field mount? HydroniumBalladMountOptions|false Opt-in `index.html` shell emission (M4). Nil/absent: no index.html -- the safe default for e.g. an SSR example whose `hy_chunk` is fetched by a server-rendered route, not mounted from a static shell. A partiture that wants a complete, hostable static site (the SPA case) passes a table; `false` is the same as omitting it. Requires exactly one `hy_chunk` input asset with `metadata.hydronium.entry` set (client.bundle's `entry` option) -- zero means nothing to mount (silently skipped, since plenty of legitimate partitures merge no chunk at all through this node), more than one is an unresolvable ambiguity (which entry is "the" page?) and fails the build loudly rather than guessing.
+
+--- Renders the mount() bootstrap `<script type="module">` this plugin's
+--- `index.html` embeds. Kept separate from M.manifest for the same reason
+--- serialize_lua_value is its own function: an isolated, unit-testable
+--- string builder with no ballad/graph dependency of its own.
+---
+--- PUBLIC CONTRACT of the emitted page (fail loudly, not silently -- a
+--- static SPA has no SSR fallback, so a mount error with nowhere to go
+--- is a blank page and nothing else): once mount() settles, exactly one
+--- of these is true --
+---   window.__hydroniumMounted == true, __hydroniumMountError undefined: ok
+---   window.__hydroniumMounted == true, __hydroniumMountError == "<message>": mount() rejected
+--- A page never has to guess whether mounting is still in flight versus
+--- silently stalled; `js/tests/spa_hash_demo.browser.test.mjs` polls this
+--- exact contract against the real built shell.
+--- @param chunk_urls string[] Already "/"-prefixed, in a stable (sorted) order.
+--- @param app_module_id string
+--- @param styles_url? string
+--- @param opts HydroniumBalladMountOptions
+--- @param manifest_url string
+--- @return string html
+local function render_index_html(chunk_urls, app_module_id, styles_url, opts, manifest_url)
+  local title = opts.title or "Hydronium App"
+  local container = opts.container or "#app"
+  local container_id = container:gsub("^#", "")
+  local js_bootstrap_url = opts.js_bootstrap_url or "/js/bootstrap/mount.js"
+
+  local chunk_urls_js = {}
+  for _, url in ipairs(chunk_urls) do
+    chunk_urls_js[#chunk_urls_js + 1] = string.format("%q", url)
+  end
+
+  local extra_import, lua_globals_expr = "", "undefined"
+  if opts.lua_globals then
+    extra_import = "\n  import { " .. opts.lua_globals.import .. " } from "
+      .. string.format("%q", opts.lua_globals.module) .. ";"
+    lua_globals_expr = opts.lua_globals.import .. "()"
+  end
+
+  local style_link = ""
+  if styles_url then
+    style_link = "\n<link rel=\"stylesheet\" href=\"" .. styles_url .. "\">"
+  end
+
+  return table.concat({
+    "<!doctype html>",
+    "<html><head><meta charset=\"utf-8\"><title>" .. title .. "</title></head>",
+    "<body>" .. style_link,
+    "<div id=\"" .. container_id .. "\"></div>",
+    "<script type=\"module\">",
+    "  import { mount } from " .. string.format("%q", js_bootstrap_url) .. ";" .. extra_import,
+    "",
+    "  mount({",
+    "    chunkUrls: [" .. table.concat(chunk_urls_js, ", ") .. "],",
+    "    appModuleId: " .. string.format("%q", app_module_id) .. ",",
+    "    container: " .. string.format("%q", container) .. ",",
+    "    hydrate: " .. tostring(opts.hydrate == true) .. ",",
+    "    assetManifestUrl: " .. string.format("%q", manifest_url) .. ",",
+    "    luaGlobals: " .. lua_globals_expr .. ",",
+    "  }).then(() => { window.__hydroniumMounted = true; })",
+    "    .catch((e) => {",
+    "      window.__hydroniumMountError = String((e && e.stack) || e);",
+    "      window.__hydroniumMounted = true;",
+    "      console.error(e);",
+    "    });",
+    "</script>",
+    "</body></html>",
+  }, "\n")
+end
 
 --- Passes every input asset through UNCHANGED (this node is additive: it
 --- adds two manifest assets to whatever it received, it never removes
@@ -96,6 +175,11 @@ function M.manifest(ctx, inputs, opts)
 
   local out = graph.AssetSet.new()
   local assets_map, styles_info, modules = {}, {}, {}
+  -- M4: hy_chunk assets (client.bundle's output) are collected alongside
+  -- the manifest's existing categories so a `mount` option can derive
+  -- index.html's chunkUrls/appModuleId from the SAME data the manifest
+  -- itself is built from, rather than re-deriving them a second way.
+  local chunks = {}
 
   for _, input_set in ipairs(inputs or {}) do
     for _, asset in ipairs(input_set.assets) do
@@ -114,6 +198,8 @@ function M.manifest(ctx, inputs, opts)
             effects = h.effects or "restart",
             revision = h.revision,
           }
+        elseif asset.kind == "hy_chunk" and asset.virtual_path then
+          table.insert(chunks, { url = "/" .. asset.virtual_path, entry = h.entry })
         end
       end
     end
@@ -140,6 +226,67 @@ function M.manifest(ctx, inputs, opts)
     content = "return " .. serialize_lua_value(manifest_table, "") .. "\n",
     metadata = { hydronium = { manifest = "site", format = "lua" } },
   }))
+
+  -- M4: index.html, opt-in (see HydroniumBalladSiteManifestOptions.mount's
+  -- own doc comment for why this is opt-in rather than automatic).
+  if opts.mount and opts.mount ~= false then
+    table.sort(chunks, function(a, b) return a.url < b.url end)
+    local entry_chunks = {}
+    for _, c in ipairs(chunks) do
+      if c.entry then table.insert(entry_chunks, c) end
+    end
+    if #entry_chunks > 1 then
+      ctx.fail("hydronium_ballad.plugins.site.manifest: mount was requested but " .. #entry_chunks
+        .. " hy_chunk assets declare an entry (client.bundle's `entry` option) -- ambiguous which one "
+        .. "is the mounted page. Give each its own site.manifest({ mount = ... }) node, or pass "
+        .. "mount = false and build the shell(s) yourself.")
+    elseif #entry_chunks == 1 then
+      local chunk_urls = {}
+      for _, c in ipairs(chunks) do chunk_urls[#chunk_urls + 1] = c.url end
+      local manifest_url = opts.mount.asset_manifest_url or ("/" .. name .. ".lua")
+      local html = render_index_html(chunk_urls, entry_chunks[1].entry,
+        styles_info and styles_info.url, opts.mount, manifest_url)
+      out:add(ctx.graph:add_asset({
+        kind = "hy_index_html",
+        generated = true,
+        virtual_path = "index.html",
+        content = html,
+        metadata = { hydronium = { manifest = "site", format = "html" } },
+      }))
+
+      -- The shell above references js_bootstrap_url/lua_globals.module as
+      -- absolute site paths; without this, they 404 on any host that only
+      -- serves this sink's own output (verified for real: `python3 -m
+      -- http.server` inside a build's dist/ 404s on both before this).
+      if opts.mount.vendor then
+        local fs = require("ballad.fs")
+        local path = require("ballad.path")
+        for _, v in ipairs(opts.mount.vendor) do
+          if not v.dir or not v.url_prefix then
+            ctx.fail("hydronium_ballad.plugins.site.manifest: mount.vendor entries need both `dir` and `url_prefix`")
+          end
+          local found = fs.list_files(v.dir)
+          if #found == 0 then
+            ctx.fail("hydronium_ballad.plugins.site.manifest: mount.vendor dir '" .. v.dir
+              .. "' has no files -- refusing to silently ship an empty (or missing) directory "
+              .. "that index.html depends on")
+          end
+          local prefix = (v.url_prefix:gsub("^/", ""):gsub("/$", ""))
+          for _, source in ipairs(found) do
+            local rel = path.relative(source, v.dir)
+            out:add(ctx.graph:add_asset({
+              kind = "file",
+              source_path = source,
+              virtual_path = path.join(prefix, rel),
+            }))
+          end
+        end
+      end
+    end
+    -- #entry_chunks == 0: nothing to mount. Not an error -- mount was
+    -- requested but there is simply no hy_chunk input to this node run
+    -- (e.g. a partiture that only ever produces styles/assets here).
+  end
 
   return out
 end
