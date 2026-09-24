@@ -1,0 +1,107 @@
+---@meta "hydronium-table"
+
+---@class HydroniumTableColumn
+---@field id string
+---@field header? any
+---@field accessor fun(row: any, index?: integer): any
+---@field filter? fun(value: any, wanted: any, row: any): boolean
+---@field compare? fun(a: any, b: any, a_row: any, b_row: any): boolean
+---@field aggregate? fun(rows: HydroniumTableRow[], group: HydroniumTableGroupRow): any
+---@field size? number
+---@field min_size? number
+---@field max_size? number
+---@class HydroniumTableRow
+---@field id string
+---@field index integer
+---@field original any
+---@field cells table<string, any>
+---@field depth? integer
+---@field parent_id? string
+---@class HydroniumTableGroupRow: HydroniumTableRow
+---@field kind "group"
+---@field group_by string
+---@field group_value any
+---@field leaf_rows HydroniumTableRow[]
+---@field sub_rows (HydroniumTableGroupRow|HydroniumTableRow)[]
+---@class HydroniumTableState
+---@field sorting? {id: string, desc: boolean}[]|fun(): {id: string, desc: boolean}[]
+---@field filters? table<string, any>|fun(): table<string, any>
+---@field global_filter? any|fun(): any
+---@field column_visibility? table<string, boolean>|fun(): table<string, boolean>
+---@field column_order? string[]|fun(): string[]
+---@field column_pinning? {left: string[], right: string[]}|fun(): {left: string[], right: string[]}
+---@field column_sizing? table<string, number>|fun(): table<string, number>
+---@field expanded? table<string, boolean>|fun(): table<string, boolean>
+---@field grouping? string[]|fun(): string[]
+---@field page? integer|fun(): integer
+---@field selection? table<string, boolean>|fun(): table<string, boolean>
+---@class HydroniumTableOptions
+---@field rows any[]|fun(): any[]
+---@field columns HydroniumTableColumn[]
+---@field row_id? fun(row: any, index?: integer, parent?: any): string|number
+---@field rowId? fun(row: any, index?: integer, parent?: any): string|number
+---@field get_sub_rows? fun(row: any, index?: integer): any[]|nil
+---@field getSubRows? fun(row: any, index?: integer): any[]|nil
+---@field page_size? integer
+---@field pageSize? integer
+---@field row_count? integer|fun(): integer
+---@field rowCount? integer|fun(): integer
+---@field sorting? {id: string, desc: boolean}[]
+---@field grouping? string[]
+---@field expanded? table<string, boolean>
+---@field column_pinning? {left: string[], right: string[]}
+---@field columnPinning? {left: string[], right: string[]}
+---@field global_filter? any
+---@field globalFilter? any
+---@field global_filter_fn? fun(row: any, query: any, columns: HydroniumTableColumn[], index?: integer): boolean
+---@field globalFilterFn? fun(row: any, query: any, columns: HydroniumTableColumn[], index?: integer): boolean
+---@field aggregations? table<string, fun(rows: HydroniumTableRow[], group: HydroniumTableGroupRow): any>
+---@field row_models? fun(rows: HydroniumTableRow[], context: table): HydroniumTableRow[]
+---@field state? HydroniumTableState
+---@field on_state_change? table<string, fun(value: any)>
+---@field onStateChange? table<string, fun(value: any)>
+---@field manual_sorting? boolean
+---@field manual_filtering? boolean
+---@field manual_global_filter? boolean
+---@field manual_pagination? boolean
+---@field manualSorting? boolean
+---@field manualFiltering? boolean
+---@field manualGlobalFiltering? boolean
+---@field manualPagination? boolean
+---@class HydroniumTable
+---@field sorting fun(self: HydroniumTable): {id: string, desc: boolean}[]
+---@field setSorting fun(self: HydroniumTable, sorting: {id: string, desc: boolean}[])
+---@field toggleSort fun(self: HydroniumTable, id: string, multi?: boolean)
+---@field filters fun(self: HydroniumTable): table<string, any>
+---@field setFilter fun(self: HydroniumTable, id: string, value: any)
+---@field globalFilter fun(self: HydroniumTable): any
+---@field setGlobalFilter fun(self: HydroniumTable, value: any)
+---@field visibleColumns fun(self: HydroniumTable): HydroniumTableColumn[]
+---@field setColumnVisibility fun(self: HydroniumTable, value: table<string, boolean>)
+---@field setColumnOrder fun(self: HydroniumTable, value: string[])
+---@field getColumnGroups fun(self: HydroniumTable): {left: HydroniumTableColumn[], center: HydroniumTableColumn[], right: HydroniumTableColumn[]}
+---@field setColumnPinning fun(self: HydroniumTable, value: {left: string[], right: string[]})
+---@field pinColumn fun(self: HydroniumTable, id: string, side?: "left"|"right")
+---@field columnSize fun(self: HydroniumTable, id: string): number
+---@field resizeColumn fun(self: HydroniumTable, id: string, delta: number): number
+---@field getRows fun(self: HydroniumTable): HydroniumTableRow[]
+---@field getExpandedRows fun(self: HydroniumTable): HydroniumTableRow[]
+---@field setExpanded fun(self: HydroniumTable, value: table<string, boolean>)
+---@field toggleExpanded fun(self: HydroniumTable, id: string)
+---@field isExpanded fun(self: HydroniumTable, id: string): boolean
+---@field grouping fun(self: HydroniumTable): string[]
+---@field setGrouping fun(self: HydroniumTable, value: string[])
+---@field getGroupedRows fun(self: HydroniumTable): (HydroniumTableGroupRow|HydroniumTableRow)[]
+---@field getExpandedGroupedRows fun(self: HydroniumTable): (HydroniumTableGroupRow|HydroniumTableRow)[]
+---@field getFacetedUniqueValues fun(self: HydroniumTable, id: string): table<any, integer>
+---@field getFacetedMinMaxValues fun(self: HydroniumTable, id: string): {min: number, max: number}|nil
+---@field pageCount fun(self: HydroniumTable): integer
+---@field page fun(self: HydroniumTable): integer
+---@field setPage fun(self: HydroniumTable, page: integer)
+---@field getPageRows fun(self: HydroniumTable): HydroniumTableRow[]
+---@field selection fun(self: HydroniumTable): table<string, boolean>
+---@field toggleSelected fun(self: HydroniumTable, id: string)
+---@field isSelected fun(self: HydroniumTable, id: string): boolean
+---@class HydroniumTableModule
+---@field createTable fun(options: HydroniumTableOptions): HydroniumTable
+---@field create_table fun(options: HydroniumTableOptions): HydroniumTable

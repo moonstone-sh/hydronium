@@ -55,6 +55,18 @@ name = "router"
 path = "router"
 
 [[orbits.member]]
+name = "query"
+path = "query"
+
+[[orbits.member]]
+name = "virtual"
+path = "virtual"
+
+[[orbits.member]]
+name = "table"
+path = "table"
+
+[[orbits.member]]
 name = "ballad"
 path = "build"
 

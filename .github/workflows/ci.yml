@@ -91,6 +91,10 @@ jobs:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
           HYDRONIUM_BROWSER_GATE: node --test js/tests/consumer_scaffold.browser.test.mjs
         run: bash tests/e2e/consumer_scaffold.sh
+      - name: Published query + virtual + table consumer gate
+        env:
+          MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
+        run: bash tests/e2e/data_primitives_consumer.sh
       - name: Static SPA browser gate
         run: |
           (cd examples/spa_hash_demo && moon exec -- ballad play partiture.lua)

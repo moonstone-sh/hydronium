@@ -1,0 +1,77 @@
+---@meta "hydronium-virtual"
+
+---@alias HydroniumVirtualAxis "vertical"|"horizontal"
+---@class HydroniumVirtualRange
+---@field start_index integer
+---@field end_index integer
+---@field overscan_start integer
+---@field overscan_end integer
+---@field count integer
+---@class HydroniumVirtualItem
+---@field index integer
+---@field key any
+---@field start number
+---@field size number
+---@class HydroniumVirtualSnapshot
+---@field offset number
+---@field sizes table<any, number>
+---@class HydroniumVirtualizerOptions
+---@field count integer|fun(): integer
+---@field estimate_size? number|fun(index: integer): number
+---@field estimateSize? number|fun(index: integer): number
+---@field axis? HydroniumVirtualAxis
+---@field overscan? integer
+---@field key? fun(index: integer): any
+---@field getItemKey? fun(index: integer): any
+---@field key_revision? any|fun(): any
+---@field keyRevision? any|fun(): any
+---@field range_extractor? fun(range: HydroniumVirtualRange): integer[]
+---@field rangeExtractor? fun(range: HydroniumVirtualRange): integer[]
+---@field initial_offset? number
+---@field initialOffset? number
+---@field initial_viewport_size? number
+---@field initialViewportSize? number
+---@field initial_snapshot? HydroniumVirtualSnapshot
+---@field initialSnapshot? HydroniumVirtualSnapshot
+---@field padding_start? number
+---@field paddingStart? number
+---@field padding_end? number
+---@field paddingEnd? number
+---@field adjust_scroll? boolean
+---@field adjustScroll? boolean
+---@class HydroniumVirtualizer
+---@field axis fun(self: HydroniumVirtualizer): HydroniumVirtualAxis
+---@field count fun(self: HydroniumVirtualizer): integer
+---@field invalidate fun(self: HydroniumVirtualizer)
+---@field size fun(self: HydroniumVirtualizer, index: integer): number
+---@field measure fun(self: HydroniumVirtualizer, index: integer, size: number)
+---@field offsetOf fun(self: HydroniumVirtualizer, index: integer): number
+---@field offset_of fun(self: HydroniumVirtualizer, index: integer): number
+---@field totalSize fun(self: HydroniumVirtualizer): number
+---@field total_size fun(self: HydroniumVirtualizer): number
+---@field setScrollOffset fun(self: HydroniumVirtualizer, offset: number)
+---@field set_scroll_offset fun(self: HydroniumVirtualizer, offset: number)
+---@field scrollOffset fun(self: HydroniumVirtualizer): number
+---@field scroll_offset fun(self: HydroniumVirtualizer): number
+---@field setViewportSize fun(self: HydroniumVirtualizer, size: number)
+---@field set_viewport_size fun(self: HydroniumVirtualizer, size: number)
+---@field viewportSize fun(self: HydroniumVirtualizer): number
+---@field viewport_size fun(self: HydroniumVirtualizer): number
+---@field getVirtualItems fun(self: HydroniumVirtualizer): HydroniumVirtualItem[]
+---@field get_virtual_items fun(self: HydroniumVirtualizer): HydroniumVirtualItem[]
+---@field scrollToIndex fun(self: HydroniumVirtualizer, index: integer, align?: "start"|"center"|"end"): number
+---@field scroll_to_index fun(self: HydroniumVirtualizer, index: integer, align?: "start"|"center"|"end"): number
+---@field takeSnapshot fun(self: HydroniumVirtualizer): HydroniumVirtualSnapshot
+---@class HydroniumVirtualHost
+---@field observeViewport fun(callback: fun(size: number)): fun()|nil
+---@field observeOffset fun(callback: fun(offset: number)): fun()|nil
+---@field observeItem? fun(item: any, callback: fun(size: number)): fun()|nil
+---@field scrollTo fun(offset: number)
+---@class HydroniumVirtualBinding
+---@field observeItem fun(self: HydroniumVirtualBinding, index: integer, item: any)
+---@field scrollToIndex fun(self: HydroniumVirtualBinding, index: integer, align?: "start"|"center"|"end"): number
+---@field dispose fun(self: HydroniumVirtualBinding)
+---@class HydroniumVirtualModule
+---@field createVirtualizer fun(options: HydroniumVirtualizerOptions): HydroniumVirtualizer
+---@field create_virtualizer fun(options: HydroniumVirtualizerOptions): HydroniumVirtualizer
+---@field bind fun(virtualizer: HydroniumVirtualizer, host: HydroniumVirtualHost): HydroniumVirtualBinding
