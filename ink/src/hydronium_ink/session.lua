@@ -8,6 +8,8 @@ local scheduler = require("hydronium.core.scheduler")
 local terminalHost = require("hydronium_ink.host.terminal")
 local hooks = require("hydronium_ink.hooks")
 local keys = require("hydronium_ink.keys")
+-- Component scope chain: input ordering is read from tree depth, see below.
+local scopeModule = require("hydronium.core.scope")
 -- Wall-clock (gettimeofday), NOT os.clock()'s CPU time -- see Session:step.
 local clock = require("hydronium_ink.clock")
 
@@ -15,31 +17,40 @@ local M = {}
 local Session = {}
 Session.__index = Session
 
---- Input dispatch layers, highest priority first.
+--- Input propagates like a DOM event: from the DEEPEST handler outward to
+--- the root, and any handler can stop it.
 ---
---- SEMANTIC NAMES, NOT NUMBERS, deliberately. A numeric priority is a shared
---- namespace nobody owns: every component picks a number that beats the last
---- one it saw, they drift upward, and a collision is invisible until two
---- handlers quietly fight over a key. A short ordered enum makes a component
---- declare what it IS, and the whole ordering fits on one screen and is
---- reviewable in a diff.
+--- Ordering is derived from where a component sits in the tree, not declared.
+--- An earlier version of this used a four-value layer enum
+--- (overlay/focus/view/global), which was a mistake: even a short enum is a
+--- global namespace: adding a fifth means editing a shared table, two
+--- components both claiming "overlay" have no resolution, and the name
+--- restates information composition already encodes. Depth needs no
+--- coordination at all, and it produces the ordering the enum was
+--- approximating -- a focused field is deep, an app-wide shortcut is
+--- registered at the root, so the field is offered the key first and the
+--- shortcut last, automatically.
 ---
----   overlay  a modal or confirm prompt -- owns the keyboard while it exists
----   focus    the focused widget (a text field), gated on real focus
----   view     the active screen's own shortcuts (j/k, g/G)
----   global   app-wide bindings (q to quit) -- last, so a text field wins
-M.LAYERS = { overlay = 4, focus = 3, view = 2, global = 1 }
+--- Depth is read from the component scope chain at REGISTRATION time (that
+--- is the one moment a hook runs inside its component's setup), so nothing
+--- has to be threaded through props or context by hand.
+--- @param scope table|nil
+--- @return integer
+local function scopeDepth(scope)
+  local depth = 0
+  while scope do
+    depth = depth + 1
+    scope = scope.parent
+  end
+  return depth
+end
 
+--- Deepest first; registration order breaks ties between siblings.
 --- @param a table
 --- @param b table
 --- @return boolean
-local function byLayerThenRegistration(a, b)
-  local ra, rb = M.LAYERS[a.layer] or 0, M.LAYERS[b.layer] or 0
-  if ra ~= rb then return ra > rb end
-  -- Registration order within a layer, taken from the monotonic id rather
-  -- than from table iteration order: the previous implementation iterated
-  -- handlers with `pairs()`, which happens to come out in insertion order for
-  -- this access pattern but guarantees nothing.
+local function byDepthThenRegistration(a, b)
+  if a.depth ~= b.depth then return a.depth > b.depth end
   return a.id < b.id
 end
 
@@ -178,7 +189,7 @@ function M.create(element, opts)
       local entry = {
         id = self._nextHandlerId,
         handler = handler,
-        layer = M.LAYERS[(handlerOpts or {}).layer] and (handlerOpts or {}).layer or "view",
+        depth = scopeDepth(scopeModule.getScope()),
         focusId = (handlerOpts or {}).focusId,
       }
       self._handlers[#self._handlers + 1] = entry
@@ -190,7 +201,7 @@ function M.create(element, opts)
       local entry = {
         id = id,
         handler = handler,
-        layer = M.LAYERS[(handlerOpts or {}).layer] and (handlerOpts or {}).layer or "view",
+        depth = scopeDepth(scopeModule.getScope()),
         focusId = (handlerOpts or {}).focusId,
       }
       self._pasteHandlers[#self._pasteHandlers + 1] = entry
@@ -219,6 +230,10 @@ function M.create(element, opts)
     disableFocus = function() self._setFocusEnabled(false) end,
     focusNext = function() focusByOffset(1) end,
     focusPrevious = function() focusByOffset(-1) end,
+    -- Clearing focus had no public route: registerFocusable's cleanup does it
+    -- on unmount, but a live component had no way to hand focus back. A text
+    -- field that can be focused and not blurred is only half a widget.
+    blur = function() setFocus(nil) end,
     focus = function(id)
       for _, entry in ipairs(self._focusEntries) do
         if entry.id == id then setFocus(id) return end
@@ -395,7 +410,7 @@ function Session:_dispatchToLayers(handlers, invoke)
   -- opening an overlay), which mutates the live list mid-iteration.
   local ordered = {}
   for _, entry in ipairs(handlers) do ordered[#ordered + 1] = entry end
-  table.sort(ordered, byLayerThenRegistration)
+  table.sort(ordered, byDepthThenRegistration)
 
   local activeFocus = self._getActiveFocusId()
   local consumed = false
@@ -406,7 +421,10 @@ function Session:_dispatchToLayers(handlers, invoke)
 
   for _, entry in ipairs(ordered) do
     if consumed then break end
-    local gated = entry.layer == "focus" and entry.focusId ~= nil and entry.focusId ~= activeFocus
+    -- A handler bound to a focus id is offered the event only while its
+    -- component holds focus. Orthogonal to depth: depth says which handler is
+    -- more specific, focus says which of several equally-deep fields is live.
+    local gated = entry.focusId ~= nil and entry.focusId ~= activeFocus
     if not gated then
       invoke(entry.handler, evt)
     end

@@ -438,7 +438,7 @@ local function main()
       "tests/host/assets_spec.lua",
       "tests/host/terminal_spec.lua",
       "tests/host/keys_spec.lua",
-      "tests/host/input_layers_spec.lua",
+      "tests/host/input_propagation_spec.lua",
       "tests/host/render_spec.lua",
       "tests/host/ink_session_spec.lua",
       "tests/host/ink_lab_spec.lua",
@@ -507,6 +507,7 @@ local function main()
       "cli/tests/search_field_spec.lua",
       "cli/tests/search_bar_spec.lua",
       "cli/tests/inspector_filter_spec.lua",
+      "cli/tests/filter_focus_spec.lua",
       "cli/tests/build_runner_spec.lua",
       "cli/tests/build_verify_spec.lua",
     }

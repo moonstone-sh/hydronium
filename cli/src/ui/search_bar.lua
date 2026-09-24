@@ -22,8 +22,16 @@
 
 local hydronium = require("hydronium")
 local ink = require("hydronium_ink")
+local hooks = require("hydronium_ink.hooks")
+local query = require("query")
+local search_field = require("ui.search_field")
 
 local M = {}
+
+--- The bar's focus id. A stable constant rather than a generated one so the
+--- `/` binding elsewhere can focus it by name without having to be handed a
+--- reference through props.
+M.FOCUS_ID = "hydronium-cli.filter"
 
 --- Chip colours. Drawn from the 8-colour set the terminal host speaks (see
 --- host/terminal.lua) so they render identically everywhere rather than
@@ -147,6 +155,55 @@ function M.render(state, tokens, opts)
   end
 
   return hydronium.h(ink.Box, { flexDirection = "row", flexWrap = "wrap" }, children)
+end
+
+--- The bar as a real focusable component.
+---
+--- Its key handling is bound to its own focus id, so it is offered input ONLY
+--- while focused, and it stops propagation on everything it takes. That is
+--- what keeps `q` from quitting and `f` from leaving the view while you are
+--- typing a filter -- and it holds without any handler elsewhere knowing this
+--- component exists, because ordering comes from the tree and the gate comes
+--- from focus.
+--- @param state table The CLI ui state (see ui/app.lua's new_state).
+--- @return function component
+function M.create(state)
+  return function()
+    local focus = hooks.useFocus({ id = M.FOCUS_ID })
+    local manager = hooks.useFocusManager()
+    local clipboard = hooks.useClipboard()
+
+    hooks.useInput(function(input, key, evt)
+      key = key or {}
+      evt.stop()
+      if key.escape or key["return"] then
+        -- Enter commits by blurring; the filter is already live, since it
+        -- reapplies on every keystroke.
+        manager.blur()
+        return
+      end
+      local next_state, intent = search_field.handle_key(state.search(), { input = input, key = key })
+      state.set_search(next_state)
+      state.set_search_revision(state.search_revision() + 1)
+      if intent and intent.type == "copy" then
+        clipboard.write(intent.text)
+      end
+    end, { focusId = focus.id })
+
+    hooks.usePaste(function(text, evt)
+      evt.stop()
+      state.set_search(search_field.handle_key(state.search(), { type = "paste", text = text }))
+      state.set_search_revision(state.search_revision() + 1)
+    end, { focusId = focus.id })
+
+    return function()
+      state.search_revision()
+      local field_state = state.search()
+      return hydronium.h(ink.Box, { flexDirection = "row" },
+        hydronium.h(ink.Text, { dimColor = not focus.isFocused() }, " / "),
+        M.render(field_state, query.tokenize(field_state.text), { focused = focus.isFocused() }))
+    end
+  end
 end
 
 return M

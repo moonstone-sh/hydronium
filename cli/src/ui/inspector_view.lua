@@ -86,6 +86,11 @@ end
 --- @return fun(): fun(): any A Hydronium component.
 function M.create_view(state)
   return function()
+    -- Created ONCE in setup, not per render: `search_bar.create` returns a new
+    -- component type each call, and a fresh type every render would remount
+    -- the bar -- losing focus, caret and text on every keystroke.
+    local SearchBar = search_bar.create(state)
+
     return function()
       -- Reactive: a resize re-runs this closure, so the window and the
       -- path column both follow the real terminal.
@@ -135,9 +140,7 @@ function M.create_view(state)
         title = title .. string.format(" (%d older dropped)", history.dropped)
       end
 
-      children[#children + 1] = hydronium.h(ink.Box, { flexDirection = "row" },
-        hydronium.h(ink.Text, { dimColor = not state.search_focused() }, " / "),
-        search_bar.render(state.search(), parsed.tokens, { focused = state.search_focused() }))
+      children[#children + 1] = hydronium.h(SearchBar)
 
       children[#children + 1] = hydronium.h(ink.Box, { flexDirection = "row" },
         hydronium.h(ink.Text, { bold = true }, " " .. title),

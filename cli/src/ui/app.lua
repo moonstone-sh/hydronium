@@ -254,7 +254,7 @@ function M.create_app(state, opts)
     local alt = hooks.useAltScreen()
     -- OSC 52 write, for the filter bar's copy binding. Set up here at the
     -- component's one-time setup call, like every other hook in this file.
-    local clipboard = hooks.useClipboard()
+    local focus_manager = hooks.useFocusManager()
 
     -- The REACTIVE window-size getter, not a snapshot of its value the way
     -- `hooks.useWindowSize()` would hand back. The key handler below runs
@@ -296,49 +296,6 @@ function M.create_app(state, opts)
       state.set_selection(inspector.move_selection(state.selection(), delta, state.history:count()))
     end
 
-    -- The filter bar, on its OWN handler at the `overlay` layer rather than
-    -- as an early return inside the shortcut handler below. Layer ordering is
-    -- what guarantees it sees a key first; `evt.stop()` is what guarantees
-    -- the shortcuts never also see it. Typing `q` into a filter must not quit
-    -- the process, and that must hold no matter what other handlers get
-    -- added later -- which an early return in one shared function cannot
-    -- promise, since it only orders the branches it happens to contain.
-    --
-    -- STILL TO DO: the bar is not yet a focusable component, so it gates on
-    -- its own `search_focused` signal instead of a real focus id. Once it
-    -- calls useFocus, this becomes `{ layer = "focus", focusId = ... }` and
-    -- the gate disappears entirely -- see hydronium_ink.session.LAYERS.
-    hooks.useInput(function(input, key, evt)
-      key = key or {}
-      if not state.search_focused() then
-        return
-      end
-      evt.stop()
-
-      if key.escape or key["return"] then
-        -- Enter commits by blurring; the filter is already live, since it
-        -- reapplies on every keystroke.
-        state.set_search_focused(false)
-        return
-      end
-      local next_state, intent = search_field.handle_key(state.search(), { input = input, key = key })
-      state.set_search(next_state)
-      state.set_search_revision(state.search_revision() + 1)
-      if intent and intent.type == "copy" and clipboard then
-        clipboard.write(intent.text)
-      end
-    end, { layer = "overlay" })
-
-    -- Pasting into the filter, same layer and the same reasoning.
-    hooks.usePaste(function(text, evt)
-      if not state.search_focused() then
-        return
-      end
-      evt.stop()
-      state.set_search(search_field.handle_key(state.search(), { type = "paste", text = text }))
-      state.set_search_revision(state.search_revision() + 1)
-    end, { layer = "overlay" })
-
     hooks.useInput(function(input, key)
       key = key or {}
 
@@ -346,7 +303,11 @@ function M.create_app(state, opts)
       -- shares. Only meaningful in the fullscreen view, which is where the
       -- request list lives.
       if input == "/" and state.fullscreen() then
-        state.set_search_focused(true)
+        -- Focus the bar by id. Nothing here knows how the bar handles keys,
+        -- and the bar knows nothing about these shortcuts: it is offered
+        -- input because it is focused and deeper in the tree, and it stops
+        -- propagation on what it takes.
+        focus_manager.focus(search_bar.FOCUS_ID)
         return
       end
 

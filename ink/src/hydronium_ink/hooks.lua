@@ -73,16 +73,15 @@ end
 
 --- @class hydronium_ink.UseInputOptions
 --- @field isActive? boolean Default true. Read once at setup (see this module's own doc comment for why this isn't reactive yet).
---- @field layer? "overlay"|"focus"|"view"|"global" Dispatch layer, highest
----   first; hydronium_ink.session.LAYERS documents what each one means.
----   Default "view". Handlers run in layer order and stop as soon as one
----   calls `evt.stop()`, so a focused text field takes a key before a screen
----   shortcut, and a screen shortcut before an app-wide binding.
 --- @field focusId? string Bind this handler to a focus id (from
----   `useFocus().id`). Only meaningful on the "focus" layer, where the
----   handler runs ONLY while that component holds focus -- so a component
----   never has to test `isFocused()` inside its own handler, and a key
----   cannot leak to an unfocused field.
+---   `useFocus().id`). The handler is then offered the event ONLY while that
+---   component holds focus -- so a component never has to test `isFocused()`
+---   inside its own handler, and a key cannot leak to an unfocused field.
+---
+--- There is no priority or layer option, deliberately. Input propagates from
+--- the deepest handler outward to the root, so ordering comes from where a
+--- component sits in the tree; a handler stops it with `evt.stop()`. Nesting
+--- a component more deeply is how it takes precedence.
 
 --- Registers `handler(input, key)` to be called for every real keypress
 --- while this component is mounted (and `isActive` was true at setup
@@ -102,15 +101,12 @@ function M.useInput(handler, opts)
   end
 
   local ctx = requireAppContext("useInput")
-  local unregister = ctx.registerInputHandler(handler, {
-    layer = opts.layer,
-    focusId = opts.focusId,
-  })
+  local unregister = ctx.registerInputHandler(handler, { focusId = opts.focusId })
   hydronium.onCleanup(unregister)
 end
 
 --- @class hydronium_ink.InputEvent
---- @field stop fun() Consume the event: no lower-layer handler will see it.
+--- @field stop fun() Stop propagation: no shallower handler will see it.
 --- @field isConsumed fun(): boolean
 
 --- @class hydronium_ink.UsePasteOptions
@@ -138,10 +134,7 @@ function M.usePaste(handler, opts)
   end
 
   local ctx = requireAppContext("usePaste")
-  local unregister = ctx.registerPasteHandler(handler, {
-    layer = opts.layer,
-    focusId = opts.focusId,
-  })
+  local unregister = ctx.registerPasteHandler(handler, { focusId = opts.focusId })
   hydronium.onCleanup(unregister)
 end
 
@@ -209,6 +202,7 @@ end
 --- @field focusNext fun()
 --- @field focusPrevious fun()
 --- @field focus fun(id: string) No-op if no registered component has that id (matches real Ink's own documented behavior).
+--- @field blur fun() Clears focus entirely, so no component holds it.
 --- @field activeId string|nil The currently focused component's id, or nil. Read ONCE at this call, not a reactively-updating field the way real Ink's own hook re-returns it every render -- call `useFocusManager()` again from your render closure for an updated value (same pattern as `useFocus`'s `isFocused` above and useWindowSize()/useBoxMetrics()).
 
 --- @return hydronium_ink.UseFocusManagerResult
@@ -219,6 +213,7 @@ function M.useFocusManager()
     disableFocus = ctx.disableFocus,
     focusNext = ctx.focusNext,
     focusPrevious = ctx.focusPrevious,
+    blur = ctx.blur,
     focus = ctx.focus,
     activeId = ctx.getActiveId(),
   }
