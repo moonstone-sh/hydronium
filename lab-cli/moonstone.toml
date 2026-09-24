@@ -2,7 +2,7 @@ manifest_version = 2
 
 [package]
 name = "hydronium/lab-cli"
-version = "0.1.0"
+version = "0.2.0"
 kind = "bin"
 description = "Host-neutral Hydronium Lab launcher with explicit host adapters"
 
@@ -18,12 +18,12 @@ package = "moon exec -- ballad play partiture.lua"
 
 [[dependencies]]
 name = "moonstone/clingy"
-constraint = "^0.6.8"
+constraint = "^0.7.0"
 role = "runtime"
 
 [[dependencies]]
 name = "moonstone/valua"
-constraint = "^0.2.7"
+constraint = "^0.3.0"
 role = "runtime"
 
 [[dependencies]]
@@ -34,5 +34,5 @@ role = "runtime"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.3.7"
+constraint = "^0.4.0"
 role = "tool"

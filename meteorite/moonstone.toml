@@ -2,7 +2,8 @@ manifest_version = 2
 
 [package]
 name = "hydronium/meteorite"
-version = "0.1.0"
+registry_name = "hydronium"
+version = "0.2.0"
 kind = "lib"
 description = "Meteorite development-host integration for Hydronium Lab"
 
@@ -16,7 +17,7 @@ package = "moon exec -- ballad play partiture.lua"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.3.7"
+constraint = "^0.4.0"
 role = "tool"
 
 [[dependencies]]

@@ -1,0 +1,177 @@
+# Hydronium developer-experience inventory
+
+This is an implementation inventory, not a promise list. “Verified” means a
+source, artifact, or browser gate exists in this repository as of 2026-09-24.
+“Needs work” is intentionally concrete: it names the gap a developer would
+feel, rather than treating an unfinished checklist as a defect in itself.
+
+## The product shape
+
+Hydronium is a Lua/LuaJIT reactive UI system with one component and signal
+model across DOM, server rendering, terminal Ink, and Lab hosts. LUAX is
+optional authoring syntax; normal Lua is always a first-class runtime path.
+
+The strongest design property is the separation of pure policy from a host:
+
+```text
+application state / components
+        │
+hydronium/core ── router / query / table / virtual
+        │
+DOM + SSR + Meteorite       Ink terminal       Lab adapters
+```
+
+That lets a route, form, table model, or virtual-list geometry stay testable
+without a browser or terminal. It is the right substrate for a pleasant Lua
+DX: direct APIs in normal Lua, with higher-level hosts as adapters rather than
+parallel frameworks.
+
+## Golden-path acceptance criterion
+
+From an empty directory, a Lua developer should be able to create a Hydronium
+application, open it in a supported editor with working diagnostics and
+completion, run it, modify a component with HMR, execute its tests, produce a
+release artifact, and reproduce the build from its lockfile **without manually
+configuring framework internals**.
+
+This is the acceptance test for near-term work. A feature should either make
+that path smoother or close a demonstrated advanced use case. It keeps the
+project from confusing legitimate substrate work—masonry, adaptive overscan,
+automatic RTL normalization, enormous benchmarks, or additional grouping
+semantics—with the work that makes a first-time adopter think “this is nice.”
+
+## Surfaces
+
+| Surface | What a developer gets today | Confidence / main gap |
+| --- | --- | --- |
+| `hydronium/core` | Signals, effects/scopes, components, reconciliation, refs, HMR family replacement, host contract. | Strong substrate. It is the dependency root; it does not depend on Query, Virtual, or Table. |
+| `hydronium/luax` | `.luax` parser/compiler, formatter, source maps, loader, Tree-sitter grammar, LuaLS virtual-source plugin, DOM type generation. | Rich editor story, but the configuration path needs consolidation into one copyable setup. |
+| `hydronium/dom` | DOM host, SSR HTML renderer, hydration, styles/assets, browser bridge, forms, browser fetch seam, Vite-facing client files. | Real browser gates exist. A full Wasmoon proof for every newer adapter is still thinner than the normal DOM coverage. |
+| `hydronium/ink` | Terminal renderer, Yoga layout, Box/Text/Newline, colors, keyboard parser, controlled scroll boxes, refs/measurement, HMR. | Serious terminal foundation. The new Virtual/Table primitives are not yet exercised by the CLI’s real Ink inspector. |
+| `hydronium/router` | Declarative site tree, matching, memory/browser/hash histories, loaders/actions, Meteorite adapter, typed href direction. | Strong host-neutral route model; server/client examples exist. |
+| `hydronium/query` | Optional shared client-data cache: canonical keys, observer dedupe, cancellation, invalidation, GC, mutations, signal-backed `useQuery`. | Useful optional layer; it intentionally does not replace local `Resource` or router loaders. |
+| `hydronium/virtual` | Pure Fenwick-tree geometry; variable sizes, keyed measurements, anchor preservation, vertical/horizontal axes, snapshots, custom ranges, DOM/Ink host adapters. | Solid for one-dimensional lists. No lanes/masonry, automatic RTL normalization, dynamic overscan, or scroll-end lifecycle yet. |
+| `hydronium/table` | Headless rows, local/server filters, global search, facets, multi-sort, pagination, selection, visibility/order/pinning/sizing, expansion, grouping, aggregates. | Broad headless model. Needs a polished rendered example and high-volume/performance scenarios. |
+| `hydronium/lab`, `ink-lab`, `lab-cli` | Portable component stories, explicit registries, Ink frame workbench, host-neutral launcher. | Valuable verification and exploration surfaces; host/docs cohesion can improve. |
+| `hydronium/meteorite` | Meteorite integration and typed-client direction. | Correct boundary: Meteorite owns server APIs and DTO generation; Hydronium consumes public DTOs. |
+| `hydronium/ballad` | LUAX/CSS/assets/site/client build plugins and registry export composition. | Export path is real. Some older planning docs describe work that should not be read as current behavior. |
+| `hydronium/create` | Project scaffolding for minimal, SSR, islands, Ink, LÖVE, and SPA variants. | The islands consumer path is browser-proven. Templates should stay aligned with the supported build contract. |
+| `hydronium/cli` | `hydronium dev` status UI, build runner, request inspector, logs and supervisor. | A real Hydronium Ink application, but its request list is manually windowed rather than built from Table + Virtual. |
+
+## Authoring and editor experience
+
+### Normal Lua
+
+The baseline is deliberately small: functions/components, `h(...)`, signals,
+and explicit `require`. This is the safest entry point and has the least magic.
+It is also the escape hatch when LUAX, an editor plugin, or a host is not
+available.
+
+### LUAX
+
+LUAX adds tag syntax without changing the runtime language. Its compiler,
+formatter, lexer/parser, source maps, and virtual Lua lowering are separate
+modules with source tests. The LuaLS layer preserves byte-aligned virtual
+source coordinates so diagnostics and go-to-definition can point at `.luax`.
+
+The attractive part of the design is that editor tooling is based on LuaLS,
+not on a custom Hydronium language server. The cost is configuration: users
+still have to understand LuaLS library paths and plugin setup.
+
+### Neovim: is it exportable?
+
+**Yes, as part of `hydronium/luax`.** The LUAX Ballad artifact explicitly
+includes all of the following, and the exported tarball contains them:
+
+- `nvim/` (`require("luax").setup()` and health support);
+- filetype detection;
+- Tree-sitter parser and LuaX queries;
+- LuaCATS declarations; and
+- the LuaLS plugin plus virtual-source implementation.
+
+That is a real exportable editor payload, not checkout-only tooling.
+
+**No, not yet as a turnkey Neovim distribution.** There is no dedicated
+Neovim-package-manager manifest or one canonical “install from Moonstone”
+recipe that puts the exported `nvim/` directory on `runtimepath`, configures
+the parser, and enrolls LuaLS in one step. The project currently documents the
+pieces. A lovely experience needs one supported command/snippet and a
+headless-Neovim consumer gate against the exported artifact.
+
+### VS Code
+
+LUAX carries syntax and language-configuration assets and documents LuaLS
+configuration. This is usable, but it has the same configuration-fragmentation
+problem as Neovim: the supported project bootstrap should generate and verify
+the exact settings rather than asking people to combine several documents.
+
+## Data and application boundaries
+
+There is a clear intended division:
+
+- `Resource`: component-local render dependency.
+- Router loader: navigation-owned data and transitions.
+- Query: shared client cache, opt-in.
+- Meteorite: server/API authority and DTO generation.
+- Bun/Drizzle: may remain on the service side; database entities should be
+  mapped to public DTOs before crossing into Hydronium.
+
+This is a good boundary. It prevents Query from becoming an accidental router,
+and prevents UI code from treating Drizzle entities as transport contracts.
+
+## Packaging and confidence
+
+Verified now:
+
+- The root suite most recently passed **1248/1248**.
+- Query, Virtual, and Table each have package-owned focused specs.
+- All three have Moonstone-generated locks and Ballad source artifacts.
+- Virtual and Table ship LuaCATS declarations with their artifacts.
+- A CI consumer gate builds a disposable file registry, installs exported
+  Query + Virtual + Table into a fresh project, performs normal and locked
+  sync, rejects source-checkout leakage, and executes a combined model.
+- Browser CI includes real Chromium gates for core DOM behavior and the DOM
+  Virtual bridge.
+
+Important nuance: a green source suite is not publication. Registry publish,
+tagging, and a CI run from the pushed branch remain separate release evidence.
+
+## What keeps adoption from being boring today
+
+1. **One supported happy path.** The architecture is richer than the starter
+   experience. A developer should be able to choose “DOM islands”, “SSR”, or
+   “Ink” and receive a working editor, dev, test, and build story with no
+   archaeology across plans.
+2. **Editor bootstrap.** Convert the existing Neovim/VS Code/LuaLS pieces into
+   generated, tested project configuration. The exported Neovim payload is
+   there; installation ergonomics are not finished.
+3. **Rendered reference applications.** Build one polished DOM data-grid and
+   one Ink request-inspector migration using Table + Virtual. They should
+   demonstrate measurement, selection, pinning, grouping, keyboard handling,
+   loading/error/empty states, and accessible fallbacks.
+4. **Examples are the contract.** Keep docs limited to commands that are run in
+   CI. Old architectural plans must be labelled historical or reconciled with
+   current behavior; otherwise a capable system feels unreliable.
+5. **Release discipline.** Push the committed work, let the web and artifact
+   gates run remotely, then publish only from that proven closure. Regenerate
+   locks with Moonstone; never repair them by hand.
+6. **Advanced Virtual/Table work follows demonstrated need.** Grid/masonry,
+   automatic RTL normalization, adaptive overscan, and very-large-data
+   benchmarks are worthwhile only after the golden path and its examples are
+   boringly reliable.
+
+## Recommended sequence
+
+1. Make the CLI inspector the real Ink Table + Virtual integration test.
+2. Add a generated LuaLS/editor bootstrap to `hydronium/create`, including a
+   Neovim smoke test over the exported LUAX artifact.
+3. Add a DOM virtualized-table example with an artifact-consumer browser gate.
+4. Reconcile or retire stale plan claims, then publish from green remote CI.
+
+Hydronium already looks adoptable at the systems level. The package-owned
+specs, generated Moonstone locks, artifact-consumer CI, Chromium gates,
+exported editor payloads, and source-checkout-leak detection are the evidence:
+they let us stop proving that the architecture could work.
+
+The remaining job is making adoption boring: a Lua developer should be able to
+spend their first hour building an application, not integrating a framework.

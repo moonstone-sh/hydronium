@@ -2,7 +2,8 @@ manifest_version = 2
 
 [package]
 name = "hydronium/cli"
-version = "0.2.0"
+registry_name = "hydronium"
+version = "0.3.0"
 kind = "bin"
 description = "Hydronium developer CLI: `hydronium dev` wraps a Meteorite dev server with a live Hydronium Ink status view"
 
@@ -67,12 +68,12 @@ role = "runtime"
 # `link:` override.
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.3.13"
+constraint = "^0.4.0"
 role = "tool"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.3.13"
+constraint = "^0.4.0"
 role = "runtime"
 
 # `hydronium build` (src/build_runner.lua, src/build_verify.lua) requires

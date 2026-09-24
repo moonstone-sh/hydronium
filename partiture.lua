@@ -31,6 +31,7 @@ return ballad.partiture(function(p)
         { from = package_orbit("core"), to = "core" },
         { from = package_orbit("dom"), to = "dom" },
         { from = package_orbit("luax"), to = "luax" },
+        { from = package_orbit("oklab-utils"), to = "oklab-utils" },
         { from = package_orbit("ink"), to = "ink" },
         { from = package_orbit("lab"), to = "lab" },
         { from = package_orbit("lab-cli"), to = "lab-cli" },
