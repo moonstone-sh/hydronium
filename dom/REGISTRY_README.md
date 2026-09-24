@@ -74,9 +74,11 @@ mount the editable application beneath it:
 
 ```js
 import { mount } from "/js/bootstrap/mount.js";
+import { createBrowserRequest } from "/js/bootstrap/fetch.js";
 import { createFormGlobals } from "/js/bootstrap/forms.js";
 import { createHistoryGlobals } from "/js/router/history.js";
 
+const request = createBrowserRequest();
 const { lua } = await mount({
   hydroniumBaseUrl: "/hydronium-src",
   manifestUrl: "/__hydronium/client_manifest.json",
@@ -91,7 +93,7 @@ const { lua } = await mount({
   hmr: true,
   luaGlobals: {
     ...createHistoryGlobals(),
-    ...createFormGlobals(),
+    ...createFormGlobals({ request }),
   },
 });
 ```

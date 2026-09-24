@@ -70,6 +70,22 @@ export function createDomBridge() {
   }
 
   return {
+    observe_virtual_item(el, axis, onMeasure) {
+      const horizontal = axis === "horizontal";
+      const report = () => onMeasure(horizontal ? el.getBoundingClientRect().width : el.getBoundingClientRect().height);
+      const observer = typeof ResizeObserver === "function" ? new ResizeObserver(report) : null;
+      observer?.observe(el); report();
+      return () => observer?.disconnect();
+    },
+    observe_virtual_container(el, axis, onViewport, onOffset) {
+      const horizontal = axis === "horizontal";
+      const sync = () => { onViewport(horizontal ? el.clientWidth : el.clientHeight); onOffset(horizontal ? el.scrollLeft : el.scrollTop); };
+      el.addEventListener("scroll", sync, { passive: true });
+      const observer = typeof ResizeObserver === "function" ? new ResizeObserver(sync) : null;
+      observer?.observe(el); sync();
+      return () => { el.removeEventListener("scroll", sync); observer?.disconnect(); };
+    },
+    scroll_virtual_container(el, axis, offset) { el[axis === "horizontal" ? "scrollLeft" : "scrollTop"] = offset; },
     create_element(tag) {
       return document.createElement(tag);
     },

@@ -185,6 +185,7 @@ jobs:
         run: |
           node --test js/tests/router_hash_history.browser.test.mjs
           node --test js/tests/overlay.browser.test.mjs
+          node --test js/tests/virtual.browser.test.mjs
 
       - name: Tailwind + build-manifest gate
         working-directory: js/examples/islands-tailwind

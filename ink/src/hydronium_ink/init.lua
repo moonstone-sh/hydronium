@@ -108,6 +108,7 @@
 --]]
 
 local symbols = require("hydronium.core.symbols")
+local virtual = require("hydronium_ink.virtual")
 local elementModule = require("hydronium.core.element")
 
 local descriptor_metatable = {
@@ -229,6 +230,7 @@ local ink = {
   Spacer = create_descriptor("Spacer"),
   Transform = create_descriptor("Transform"),
   createIntrinsic = create_descriptor,
+  createVirtualHost = virtual.createVirtualHost,
 }
 
 setmetatable(ink, {

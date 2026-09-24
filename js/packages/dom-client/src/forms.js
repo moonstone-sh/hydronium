@@ -1,6 +1,7 @@
 /* Browser enhancement for hydronium.forms, composed through mount.luaGlobals. */
 
 import { getCurrentDomEvent } from "./dom_bridge.js";
+import { createBrowserRequest, readResponse } from "./fetch.js";
 
 const EVENT_PAYLOADS = Symbol.for("hydronium.dom.eventPayloads");
 
@@ -39,10 +40,10 @@ function valuesFromForm(form, FormDataImpl) {
  * an ordinary browser submission still uses the form's method/action.
  */
 export function createFormGlobals(options = {}) {
-  const fetchImpl = options.fetch ?? globalThis.fetch;
+  const request = options.request ?? createBrowserRequest({ fetch: options.fetch });
   const FormDataImpl = options.FormData ?? globalThis.FormData;
   const navigate = options.navigate ?? ((url) => globalThis.location?.assign?.(url));
-  if (typeof fetchImpl !== "function") throw new Error("hydronium.forms: fetch is unavailable");
+  if (typeof request !== "function") throw new Error("hydronium.forms: request is unavailable");
   if (typeof FormDataImpl !== "function") throw new Error("hydronium.forms: FormData is unavailable");
 
   // DOM Events are not safe Wasmoon values and `currentTarget` is only live
@@ -67,34 +68,29 @@ export function createFormGlobals(options = {}) {
       return toLuaLiteral(valuesFromForm(form, FormDataImpl));
     },
     __hydronium_form_request(url, method, body, actionId, done) {
-      const controller = new AbortController();
-      Promise.resolve(fetchImpl(url, {
+      const pending = request(url, {
         method,
         body,
         redirect: "manual",
-        signal: controller.signal,
         headers: {
           "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
           accept: "application/json",
           "x-hydronium-action": actionId,
         },
-      })).then(async (response) => {
-        const contentType = response.headers?.get?.("content-type") ?? "";
-        let outcome;
-        if (contentType.toLowerCase().includes("application/json")) {
-          outcome = await response.json();
-        } else {
-          const message = await response.text();
-          outcome = { ok: false, status: response.status, errors: { _form: [message || "Request failed"] } };
-        }
+      });
+      pending.promise.then(async (response) => {
+        const decoded = await readResponse(response);
+        const outcome = typeof decoded.body === "object" && decoded.body !== null
+          ? decoded.body
+          : { ok: false, status: decoded.status, errors: { _form: [decoded.body || "Request failed"] } };
         const location = response.headers?.get?.("location");
         if (location && outcome.redirect == null) outcome.redirect = location;
-        done(response.status, toLuaLiteral(outcome));
+        done(decoded.status, toLuaLiteral(outcome));
       }).catch((error) => {
         if (error?.name === "AbortError") return;
         done(0, toLuaLiteral({ ok: false, status: 0, errors: { _form: [String(error)] } }));
       });
-      return () => controller.abort();
+      return pending.abort;
     },
     __hydronium_form_redirect(url) {
       navigate(String(url));

@@ -1,5 +1,8 @@
 # Hydronium
 
+For async ownership—local `Resource`, route loader, optional client query
+cache, forms, and abortable browser fetch—see [docs/ASYNC_DATA.md](docs/ASYNC_DATA.md).
+
 Hydronium is a reactive UI framework for Lua and LuaJIT. It aims to make the
 same component model work across browser DOM, server rendering, terminal UIs,
 and future hosts, without giving up Lua's small, direct programming model.
@@ -49,6 +52,9 @@ moon run dev ssr my-app
 | [`lab`](lab/) | `hydronium/lab` | Portable component stories and explicit registries. |
 | [`ink-lab`](ink-lab/) | `hydronium/ink-lab` | Resizable browser workbench for canonical Ink cell frames. |
 | [`router`](router/) | `hydronium/router` | Reactive Router/Outlet/hooks, typed hrefs, route matching, and memory/browser histories. |
+| [`query`](query/) | `hydronium/query` | Optional browser-side cache for shared server data. |
+| [`virtual`](virtual/) | `hydronium/virtual` | Host-neutral virtual-list range and measurement state. |
+| [`table`](table/) | `hydronium/table` | Headless reactive table state: rows, sorting, filtering, pagination, and selection. |
 | [`build`](build/) | `hydronium/ballad` | Ballad plugins for LUAX, CSS/assets, and browser bundles. |
 | [`create`](create/) | `hydronium/create` | Project generator and editor bootstrapper. |
 | [`cli`](cli/) | `hydronium/cli` | Developer CLI: `hydronium dev` wraps a Meteorite dev server with a live status view. |
@@ -115,6 +121,31 @@ form transport through `mount({ luaGlobals = ... })`. `r.http.get` uses a named
 Meteorite HTTP capability on the server and the browser fetch bridge after
 hydration. Forms remain usable as native HTML POSTs before hydration or when
 JavaScript is disabled.
+
+### Typed Meteorite DTOs
+
+Meteorite owns browser API clients; Hydronium does not mirror route or database
+types. Generate both projections from the Meteorite application graph:
+
+```sh
+meteorite client typescript src/main.lua js/src/generated/meteorite-client.ts
+meteorite client luacats src/main.lua types/meteorite-client.d.lua
+```
+
+A JavaScript island imports the generated `createClient` and receives typed
+request/response values. Add `types/meteorite-client.d.lua` to the LuaLS
+`workspace.library` for the Hydronium project; then a `.luax` loader or
+component can annotate the decoded value without loading TypeScript or a
+database driver at runtime:
+
+```lua
+---@type CreateTodoResponse
+local todo = response.body
+```
+
+Both files are generated from the same normalized Meteorite graph. Drizzle rows
+remain inside the Bun service; map them to a public route response before they
+cross this boundary.
 
 ## A small component
 

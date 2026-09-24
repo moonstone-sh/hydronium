@@ -91,17 +91,25 @@ current route.
 
 `r.http.get` uses the named Meteorite HTTP capability during SSR and an
 abortable browser fetch on client navigation. Install the browser half with
-`createHttpGlobals()` from `hydronium-router/client/http.js` in
+`createHttpGlobals({ request })` from `hydronium-router/client/http.js` in
 `mount({ luaGlobals })`. A newer navigation aborts the previous fetch. A
-loader that returns a value directly remains synchronous; custom transports
-can instead use `ctx.services` and return a cancellation function.
+`request` should be `createBrowserRequest()` from Hydronium DOM; forms use the
+same primitive. A loader that returns a value directly remains synchronous;
+custom transports can instead use `ctx.services` and return a cancellation
+function.
 
 ```lua
-local data = r.useRouteData("package")
+local H = require("hydronium")
 
 return function()
-  if data:pending() then return H.h("p", nil, "Loading") end
-  return H.h("h1", nil, data:value().coordinate)
+  -- Hooks belong to component setup, not the returned render function.
+  local data = r.useRouteData("package")
+
+  return function()
+    if data:pending() then return H.h("p", nil, "Loading") end
+    if data:error() then return H.h("p", nil, "Could not load package") end
+    return H.h("h1", nil, data:value().coordinate)
+  end
 end
 ```
 

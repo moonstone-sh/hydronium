@@ -16,6 +16,8 @@ export const RUNTIME_FILES = [
   "priority.js",
   "boundary_registry.js",
   "forms.js",
+  "fetch.js",
+  "virtual.js",
   // Dev error overlay. Served like the rest so a dev page can import it
   // from /js/bootstrap/ without a bundler; it does nothing unless a host
   // explicitly calls installErrorOverlay().

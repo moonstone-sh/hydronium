@@ -22,6 +22,9 @@ local packages = {
   { name = "hydronium_meteorite", source_root = "meteorite/src" },
   { name = "hydronium_oklab_utils" },
   { name = "hydronium_router" },
+  { name = "hydronium_query", source_root = "query/src" },
+  { name = "hydronium_virtual", source_root = "virtual/src" },
+  { name = "hydronium_table", source_root = "table/src" },
   { name = "hydronium_ballad" },
 }
 
