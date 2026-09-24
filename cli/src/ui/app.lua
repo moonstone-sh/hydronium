@@ -183,7 +183,14 @@ local function header_lines(state)
       hydronium.h(ink.Text, {}, "Hydronium app up and running on "),
       -- "light blue" is not in the 8-color set this host speaks; cyan is
       -- the nearest, same choice examples/quickstart/dev.sh already made.
-      hydronium.h(ink.Text, { color = "cyan" }, state.url())
+      --
+      -- `href` makes this a real OSC 8 hyperlink, so the URL is clickable
+      -- instead of being text that merely looks like a link. Underlined
+      -- explicitly rather than relying on the terminal to decorate links:
+      -- the decoration is what tells you it IS clickable, and a terminal with
+      -- hyperlink support switched off renders the same underlined text with
+      -- no escape bytes at all, so nothing looks broken either way.
+      hydronium.h(ink.Text, { color = "cyan", underline = true, href = state.url() }, state.url())
     ),
   }
 

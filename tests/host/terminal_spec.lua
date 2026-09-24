@@ -1510,3 +1510,60 @@ describe("hydronium.host.terminal -- O(N) re-render (was O(N^2))", function()
       string.format("expected sub-quadratic end-to-end scaling (linear would be ~8x for 8x N), got %.1fx", tLarge / tSmall))
   end)
 end)
+
+-- Auto-detection of OSC 8 support. These rules were previously untestable and
+-- therefore untested: every other hyperlink spec FORCES the capability on or
+-- off, so the actual detection path shipped unexercised -- and it was wrong,
+-- returning false for tmux in front of a modern terminal (TERM reported as
+-- xterm-256color, TERM_PROGRAM unset), which silently dropped every link.
+describe("hydronium.host.terminal -- OSC 8 capability auto-detection", function()
+  local terminalHostModule = require("hydronium_ink.host.terminal")
+
+  --- @param vars table<string, string>
+  local function env_of(vars)
+    return function(name) return vars[name] end
+  end
+
+  local function detect(vars)
+    return terminalHostModule.__auto_hyperlink_capability_for_tests(env_of(vars))
+  end
+
+  it("enables links for a truecolor terminal whose identity is hidden -- the tmux case", function()
+    -- Exactly the environment that regressed: tmux reports TERM as
+    -- xterm-256color and leaves TERM_PROGRAM unset, so the outer terminal's
+    -- identity is lost, but COLORTERM still says truecolor.
+    assert.equal(detect({ TERM = "xterm-256color", COLORTERM = "truecolor" }), true)
+    assert.equal(detect({ TERM = "screen-256color", COLORTERM = "24bit" }), true)
+  end)
+
+  it("still refuses a terminal that advertises nothing", function()
+    assert.equal(detect({ TERM = "xterm-256color" }), false)
+    assert.equal(detect({ TERM = "vt100" }), false)
+  end)
+
+  it("refuses TERM=dumb and an empty TERM outright", function()
+    assert.equal(detect({ TERM = "dumb", COLORTERM = "truecolor" }), false)
+    assert.equal(detect({ TERM = "", COLORTERM = "truecolor" }), false)
+  end)
+
+  it("NO_COLOR wins over every positive signal", function()
+    assert.equal(detect({
+      NO_COLOR = "1", TERM = "xterm-kitty", COLORTERM = "truecolor", TERM_PROGRAM = "iterm.app",
+    }), false)
+  end)
+
+  it("FORCE_HYPERLINK overrides an unrecognised terminal, but not NO_COLOR", function()
+    assert.equal(detect({ FORCE_HYPERLINK = "1", TERM = "vt100" }), true)
+    -- "0" and "" are opt-outs, not opt-ins -- otherwise `FORCE_HYPERLINK=0`
+    -- would enable the very thing it reads as disabling.
+    assert.equal(detect({ FORCE_HYPERLINK = "0", TERM = "vt100" }), false)
+    assert.equal(detect({ FORCE_HYPERLINK = "1", NO_COLOR = "1", TERM = "vt100" }), false)
+  end)
+
+  it("keeps recognising the terminals it already knew by name", function()
+    assert.equal(detect({ TERM = "xterm-kitty" }), true)
+    assert.equal(detect({ TERM = "xterm-256color", TERM_PROGRAM = "wezterm" }), true)
+    assert.equal(detect({ TERM = "xterm-256color", WT_SESSION = "abc" }), true)
+    assert.equal(detect({ TERM = "xterm-256color", VTE_VERSION = "6003" }), true)
+  end)
+end)

@@ -1305,18 +1305,51 @@ local KNOWN_HYPERLINK_TERM_PROGRAMS = {
 --- color -- most real terminal-hyperlink libraries (e.g. `supports-
 --- hyperlinks`) treat it as an opt-out for OSC 8 too, so this function
 --- honors it even though the sibling color function does not.
-local function autoHyperlinkCapability()
-  if os.getenv("NO_COLOR") then return false end
-  local term = (os.getenv("TERM") or ""):lower()
+--- @param getenv? fun(name: string): string|nil Injected for testing; the
+--- environment cannot be mutated from inside a Lua process, so without this
+--- seam the detection rules below could only be exercised by shelling out,
+--- and in practice would not be tested at all. Defaults to os.getenv.
+local function autoHyperlinkCapability(getenv)
+  local env = getenv or os.getenv
+  if env("NO_COLOR") then return false end
+  -- Explicit override, the convention `supports-hyperlinks` and friends use.
+  -- Needed because no heuristic can cover every terminal, and a user who
+  -- knows their terminal should not have to argue with one.
+  local force = env("FORCE_HYPERLINK")
+  if force and force ~= "" and force ~= "0" then return true end
+  local term = (env("TERM") or ""):lower()
   if term == "" or term == "dumb" then return false end
-  local termProgram = (os.getenv("TERM_PROGRAM") or ""):lower()
+  local termProgram = (env("TERM_PROGRAM") or ""):lower()
   if KNOWN_HYPERLINK_TERM_PROGRAMS[termProgram] then return true end
   if term:find("kitty", 1, true) or term:find("wezterm", 1, true) or term:find("alacritty", 1, true) then
     return true
   end
-  if os.getenv("WT_SESSION") then return true end -- Windows Terminal
-  if os.getenv("VTE_VERSION") then return true end -- GNOME Terminal and other VTE-based terminals >= 0.50
+  if env("WT_SESSION") then return true end -- Windows Terminal
+  if env("VTE_VERSION") then return true end -- GNOME Terminal and other VTE-based terminals >= 0.50
+  -- 24-bit color and OSC 8 arrived in the same generation of terminals, so
+  -- COLORTERM is a good proxy for "modern enough to handle, or silently
+  -- ignore, an OSC 8 sequence".
+  --
+  -- This case is not theoretical padding: the allowlist above returns FALSE
+  -- for a very ordinary real setup -- tmux (which reports TERM as
+  -- xterm-256color under a common default-terminal setting, and leaves
+  -- TERM_PROGRAM unset so the outer terminal's identity is lost) in front of a
+  -- modern emulator. Links were silently dropped there while every visible
+  -- signal said the terminal was capable. Under tmux specifically the
+  -- forwarding is real: tmux has passed OSC 8 through since 3.4.
+  local colorterm = (env("COLORTERM") or ""):lower()
+  if colorterm == "truecolor" or colorterm == "24bit" then return true end
   return false
+end
+
+--- Exposed ONLY so the detection rules above can be exercised with a fake
+--- environment. Not part of the public host API; nothing in the package calls
+--- it, and it takes the env getter precisely because a Lua process cannot
+--- mutate its own environment to test the real one.
+--- @param getenv fun(name: string): string|nil
+--- @return boolean
+function M.__auto_hyperlink_capability_for_tests(getenv)
+  return autoHyperlinkCapability(getenv)
 end
 
 local function hyperlinkCapability(value)
