@@ -2,10 +2,33 @@
 -- The repository root is an orbits workspace, not a package.  Test the
 -- member source roots explicitly; external-consumer coverage below verifies
 -- Moonstone materialization separately.
-package.path = "core/src/?.lua;core/src/?/init.lua;luax/src/?.lua;luax/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;ink/src/?.lua;ink/src/?/init.lua;lab/src/?.lua;lab/src/?/init.lua;ink-lab/src/?.lua;ink-lab/src/?/init.lua;oklab-utils/src/?.lua;oklab-utils/src/?/init.lua;router/src/?.lua;router/src/?/init.lua;cli/src/?.lua;cli/src/?/init.lua;build/src/?.lua;build/src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
+package.path = "core/src/?.lua;core/src/?/init.lua;query/src/?.lua;query/src/?/init.lua;luax/src/?.lua;luax/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;ink/src/?.lua;ink/src/?/init.lua;lab/src/?.lua;lab/src/?/init.lua;ink-lab/src/?.lua;ink-lab/src/?/init.lua;oklab-utils/src/?.lua;oklab-utils/src/?/init.lua;router/src/?.lua;router/src/?/init.lua;cli/src/?.lua;cli/src/?/init.lua;build/src/?.lua;build/src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
 
 local M = {}
 package.loaded["tests.runner"] = M
+
+--- Wall-clock milliseconds for test timing.
+---
+--- NOT `os.clock()`, which this runner used everywhere until now: that is CPU
+--- time consumed by the process, so any test that sleeps, blocks on I/O, waits
+--- on a child process or sits in select() was reported as taking almost no
+--- time at all. A spec that genuinely sleeps 40ms printed "(0.04 ms)", and the
+--- suite total understated real elapsed time by the same mechanism. The
+--- durations were never wrong about CPU, they were just not what anyone reads
+--- them as.
+---
+--- Falls back to os.clock() where hydronium_ink.clock cannot load -- it is
+--- POSIX-only by its own doc comment, and a test runner that refuses to start
+--- is worse than one with misleading timings.
+local now_ms
+do
+  local ok, clock = pcall(require, "hydronium_ink.clock")
+  if ok and clock and clock.nowMs then
+    now_ms = clock.nowMs
+  else
+    now_ms = function() return os.clock() * 1000 end
+  end
+end
 package.loaded["runner"] = M
 package.loaded["tests.runner"] = M
 
@@ -281,13 +304,13 @@ _G.after_each = M.after_each
 _G.assert = M.assert
 
 local function run_single_test(t)
-  local start_t = os.clock()
+  local start_t = now_ms()
 
   -- Run before_each hooks
   for _, h in ipairs(t.before_each) do
     local ok, err = pcall(h)
     if not ok then
-      local duration = (os.clock() - start_t) * 1000
+      local duration = now_ms() - start_t
       return false, "before_each hook failed: " .. tostring(err), duration
     end
   end
@@ -304,7 +327,7 @@ local function run_single_test(t)
     end
   end
 
-  local duration = (os.clock() - start_t) * 1000
+  local duration = now_ms() - start_t
 
   if not test_ok then
     return false, test_err, duration
@@ -329,7 +352,7 @@ function M.run_all()
     colors.bold, colors.cyan, #tests, colors.reset))
 
   stats.total = #tests
-  stats.start_time = os.clock()
+  stats.start_time = now_ms()
 
   local failures = {}
 
@@ -350,8 +373,8 @@ function M.run_all()
     end
   end
 
-  stats.end_time = os.clock()
-  local total_sec = stats.end_time - stats.start_time
+  stats.end_time = now_ms()
+  local total_sec = (stats.end_time - stats.start_time) / 1000
 
   print("\n" .. string.rep("=", 60))
   if #failures > 0 then
@@ -469,6 +492,7 @@ local function main()
       "tests/router/site_spec.lua",
       "tests/router/topology_spec.lua",
       "tests/router/meteorite_adapter_spec.lua",
+      "tests/query/query_spec.lua",
       -- Developer CLI specs (orbit member `cli/`, whose src is on
       -- package.path above -- these live beside their own package rather
       -- than under tests/, matching ink/'s and create/'s own layout).
