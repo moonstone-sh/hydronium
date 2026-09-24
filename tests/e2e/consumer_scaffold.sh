@@ -43,7 +43,12 @@ export PATH="$(dirname "$moon"):$PATH"
 
 # A registry push copies the descriptor and blob into a registry-shaped tree;
 # it is intentionally not a path dependency or a link-store registration.
-"$moon" registry create "$registry" hydronium-consumer
+# Exported dependency descriptors retain the `hydronium` registry identity.
+# Give the disposable file registry that same name so the gate validates the
+# actual published closure instead of falling through to an older remote
+# Hydronium registry for transitive packages.
+registry_name=hydronium
+"$moon" registry create "$registry" "$registry_name"
 descriptor_count=0
 create_descriptor_count=0
 while IFS= read -r descriptor; do
@@ -71,14 +76,14 @@ mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$tool_project"
 "$moon" init "$tool_project" --name hydronium-consumer-tool --kind script --interpreter luajit@2.1 --no-sync --no-git
 (
   cd "$tool_project"
-  "$moon" registry add hydronium-consumer "file://$registry"
+  "$moon" registry add "$registry_name" "file://$registry"
   "$moon" add hydronium/create
   "$moon" exec -- hydronium-create "$app" --template islands --name consumer-islands
 )
 
 (
   cd "$app"
-  "$moon" registry add hydronium-consumer "file://$registry"
+  "$moon" registry add "$registry_name" "file://$registry"
   "$moon" sync
   "$moon" sync --locked
 
