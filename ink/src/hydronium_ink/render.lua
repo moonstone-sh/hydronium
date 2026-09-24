@@ -173,6 +173,18 @@ function M.render(element, opts)
       savedTermios = tty.enableRawMode()
       tty.setNonBlocking(0)
       writeFn("\27[?2004h")
+      -- Kitty keyboard protocol, "disambiguate escape codes" (flag 1), pushed
+      -- onto the terminal's own stack so the matching pop below restores
+      -- whatever was set before rather than assuming it was off.
+      --
+      -- Flag 1 deliberately, not "report all keys": it leaves ordinary typing
+      -- arriving as plain bytes and only escapes the keys that are otherwise
+      -- AMBIGUOUS -- which is exactly the set that matters here. Without it a
+      -- terminal cannot tell this app that Shift or Super were held for
+      -- anything but Shift+Tab, so text-field selection and word motion are
+      -- not expressible. Terminals that do not implement it ignore an
+      -- unknown CSI, and the pop is equally harmless.
+      writeFn("\27[>1u")
     end
 
     app = sessionModule.create(element, {
@@ -231,7 +243,13 @@ function M.render(element, opts)
   elseif altScreenActive then
     writeFn("\27[?1049l")
   end
-  if interactive then writeFn("\27[?2004l") end
+  if interactive then
+    -- Pop the keyboard-protocol flags first, then bracketed paste: reverse
+    -- order of the pushes above, so a terminal that tracks these as a stack
+    -- ends where it started.
+    writeFn("\27[<u")
+    writeFn("\27[?2004l")
+  end
   if interactive and savedTermios then tty.restoreMode(savedTermios) end
   if not ok then error(err, 0) end
   return { exitReason = exitReason }

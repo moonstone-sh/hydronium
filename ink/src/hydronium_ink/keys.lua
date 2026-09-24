@@ -4,13 +4,25 @@
   reads) into Ink-shaped `{input, key}` events, matching the exact `key`
   field vocabulary real Ink's README documents for `useInput`:
   leftArrow/rightArrow/upArrow/downArrow, return, escape, ctrl, tab,
-  backspace, delete, pageUp/pageDown, home/end (plus shift/meta/super/
-  hyper/capsLock/numLock/eventType in real Ink's own key object, which
-  this module does NOT attempt to populate -- those need either the
-  Kitty keyboard protocol, which most terminals don't enable by default,
-  or unreliable heuristics; they are always `false`/absent here rather
-  than guessed at, matching this repo's own "say plainly what wasn't
-  attempted" norm).
+  backspace, delete, pageUp/pageDown, home/end, plus the real modifier
+  set: shift/alt/ctrl/super.
+
+  MODIFIERS come from two sources, both parsed here:
+    - xterm's parameterised forms, `ESC [ 1 ; <mod> <letter>` for arrows
+      and home/end and `ESC [ <n> ; <mod> ~` for the tilde keys.
+    - the Kitty keyboard protocol's `ESC [ <codepoint> ; <mod> u`, which
+      render.lua opts into by pushing flag 1 ("disambiguate escape
+      codes") at raw-mode setup and popping it on exit.
+  The wire encoding is 1 + a bitmask: 1 shift, 2 alt, 4 ctrl, 8 super.
+  Flag 1 deliberately does NOT ask the terminal to report every key as an
+  escape code, so ordinary typing still arrives as plain bytes; only the
+  otherwise-ambiguous keys change shape.
+
+  An undetected modifier is ABSENT, never `false` -- a terminal that does
+  not implement the protocol simply sends the old unparameterised
+  sequences, and this module says nothing rather than claiming a
+  modifier was known not to be held. `hyper`/`capsLock`/`numLock`/
+  `eventType` from real Ink's key object are still not populated.
 
   Also recognizes bracketed-paste markers (`ESC[200~...ESC[201~`, DECSET
   2004 -- render.lua enables/disables the terminal mode itself, this
@@ -49,14 +61,15 @@ local M = {}
 --- @field pageDown? boolean
 --- @field home? boolean
 --- @field end? boolean
---- @field shift? boolean Only ever populated for the one unambiguous
----   case this module can actually detect without the Kitty keyboard
----   protocol: Shift+Tab, which xterm-family terminals send as the
----   distinct CSI sequence `ESC [ Z` rather than a generic modifier
----   bit on plain Tab (`0x09`). Absent (not `false`) everywhere else --
----   this module has no way to tell Shift+<other key> from the plain
----   key, so it says nothing rather than guessing, matching the module
----   doc comment's norm for meta/super/etc.
+--- @field shift? boolean Set from a modifier parameter on a parameterised
+---   CSI or Kitty CSI-u sequence, and for Shift+Tab, which xterm-family
+---   terminals send as its own distinct sequence (`ESC [ Z`) rather than a
+---   modifier bit on plain Tab. Absent, never `false`, when the terminal
+---   sent no modifier information at all.
+--- @field alt? boolean See `shift`.
+--- @field super? boolean The Command key on macOS. Reachable only through
+---   the Kitty keyboard protocol: the OS and terminal consume Command
+---   before it can become stdin bytes in any other encoding.
 
 --- @class hydronium_ink.KeyEvent
 --- @field input string Empty string for a pure special key (matches real Ink).
@@ -144,6 +157,100 @@ local function utf8SeqLen(byte0)
   return 1 -- a stray continuation byte on its own; treat as one byte rather than misreading further
 end
 
+-- Kitty CSI-u codepoints that name a key rather than producing text.
+local CSI_U_NAMED = {
+  [9] = "tab",
+  [13] = "return",
+  [27] = "escape",
+  [127] = "backspace",
+}
+
+--- Encodes one unicode codepoint as UTF-8. Lua 5.1/LuaJIT has no
+--- `utf8.char`, and Kitty reports keys by codepoint, so CSI-u needs this to
+--- turn a reported key back into the character it stands for.
+--- @param cp integer
+--- @return string
+local function utf8Char(cp)
+  if cp < 0x80 then
+    return string.char(cp)
+  elseif cp < 0x800 then
+    return string.char(0xC0 + math.floor(cp / 0x40), 0x80 + cp % 0x40)
+  elseif cp < 0x10000 then
+    return string.char(0xE0 + math.floor(cp / 0x1000),
+      0x80 + math.floor(cp / 0x40) % 0x40, 0x80 + cp % 0x40)
+  end
+  return string.char(0xF0 + math.floor(cp / 0x40000),
+    0x80 + math.floor(cp / 0x1000) % 0x40,
+    0x80 + math.floor(cp / 0x40) % 0x40, 0x80 + cp % 0x40)
+end
+
+--- The first two parameters of a CSI parameter string.
+---
+--- Kitty may attach ':'-separated SUB-parameters to any parameter (an event
+--- type on the modifier, a shifted codepoint on the key). Only the primary
+--- value of each is used here; the sub-parameters are parsed off rather than
+--- being allowed to corrupt a tonumber().
+--- @param params string
+--- @return string|nil first, string|nil second
+local function splitParams(params)
+  local function primary(p)
+    if not p or p == "" then return nil end
+    local head = p:match("^([^:]*)")
+    if head == "" then return nil end
+    return head
+  end
+  local first, rest = params:match("^([^;]*);?(.*)$")
+  return primary(first), primary(rest and rest:match("^([^;]*)"))
+end
+
+--- Decodes an xterm/Kitty modifier parameter into key flags.
+---
+--- The wire value is 1 + a bitmask: 1 shift, 2 alt, 4 ctrl, 8 super. A value
+--- of 1 (or absent) means no modifiers, so it returns nil rather than a table
+--- of falses -- this module's norm is that an undetected modifier is ABSENT,
+--- never `false`, so callers cannot mistake "not held" for "known not held".
+--- @param param string|nil
+--- @return table|nil
+local function decodeModifiers(param)
+  local n = tonumber(param)
+  if not n or n < 2 then
+    return nil
+  end
+  local bits = n - 1
+  local function has(mask)
+    return math.floor(bits / mask) % 2 == 1 or nil
+  end
+  return { shift = has(1), alt = has(2), ctrl = has(4), super = has(8) }
+end
+
+--- @param event hydronium_ink.KeyEvent
+--- @param mods table|nil
+--- @return hydronium_ink.KeyEvent
+local function applyModifiers(event, mods)
+  if mods then
+    for name, value in pairs(mods) do
+      event.key[name] = value
+    end
+  end
+  return event
+end
+
+--- Builds the event for a Kitty `ESC [ <codepoint> ; <mod> u` sequence.
+--- @param codepointParam string|nil
+--- @param mods table|nil
+--- @return hydronium_ink.KeyEvent|nil
+local function csiUEvent(codepointParam, mods)
+  local cp = tonumber(codepointParam)
+  if not cp or cp < 0 then
+    return nil
+  end
+  local named = CSI_U_NAMED[cp]
+  if named then
+    return applyModifiers(specialKey(named), mods)
+  end
+  return applyModifiers(plainChar(utf8Char(cp)), mods)
+end
+
 --- @class hydronium_ink.KeyParser
 local Parser = {}
 Parser.__index = Parser
@@ -223,28 +330,64 @@ function Parser:tryConsumeOne()
       end
 
       if letter:match("%d") then
-        -- ESC [ <digits> ~ -- find the terminating '~' (or bail if it
-        -- hasn't arrived yet; real xterm sequences here are 1-2 digits).
-        local digits, afterDigits = buf:match("^\27%[(%d+)()", 1)
-        if not digits then
+        -- A parameterised CSI sequence: ESC [ <params> <final>, where
+        -- params are digits separated by ';' (Kitty may add ':'-separated
+        -- sub-parameters, which are parsed off and ignored) and <final> is
+        -- '~' (xterm tilde keys), 'u' (Kitty CSI-u), or a letter (xterm
+        -- letter keys carrying a modifier parameter, e.g. ESC [ 1;2C for
+        -- Shift+Right).
+        --
+        -- This branch used to handle only `ESC [ <digits> ~`. Generalising
+        -- it is what makes modifiers visible at all: without a modifier
+        -- parameter there is nothing to read Shift or Super off, which is
+        -- why `shift` was previously documented as detectable for Shift+Tab
+        -- and nothing else.
+        local params, afterParams = buf:match("^\27%[([%d;:]*)()", 1)
+        if not params or afterParams > #buf then
           return nil, true
         end
-        if afterDigits > #buf then
-          return nil, true
-        end
-        if buf:byte(afterDigits) ~= 0x7E then -- '~'
-          -- Not a recognized tilde sequence -- consume just the ESC so
-          -- the rest of the buffer gets reprocessed as plain bytes
-          -- rather than silently dropping real subsequent input.
+        local finalByte = buf:byte(afterParams)
+        local finalChar = string.char(finalByte)
+
+        local isTilde = finalByte == 0x7E
+        local isCsiU = finalChar == "u"
+        local isLetter = CSI_LETTER_KEYS[finalChar] ~= nil
+
+        if not (isTilde or isCsiU or isLetter) then
+          -- Not a sequence this module understands. Consume just the ESC so
+          -- the rest of the buffer is reprocessed as plain bytes rather
+          -- than silently dropping real subsequent input.
           self.buffer = buf:sub(2)
           return specialKey("escape"), false
         end
-        self.buffer = buf:sub(afterDigits + 1)
-        local name = CSI_TILDE_KEYS[digits]
-        if name then
-          return specialKey(name), false
+
+        self.buffer = buf:sub(afterParams + 1)
+        local first, second = splitParams(params)
+        local mods = decodeModifiers(second)
+
+        if isLetter then
+          -- ESC [ 1 ; <mod> <letter>. The first parameter is a placeholder
+          -- (always 1 here); the modifier lives in the second.
+          local event = specialKey(CSI_LETTER_KEYS[finalChar])
+          applyModifiers(event, mods)
+          return event, false
         end
-        return nil, false -- recognized-but-unmapped (e.g. Insert) -- silently consumed, no event
+
+        if isTilde then
+          local name = CSI_TILDE_KEYS[first]
+          if name then
+            local event = specialKey(name)
+            applyModifiers(event, mods)
+            return event, false
+          end
+          return nil, false -- recognized-but-unmapped (e.g. Insert)
+        end
+
+        -- Kitty CSI-u: ESC [ <codepoint> ; <mod> u. The first parameter is
+        -- the key's unicode codepoint, so a plain letter arrives here too
+        -- once progressive enhancement is on -- which is the whole point:
+        -- Ctrl+A and Shift+A stop being indistinguishable from 0x01 and 'A'.
+        return csiUEvent(first, mods), false
       end
 
       -- Unrecognized CSI sequence: consume ESC '[' and reprocess the

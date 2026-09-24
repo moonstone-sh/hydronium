@@ -172,3 +172,101 @@ describe("hydronium_ink.keys -- ANSI key-sequence parsing", function()
     assert.truthy(events[4].key["return"])
   end)
 end)
+
+-- Modifier-carrying sequences. Before this, the only modifier this parser
+-- could see was Shift+Tab (ESC [ Z), because plain xterm sequences carry no
+-- modifier parameter and the digits branch only ever accepted `ESC [ n ~`.
+-- render.lua now pushes the Kitty keyboard protocol (ESC[>1u) so ambiguous
+-- keys arrive as CSI-u with real modifier bits.
+describe("hydronium_ink.keys -- modifiers via parameterised CSI and Kitty CSI-u", function()
+  local function one(bytes)
+    local p = keys.newParser()
+    local events = p:feed(bytes)
+    assert.equal(#events, 1, "expected exactly one event from " .. string.format("%q", bytes))
+    return events[1]
+  end
+
+  it("reads modifiers off xterm's modified arrow form (ESC [ 1 ; mod letter)", function()
+    -- Modifier wire value is 1 + bitmask: 1 shift, 2 alt, 4 ctrl, 8 super.
+    local shiftRight = one("\27[1;2C")
+    assert.truthy(shiftRight.key.rightArrow)
+    assert.truthy(shiftRight.key.shift)
+
+    local ctrlLeft = one("\27[1;5D")
+    assert.truthy(ctrlLeft.key.leftArrow)
+    assert.truthy(ctrlLeft.key.ctrl)
+
+    local altLeft = one("\27[1;3D")
+    assert.truthy(altLeft.key.leftArrow)
+    assert.truthy(altLeft.key.alt)
+
+    -- Super is Command on macOS -- the modifier that cannot reach a terminal
+    -- app at all without this protocol.
+    local superRight = one("\27[1;9C")
+    assert.truthy(superRight.key.rightArrow)
+    assert.truthy(superRight.key.super)
+  end)
+
+  it("combines multiple modifier bits", function()
+    -- 1 + (1 shift | 4 ctrl) = 6
+    local event = one("\27[1;6C")
+    assert.truthy(event.key.rightArrow)
+    assert.truthy(event.key.shift)
+    assert.truthy(event.key.ctrl)
+    assert.equal(event.key.alt, nil, "an unheld modifier must be ABSENT, never false")
+  end)
+
+  it("reads modifiers off the tilde form too", function()
+    local event = one("\27[3;5~")
+    assert.truthy(event.key.delete)
+    assert.truthy(event.key.ctrl)
+  end)
+
+  it("parses Kitty CSI-u for a character key", function()
+    -- ESC [ 97 ; 5 u -- codepoint 97 ('a') with ctrl.
+    local event = one("\27[97;5u")
+    assert.equal(event.input, "a")
+    assert.truthy(event.key.ctrl)
+  end)
+
+  it("parses Kitty CSI-u for named keys", function()
+    assert.truthy(one("\27[13;2u").key["return"])
+    assert.truthy(one("\27[13;2u").key.shift)
+    assert.truthy(one("\27[9u").key.tab)
+    assert.truthy(one("\27[27u").key.escape)
+    assert.truthy(one("\27[127u").key.backspace)
+  end)
+
+  it("ignores Kitty ':'-separated sub-parameters rather than mis-parsing them", function()
+    -- Kitty may report an event type on the modifier (`5:1` = ctrl, press)
+    -- and a shifted codepoint on the key. Only the primary values are used;
+    -- a naive tonumber("5:1") would be nil and lose the modifier entirely.
+    local event = one("\27[97;5:1u")
+    assert.equal(event.input, "a")
+    assert.truthy(event.key.ctrl)
+  end)
+
+  it("decodes a non-ASCII codepoint back to real UTF-8", function()
+    -- U+00E9 'é' = codepoint 233, which must come back as 2 UTF-8 bytes.
+    local event = one("\27[233u")
+    assert.equal(event.input, "\195\169")
+  end)
+
+  it("still parses the unmodified forms exactly as before", function()
+    assert.truthy(one("\27[C").key.rightArrow)
+    assert.equal(one("\27[C").key.shift, nil)
+    assert.truthy(one("\27[3~").key.delete)
+    assert.truthy(one("\27[Z").key.tab)
+    assert.truthy(one("\27[Z").key.shift)
+  end)
+
+  it("treats a modifier parameter of 1 as no modifiers at all", function()
+    -- xterm sends `1` for "no modifiers"; decoding it as a bitmask of 0
+    -- must not set every flag to false, which would claim knowledge the
+    -- parser does not have elsewhere.
+    local event = one("\27[1;1C")
+    assert.truthy(event.key.rightArrow)
+    assert.equal(event.key.shift, nil)
+    assert.equal(event.key.ctrl, nil)
+  end)
+end)
