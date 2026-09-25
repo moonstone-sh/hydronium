@@ -274,10 +274,11 @@ function M.create_wizard_app(opts)
     -- changed, since Session:dispatch never force-renders independent of
     -- what a component's own reactive reads actually depend on.
     local sweeping, setSweeping = signals.createSignal(opts.intro == true)
-    local sweep_anim = hooks.useAnimation({ interval = 33, isActive = true })
     local SWEEP_MS = 700
-    -- Continuous bubble ticker, active for the whole time the form is open.
-    local bubble_anim = hooks.useAnimation({ interval = 120, isActive = true })
+    -- Header animation time as last rendered (a plain value, written by the
+    -- Header component's render): lets the key handler tell whether the
+    -- sweep is still showing without subscribing anything to the ticker.
+    local header_time_ms = 0
     -- Task checklist spinner + one-task-per-tick pacing (see this file's
     -- own header comment for the stated limitation on how granular that
     -- pacing actually is without a coroutine-based process runner).
@@ -521,7 +522,7 @@ function M.create_wizard_app(opts)
     end)
 
     hooks.useInput(function(input, key)
-      if sweeping() and sweep_anim.time() < SWEEP_MS then
+      if sweeping() and header_time_ms < SWEEP_MS then
         setSweeping(false)
         return
       end
@@ -584,30 +585,32 @@ function M.create_wizard_app(opts)
       end
     end)
 
+    -- The animated header is its own component so animation ticks re-render
+    -- only these few rows, never the whole form. One ticker drives the
+    -- sweep, the update spinner and the bubbles, and it is only READ (so
+    -- only subscribed) while one of them is actually moving.
+    local function Header()
+      local anim = hooks.useAnimation({ interval = 100, isActive = true })
+      return function()
+        local columns = hooks.useWindowSize().columns or 80
+        local status = update_status()
+        local show_bubbles = phase() == "form" and columns >= 64
+        local animating = show_bubbles or (status and status.state == "checking")
+          or (sweeping() and header_time_ms < SWEEP_MS)
+        local t = animating and anim.time() or header_time_ms
+        header_time_ms = t
+        local sweep_progress = (sweeping() and t < SWEEP_MS) and math.min(1, t / SWEEP_MS) or nil
+        local title = logo.render({ columns = columns, version = VERSION, sweep = sweep_progress,
+          frame = math.floor(t / 100), update_status = status })
+        return hydronium.h(ink.Box, { flexDirection = "column" },
+          show_bubbles and bubbles.render_diorama({ time = t, columns = columns }, title) or title)
+      end
+    end
+
     return function()
       local size = hooks.useWindowSize()
       local columns = size.columns or 80
-
-      -- Natural expiry needs no signal write at all (matching the old
-      -- intro's own proven pattern): once `sweep_anim.time()` -- read
-      -- reactively -- crosses SWEEP_MS, this just stops being true on its
-      -- own. Only the keypress-triggered skip above needs a real write
-      -- (setSweeping(false)), since that has to disappear before time
-      -- would naturally cross the threshold.
-      local showing_sweep = sweeping() and sweep_anim.time() < SWEEP_MS
-      local sweep_progress = showing_sweep and math.min(1, sweep_anim.time() / SWEEP_MS) or nil
-
-      local title = logo.render({ columns = columns, version = VERSION, sweep = sweep_progress,
-        -- Reading the tick subscribes this render, so a "checking" status
-        -- keeps re-polling and its spinner keeps turning.
-        frame = bubble_anim.frame(), update_status = update_status() })
-      -- Bubbles rise through a 3-row diorama around the title while the form
-      -- is open (wide terminals only); their motion is a pure function of
-      -- the ticker's monotonic time.
-      local header = hydronium.h(ink.Box, { key = "header", flexDirection = "column" },
-        (phase() == "form" and columns >= 64)
-          and bubbles.render_diorama({ time = bubble_anim.time(), columns = columns }, title)
-          or title)
+      local header = hydronium.h(Header, { key = "header" })
 
       local current = active()
       local current_field = STOPS[current].field

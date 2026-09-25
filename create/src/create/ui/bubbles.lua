@@ -3,11 +3,14 @@
   3-row band whose bottom row is the header text itself.
 
   LIFE OF A BUBBLE: it rises six cells -- three as a whole bubble "o", then
-  dissipates one cell each as "*", "°" and "`" (far bubbles use braille
-  dots instead: "⠶" x3, "⠔", "⠂", "⠁") -- then rests (invisible)
+  dissipates one cell each as "*", "°" and "`" -- then rests (invisible)
   before rising again. Its spawn row is seeded: some start below the band
   and drift into view, others start inside it, so at any moment the band
   shows bubbles at every stage of life. The band simply clips each path.
+
+  Far bubbles are instead a single braille dot climbing inside each cell
+  ("⠄" bottom, "⠂" middle, "⠁" top) before moving up: finer, lighter
+  motion that reads as a distant particle.
 
   DEPTH: each bubble is far, mid or near. Nearer bubbles are brighter and
   faster (parallax); a near bubble passes IN FRONT of the header text, mid
@@ -32,8 +35,9 @@ M.ROWS = 3
 M.SPACING = 6
 
 local PATH = { "o", "o", "o", "*", "\194\176", "`" } -- o o o * ° `
--- Far bubbles are braille dots: lighter, so they read as distant particles.
-local FAR_PATH = { "\226\160\182", "\226\160\182", "\226\160\182", "\226\160\148", "\226\160\130", "\226\160\129" } -- ⠶ ⠶ ⠶ ⠔ ⠂ ⠁
+-- Far bubbles are a single braille dot climbing INSIDE each cell -- bottom,
+-- middle, top -- before moving up a cell: three substeps per cell.
+local FAR_DOTS = { "\226\160\132", "\226\160\130", "\226\160\129" } -- ⠄ ⠂ ⠁
 local FAR, MID, NEAR = 1, 2, 3
 -- Milliseconds per cell of rise; each bubble adds a seeded jitter.
 local SPEED_MS = { [FAR] = 300, [MID] = 210, [NEAR] = 150 }
@@ -72,14 +76,17 @@ function M.field(columns, time_ms)
   local out = {}
   for i = 1, math.floor(columns / M.SPACING) do
     local l = lane(i)
-    local step = (math.floor(time_ms / l.speed) + l.phase) % l.cycle
+    -- Far dots advance in thirds of a cell at the same vertical speed.
+    local sub = l.depth == FAR and #FAR_DOTS or 1
+    local t = (math.floor(time_ms * sub / l.speed) + l.phase * sub) % (l.cycle * sub)
+    local step, within = math.floor(t / sub), t % sub
     if step < #PATH then
       local height = l.spawn + step -- 0 = header row
       if height >= 0 and height < M.ROWS then
         out[#out + 1] = {
           col = (i - 1) * M.SPACING + 1 + l.offset,
           row = M.ROWS - height,
-          ch = (l.depth == FAR and FAR_PATH or PATH)[step + 1],
+          ch = l.depth == FAR and FAR_DOTS[within + 1] or PATH[step + 1],
           depth = l.depth,
           dissipating = step >= 3,
         }
