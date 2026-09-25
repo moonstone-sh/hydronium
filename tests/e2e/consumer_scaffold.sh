@@ -25,7 +25,15 @@ server_pid=""
 
 cleanup() {
   if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
+    # A Meteorite server only notices SIGTERM between connections, so an idle
+    # one keeps running; a bare `wait` then blocks forever (this hung CI for
+    # the full job timeout). Give it a moment, then force it.
     kill "$server_pid" 2>/dev/null || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      kill -0 "$server_pid" 2>/dev/null || break
+      sleep 0.5
+    done
+    kill -9 "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
   fi
   rm -rf "$scratch"
@@ -265,6 +273,13 @@ mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$tool_project"
     fail "consumer manifest or lock retained a path dependency"
   fi
 
+  # Vite templates build their stylesheet with the project's own JS toolchain
+  # (the next steps hydronium-create prints); run it as a user would, before
+  # the server build.
+  if [[ -f package.json ]]; then
+    npm install --no-audit --no-fund
+    npm run build
+  fi
   "$moon" run build
   [[ -x dist/server ]] || fail "template build did not produce dist/server"
 )
