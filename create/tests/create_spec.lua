@@ -1592,6 +1592,52 @@ test("update status badge follows the breakpoints: icon + label, icon + short, i
   assert(not text(current, 36):find("✓", 1, true), "below 40 columns there is no status")
 end)
 
+test("bubble diorama: seeded closed-form motion, depth layering around the title", function()
+  local session_mod = require("hydronium_ink.session")
+  local bubbles = require("create.ui.bubbles")
+  local logo = require("create.ui.logo")
+  -- Deterministic and width-stable: a wider band keeps every existing lane.
+  local narrow, wide = bubbles.field(84, 1800), bubbles.field(120, 1800)
+  local key = function(b) return b.col .. ":" .. b.row .. ":" .. b.ch end
+  local in_wide = {}
+  for _, b in ipairs(wide) do in_wide[key(b)] = true end
+  for _, b in ipairs(narrow) do assert(in_wide[key(b)], "resizing must not reshuffle existing lanes") end
+  -- Scan time for a near bubble and a behind bubble on the title row, and
+  -- check the painted cell: near overwrites the text, behind never does.
+  local function row3(t)
+    local sess = session_mod.create(bubbles.render_diorama({ time = t, columns = 84 },
+      logo.render({ columns = 84, version = "0.5.0" })), { columns = 84, rows = 3 })
+    local cells = sess:frame().rows[3]
+    local out = {}
+    for x, cell in ipairs(cells) do out[x] = cell.ch or " " end
+    sess:close()
+    return out
+  end
+  local base = {}
+  do
+    local sess = session_mod.create(logo.render({ columns = 84, version = "0.5.0" }), { columns = 84, rows = 1 })
+    for x, cell in ipairs(sess:frame().rows[1]) do base[x] = cell.ch or " " end
+    sess:close()
+  end
+  local saw_front, saw_behind = false, false
+  for t = 0, 30000, 60 do
+    for _, b in ipairs(bubbles.field(84, t)) do
+      if b.row == bubbles.ROWS and base[b.col] ~= " " then
+        local painted = row3(t)[b.col]
+        if bubbles.in_front(b) then
+          assert(painted == b.ch, "a near bubble is drawn in front of the title")
+          saw_front = true
+        else
+          assert(painted == base[b.col], "mid/far bubbles stay behind the title text")
+          saw_behind = true
+        end
+      end
+    end
+    if saw_front and saw_behind then break end
+  end
+  assert(saw_front and saw_behind, "expected both layering cases within 30s of motion")
+end)
+
 print(string.format("\nResults: %d/%d passed\n", passed, total))
 if passed < total then
   os.exit(1)

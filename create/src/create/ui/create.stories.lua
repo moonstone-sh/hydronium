@@ -193,13 +193,14 @@ return lab.collection({
       sizes = { { name = "default", columns = 84, rows = 10 } },
     },
     ["header-bubbles"] = {
-      title = "Header: sparkly bubble field",
-      description = "ui/bubbles.lua in isolation at a frame where one bubble is mid-\"explode\" (bright pH-gradient) among the rest, dim gray.",
+      title = "Header: bubble diorama",
+      description = "The 3-row diorama at a fixed time: whole bubbles (o) and dissipating ones (* ° `) at three depths -- far ones in braille (⠶ ⠔ ⠂ ⠁) behind the title, near ones vivid and in front of it.",
       render = function()
         local bubbles = require("create.ui.bubbles")
-        return bubbles.render({ frame = 7, columns = 84 })
+        return bubbles.render_diorama({ time = 1800, columns = 84 },
+          logo.render({ columns = 84, version = "0.5.0", update_status = { state = "current" } }))
       end,
-      sizes = { { name = "default", columns = 84, rows = 2 } },
+      sizes = { { name = "default", columns = 84, rows = 3 } },
     },
   },
 })

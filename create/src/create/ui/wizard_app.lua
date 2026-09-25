@@ -597,14 +597,17 @@ function M.create_wizard_app(opts)
       local showing_sweep = sweeping() and sweep_anim.time() < SWEEP_MS
       local sweep_progress = showing_sweep and math.min(1, sweep_anim.time() / SWEEP_MS) or nil
 
+      local title = logo.render({ columns = columns, version = VERSION, sweep = sweep_progress,
+        -- Reading the tick subscribes this render, so a "checking" status
+        -- keeps re-polling and its spinner keeps turning.
+        frame = bubble_anim.frame(), update_status = update_status() })
+      -- Bubbles rise through a 3-row diorama around the title while the form
+      -- is open (wide terminals only); their motion is a pure function of
+      -- the ticker's monotonic time.
       local header = hydronium.h(ink.Box, { key = "header", flexDirection = "column" },
         (phase() == "form" and columns >= 64)
-          and bubbles.render({ frame = bubble_anim.frame(), columns = columns })
-          or nil,
-        logo.render({ columns = columns, version = VERSION, sweep = sweep_progress,
-          -- Reading the tick subscribes this render, so a "checking" status
-          -- keeps re-polling and its spinner keeps turning.
-          frame = bubble_anim.frame(), update_status = update_status() }))
+          and bubbles.render_diorama({ time = bubble_anim.time(), columns = columns }, title)
+          or title)
 
       local current = active()
       local current_field = STOPS[current].field
