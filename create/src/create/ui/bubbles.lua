@@ -1,12 +1,19 @@
 --[[
   create.ui.bubbles -- the header "diorama": bubbles rising through a
-  3-row band whose bottom row is the header text itself.
+  4-row band -- two open rows, the title row, one open row below it:
+
+      row 1   .   .   °       .
+      row 2       *       o
+      row 3   H₃O⁺ · hydronium/create ...        (title)
+      row 4     o       o
+      ~~~~~   bubbles are born out of window, below row 4
 
   LIFE OF A BUBBLE: it rises six cells -- three as a whole bubble "o", then
   dissipates one cell each as "*", "°" and "`" -- then rests (invisible)
-  before rising again. Its spawn row is seeded: some start below the band
-  and drift into view, others start inside it, so at any moment the band
-  shows bubbles at every stage of life. The band simply clips each path.
+  before rising again. Every bubble is born below the window (a seeded 1-3
+  cells down) and rises into it, so none pops into existence mid-air; the
+  seeded depth decides whether it is still whole or already dissipating by
+  the time it passes the title. The band simply clips each path.
 
   Far bubbles are instead a single braille dot climbing inside each cell
   ("⠄" bottom, "⠂" middle, "⠁" top) before moving up: finer, lighter
@@ -31,7 +38,8 @@ local logo = require("create.ui.logo")
 
 local M = {}
 
-M.ROWS = 3
+M.ROWS = 4
+M.TITLE_ROW = 3
 M.SPACING = 6
 
 local PATH = { "o", "o", "o", "*", "\194\176", "`" } -- o o o * ° `
@@ -59,7 +67,7 @@ local function lane(i)
     offset = next_int(M.SPACING - 1),       -- column within its lane slot
     depth = depth,
     speed = SPEED_MS[depth] + next_int(60), -- constant for its whole life
-    spawn = next_int(4) - 2,                -- rows from the band bottom: -2..1
+    spawn = -1 - next_int(3),               -- born out of window: 1..3 below
     cycle = #PATH + rest,                   -- steps: rise, then rest
     phase = 0,
   }
@@ -69,7 +77,7 @@ local function lane(i)
 end
 
 --- Every visible bubble at monotonic time `time_ms` in a band `columns`
---- wide. `row` counts from the top of the band (1..ROWS); the last row is
+--- wide. `row` counts from the top of the band (1..ROWS); TITLE_ROW is
 --- the header text row.
 --- @return { col: integer, row: integer, ch: string, depth: integer, dissipating: boolean }[]
 function M.field(columns, time_ms)
@@ -81,7 +89,7 @@ function M.field(columns, time_ms)
     local t = (math.floor(time_ms * sub / l.speed) + l.phase * sub) % (l.cycle * sub)
     local step, within = math.floor(t / sub), t % sub
     if step < #PATH then
-      local height = l.spawn + step -- 0 = header row
+      local height = l.spawn + step -- 0 = the band's bottom row
       if height >= 0 and height < M.ROWS then
         out[#out + 1] = {
           col = (i - 1) * M.SPACING + 1 + l.offset,
@@ -114,39 +122,29 @@ function M.style(bubble, columns)
   return { color = color }
 end
 
---- The two bubble-only rows above the header row, as elements. The header
---- row itself is composited by render_diorama below, which layers it.
---- @param props { time?: number, columns?: integer, bubbles?: table }
-function M.render(props)
-  props = props or {}
-  local columns = math.max(1, props.columns or 80)
-  local field = props.bubbles or M.field(columns, props.time or 0)
-  local rows = {}
-  for r = 1, M.ROWS - 1 do rows[r] = {} end
+--- One bubble-only row of the band (any row but TITLE_ROW) as an element.
+local function render_row(field, r, columns)
+  local by_col = {}
   for _, b in ipairs(field) do
-    if b.row < M.ROWS and b.col <= columns then rows[b.row][b.col] = b end
+    if b.row == r and b.col <= columns then by_col[b.col] = b end
   end
-  local elements = {}
-  for r = 1, M.ROWS - 1 do
-    local cells, run = {}, {}
-    local function flush()
-      if #run > 0 then cells[#cells + 1] = hydronium.h(ink.Text, { key = #cells + 1 }, table.concat(run)); run = {} end
-    end
-    for c = 1, columns do
-      local b = rows[r][c]
-      if b then
-        flush()
-        local props_ = { key = #cells + 1 }
-        for k, v in pairs(M.style(b, columns)) do props_[k] = v end
-        cells[#cells + 1] = hydronium.h(ink.Text, props_, b.ch)
-      else
-        run[#run + 1] = " "
-      end
-    end
-    flush()
-    elements[r] = hydronium.h(ink.Box, { key = "bubbles" .. r, flexDirection = "row" }, cells)
+  local cells, run = {}, {}
+  local function flush()
+    if #run > 0 then cells[#cells + 1] = hydronium.h(ink.Text, { key = #cells + 1 }, table.concat(run)); run = {} end
   end
-  return hydronium.h(ink.Box, { flexDirection = "column" }, elements)
+  for c = 1, columns do
+    local b = by_col[c]
+    if b then
+      flush()
+      local props_ = { key = #cells + 1 }
+      for k, v in pairs(M.style(b, columns)) do props_[k] = v end
+      cells[#cells + 1] = hydronium.h(ink.Text, props_, b.ch)
+    else
+      run[#run + 1] = " "
+    end
+  end
+  flush()
+  return hydronium.h(ink.Box, { key = "bubbles" .. r, flexDirection = "row", height = 1 }, cells)
 end
 
 local function absolute_cell(b, columns, key)
@@ -156,18 +154,18 @@ local function absolute_cell(b, columns, key)
     hydronium.h(ink.Text, props_, b.ch))
 end
 
---- The whole 3-row diorama: two bubble rows, then the header row with
---- bubbles layered by depth -- mid/far painted first (the header text then
---- covers them, so they show only through its gaps), near painted last (in
+--- The whole diorama: open rows around the title row, which is layered
+--- by depth -- mid/far bubbles painted first (the title text then covers
+--- them, so they show only through its gaps), near ones painted last (in
 --- front of the text).
 --- @param props { time?: number, columns: integer }
---- @param header any the header row element (logo.render)
+--- @param header any the title row element (logo.render)
 function M.render_diorama(props, header)
   local columns = math.max(1, props.columns or 80)
   local field = M.field(columns, props.time or 0)
   local behind, front = {}, {}
   for _, b in ipairs(field) do
-    if b.row == M.ROWS and b.col <= columns then
+    if b.row == M.TITLE_ROW and b.col <= columns then
       local list = M.in_front(b) and front or behind
       list[#list + 1] = absolute_cell(b, columns, (M.in_front(b) and "f" or "b") .. b.col)
     end
@@ -176,9 +174,13 @@ function M.render_diorama(props, header)
   for _, e in ipairs(behind) do layers[#layers + 1] = e end
   layers[#layers + 1] = hydronium.h(ink.Box, { key = "header", flexGrow = 1 }, header)
   for _, e in ipairs(front) do layers[#layers + 1] = e end
-  return hydronium.h(ink.Box, { flexDirection = "column" },
-    M.render({ columns = columns, bubbles = field }),
-    hydronium.h(ink.Box, { key = "header-row", position = "relative", width = columns, height = 1 }, layers))
+  local rows = {}
+  for r = 1, M.ROWS do
+    rows[r] = r == M.TITLE_ROW
+      and hydronium.h(ink.Box, { key = "title-row", position = "relative", width = columns, height = 1 }, layers)
+      or render_row(field, r, columns)
+  end
+  return hydronium.h(ink.Box, { flexDirection = "column" }, rows)
 end
 
 return M

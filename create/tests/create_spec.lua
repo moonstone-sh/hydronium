@@ -1606,8 +1606,8 @@ test("bubble diorama: seeded closed-form motion, depth layering around the title
   -- check the painted cell: near overwrites the text, behind never does.
   local function row3(t)
     local sess = session_mod.create(bubbles.render_diorama({ time = t, columns = 84 },
-      logo.render({ columns = 84, version = "0.5.0" })), { columns = 84, rows = 3 })
-    local cells = sess:frame().rows[3]
+      logo.render({ columns = 84, version = "0.5.0" })), { columns = 84, rows = bubbles.ROWS })
+    local cells = sess:frame().rows[bubbles.TITLE_ROW]
     local out = {}
     for x, cell in ipairs(cells) do out[x] = cell.ch or " " end
     sess:close()
@@ -1622,7 +1622,7 @@ test("bubble diorama: seeded closed-form motion, depth layering around the title
   local saw_front, saw_behind = false, false
   for t = 0, 30000, 60 do
     for _, b in ipairs(bubbles.field(84, t)) do
-      if b.row == bubbles.ROWS and base[b.col] ~= " " then
+      if b.row == bubbles.TITLE_ROW and base[b.col] ~= " " then
         local painted = row3(t)[b.col]
         if bubbles.in_front(b) then
           assert(painted == b.ch, "a near bubble is drawn in front of the title")

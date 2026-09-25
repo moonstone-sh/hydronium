@@ -602,8 +602,10 @@ function M.create_wizard_app(opts)
         local sweep_progress = (sweeping() and t < SWEEP_MS) and math.min(1, t / SWEEP_MS) or nil
         local title = logo.render({ columns = columns, version = VERSION, sweep = sweep_progress,
           frame = math.floor(t / 100), update_status = status })
-        return hydronium.h(ink.Box, { flexDirection = "column" },
-          show_bubbles and bubbles.render_diorama({ time = t, columns = columns }, title) or title)
+        -- The diorama's last row is already the gap under the title; without
+        -- it, a plain blank line keeps the same spacing.
+        if show_bubbles then return bubbles.render_diorama({ time = t, columns = columns }, title) end
+        return hydronium.h(ink.Box, { flexDirection = "column" }, title, hydronium.h(ink.Newline, {}))
       end
     end
 
@@ -748,13 +750,12 @@ function M.create_wizard_app(opts)
           body[#body + 1] = hydronium.h(ink.Text, { color = "red" }, "Press any key to exit.")
         end
         return hydronium.h(ink.Box, { flexDirection = "column", paddingX = 1 },
-          header, hydronium.h(ink.Newline, {}), hydronium.h(ink.Box, { flexDirection = "column" }, lines),
+          header, hydronium.h(ink.Box, { flexDirection = "column" }, lines),
           hydronium.h(ink.Newline, {}), hydronium.h(ink.Box, { flexDirection = "column" }, body))
       end
 
       return hydronium.h(ink.Box, { flexDirection = "column", paddingX = 1 },
         header,
-        hydronium.h(ink.Newline, {}),
         hydronium.h(ink.Box, { flexDirection = "column" }, lines),
         footer,
         cheat_panel)

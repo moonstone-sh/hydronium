@@ -194,13 +194,13 @@ return lab.collection({
     },
     ["header-bubbles"] = {
       title = "Header: bubble diorama",
-      description = "The 3-row diorama at a fixed time: whole bubbles (o) and dissipating ones (* ° `) at three depths -- far ones single braille dots climbing within each cell (⠄ ⠂ ⠁) behind the title, near ones vivid and in front of it.",
+      description = "The 4-row diorama (two open rows, title, one open row; bubbles born below the window) at a fixed time: whole bubbles (o) and dissipating ones (* ° `) at three depths -- far ones single braille dots climbing within each cell (⠄ ⠂ ⠁) behind the title, near ones vivid and in front of it.",
       render = function()
         local bubbles = require("create.ui.bubbles")
         return bubbles.render_diorama({ time = 1800, columns = 84 },
           logo.render({ columns = 84, version = "0.5.0", update_status = { state = "current" } }))
       end,
-      sizes = { { name = "default", columns = 84, rows = 3 } },
+      sizes = { { name = "default", columns = 84, rows = 4 } },
     },
   },
 })
