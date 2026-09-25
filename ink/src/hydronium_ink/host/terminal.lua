@@ -135,6 +135,54 @@ local terminalColor = require("hydronium_ink.color")
 
 local M = {}
 
+-- The color PROFILE (see hydronium_ink.color's own doc comment for how this
+-- differs from `_colorCapability`/`terminalColor.capability`) in effect for
+-- the paint pass currently running. A module-level upvalue rather than a
+-- parameter threaded through buildYogaTree/textStyleOf/paintNode/
+-- resolveBorderEdge/collectTextLines (all plain module-level functions
+-- below, not methods on `host`, exactly like `REFLOW_MODES`/`BOX_CHARS`
+-- further down are shared via upvalue rather than an argument every one of
+-- them would otherwise need to accept and pass along): host.paint() sets
+-- this once, right before its measure+paint passes, and every prop
+-- resolved during that SAME paint() call sees the same value -- there is
+-- no concurrent paint() call this could race with (session.lua drives
+-- everything from one single-threaded event loop).
+local currentColorProfile = "truecolor"
+
+--- Resolves a single Text/Box prop value that may be a
+--- `hydronium_ink.color.by_profile(...)` marker (`ink.byProfile`/
+--- `ink.adaptive`) against `currentColorProfile`. Returns `value, true` for
+--- an ordinary (non-marker) value unchanged -- so a plain
+--- `color = "#rrggbb"` or `bold = true` prop takes this exact same path as
+--- always and behaves identically regardless of color profile, which is
+--- this package's stated default: adaptive behavior is opt-in per prop,
+--- never implicit.
+---
+--- `isColor` selects which of `hydronium_ink.color`'s two resolvers backs
+--- this: pass `true` for `color`/`backgroundColor`/`borderColor`/border
+--- edge colors (`M.resolve_by_profile_color`, whose "none" case actively
+--- strips to `nil` rather than inheriting a richer profile's real color);
+--- leave it false/nil for structural props (`bold`/`dimColor`/`inverse`/
+--- etc., `M.resolve_by_profile`, which has no such special case -- a
+--- boolean has no quantization step to opt out of). `present = false`
+--- means "no override applies for this profile" (see
+--- `hydronium_ink.color.resolve_by_profile`'s own doc comment) -- the
+--- caller must leave whatever it already had (an inherited style, or
+--- simply not setting this field at all) rather than overwriting it with
+--- `nil`/false.
+--- @param value any
+--- @param isColor? boolean
+--- @return any resolved, boolean present
+local function resolveStyleValue(value, isColor)
+  if terminalColor.is_by_profile(value) then
+    if isColor then
+      return terminalColor.resolve_by_profile_color(value, currentColorProfile)
+    end
+    return terminalColor.resolve_by_profile(value, currentColorProfile)
+  end
+  return value, true
+end
+
 -- Palette names lower to their terminal SGR slots, preserving the user's
 -- active terminal theme. Absolute #RRGGBB/OKLab colors are represented by
 -- terminalColor objects and lowered only when the frame is encoded.
@@ -306,14 +354,38 @@ local function textStyleOf(props, inherited)
     href = inherited.href,
   }
   if props then
-    if props.color ~= nil then style.fg = terminalColor.resolve(props.color) end
-    if props.backgroundColor ~= nil then style.bg = terminalColor.resolve(props.backgroundColor) end
-    if props.bold ~= nil then style.bold = props.bold and true or false end
-    if props.dimColor ~= nil then style.dim = props.dimColor and true or false end
-    if props.italic ~= nil then style.italic = props.italic and true or false end
-    if props.underline ~= nil then style.underline = props.underline and true or false end
-    if props.strikethrough ~= nil then style.strikethrough = props.strikethrough and true or false end
-    if props.inverse ~= nil then style.inverse = props.inverse and true or false end
+    if props.color ~= nil then
+      local v, present = resolveStyleValue(props.color, true)
+      if present then style.fg = terminalColor.resolve(v) end
+    end
+    if props.backgroundColor ~= nil then
+      local v, present = resolveStyleValue(props.backgroundColor, true)
+      if present then style.bg = terminalColor.resolve(v) end
+    end
+    if props.bold ~= nil then
+      local v, present = resolveStyleValue(props.bold)
+      if present then style.bold = v and true or false end
+    end
+    if props.dimColor ~= nil then
+      local v, present = resolveStyleValue(props.dimColor)
+      if present then style.dim = v and true or false end
+    end
+    if props.italic ~= nil then
+      local v, present = resolveStyleValue(props.italic)
+      if present then style.italic = v and true or false end
+    end
+    if props.underline ~= nil then
+      local v, present = resolveStyleValue(props.underline)
+      if present then style.underline = v and true or false end
+    end
+    if props.strikethrough ~= nil then
+      local v, present = resolveStyleValue(props.strikethrough)
+      if present then style.strikethrough = v and true or false end
+    end
+    if props.inverse ~= nil then
+      local v, present = resolveStyleValue(props.inverse)
+      if present then style.inverse = v and true or false end
+    end
     -- `href` is a text-range style attribute exactly like `color`/`bold`
     -- above (see hydronium_ink/init.lua's HydroniumInkTextProps for why
     -- this rides on Text rather than a separate `<Link>` element), so it
@@ -809,9 +881,19 @@ local function buildYogaTree(node)
     -- content genuinely depends only on their own props -- gets the
     -- normal skip-when-unchanged treatment.
     local isWrapNoWidth = REFLOW_MODES[props.wrap] and not props.width
+    -- A `ink.byProfile`/`ink.adaptive` prop resolves against
+    -- `currentColorProfile` (see `resolveStyleValue` above) INSIDE
+    -- `textStyleOf`, called only here -- so a Text node using one that
+    -- neither gained a `_styleDirty` prop change nor hit the wrap-reflow
+    -- case above still needs recomputing whenever the profile itself has
+    -- changed since the last time this ran (host.setColorProfile, or Ink
+    -- Lab switching the live preview profile), or it would keep painting
+    -- whichever profile happened to be active the first time it rendered.
+    local isProfileStale = node._lastColorProfile ~= currentColorProfile
 
-    if isNew or node._styleDirty or isWrapNoWidth then
+    if isNew or node._styleDirty or isWrapNoWidth or isProfileStale then
       local lines = collectTextLines(node, textStyleOf(props))
+      node._lastColorProfile = currentColorProfile
       node._pendingWrap = nil
 
       if props.width and TRUNCATE_MODES[props.wrap] then
@@ -1075,6 +1157,14 @@ local function resolveBorderEdge(props, edgeName)
   local color = props["border" .. edgeName .. "Color"] or props.borderColor
   local dim = props["border" .. edgeName .. "DimColor"]
   if dim == nil then dim = props.borderDimColor end
+  if color ~= nil then
+    local v, present = resolveStyleValue(color, true)
+    color = present and v or nil
+  end
+  if dim ~= nil then
+    local v, present = resolveStyleValue(dim)
+    dim = present and v or nil
+  end
   return color and terminalColor.resolve(color), dim and true or false
 end
 
@@ -1086,7 +1176,11 @@ paintNode = function(node, frame, clip, offsetX, offsetY)
     local props = node.props or {}
     local x1, y1 = layout.x + offsetX, layout.y + offsetY
     local x2, y2 = layout.x + layout.w - 1, layout.y + layout.h - 1
-    local bg = props.backgroundColor and terminalColor.resolve(props.backgroundColor)
+    local bg
+    if props.backgroundColor ~= nil then
+      local v, present = resolveStyleValue(props.backgroundColor, true)
+      bg = present and v and terminalColor.resolve(v) or nil
+    end
 
     if bg then
       for y = y1, y2 do
@@ -1099,8 +1193,16 @@ paintNode = function(node, frame, clip, offsetX, offsetY)
     if props.borderStyle then
       local chars = BOX_CHARS[props.borderStyle]
       if chars then
-        local baseFg = props.borderColor and terminalColor.resolve(props.borderColor)
-        local baseDim = props.borderDimColor and true or false
+        local baseFg
+        if props.borderColor ~= nil then
+          local v, present = resolveStyleValue(props.borderColor, true)
+          baseFg = present and v and terminalColor.resolve(v) or nil
+        end
+        local baseDim = false
+        if props.borderDimColor ~= nil then
+          local v, present = resolveStyleValue(props.borderDimColor)
+          baseDim = present and v and true or false
+        end
         local topFg, topDim = resolveBorderEdge(props, "Top")
         local rightFg, rightDim = resolveBorderEdge(props, "Right")
         local bottomFg, bottomDim = resolveBorderEdge(props, "Bottom")
@@ -1390,6 +1492,11 @@ function M.createTerminalHost(writeFn)
 
   local host = {
     _colorCapability = terminalColor.capability("auto"),
+    -- See hydronium_ink.color's own doc comment for how this differs from
+    -- `_colorCapability` above: this is the superset (adds "none") used
+    -- only to resolve `ink.byProfile`/`ink.adaptive` prop values, never to
+    -- pick the ANSI encoding depth a resolved color is quantized to.
+    _colorProfile = terminalColor.profile("auto"),
     _hyperlinkCapability = autoHyperlinkCapability(),
     -- Real terminal cursors start visible; see host.setCursorVisible's own
     -- doc comment for what this actually gates (paint()'s own transient
@@ -1414,6 +1521,26 @@ function M.createTerminalHost(writeFn)
     local resolved = terminalColor.capability(capability)
     if resolved ~= host._colorCapability then
       host._colorCapability = resolved
+      host.invalidate()
+    end
+  end
+
+  --- Selects the color PROFILE (see hydronium_ink.color's own doc comment
+  --- and this file's `_colorProfile` field above) used to resolve
+  --- `ink.byProfile`/`ink.adaptive` prop values -- "auto"/nil re-detects
+  --- from the environment (NO_COLOR/FORCE_COLOR), same as
+  --- `setColorCapability("auto")` does for capability. `host.invalidate()`
+  --- alone is not enough here (unlike setColorCapability, whose
+  --- quantization runs fresh every paint() from `host._colorCapability`
+  --- with nothing cached): a Text node's OWN resolved style is cached
+  --- across paints (see buildYogaTree's `isProfileStale` check), so this
+  --- also has to actually change `host._colorProfile` before the next
+  --- paint() runs, which the `currentColorProfile` upvalue it feeds is
+  --- set from at the top of every paint() call.
+  function host.setColorProfile(profile)
+    local resolved = terminalColor.profile(profile)
+    if resolved ~= host._colorProfile then
+      host._colorProfile = resolved
       host.invalidate()
     end
   end
@@ -1632,6 +1759,12 @@ function M.createTerminalHost(writeFn)
   --- right now.
   function host.paint()
     local availW, availH = host._cols or YG_UNDEFINED, host._rows or YG_UNDEFINED
+    -- Set once per paint(), read by every plain module-level function this
+    -- pass touches (buildYogaTree/textStyleOf/paintNode/resolveBorderEdge
+    -- via `resolveStyleValue`/`currentColorProfile` above) -- see that
+    -- upvalue's own doc comment for why this is a shared module local
+    -- rather than a parameter threaded through all of them.
+    currentColorProfile = host._colorProfile
 
     local rootYoga = buildYogaTree(root)
     rootYoga:calculateLayout(availW, availH)

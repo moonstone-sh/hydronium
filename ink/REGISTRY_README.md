@@ -67,6 +67,8 @@ example of `useInput`, `useApp`, `useWindowSize`, `Box`, `Spacer`, and
 | `hydronium_ink.hooks` | `useInput`, `usePaste`, `useApp`, `useWindowSize` | Keyboard, bracketed paste, app exit, and reactive terminal size. |
 | `hydronium_ink.hooks` | `useFocus`, `useFocusManager`, `useCursor`, `useBoxMetrics`, `useAnimation` | Focus traversal, cursor placement, measured layout, and timed updates. |
 | `hydronium_ink.hooks` | `useAltScreen` | Enter/leave the alternate screen buffer (DECSET 1049) at runtime, for a fullscreen view. `render()` always leaves it on the way out, including on an error. |
+| `hydronium_ink.hooks` | `useColorProfile` | Reactive `"truecolor"\|"ansi256"\|"ansi16"\|"none"` -- see "Color profile" below. |
+| `hydronium_ink` | `colorProfile`, `byProfile`, `adaptive` | Plain (non-hook) profile lookup, and per-profile prop values -- see "Color profile" below. |
 
 `Box` supports Yoga flexbox properties such as `flexDirection`, `justifyContent`,
 `alignItems`, `flexGrow`, `padding`, `margin`, `width`, `height`, and
@@ -99,6 +101,82 @@ cannot blend reliably against an unknown background.
 Hooks belong in the setup call of a component, before it returns its render
 function. `useInput` and focus activation options are read at setup time.
 They do not rerun reactively when those options change.
+
+## Color profile
+
+`color`/`capability` above is the ANSI *encoding depth* a resolved color is
+quantized to. The *color profile* is a separate, richer axis -- it adds
+`"none"` (no color at all: `NO_COLOR`, or an explicit `FORCE_COLOR=0`/
+`colorProfile = "none"`) -- that Ink **exposes to your components and lets
+you decide what, if anything, to do about**. Nothing strips color
+automatically just because `NO_COLOR` is set; a plain `color = "#rrggbb"` or
+`color = "cyan"` prop paints exactly the same regardless of profile. Opting
+in is what `useColorProfile`/`byProfile`/`adaptive` below are for.
+
+```lua
+local hooks = require("hydronium_ink.hooks")
+local ink = require("hydronium_ink")
+
+-- Inside a component's render closure (reactive -- re-reads on a live
+-- profile change, e.g. Ink Lab's profile control):
+local profile = hooks.useColorProfile() -- "truecolor"|"ansi256"|"ansi16"|"none"
+
+-- Outside a mounted component tree (a plain function, no hook context):
+local profile = ink.colorProfile() -- same "auto" NO_COLOR/FORCE_COLOR detection
+```
+
+A **session** seeds its profile from the real environment by default
+(`NO_COLOR` -> `"none"`; `FORCE_COLOR=0/1/2/3` -> `none`/`ansi16`/`ansi256`/
+`truecolor`; otherwise the same `COLORTERM`/`TERM` auto-detection `color`
+already uses), or an explicit override:
+
+```lua
+session.create(app, { colorProfile = "ansi16" }) -- or render.render(app, { colorProfile = ... })
+```
+
+`Session:setColorProfile(profile)`/`Session:colorProfile()` change/read it at
+runtime (what Ink Lab's own profile control uses to preview one story under
+every profile without remounting it).
+
+Any `color`/`backgroundColor`/`borderColor`, or structural prop
+(`inverse`/`bold`/`dimColor`/`italic`/`underline`/`strikethrough`), may be
+given **per profile** instead of one fixed value, via `ink.byProfile` (or its
+alias `ink.adaptive`, which reads better on a single color):
+
+```lua
+ink.Text({
+  color = ink.adaptive({
+    truecolor = oklch(0.75, 0.10, 221), -- a real hue
+    ansi16 = "cyan",                     -- ansi16's own RGB is theme-guessed,
+                                          -- so lean on a named palette color
+                                          -- (or skip it -- see the fallback below)
+  }),
+  inverse = ink.byProfile({ none = true }), -- NO_COLOR: fall back to reverse video
+}, "status")
+```
+
+**Fallback chain**: an exact entry for the live profile wins. Missing that,
+it uses the next RICHER profile's entry that IS defined (`ansi16` with only
+`truecolor` given uses `truecolor`, which then quantizes normally --
+"auto-lowering" is just the existing capability-based quantization running
+on it, not a second pass here). A *color* prop specifically strips to no
+color at `"none"` when no explicit `none` entry is given (rather than
+inheriting a richer profile's real color, which would defeat the point of
+`"none"`); a *structural* prop (`inverse`/`bold`/etc.) has no such special
+case and keeps inheriting normally, since it has no color to strip.
+
+**Why ansi16 gets no absolute-color help**: ansi16's 16 RGB values are
+**theme-defined** -- a real terminal's own theme remaps them, so computing
+contrast against an assumed RGB for one is false precision, not a real
+guarantee. ansi256 (slots 16-255) are fixed, standard RGB, so contrast math
+against them is real; `hydronium_ink.color.effective_srgb(color, capability)`
+returns what a color will *actually* paint once quantized, for verifying
+(and, with `hydronium_oklab_utils.ensure_contrast`, nudging) a target after
+quantization rather than only in continuous space. See
+`hydronium/cli`'s `ui/search_bar.lua` for a worked reference: truecolor and
+ansi256 keep the same OKLCH chip design (ansi256 re-verified/nudged
+post-quantization); ansi16 and `"none"` switch to inverse/bold against the
+terminal's own default colors instead of guessing a hue.
 
 ## Controlled scrolling
 

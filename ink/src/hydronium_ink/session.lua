@@ -73,6 +73,16 @@ end
 --- @field columns? integer Initial terminal width. Default 80.
 --- @field rows? integer Initial terminal height. Default 24.
 --- @field color? "auto"|"ansi16"|"ansi256"|"truecolor"
+--- @field colorProfile? "auto"|"truecolor"|"ansi256"|"ansi16"|"none" Seeds
+---   `hydronium_ink.hooks.useColorProfile()`/`Session:colorProfile()`.
+---   Independent of `color` above (see hydronium_ink.color's own doc
+---   comment for why): `color` picks the ANSI encoding depth a resolved
+---   color is quantized to; `colorProfile` is the superset (adds "none")
+---   exposed to components for `ink.byProfile`/`ink.adaptive` and for
+---   their own conditional logic, honoring NO_COLOR/FORCE_COLOR by
+---   default ("auto", the default here too). A test harness or Ink Lab
+---   overrides this directly to preview a story under a forced profile
+---   without touching `color`.
 --- @field hyperlinks? boolean|"auto" Whether `<Text href>` emits real OSC 8
 ---   escapes. Default "auto" (NO_COLOR/TERM/TERM_PROGRAM-based detection,
 ---   see hydronium_ink.host.terminal's "Hyperlink capability" section) --
@@ -116,6 +126,7 @@ function M.create(element, opts)
 
   self._host = terminalHost.createTerminalHost(opts.writeFn or function() end)
   self._host.setColorCapability(opts.color or "auto")
+  self._host.setColorProfile(opts.colorProfile or "auto")
   -- `opts.hyperlinks == nil and "auto" or opts.hyperlinks`, not `opts.hyperlinks
   -- or "auto"`: the latter would silently turn an explicit `hyperlinks = false`
   -- into "auto" (Lua's `or` can't distinguish "absent" from "falsy"), which
@@ -134,6 +145,11 @@ function M.create(element, opts)
   self._getActiveFocusId, self._setActiveFocusId = hydronium.signal(nil)
   self._getFocusEnabled, self._setFocusEnabled = hydronium.signal(true)
   self._getAltScreen, self._setAltScreenSignal = hydronium.signal(false)
+  -- Seeded from the host's already-resolved profile (set just above via
+  -- setColorProfile), not `opts.colorProfile` directly, so this reflects
+  -- "auto"'s real NO_COLOR/FORCE_COLOR-detected result rather than the
+  -- literal string "auto".
+  self._getColorProfile, self._setColorProfileSignal = hydronium.signal(self._host._colorProfile)
 
   local function deferWrite(write)
     if scheduler.isRendering() then
@@ -211,6 +227,7 @@ function M.create(element, opts)
       self._exited, self._exitReason = true, reason
     end,
     windowSize = self._getWindowSize,
+    colorProfile = self._getColorProfile,
     generateFocusId = function()
       self._nextFocusId = self._nextFocusId + 1
       return "focus-" .. self._nextFocusId
@@ -379,6 +396,33 @@ function Session:setColorCapability(capability)
   self._host.setColorCapability(capability)
   self:_flush()
   return self:frame()
+end
+
+--- Overrides the color PROFILE at runtime (see this file's own
+--- `colorProfile` SessionOption doc comment for how this differs from
+--- `setColorCapability`). Used by Ink Lab's profile control to preview the
+--- SAME running story under truecolor/ansi256/ansi16/none without
+--- restarting the session, and by tests exercising
+--- `hydronium_ink.hooks.useColorProfile()` across profiles.
+--- @param profile "auto"|"truecolor"|"ansi256"|"ansi16"|"none"
+function Session:setColorProfile(profile)
+  self:_assertOpen("setColorProfile")
+  self._host.setColorProfile(profile)
+  -- Deferred exactly like setFocus/setAltScreen above: this may run from
+  -- inside a render (an Ink Lab "set profile" operation is itself
+  -- triggered from outside rendering, same as setColorCapability, but the
+  -- signal write goes through the same guarded path for consistency and
+  -- because hydronium.signal setters assert outside a render is not
+  -- actually required here -- this call site is never itself mid-render).
+  self._setColorProfileSignal(self._host._colorProfile)
+  self:_flush()
+  return self:frame()
+end
+
+--- @return "truecolor"|"ansi256"|"ansi16"|"none"
+function Session:colorProfile()
+  self:_assertOpen("colorProfile")
+  return self._host._colorProfile
 end
 
 --- @param capability boolean|"auto" See hydronium_ink.host.terminal's

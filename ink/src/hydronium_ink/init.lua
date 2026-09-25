@@ -224,6 +224,10 @@ end
 ---@field Spacer hydronium.Intrinsic<{}, "terminal"> | fun(props?: {}, ...: any): LuaxElement
 ---@field Transform hydronium.Intrinsic<HydroniumInkTransformProps, "terminal"> | fun(props?: HydroniumInkTransformProps, ...: any): LuaxElement
 ---@field createIntrinsic fun(tag: string): hydronium.Intrinsic<any, "terminal">
+---@field terminal_background fun(opts?: table): hydronium_oklab_utils.Color|nil, string|nil Detects the real terminal background via OSC 11 (falling back to `COLORFGBG`, then `nil`). See hydronium_ink.terminal_background's own doc comment -- call this ONCE, at startup, before a session's normal input loop starts.
+---@field colorProfile fun(value?: "auto"|"truecolor"|"ansi256"|"ansi16"|"none"): "truecolor"|"ansi256"|"ansi16"|"none" Plain (non-reactive, non-hook) equivalent of `hydronium_ink.hooks.useColorProfile()`, for code that runs outside a mounted component tree -- CLI startup, a plain module scanning `os.getenv` itself, a story file choosing what to show before any session exists. Same NO_COLOR/FORCE_COLOR-honoring "auto" detection (see hydronium_ink.color.profile); an explicit `value` bypasses detection entirely.
+---@field byProfile fun(entries: table<"truecolor"|"ansi256"|"ansi16"|"none", any>): hydronium_ink.ByProfile Marks a single Text/Box prop value (a color, or a structural style prop like `inverse`/`bold`/`dimColor`) as resolved per the CURRENT color profile rather than fixed -- see hydronium_ink.color.by_profile's own doc comment for the full fallback-chain contract. `ink.adaptive` below is the exact same function under a name that reads better on a color specifically.
+---@field adaptive fun(entries: table<"truecolor"|"ansi256"|"ansi16"|"none", any>): hydronium_ink.ByProfile Alias of `ink.byProfile`, e.g. `color = ink.adaptive({ truecolor = oklch(0.75, 0.1, 221), ansi16 = "cyan" })`.
 
 ---@type HydroniumInkDescriptors
 local ink = {
@@ -237,6 +241,10 @@ local ink = {
   Transform = create_descriptor("Transform"),
   createIntrinsic = create_descriptor,
   createVirtualHost = virtual.createVirtualHost,
+  terminal_background = require("hydronium_ink.terminal_background").detect,
+  colorProfile = require("hydronium_ink.color").profile,
+  byProfile = require("hydronium_ink.color").by_profile,
+  adaptive = require("hydronium_ink.color").by_profile,
 }
 
 setmetatable(ink, {

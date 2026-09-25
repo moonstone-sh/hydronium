@@ -55,6 +55,7 @@ M.InkAppContext = hydronium.createContext(nil)
 --- @field registerPasteHandler fun(handler: fun(text: string)): fun() Returns an unregister function.
 --- @field setAltScreen fun(enabled: boolean): boolean Switches the terminal's alternate screen buffer on/off. Returns whether this call changed anything.
 --- @field altScreen fun(): boolean A reactive signal getter.
+--- @field colorProfile fun(): "truecolor"|"ansi256"|"ansi16"|"none" A reactive signal getter (see hydronium_ink.hooks.useColorProfile).
 --- @field setTerminalTitle fun(title: string) Sets the terminal window/icon title (OSC 0).
 --- @field writeClipboard fun(text: string) Writes to the system clipboard (OSC 52, write-only -- see render.lua's OSC evaluation comment for why there is no read).
 
@@ -158,6 +159,37 @@ end
 function M.useWindowSize()
   local ctx = requireAppContext("useWindowSize")
   return ctx.windowSize()
+end
+
+--- Reactive: reading this during a tracked render subscribes it to the
+--- session's color-profile signal exactly like `useWindowSize` above,
+--- with the same "not backed by a push notification unless something
+--- reads it" caveat that applies to every reactive getter in this file.
+---
+--- ONE of "truecolor" | "ansi256" | "ansi16" | "none" -- see
+--- `hydronium_ink.color`'s own top doc comment for exactly what each
+--- means and how this differs from the lower-level `Session:colorCapability()`
+--- (that one is a 3-value ANSI ENCODING DEPTH with no "none"; this is the
+--- superset a component actually wants to branch on, since "none" -- NO_COLOR,
+--- or an explicit `colorProfile = "none"` session/Ink-Lab override -- is
+--- the case a component most needs to know about). Seeded from
+--- `SessionOptions.colorProfile` ("auto" by default, which honors
+--- NO_COLOR/FORCE_COLOR -- see `hydronium_ink.color.profile`), and
+--- overridable live via `Session:setColorProfile()` (what Ink Lab's
+--- profile control and `hydronium_ink.color_test_profile`-style test
+--- harnesses use to preview/exercise every profile against the same
+--- mounted tree without restarting the session).
+---
+--- Most components don't need this at all: `<Text color={ink.byProfile({...})}>`
+--- (see hydronium_ink/init.lua's `byProfile`/`adaptive`) already resolves
+--- per-profile prop values without any component-side branching. Reach for
+--- this hook when the decision is bigger than a style value -- e.g.
+--- rendering an entirely different layout, or skipping a decorative
+--- element outright, under "none".
+--- @return "truecolor"|"ansi256"|"ansi16"|"none"
+function M.useColorProfile()
+  local ctx = requireAppContext("useColorProfile")
+  return ctx.colorProfile()
 end
 
 --- @class hydronium_ink.UseFocusOptions

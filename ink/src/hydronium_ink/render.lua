@@ -65,21 +65,29 @@ local POLL_INTERVAL_MS = 33
     shelling out to a native notifier (terminal-notifier, notify-send,
     osascript) than trusting an inconsistent in-band escape code.
   - OSC 4 / 10 / 11 (palette entry / default-foreground / default-
-    background): skipped in BOTH directions. SET mutates the user's
-    actual terminal color scheme as a global, persistent side effect with
-    no relation to this package's own render lifecycle or its careful
-    alt-screen enter/leave teardown (see useAltScreen's own doc comment)
-    -- there is no "undo" for having repainted someone's terminal palette
-    out from under them, and it can outlive the process or bleed into
-    other panes of a multiplexer. That is a bad fit for a UI library
+    background) SET: still skipped, in this direction only. SET mutates
+    the user's actual terminal color scheme as a global, persistent side
+    effect with no relation to this package's own render lifecycle or its
+    careful alt-screen enter/leave teardown (see useAltScreen's own doc
+    comment) -- there is no "undo" for having repainted someone's terminal
+    palette out from under them, and it can outlive the process or bleed
+    into other panes of a multiplexer. That is a bad fit for a UI library
     whose entire model is "own your own frame, leave everything else
-    alone." QUERY (reading the terminal's own reported theme, e.g. for
-    light/dark auto-detection) is genuinely useful in the abstract, but
-    needs the exact same OSC-response round-trip infrastructure the
-    skipped OSC 52 read above does, which does not exist in this
-    package yet -- if that round-trip parsing is ever built for one of
-    these, it is the more likely candidate to revisit, not OSC 4/10/11
-    SET.
+    alone."
+  - OSC 11 QUERY (reading the terminal's own reported background, for
+    light/dark auto-detection): IMPLEMENTED, but as its own module
+    (`hydronium_ink.terminal_background`, exposed as
+    `ink.terminal_background()`) rather than inline here -- this is the
+    round trip this comment used to say did not exist yet ("if that
+    round-trip parsing is ever built ... it is the more likely candidate
+    to revisit, not OSC 4/10/11 SET"). It writes and reads raw bytes off
+    fd 0/1 directly (the same primitives this file's own main loop below
+    uses), consuming only its own reply so nothing leaks into the app's
+    input -- see that module's doc comment for the full protocol and why
+    it must run once, at startup, before the loop below starts polling.
+    OSC 10 (default foreground) query was NOT added alongside it: nothing
+    in this package needs it yet, and it is a near-identical few lines to
+    add later against the same module if that changes.
 --]]
 
 local BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -214,7 +222,10 @@ function M.render(element, opts)
         app:flushInput()
 
         local sizeOk, nextSize = pcall(tty.getWindowSize)
-        if sizeOk and (nextSize.columns ~= size.columns or nextSize.rows ~= size.rows) then
+        -- Same positivity guard as the initial measurement: a pty created
+        -- without TIOCSWINSZ reports 0x0, which Session:resize rejects.
+        if sizeOk and nextSize.columns > 0 and nextSize.rows > 0
+          and (nextSize.columns ~= size.columns or nextSize.rows ~= size.rows) then
           size = nextSize
           app:resize(size.columns, size.rows)
         end
