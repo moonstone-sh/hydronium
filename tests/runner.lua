@@ -444,6 +444,7 @@ local function main()
       "tests/host/render_spec.lua",
       "tests/host/ink_session_spec.lua",
       "tests/host/ink_lab_spec.lua",
+      "tests/host/ink_lab_frame_spec.lua",
       "tests/host/ink_hmr_spec.lua",
       "tests/host/love_hmr_spec.lua",
       "tests/host/dev_watch_spec.lua",

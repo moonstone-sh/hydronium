@@ -1,16 +1,23 @@
 local lab = require("hydronium_lab")
 local session = require("hydronium_ink.session")
 local snapshot = require("hydronium_ink_lab.snapshot")
+local frame = require("hydronium_ink_lab.frame")
 
 local M = {}
 local Runtime = {}
 Runtime.__index = Runtime
 
+-- Ops that can change the canvas itself (dimensions, color capability/
+-- profile) or that a client uses to force a resync (`snapshot`). Every other
+-- op -- `step`, `input`, `bytes`, `paste`, `interaction` -- is encoded as a
+-- delta against the previous frame this session sent.
+local FULL_FRAME_OPS = { open = true, resize = true, colorProfile = true, color = true, snapshot = true }
+
 function M.new(registry)
   if type(registry) ~= "table" or registry._kind ~= "hydronium.lab.registry" then
     error("hydronium_ink_lab.runtime: expected a hydronium_lab registry", 2)
   end
-  return setmetatable({ registry = registry, active = nil, story = nil }, Runtime)
+  return setmetatable({ registry = registry, active = nil, story = nil, frame_stream = frame.new_stream() }, Runtime)
 end
 
 function Runtime:catalog()
@@ -38,7 +45,19 @@ function Runtime:open(id, options)
     -- when neither the open request nor the story specifies one.
     colorProfile = options.colorProfile or story.colorProfile,
   })
-  return snapshot.from_session(self.active)
+  -- A newly opened story is a fresh canvas: nothing about its previous
+  -- style table or frame sequence carries any meaning forward, so start
+  -- both over rather than let ids accumulate across story switches within
+  -- one long-lived Lab session.
+  self.frame_stream = frame.new_stream()
+  return self:_emit(true)
+end
+
+--- Encodes the active session's current frame against `self.frame_stream`,
+--- forcing a full (self-contained) frame when `force_full` is set.
+function Runtime:_emit(force_full)
+  local raw = snapshot.from_session(self.active)
+  return frame.encode(self.frame_stream, raw, force_full)
 end
 
 function Runtime:_active()
@@ -87,7 +106,7 @@ function Runtime:request(request)
   else
     error("hydronium_ink_lab.runtime: unsupported operation '" .. tostring(op) .. "'", 2)
   end
-  return snapshot.from_session(active)
+  return self:_emit(FULL_FRAME_OPS[op] or false)
 end
 
 function Runtime:close()

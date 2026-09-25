@@ -99,23 +99,42 @@ describe("hydronium Ink Lab", function()
       interactions = { { name = "complete", run = function() setValue("done") end } },
     }) })
     local runtime = inkLab.new(registry)
+
+    -- Deltas address changed cells as `{y, x, styleId, {ch, ...}}` row runs
+    -- (see hydronium_ink_lab.frame); resolve the character at (x, y) the
+    -- same way the browser client does.
+    local function delta_char_at(frame, x, y)
+      for _, change in ipairs(frame.changes or {}) do
+        if change[1] == y and x >= change[2] and x < change[2] + #change[4] then
+          return change[4][x - change[2] + 1]
+        end
+      end
+    end
+
     local frame = runtime:request({ op = "open", story = "demo/basic" })
-    assert.equal(frame.version, 1)
+    assert.equal(frame.version, 2)
+    assert.equal(frame.kind, "full")
     assert.equal(frame.width, 20)
-    assert.equal(frame.rows[1][1].ch, "i")
-    assert.same(frame.rows[1][1].fg, { kind = "rgb", r = 255, g = 0, b = 0 })
-    assert.truthy(frame.rows[1][1].bold)
+    local first_run = frame.rows[1][1]
+    assert.equal(first_run[2][1], "i")
+    local first_style = frame.styles[tostring(first_run[1])]
+    assert.same(first_style.fg, { kind = "rgb", r = 255, g = 0, b = 0 })
+    assert.truthy(first_style.bold)
 
     frame = runtime:request({ op = "input", input = "x", key = {} })
-    assert.equal(frame.rows[1][1].ch, "x")
+    assert.equal(frame.kind, "delta")
+    assert.equal(delta_char_at(frame, 1, 1), "x")
     frame = runtime:request({ op = "interaction", name = "complete", nowMs = 10 })
-    assert.equal(frame.rows[1][1].ch, "d")
+    assert.equal(delta_char_at(frame, 1, 1), "d")
     frame = runtime:request({ op = "resize", columns = 12, rows = 3 })
+    assert.equal(frame.kind, "full")
     assert.equal(frame.width, 12)
     assert.equal(frame.height, 3)
     frame = runtime:request({ op = "open", story = "demo/basic", color = "ansi16" })
+    assert.equal(frame.kind, "full")
     assert.equal(frame.color, "ansi16")
-    assert.same(frame.rows[1][1].fg, { kind = "palette", index = 1 })
+    local reopened_style = frame.styles[tostring(frame.rows[1][1][1])]
+    assert.same(reopened_style.fg, { kind = "palette", index = 1 })
     runtime:close()
   end)
 
@@ -139,7 +158,8 @@ describe("hydronium Ink Lab", function()
       generation = "1", sequence = 1, request = { op = "open", story = "demo/session" },
     })
     assert.truthy(opened.ok)
-    assert.equal(opened.result.rows[1][1].ch, "s")
+    assert.equal(opened.result.kind, "full")
+    assert.equal(opened.result.rows[1][1][2][1], "s")
     assert.equal(service:operate(first.session, {
       sequence = 1, request = { op = "snapshot" },
     }).outcome, "stale_sequence")

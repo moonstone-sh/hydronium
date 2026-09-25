@@ -54,25 +54,121 @@ export function keyboardEvent(event) {
   return { op: "input", input, key };
 }
 
-export function paintFrame(container, frame) {
-  if (!frame || frame.version !== 1) throw new Error("hydronium/ink-lab: unsupported frame snapshot");
-  container.style.display = "grid";
-  container.style.gridTemplateColumns = `repeat(${frame.width}, 1ch)`;
-  container.style.gridTemplateRows = `repeat(${frame.height}, 1lh)`;
-  container.style.width = `${frame.width}ch`;
-  container.style.height = `${frame.height}lh`;
-  container.style.whiteSpace = "pre";
-  container.style.fontFamily = "var(--hy-terminal-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)";
-  container.style.background = "var(--hy-terminal-background, #111318)";
-  container.style.color = "var(--hy-terminal-foreground, #e5e7eb)";
-  container.dataset.columns = String(frame.width);
-  container.dataset.rows = String(frame.height);
+// --- Frame protocol v2: style-interned row runs, full or delta -----------
+//
+// A "full" frame (`{version:2, kind:"full", width, height, styles, rows}`)
+// is self-contained: `styles` is the complete set of styles it references
+// (keyed by the small integer id `rows` cells point at), and `rows[y]` is an
+// array of `[styleId, [ch, ch, ...]]` runs covering the row left to right.
+// A "delta" frame (`{version:2, kind:"delta", base, seq, styles?, changes?,
+// cursor, status}`) carries only styles the peer hasn't already been sent
+// and only the cells that changed since frame `base`, as `[y, x, styleId,
+// [ch, ...]]` row runs -- `changes` and `styles` are both omitted (not sent
+// as an empty table) when there is nothing new, which is exactly what an
+// idle animation tick looks like.
+//
+// `createFrameModel()` holds the logical grid (style ids + characters,
+// resolved style objects, cursor, status) independently of the DOM, so a
+// delta can be *applied* to the model even while painting is deferred for an
+// in-progress text selection (see `paint()`/`flushDeferredFrame()` below),
+// and only the cells actually touched need to be repainted when it flushes.
 
+const CURSOR_FG_DEFAULT = "var(--hy-terminal-foreground, #e5e7eb)";
+const CURSOR_BG_DEFAULT = "var(--hy-terminal-background, #111318)";
+
+export function createFrameModel() {
+  return { width: 0, height: 0, styleIds: [], chars: [], styles: new Map(), cursor: null, status: null, seq: 0, dirty: new Set() };
+}
+
+function cursorEqual(a, b) {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.x === b.x && a.y === b.y;
+}
+
+function statusEqual(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.exited === b.exited && a.exitReason === b.exitReason && a.closed === b.closed;
+}
+
+function markDirty(model, x, y) {
+  if (x < 0 || y < 0 || x >= model.width || y >= model.height) return;
+  model.dirty.add(y * model.width + x);
+}
+
+/**
+ * Merges a v2 frame into `model`. Returns `{activity}`: false only for a
+ * delta that changed nothing at all (no cells, no cursor, no status) -- the
+ * signal the animation pacer backs off on. Throws (with `.desync = true`)
+ * when a delta's `base` does not match the model's last applied sequence,
+ * so a caller can resync with a fresh `snapshot` request instead of silently
+ * painting a corrupt grid.
+ */
+export function applyFrame(model, frame) {
+  if (!frame || frame.version !== 2) throw new Error("hydronium/ink-lab: unsupported frame version");
+  if (frame.kind === "full") model.styles = new Map();
+  if (frame.styles) {
+    for (const [id, style] of Object.entries(frame.styles)) model.styles.set(Number(id), style);
+  }
+  let activity = false;
+  if (frame.kind === "full") {
+    model.width = frame.width;
+    model.height = frame.height;
+    model.styleIds = new Array(frame.width * frame.height);
+    model.chars = new Array(frame.width * frame.height);
+    model.dirty = new Set();
+    for (let y = 0; y < frame.height; y += 1) {
+      let x = 0;
+      for (const [styleId, chars] of frame.rows[y]) {
+        for (const ch of chars) {
+          const index = y * frame.width + x;
+          model.styleIds[index] = styleId;
+          model.chars[index] = ch;
+          model.dirty.add(index);
+          x += 1;
+        }
+      }
+    }
+    activity = true;
+  } else if (frame.kind === "delta") {
+    if (model.seq !== frame.base) {
+      const error = new Error(`hydronium/ink-lab: delta frame base ${frame.base} does not match last known frame ${model.seq}`);
+      error.desync = true;
+      throw error;
+    }
+    const changes = Array.isArray(frame.changes) ? frame.changes : [];
+    for (const [y, x0, styleId, chars] of changes) {
+      let x = x0;
+      for (const ch of chars) {
+        const index = y * model.width + x;
+        model.styleIds[index] = styleId;
+        model.chars[index] = ch;
+        markDirty(model, x, y);
+        x += 1;
+      }
+    }
+    activity = changes.length > 0;
+  } else {
+    throw new Error(`hydronium/ink-lab: unknown frame kind '${frame.kind}'`);
+  }
+  if (!cursorEqual(model.cursor, frame.cursor)) {
+    if (model.cursor) markDirty(model, model.cursor.x, model.cursor.y);
+    if (frame.cursor) markDirty(model, frame.cursor.x, frame.cursor.y);
+    model.cursor = frame.cursor || null;
+    activity = true;
+  }
+  if (!statusEqual(model.status, frame.status)) { model.status = frame.status; activity = true; }
+  model.seq = frame.seq;
+  return { activity };
+}
+
+function ensureGridDom(container, model) {
   let grid = container.__hydroniumInkGrid;
-  if (!grid || grid.width !== frame.width || grid.height !== frame.height) {
+  if (!grid || grid.width !== model.width || grid.height !== model.height) {
     const fragment = container.ownerDocument.createDocumentFragment();
     const cells = [];
-    for (let y = 0; y < frame.height; y += 1) for (let x = 0; x < frame.width; x += 1) {
+    for (let y = 0; y < model.height; y += 1) for (let x = 0; x < model.width; x += 1) {
       const span = container.ownerDocument.createElement("span");
       span.style.gridColumn = String(x + 1);
       span.style.gridRow = String(y + 1);
@@ -80,36 +176,91 @@ export function paintFrame(container, frame) {
       fragment.appendChild(span);
     }
     container.replaceChildren(fragment);
-    grid = { width: frame.width, height: frame.height, cells };
+    grid = { width: model.width, height: model.height, cells };
     container.__hydroniumInkGrid = grid;
   }
+  return grid;
+}
 
-  const colorKey = (color) => !color ? "" : color.kind === "rgb"
-    ? `rgb:${color.r}:${color.g}:${color.b}` : `${color.kind}:${color.index}`;
-  frame.rows.forEach((row, y) => row.forEach((cell, x) => {
-    const span = grid.cells[y * frame.width + x];
-    const cursor = Boolean(frame.cursor && frame.cursor.x === x && frame.cursor.y === y);
-    const key = [cell.ch, colorKey(cell.fg), colorKey(cell.bg), cell.bold, cell.dim, cell.italic,
-      cell.underline, cell.strikethrough, cell.inverse, cursor].join("|");
-    if (span.__hydroniumInkCellKey === key) return;
-    span.__hydroniumInkCellKey = key;
-    span.textContent = cell.ch === "" ? "" : cell.ch;
-    span.style.cssText = `grid-column:${x + 1};grid-row:${y + 1}`;
-    let fg = colorToCss(cell.fg);
-    let bg = colorToCss(cell.bg);
-    if (cell.inverse) [fg, bg] = [bg || "var(--hy-terminal-foreground, #e5e7eb)", fg || "var(--hy-terminal-background, #111318)"];
-    if (fg) span.style.color = fg;
-    if (bg) span.style.backgroundColor = bg;
-    if (cell.bold) span.style.fontWeight = "700";
-    if (cell.dim) span.style.opacity = "0.65";
-    if (cell.italic) span.style.fontStyle = "italic";
-    const decorations = [];
-    if (cell.underline) decorations.push("underline");
-    if (cell.strikethrough) decorations.push("line-through");
-    if (decorations.length) span.style.textDecoration = decorations.join(" ");
-    if (cursor) span.dataset.cursor = ""; else delete span.dataset.cursor;
-  }));
+function paintCell(span, x, y, style, ch, cursorHere) {
+  span.textContent = ch === "" || ch == null ? "" : ch;
+  span.style.cssText = `grid-column:${x + 1};grid-row:${y + 1}`;
+  let fg = colorToCss(style && style.fg);
+  let bg = colorToCss(style && style.bg);
+  if (style && style.inverse) [fg, bg] = [bg || CURSOR_FG_DEFAULT, fg || CURSOR_BG_DEFAULT];
+  if (fg) span.style.color = fg;
+  if (bg) span.style.backgroundColor = bg;
+  if (style && style.bold) span.style.fontWeight = "700";
+  if (style && style.dim) span.style.opacity = "0.65";
+  if (style && style.italic) span.style.fontStyle = "italic";
+  const decorations = [];
+  if (style && style.underline) decorations.push("underline");
+  if (style && style.strikethrough) decorations.push("line-through");
+  if (decorations.length) span.style.textDecoration = decorations.join(" ");
+  if (cursorHere) span.dataset.cursor = ""; else delete span.dataset.cursor;
+}
+
+/** Repaints every cell in `model.dirty` and clears it. Container-level grid
+ * setup (size, base styling) runs every call; it is cheap and idempotent. */
+export function flushFrameModel(container, model) {
+  container.style.display = "grid";
+  container.style.gridTemplateColumns = `repeat(${model.width}, 1ch)`;
+  container.style.gridTemplateRows = `repeat(${model.height}, 1lh)`;
+  container.style.width = `${model.width}ch`;
+  container.style.height = `${model.height}lh`;
+  container.style.whiteSpace = "pre";
+  container.style.fontFamily = "var(--hy-terminal-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)";
+  container.style.background = "var(--hy-terminal-background, #111318)";
+  container.style.color = "var(--hy-terminal-foreground, #e5e7eb)";
+  container.dataset.columns = String(model.width);
+  container.dataset.rows = String(model.height);
+  const grid = ensureGridDom(container, model);
+  for (const index of model.dirty) {
+    const span = grid.cells[index];
+    if (!span) continue;
+    const x = index % model.width;
+    const y = Math.floor(index / model.width);
+    const style = model.styles.get(model.styleIds[index]);
+    const cursorHere = Boolean(model.cursor && model.cursor.x === x && model.cursor.y === y);
+    paintCell(span, x, y, style, model.chars[index], cursorHere);
+  }
+  model.dirty = new Set();
+}
+
+/**
+ * Convenience wrapper for simple/synchronous callers (and tests): applies
+ * `frame` to a model kept on `container` and immediately flushes it. The
+ * live client uses `applyFrame`/`flushFrameModel` directly so it can defer
+ * the DOM flush during a text selection without losing intermediate deltas.
+ */
+export function paintFrame(container, frame) {
+  let model = container.__hydroniumInkModel;
+  if (!model) { model = createFrameModel(); container.__hydroniumInkModel = model; }
+  applyFrame(model, frame);
+  flushFrameModel(container, model);
   return frame;
+}
+
+/**
+ * Animation-tick pacing: a steady cadence (`baseDelayMs`, ~50-60ms) while the
+ * story is actually animating, backing off toward `maxDelayMs` once a run of
+ * consecutive idle ticks (an empty delta, no cursor/status change) shows
+ * there is nothing moving. `noteActivity()` -- called on real user input, not
+ * only on an animated tick -- snaps straight back to the base cadence, per
+ * "resume on input/any change." Pure and DOM-free so it can be unit tested
+ * on its own.
+ */
+export function createAnimationPacer({ baseDelayMs = 55, idleThreshold = 3, maxDelayMs = 2000, idleGrowth = 1.6 } = {}) {
+  let idleStreak = 0;
+  let delay = baseDelayMs;
+  return {
+    get delay() { return delay; },
+    noteActivity() { idleStreak = 0; delay = baseDelayMs; },
+    noteIdle() {
+      idleStreak += 1;
+      if (idleStreak >= idleThreshold) delay = Math.min(maxDelayMs, Math.round(delay * idleGrowth));
+    },
+  };
 }
 
 function query(root, role) {
@@ -184,7 +335,7 @@ function savePreferences(key, value) {
  * `request(message)` is the only transport seam and may call an in-page Lua
  * runtime, `fetch`, a WebSocket RPC, or a Meteorite endpoint.
  */
-export async function createInkLab({ root, request, autoResize = false, workbench = {} }) {
+export async function createInkLab({ root, request, autoResize = false, workbench = {}, animationIntervalMs = 55 }) {
   if (typeof root === "string") root = document.querySelector(root);
   if (!root) throw new Error("hydronium/ink-lab: root was not found");
   if (typeof request !== "function") throw new Error("hydronium/ink-lab: request must be a function");
@@ -236,9 +387,10 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
   let paintedRect = null;
   let manualResizeRect = null;
   let manualResizeUntil = 0;
-  let frameCellCount = 0;
   let selectionGesture = false;
-  let deferredFrame = null;
+  const frameModel = createFrameModel();
+  let pendingFlush = false;
+  const pacer = createAnimationPacer({ baseDelayMs: animationIntervalMs });
 
   function hasTerminalSelection() {
     const selection = window.getSelection?.();
@@ -328,6 +480,7 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     const target = fillTarget();
     if (target.columns === activeSize.columns && target.rows === activeSize.rows) return;
     activeSize = { name: "fill", ...target };
+    pacer.noteActivity();
     paint(await request({ op: "resize", ...target }));
   }
 
@@ -341,7 +494,7 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
       const button = root.ownerDocument.createElement("button");
       button.type = "button";
       button.textContent = name;
-      button.addEventListener("click", async () => paint(await request({ op: "interaction", name })));
+      button.addEventListener("click", async () => { pacer.noteActivity(); paint(await request({ op: "interaction", name })); });
       return button;
     }));
   }
@@ -371,16 +524,10 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     storySelect.value = activeStory.id;
   }
 
-  function paint(frame) {
-    // Frame painting replaces the per-cell DOM grid. During a browser text
-    // selection that would detach the range on every animation tick and make
-    // the next drag jump from the last painted cell. Keep only the latest
-    // snapshot until the user releases/clears their selection.
-    if (holdPaintForSelection()) {
-      deferredFrame = frame;
-      return frame;
-    }
-    paintFrame(terminal, frame);
+  // Trailing bookkeeping shared by a normal paint and a deferred flush: it
+  // must run every time the DOM grid actually changes, whichever call site
+  // triggered that.
+  function afterFlush() {
     // While a browser drag is waiting for its debounced Ink resize, animation
     // frames still arrive. Preserve the user-owned CSS box across those old
     // frames instead of snapping it back to the previous `widthch × heightlh`.
@@ -390,16 +537,50 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     }
     const rect = terminal.getBoundingClientRect();
     paintedRect = { width: rect.width, height: rect.height };
-    frameCellCount = frame.width * frame.height;
-    renderDimensions(dimensions, frame.width, frame.height);
+    renderDimensions(dimensions, frameModel.width, frameModel.height);
+  }
+
+  let lastPaintActivity = true;
+
+  function resyncFrame() {
+    if (closed) return;
+    request({ op: "snapshot" }).then((full) => paint(full)).catch(() => {});
+  }
+
+  function paint(frame) {
+    let result;
+    try {
+      result = applyFrame(frameModel, frame);
+    } catch (error) {
+      // A delta whose `base` doesn't match what this client last applied
+      // (a dropped/reordered response, or the very rare recovery case) is
+      // unsafe to paint. Self-heal with a full resync instead of showing a
+      // corrupt grid; the transient tick that triggered this is otherwise
+      // silently dropped, matching how a transient request failure is
+      // already handled in `scheduleAnimation` below.
+      if (error && error.desync) { lastPaintActivity = true; resyncFrame(); return frame; }
+      throw error;
+    }
+    lastPaintActivity = result.activity;
+    // Frame application always updates the logical model above, even during
+    // a browser text selection -- only the DOM flush is deferred, so no
+    // intermediate delta is ever lost, however many ticks arrive before the
+    // user releases/clears their selection (see `flushDeferredFrame`).
+    if (holdPaintForSelection()) {
+      pendingFlush = true;
+      return frame;
+    }
+    flushFrameModel(terminal, frameModel);
+    pendingFlush = false;
+    afterFlush();
     return frame;
   }
 
   function flushDeferredFrame() {
-    if (!deferredFrame || holdPaintForSelection()) return;
-    const frame = deferredFrame;
-    deferredFrame = null;
-    paint(frame);
+    if (!pendingFlush || holdPaintForSelection()) return;
+    flushFrameModel(terminal, frameModel);
+    pendingFlush = false;
+    afterFlush();
   }
 
   async function open() {
@@ -409,6 +590,7 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     if (colorSelect) colorSelect.value = preferences.color || activeStory.color;
     const target = fillMode ? fillTarget() : activeSize;
     activeSize = fillMode ? { name: "fill", ...target } : activeSize;
+    pacer.noteActivity();
     return paint(await request({
       op: "open", story: activeStory.id, columns: target.columns, rows: target.rows,
       color: colorSelect?.value || activeStory.color,
@@ -434,10 +616,12 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     persist({ sizeMode: "preset" });
     if (autoResize) terminal.style.resize = "both";
     activeSize = activeStory.sizes.find((size) => size.name === sizeSelect.value);
+    pacer.noteActivity();
     paint(await request({ op: "resize", columns: activeSize.columns, rows: activeSize.rows }));
   });
   colorSelect?.addEventListener("change", async () => {
     persist({ color: colorSelect.value });
+    pacer.noteActivity();
     paint(await request({ op: "color", color: colorSelect.value }));
   });
   fontSelect?.addEventListener("change", () => {
@@ -462,10 +646,12 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     window.getSelection?.().removeAllRanges();
     flushDeferredFrame();
     event.preventDefault();
+    pacer.noteActivity();
     paint(await request(keyboardEvent(event)));
   });
   terminal.addEventListener("paste", async (event) => {
     event.preventDefault();
+    pacer.noteActivity();
     paint(await request({ op: "paste", text: event.clipboardData?.getData("text") || "" }));
   });
   // ResizeObserver alone cannot distinguish a browser layout/font change from
@@ -537,6 +723,7 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     resizeBusy = true;
     const generation = ++resizeGeneration;
     activeSize = { name: "custom", columns: target.columns, rows: target.rows };
+    pacer.noteActivity();
     try {
       const frame = await request({ op: "resize", columns: target.columns, rows: target.rows });
       if (!closed && generation === resizeGeneration) {
@@ -553,7 +740,7 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     terminal.style.resize = fillMode ? "none" : "both";
     terminal.style.overflow = "hidden";
     observer = new ResizeObserver(([entry]) => {
-      // `paintFrame` itself sets width/height in `ch`/`lh`. Ignore the
+      // `flushFrameModel` itself sets width/height in `ch`/`lh`. Ignore the
       // corresponding observation: only a box that differs from the last
       // painted box represents a browser resize-handle gesture.
       if (fillMode || performance.now() > manualResizeUntil || (paintedRect && Math.abs(entry.contentRect.width - paintedRect.width) < 1
@@ -601,14 +788,21 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     event.preventDefault();
     if (typeof select.showPicker === "function") select.showPicker(); else { select.focus(); select.click(); }
   }));
-  // A full Ink snapshot contains one styled record per cell. `setInterval`
-  // used to enqueue another `step` every 160ms even if a large snapshot was
-  // still encoding, painting, or waiting behind a resize. That created an
-  // unbounded serialized-request backlog: shrinking the terminal was queued
-  // behind its own animation frames. Schedule the next tick only after the
-  // previous one settles, and lower the cadence for genuinely large canvases.
+  // `setInterval` used to enqueue another `step` every 160-900ms (throttled
+  // by canvas size, to hide a full per-cell JSON payload's own encode cost)
+  // even if a previous tick was still encoding, painting, or waiting behind
+  // a resize -- an unbounded serialized-request backlog, and a floor on
+  // animation smoothness that grew with the canvas. Frame protocol v2's
+  // delta encoding (see hydronium_ink_lab.frame) made an idle or
+  // small-change tick cheap regardless of canvas size, so the size-based
+  // throttle is gone: `scheduleAnimation` now runs at one steady cadence
+  // (`pacer`, default ~55ms, configurable via `animationIntervalMs`),
+  // scheduling the next tick only after the previous one settles (still no
+  // backlog), and backs off toward `pacer`'s ceiling once a run of
+  // genuinely idle deltas (see `applyFrame`'s `activity` result) shows nothing
+  // is animating -- `pacer.noteActivity()` at every real input/interaction
+  // site above snaps it back to full cadence immediately.
   let animationTimer = null;
-  const animationDelay = () => frameCellCount > 12000 ? 900 : frameCellCount > 4000 ? 400 : 160;
   const scheduleAnimation = () => {
     window.clearTimeout(animationTimer);
     animationTimer = window.setTimeout(async () => {
@@ -616,21 +810,22 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
       if (!document.hidden) {
         try {
           paint(await request({ op: "step", nowMs: performance.now() }));
+          if (lastPaintActivity) pacer.noteActivity(); else pacer.noteIdle();
         } catch (_) {
           // The transport's visible status surface reports real failures. A
           // transient animation tick must not unmount the last good frame.
         }
       }
       if (!closed) scheduleAnimation();
-    }, animationDelay());
+    }, pacer.delay);
   };
   scheduleAnimation();
   return {
     catalog,
     terminal,
-    resize: async (columns, rows) => paint(await request({ op: "resize", columns, rows })),
-    input: async (input, key = {}) => paint(await request({ op: "input", input, key })),
-    paste: async (text) => paint(await request({ op: "paste", text })),
+    resize: async (columns, rows) => { pacer.noteActivity(); return paint(await request({ op: "resize", columns, rows })); },
+    input: async (input, key = {}) => { pacer.noteActivity(); return paint(await request({ op: "input", input, key })); },
+    paste: async (text) => { pacer.noteActivity(); return paint(await request({ op: "paste", text })); },
     step: async (nowMs) => paint(await request({ op: "step", nowMs })),
     // A host supplies only a fully validated catalog. Keep the last painted
     // frame until that point, then remount the selected story at the existing
@@ -653,6 +848,7 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
       if (sizeSelect && activeStory.sizes.some((size) => size.name === matchedSize.name)) sizeSelect.value = matchedSize.name;
       fillInteractions();
       if (colorSelect) colorSelect.value = previousColor;
+      pacer.noteActivity();
       return paint(await request({
         op: "open", story: activeStory.id, columns: activeSize.columns, rows: activeSize.rows,
         color: previousColor,
