@@ -123,7 +123,7 @@ local function option_rows(opt, selected, active, key_prefix, group_dim, field_d
   return rows
 end
 
---- @param props { field_label: string, options: table[], selected_id: string, active: boolean, field_disabled?: boolean, field_disabled_reason?: string, group_dim?: boolean }
+--- @param props { field_label: string, options: table[], selected_id: string, active: boolean, field_disabled?: boolean, field_disabled_reason?: string, field_note?: string, group_dim?: boolean }
 --- @return any[] rows
 --- Each `opt` may carry a `subgroup` label (e.g. "Vite-based" / "No Vite"
 --- on the wizard's framework choice) -- a dim, italic header line is
@@ -132,6 +132,17 @@ end
 --- without changing the "every option always visible" contract at all
 --- (a subgroup header is purely a label between existing rows, never a
 --- collapse/hide).
+---
+--- `field_note` is a THIRD, distinct annotation from the two kinds of
+--- "disabled" documented above the field/option row-builders in this
+--- file's own header comment: it is informational, shown even while the
+--- field is fully live and every option remains reachable (e.g. "no JS
+--- package manager found on PATH -- files are still created; install one
+--- to run Vite") -- never a reason picking is blocked, so it renders plain
+--- dim rather than the yellow `field_disabled_reason` gets. Mutually
+--- exclusive with `field_disabled_reason` in practice (a field is either
+--- moot for a structural reason, or live with a caveat, never both at
+--- once), so only one ever prints.
 function M.radio_group_rows(props)
   props = props or {}
   local gd = props.group_dim or false
@@ -141,6 +152,8 @@ function M.radio_group_rows(props)
   end
   if props.field_disabled and props.field_disabled_reason then
     rows[#rows + 1] = hydronium.h(ink.Text, { key = "field_reason", color = "yellow", dimColor = true }, "(" .. props.field_disabled_reason .. ")")
+  elseif props.field_note then
+    rows[#rows + 1] = hydronium.h(ink.Text, { key = "field_note", color = "brightBlack", dimColor = true }, "(" .. props.field_note .. ")")
   end
   local last_subgroup = nil
   for i, opt in ipairs(props.options or {}) do

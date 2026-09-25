@@ -90,10 +90,12 @@ local M = {}
 
 local VERSION = "0.5.0"
 
--- Two subgroups: "Vite-based" frameworks can turn on Tailwind's Vite
--- side-build (see TAILWIND_SUPPORTED below); "No Vite" ones never can --
--- ink/love are LuaJIT-only terminal/game hosts with no browser surface at
--- all, and minimal is a bare embeddable component.
+-- Two subgroups: "Vite-based" frameworks always get the real Vite build
+-- (create.vite -- package.json + vite.config.js, see that module's own
+-- header comment) and CAN additionally turn Tailwind on as a purely
+-- additive layer on top of it (create.tailwind); "No Vite" ones never get
+-- either -- ink/love are LuaJIT-only terminal/game hosts with no browser
+-- surface at all, and minimal is a bare embeddable component.
 local FRAMEWORKS = {
   { id = "ssr", label = "SSR", description = "Full-stack Meteorite app with browser Lua navigation", recommended = true, subgroup = "Vite-based" },
   { id = "spa", label = "SPA", description = "Client-only Ballad bundle, no server rendering", subgroup = "Vite-based" },
@@ -103,7 +105,13 @@ local FRAMEWORKS = {
   { id = "love", label = "LÖVE", description = "Game loop with topology-backed HMR, LuaJIT only", subgroup = "No Vite" },
 }
 local ROUTED = { spa = true, islands = true }
-local TAILWIND_SUPPORTED = { ssr = true, spa = true, islands = true }
+-- Package manager: enabled for any Vite-based framework, independent of
+-- Tailwind (see create/init.lua's own "Package manager: tied to VITE"
+-- comment) -- Tailwind's own availability shares the exact same template
+-- set, so one table serves both, kept as two names for readability at each
+-- call site below.
+local VITE_SUPPORTED = { ssr = true, spa = true, islands = true }
+local TAILWIND_SUPPORTED = VITE_SUPPORTED
 -- Mirrors template_specs[id].interpreters in create/src/create/init.lua:
 -- ink/love are the only two templates that reject anything but LuaJIT.
 local INTERPRETER_LOCKED = { ink = true, love = true }
@@ -289,8 +297,8 @@ function M.create_wizard_app(opts)
     --- Whether a given STOP can currently be landed on / selected.
     local function stop_enabled(stop)
       if stop.field == "router" then return ROUTED[framework_id()] == true end
-      if stop.field == "tailwind" then return TAILWIND_SUPPORTED[framework_id()] == true and #managers > 0 end
-      if stop.field == "package_manager" then return tailwind() == true and detected(stop.option_id) end
+      if stop.field == "tailwind" then return TAILWIND_SUPPORTED[framework_id()] == true end
+      if stop.field == "package_manager" then return VITE_SUPPORTED[framework_id()] == true and detected(stop.option_id) end
       if stop.field == "interpreter" then
         if INTERPRETER_LOCKED[framework_id()] and stop.option_id ~= "luajit@2.1" then return false end
         return true
@@ -304,8 +312,8 @@ function M.create_wizard_app(opts)
     --- concrete stop at a time).
     local function field_enabled(field_name)
       if field_name == "router" then return ROUTED[framework_id()] == true end
-      if field_name == "tailwind" then return TAILWIND_SUPPORTED[framework_id()] == true and #managers > 0 end
-      if field_name == "package_manager" then return tailwind() == true end
+      if field_name == "tailwind" then return TAILWIND_SUPPORTED[framework_id()] == true end
+      if field_name == "package_manager" then return VITE_SUPPORTED[framework_id()] == true end
       return true
     end
 
@@ -314,11 +322,15 @@ function M.create_wizard_app(opts)
       if ROUTED[framework_id()] then return nil end
       return "Only configurable for SPA/Islands"
     end
+    -- Tailwind is enabled for any Vite-based framework regardless of
+    -- whether a JS package manager was actually detected -- like the
+    -- package manager field itself, missing PATH tooling shows up as a
+    -- field-level NOTE there (see the package-manager render block below),
+    -- never as a reason this toggle itself is unreachable.
     local function tailwind_disabled_reason()
       if not TAILWIND_SUPPORTED[framework_id()] then
         return "Not supported for " .. FRAMEWORKS[framework_index()].label .. " projects"
       end
-      if #managers == 0 then return "No JS package manager found on PATH" end
       return nil
     end
 
@@ -452,9 +464,9 @@ function M.create_wizard_app(opts)
         directory = directory(), name = name(), template = id,
         force = opts.force, dry_run = dry_run, interpreter = INTERPRETERS[interpreter_index()].id,
       }
-      if TAILWIND_SUPPORTED[id] then
+      if VITE_SUPPORTED[id] then
         values.tailwind = tailwind()
-        if tailwind() then values.package_manager = PACKAGE_MANAGERS[pm_index()] end
+        values.package_manager = PACKAGE_MANAGERS[pm_index()]
       end
       if ROUTED[id] then values.router = ROUTERS[router_index()].id end
 
@@ -468,7 +480,7 @@ function M.create_wizard_app(opts)
       end
       setScaffoldResult(res)
       local plan = wizard_tasks.plan({
-        install_deps = install_deps(), tailwind = res.tailwind, git_init = git_init(),
+        install_deps = install_deps(), vite = res.vite, git_init = git_init(),
         package_manager = res.package_manager,
       })
       plan[1] = { id = plan[1].id, label = plan[1].label, status = "done" } -- write already happened
@@ -671,10 +683,19 @@ function M.create_wizard_app(opts)
             pm_opts[i] = { id = name_candidate, label = name_candidate, description = "Detected on PATH",
               disabled = not detected(name_candidate), disabled_reason = "not found on PATH" }
           end
+          -- A field-level NOTE (distinct from a field-level DISABLED
+          -- reason -- see ui/field.lua's own header comment on the two
+          -- kinds): the field itself stays live for any Vite-based
+          -- framework even when nothing was detected on PATH (files are
+          -- still created either way), so this is informational, not a
+          -- reason the field is unreachable.
+          local pm_note = (#managers == 0 and field_enabled("package_manager"))
+            and "none found on PATH -- files are still created; install one to run Vite" or nil
           push_rows(field.radio_group_rows({
             field_label = "package manager", options = pm_opts, selected_id = PACKAGE_MANAGERS[pm_index()],
             active = current_field == "package_manager" and field_enabled("package_manager"),
-            field_disabled = not field_enabled("package_manager"), field_disabled_reason = "Only used when Tailwind is enabled",
+            field_disabled = not field_enabled("package_manager"), field_disabled_reason = "Only used by Vite-based frameworks",
+            field_note = pm_note,
             group_dim = not is_active_group,
           }), not is_active_group)
           local interpreter_opts = {}

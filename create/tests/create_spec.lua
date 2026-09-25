@@ -3,9 +3,12 @@ package.path = "./src/?.lua;./src/?/init.lua;" .. package.path
 local create = require("create.init")
 local luals = require("create.luals")
 local process = require("create.process")
+local vite = require("create.vite")
 local tailwind = require("create.tailwind")
 local router_mode = require("create.router_mode")
 local wizard = require("create.wizard")
+local wizard_tasks = require("create.wizard_tasks")
+local pm = require("create.pm")
 
 --- Parses "X.Y.Z" into three integers. Returns nil on anything else.
 local function parse_semver(str)
@@ -684,6 +687,55 @@ test("--install and --git are dry-run-safe and refuse contradictory pairs", func
 end)
 
 --------------------------------------------------------------------------------
+-- create.wizard_tasks: the `js_install` task is gated on the scaffolded
+-- template being Vite-based (ssr/spa/islands), NOT on Tailwind -- Tailwind
+-- is a purely additive layer on the same Vite base (see create/vite.lua and
+-- create/tailwind.lua's own header comments).
+--------------------------------------------------------------------------------
+
+test("wizard_tasks.plan includes js_install for any Vite-based template with install_deps on, tailwind or not", function()
+  local with_tailwind = wizard_tasks.plan({ install_deps = true, vite = true, tailwind = true, package_manager = "pnpm", git_init = false })
+  local without_tailwind = wizard_tasks.plan({ install_deps = true, vite = true, tailwind = false, package_manager = "pnpm", git_init = false })
+  local function has(tasks, id)
+    for _, t in ipairs(tasks) do if t.id == id then return true end end
+    return false
+  end
+  assert(has(with_tailwind, "js_install"), "js_install must run when vite = true and tailwind = true")
+  assert(has(without_tailwind, "js_install"), "js_install must run when vite = true even with tailwind = false")
+
+  local non_vite = wizard_tasks.plan({ install_deps = true, vite = false, git_init = false })
+  assert(not has(non_vite, "js_install"), "js_install must not run for a non-Vite template")
+
+  local no_install = wizard_tasks.plan({ install_deps = false, vite = true, git_init = false })
+  assert(not has(no_install, "js_install"), "js_install must not run when install_deps is off")
+end)
+
+test("wizard_tasks.run_task(js_install) fails with a clear, actionable hint when the resolved package manager isn't on PATH", function()
+  local no_managers_pm = { detect = function() return {} end, install_command = pm.install_command }
+  local ran_process = false
+  local ok, err = wizard_tasks.run_task({ id = "js_install", label = "npm install" }, {
+    target_dir = "/tmp/wherever", package_manager = "npm", dry_run = false,
+    pm_mod = no_managers_pm,
+    run_process = function() ran_process = true; return { exit_code = 0 } end,
+  })
+  assert(ok == false, "js_install must fail, not silently succeed, when npm isn't on PATH")
+  assert(not ran_process, "js_install must never shell out when the package manager isn't actually on PATH")
+  assert(err:find("not found on PATH", 1, true), tostring(err))
+end)
+
+test("wizard_tasks.run_task(js_install) really invokes the resolved package manager's install command when it IS on PATH", function()
+  local one_manager_pm = { detect = function() return { "pnpm" } end, install_command = pm.install_command }
+  local captured
+  local ok = wizard_tasks.run_task({ id = "js_install", label = "pnpm install" }, {
+    target_dir = "/tmp/wherever", package_manager = "pnpm", dry_run = false,
+    pm_mod = one_manager_pm,
+    run_process = function(opts) captured = opts; return { exit_code = 0 } end,
+  })
+  assert(ok == true, "js_install must succeed when the run_process mock reports success")
+  assert(captured and captured.tool == "pnpm" and captured.args[1] == "install", "must actually run `pnpm install`")
+end)
+
+--------------------------------------------------------------------------------
 -- Wizard, --tailwind, and --router: every wizard choice is also a flag, and
 -- the scaffolding logic stays a pure function of the collected options (see
 -- create/init.lua and create/wizard.lua's own header comments for why).
@@ -725,27 +777,118 @@ test("CLI ambient auto-wizard does not trigger for a non-interactive invocation"
   assert(output:find("template 'ssr'", 1, true), output)
 end)
 
-test("tailwind.apply wires Vite + Tailwind v4 into the ssr template", function()
-  local files = require("create.templates.ssr").files({ name = "test-ssr-tailwind" })
-  files = tailwind.apply(files, { template = "ssr", name = "test-ssr-tailwind" })
-  assert(files["package.json"]:find('"@tailwindcss/vite"', 1, true), "missing @tailwindcss/vite devDependency")
-  assert(files["package.json"]:find('"tailwindcss"', 1, true), "missing tailwindcss devDependency")
-  assert(files["vite.config.js"]:find('tailwindcss()', 1, true), "vite.config.js must register the Tailwind plugin")
-  assert(files["src/styles.css"]:find('@import "tailwindcss";', 1, true), "missing Tailwind v4 CSS-first import")
-  assert(files["src/styles.css"]:find('@source "./views/**/*.luax";', 1, true),
-    "missing explicit @source for .luax views -- Tailwind cannot detect that extension on its own")
+--------------------------------------------------------------------------------
+-- Vite (the base) and Tailwind (a purely additive layer on top of it) --
+-- see create/vite.lua and create/tailwind.lua's own header comments. Vite
+-- is ALWAYS applied to ssr/spa/islands now, independent of --tailwind; the
+-- unit tests below therefore exercise create.vite directly (never through
+-- tailwind.lua, which now assumes create.vite already ran), then
+-- create.tailwind ON TOP of an already-vite-applied file set, matching
+-- exactly what create.scaffold itself does.
+--------------------------------------------------------------------------------
+
+test("vite.apply wires the base Vite build into the ssr template, with nothing Tailwind-specific", function()
+  local files = require("create.templates.ssr").files({ name = "test-ssr-vite" })
+  files = vite.apply(files, { template = "ssr", name = "test-ssr-vite" })
+  assert(files["package.json"], "missing package.json")
+  assert(files["package.json"]:find('"vite"', 1, true), "missing vite devDependency")
+  assert(not files["package.json"]:find("tailwind", 1, true), "base Vite package.json must not mention Tailwind")
+  assert(files["vite.config.js"], "missing vite.config.js")
+  assert(not files["vite.config.js"]:find("tailwind", 1, true), "base vite.config.js must not mention Tailwind")
+  assert(files["src/styles.css"], "missing src/styles.css")
+  assert(not files["src/styles.css"]:find("tailwind", 1, true), "base src/styles.css must not mention Tailwind")
   assert(files["src/views/Document.luax"]:find('/public/dist/styles.css', 1, true),
-    "Document must link the compiled Tailwind stylesheet")
+    "Document must link the Vite-built stylesheet")
   assert(files[".gitignore"]:find("node_modules/", 1, true), "must gitignore node_modules")
 end)
 
-test("tailwind.apply wires Vite + Tailwind v4 into the islands template", function()
-  local files = require("create.templates.islands").files({ name = "test-islands-tailwind" })
-  files = tailwind.apply(files, { template = "islands", name = "test-islands-tailwind" })
-  assert(files["src/styles.css"]:find('@source "../views/**/*.luax";', 1, true),
-    "islands' .luax views live one level above src/, unlike ssr's")
+test("vite.apply wires the base Vite build into the islands template", function()
+  local files = require("create.templates.islands").files({ name = "test-islands-vite" })
+  files = vite.apply(files, { template = "islands", name = "test-islands-vite" })
+  assert(files["package.json"] and files["vite.config.js"] and files["src/styles.css"],
+    "missing one of package.json/vite.config.js/src/styles.css")
   assert(files["views/Document.luax"]:find('/public/dist/styles.css', 1, true),
-    "Document must link the compiled Tailwind stylesheet")
+    "Document must link the Vite-built stylesheet")
+end)
+
+test("vite.apply wires the base Vite build into the spa template, both router variants", function()
+  for _, router in ipairs({ "hydronium", "meteorite" }) do
+    local files = require("create.templates.spa").files({ name = "test-spa-vite", router = router })
+    local before_build_script = files["moonstone.toml"]:match('build = "([^"]+)"')
+    files = vite.apply(files, { template = "spa", name = "test-spa-vite", router = router })
+    assert(files["package.json"] and files["vite.config.js"] and files["src/styles.css"],
+      "[spa/" .. router .. "] missing one of package.json/vite.config.js/src/styles.css")
+    assert(files["scripts/inject-vite-link.mjs"], "[spa/" .. router .. "] missing the postbuild link-injector")
+    assert(files["package.json"]:find("inject%-vite%-link"), "[spa/" .. router .. "] build script must run the injector")
+    if router == "meteorite" then
+      -- `meteorite build` bakes static inputs into the server binary at
+      -- build time, so it must always run LAST now that Vite is always
+      -- applied -- see create/vite.lua's own header comment.
+      assert(files["moonstone.toml"]:find('package = "moon exec %-%- meteorite build', 1, false)
+        or files["moonstone.toml"]:find('package = "moon exec %-%-dev %-%- meteorite build', 1, false),
+        "[spa/meteorite] meteorite build must be split into its own package script: " .. files["moonstone.toml"])
+      assert(files["moonstone.toml"]:match('build = "([^"]+)"') ~= before_build_script,
+        "[spa/meteorite] build script must be split apart once Vite is applied")
+    else
+      assert(files["moonstone.toml"]:match('build = "([^"]+)"') == before_build_script,
+        "[spa/hydronium] build script has no Meteorite baking step to split; must stay untouched")
+    end
+  end
+end)
+
+test("vite.apply refuses templates it has no wiring for", function()
+  local files = require("create.templates.minimal").files({ name = "test-minimal" })
+  local ok, err = pcall(vite.apply, files, { template = "minimal", name = "test-minimal" })
+  assert(not ok, "vite.apply must refuse an unsupported template")
+  assert(tostring(err):find("unsupported template", 1, true), tostring(err))
+end)
+
+test("tailwind.apply layers Tailwind v4 on top of an already-vite-applied ssr/islands template", function()
+  for _, template_id in ipairs({ "ssr", "islands" }) do
+    local files = require("create.templates." .. template_id).files({ name = "test-" .. template_id .. "-tw" })
+    files = vite.apply(files, { template = template_id, name = "test-" .. template_id .. "-tw" })
+    local package_json_before = files["package.json"]
+    files = tailwind.apply(files, { template = template_id, name = "test-" .. template_id .. "-tw" })
+    assert(files["package.json"]:find('"@tailwindcss/vite"', 1, true), "[" .. template_id .. "] missing @tailwindcss/vite devDependency")
+    assert(files["package.json"]:find('"tailwindcss"', 1, true), "[" .. template_id .. "] missing tailwindcss devDependency")
+    assert(files["package.json"] ~= package_json_before, "[" .. template_id .. "] tailwind.apply must actually change package.json")
+    assert(files["vite.config.js"]:find('tailwindcss()', 1, true), "[" .. template_id .. "] vite.config.js must register the Tailwind plugin")
+    assert(files["vite.config.js"]:find('@tailwindcss/vite', 1, true), "[" .. template_id .. "] vite.config.js must import @tailwindcss/vite")
+    assert(files["src/styles.css"]:find('@import "tailwindcss";', 1, true), "[" .. template_id .. "] missing Tailwind v4 CSS-first import")
+  end
+  local ssr_files = vite.apply(require("create.templates.ssr").files({ name = "x" }), { template = "ssr", name = "x" })
+  ssr_files = tailwind.apply(ssr_files, { template = "ssr", name = "x" })
+  assert(ssr_files["src/styles.css"]:find('@source "./views/**/*.luax";', 1, true),
+    "missing explicit @source for .luax views -- Tailwind cannot detect that extension on its own")
+  -- tailwind.apply never touches the Document -- create.vite already linked
+  -- the stylesheet Tailwind's CSS compiles into (see both modules' own
+  -- header comments on the split of responsibilities).
+  assert(not ssr_files["src/views/Document.luax"]:find("tailwind", 1, true),
+    "tailwind.apply must not touch the Document -- create.vite already linked the stylesheet")
+
+  local islands_files = vite.apply(require("create.templates.islands").files({ name = "x" }), { template = "islands", name = "x" })
+  islands_files = tailwind.apply(islands_files, { template = "islands", name = "x" })
+  assert(islands_files["src/styles.css"]:find('@source "../views/**/*.luax";', 1, true),
+    "islands' .luax views live one level above src/, unlike ssr's")
+end)
+
+test("tailwind.apply layers Tailwind v4 on top of an already-vite-applied spa template, both router variants", function()
+  for _, router in ipairs({ "hydronium", "meteorite" }) do
+    local files = require("create.templates.spa").files({ name = "x", router = router })
+    files = vite.apply(files, { template = "spa", name = "x", router = router })
+    local build_script_before = files["package.json"]:match('"build": "([^"]+)"')
+    files = tailwind.apply(files, { template = "spa", name = "x", router = router })
+    assert(files["src/styles.css"]:find('@source "./app.lua"', 1, true), "[spa/" .. router .. "] must scan app.lua for Tailwind classes")
+    assert(files["vite.config.js"]:find('tailwindcss()', 1, true), "[spa/" .. router .. "] vite.config.js must register the Tailwind plugin")
+    assert(files["package.json"]:find('"@tailwindcss/vite"', 1, true), "[spa/" .. router .. "] missing @tailwindcss/vite devDependency")
+    assert(files["package.json"]:match('"build": "([^"]+)"') == build_script_before,
+      "[spa/" .. router .. "] tailwind.apply must not touch the build script -- create.vite already owns it")
+    -- Neither router variant's moonstone.toml/package.json build SCRIPTS are
+    -- touched by tailwind.apply -- create.vite already owns build ordering
+    -- (the postbuild link-injector and, for the meteorite variant, the
+    -- moonstone.toml script split) unconditionally.
+    assert(not files["moonstone.toml"]:find("%-%-vite"), "[spa/" .. router .. "] must not alter the moon-run scripts")
+  end
 end)
 
 test("tailwind.apply refuses templates it has no wiring for", function()
@@ -753,6 +896,13 @@ test("tailwind.apply refuses templates it has no wiring for", function()
   local ok, err = pcall(tailwind.apply, files, { template = "minimal", name = "test-minimal" })
   assert(not ok, "tailwind.apply must refuse an unsupported template")
   assert(tostring(err):find("unsupported template", 1, true), tostring(err))
+end)
+
+test("tailwind.apply errors loudly (not silently) if create.vite was never applied first", function()
+  local files = require("create.templates.ssr").files({ name = "test-ssr-no-vite" })
+  local ok, err = pcall(tailwind.apply, files, { template = "ssr", name = "test-ssr-no-vite" })
+  assert(not ok, "tailwind.apply must refuse to run against a file set with no vite.config.js/package.json yet")
+  assert(tostring(err):find("was create.vite applied first", 1, true), tostring(err))
 end)
 
 test("router_mode.apply_islands replaces the single hand-written route with a Hydronium Router site", function()
@@ -775,23 +925,27 @@ test("router_mode.apply_islands replaces the single hand-written route with a Hy
   assert(files["views/Site.lua"]:find('screen = "views.About"', 1, true), "site must declare the about screen")
 end)
 
-test("create.scaffold(--tailwind) produces the expected extra files for ssr and islands, dry-run", function()
-  for _, template_id in ipairs({ "ssr", "islands" }) do
-    local res, err = create.scaffold({
-      directory = "/tmp/test-hydronium-tailwind-" .. template_id,
-      template = template_id,
-      name = "test-" .. template_id .. "-tw",
-      tailwind = true,
-      dry_run = true,
-    })
-    assert(res ~= nil, "[" .. template_id .. "] scaffold with --tailwind failed: " .. tostring(err))
-    local file_map = {}
-    for _, f in ipairs(res.created) do file_map[f.path] = true end
-    assert(file_map["package.json"], "[" .. template_id .. "] missing package.json")
-    assert(file_map["vite.config.js"], "[" .. template_id .. "] missing vite.config.js")
-    assert(file_map["src/styles.css"], "[" .. template_id .. "] missing src/styles.css")
-    assert(res.tailwind == true, "[" .. template_id .. "] result must report tailwind = true")
-    assert(res.package_manager ~= nil, "[" .. template_id .. "] must resolve a package manager when --tailwind is set")
+test("create.scaffold always produces package.json + vite.config.js for ssr/spa/islands, tailwind on or off (6 combos)", function()
+  for _, template_id in ipairs({ "ssr", "spa", "islands" }) do
+    for _, tailwind_on in ipairs({ false, true }) do
+      local dir = string.format("/tmp/test-hydronium-vite-combo-%s-%s", template_id, tostring(tailwind_on))
+      local res, err = create.scaffold({
+        directory = dir, template = template_id, name = "test-" .. template_id, tailwind = tailwind_on, dry_run = true,
+      })
+      local tag = "[" .. template_id .. "/tailwind=" .. tostring(tailwind_on) .. "]"
+      assert(res ~= nil, tag .. " scaffold failed: " .. tostring(err))
+      local file_map = {}
+      for _, f in ipairs(res.created) do file_map[f.path] = true end
+      assert(file_map["package.json"], tag .. " missing package.json -- Vite must be applied regardless of --tailwind")
+      assert(file_map["vite.config.js"], tag .. " missing vite.config.js -- Vite must be applied regardless of --tailwind")
+      assert(file_map["src/styles.css"], tag .. " missing src/styles.css")
+      assert(res.vite == true, tag .. " result must report vite = true")
+      assert(res.tailwind == tailwind_on, tag .. " result must report tailwind = " .. tostring(tailwind_on))
+      assert(res.package_manager ~= nil, tag .. " must always resolve a package manager for a Vite template, tailwind or not")
+      if template_id == "spa" then
+        assert(file_map["scripts/inject-vite-link.mjs"], tag .. " missing the postbuild link-injector")
+      end
+    end
   end
 end)
 
@@ -811,21 +965,11 @@ test("create.scaffold(--tailwind) on spa uses the postbuild-patch strategy, both
     assert(file_map["package.json"], "[spa/" .. router .. "] missing package.json")
     assert(file_map["vite.config.js"], "[spa/" .. router .. "] missing vite.config.js")
     assert(file_map["src/styles.css"], "[spa/" .. router .. "] missing src/styles.css")
-    assert(file_map["scripts/inject-tailwind-link.mjs"], "[spa/" .. router .. "] missing the postbuild link-injector")
-
-    local generated = require("create.templates.spa").files({ name = "x", router = router })
-    generated = require("create.tailwind").apply(generated, { template = "spa", name = "x", router = router })
-    assert(generated["package.json"]:find("inject%-tailwind%-link"), "[spa/" .. router .. "] build script must run the injector")
-    assert(generated["src/styles.css"]:find('@source "./app.lua"', 1, true), "[spa/" .. router .. "] must scan app.lua for Tailwind classes")
-    -- Neither router variant's moonstone.toml dev/build scripts are
-    -- touched by --tailwind -- see create/tailwind.lua's own header
-    -- comment for the two real, verified reasons `hydronium build/dev
-    -- --vite` is not wired in for this CSS-only Vite config.
-    assert(not generated["moonstone.toml"]:find("%-%-vite"), "[spa/" .. router .. "] must not alter the moon-run scripts")
+    assert(file_map["scripts/inject-vite-link.mjs"], "[spa/" .. router .. "] missing the postbuild link-injector")
   end
 end)
 
-test("create.scaffold honors an explicit --package-manager and rejects an unknown one", function()
+test("create.scaffold honors an explicit --package-manager, rejects an unknown one, and rejects it for non-Vite templates", function()
   local res, err = create.scaffold({
     directory = "/tmp/test-hydronium-tailwind-pm", template = "islands", tailwind = true,
     package_manager = "bun", dry_run = true,
@@ -833,12 +977,40 @@ test("create.scaffold honors an explicit --package-manager and rejects an unknow
   assert(res ~= nil, "explicit --package-manager bun should succeed: " .. tostring(err))
   assert(res.package_manager == "bun", "must honor the explicitly requested package manager")
 
+  -- Package manager is tied to VITE, not Tailwind -- an islands scaffold
+  -- with Tailwind off must still resolve/report one.
+  local res_no_tw, err_no_tw = create.scaffold({
+    directory = "/tmp/test-hydronium-pm-no-tailwind", template = "islands",
+    package_manager = "bun", dry_run = true,
+  })
+  assert(res_no_tw ~= nil, "explicit --package-manager without --tailwind should still succeed: " .. tostring(err_no_tw))
+  assert(res_no_tw.package_manager == "bun", "must honor --package-manager even with Tailwind off")
+
   local res2, err2 = create.scaffold({
     directory = "/tmp/test-hydronium-tailwind-pm-bad", template = "islands", tailwind = true,
     package_manager = "yarn", dry_run = true,
   })
   assert(res2 == nil, "expected an unknown package manager to be refused")
   assert(err2:find("Unknown package manager", 1, true), tostring(err2))
+
+  local res3, err3 = create.scaffold({
+    directory = "/tmp/test-hydronium-pm-non-vite", template = "minimal", package_manager = "npm", dry_run = true,
+  })
+  assert(res3 == nil, "expected --package-manager to be refused for a non-Vite template")
+  assert(err3:find("Vite%-based", 1, false), tostring(err3))
+end)
+
+test("create.scaffold never refuses for lack of a JS package manager -- files are written regardless (like `npm create vite`)", function()
+  local no_managers_pm = { detect = function() return {} end, is_known = pm.is_known, candidates = pm.candidates }
+  local res, err = create.scaffold({
+    directory = "/tmp/test-hydronium-no-pm-detected", template = "ssr", tailwind = true, dry_run = true,
+    pm_mod = no_managers_pm,
+  })
+  assert(res ~= nil, "scaffold must succeed even when no package manager is detected on PATH: " .. tostring(err))
+  assert(res.package_manager == "npm", "must fall back to a plain 'npm' label for reporting when none is detected")
+  local file_map = {}
+  for _, f in ipairs(res.created) do file_map[f.path] = true end
+  assert(file_map["package.json"], "files must still be created with no package manager detected")
 end)
 
 test("create.scaffold(--tailwind) is refused for templates with no Vite wiring", function()
@@ -892,8 +1064,22 @@ test("CLI --tailwind and --router flags reach create.scaffold end to end", funct
   assert(output:find("__EXIT__0", 1, true), output)
   assert(output:find("package.json", 1, true), output)
   assert(output:find("views/Site.lua", 1, true), output)
-  assert(output:find("Tailwind CSS v4: enabled", 1, true), output)
+  assert(output:find("Vite: enabled %(Tailwind CSS v4"), output)
   assert(output:find("Routing: hydronium", 1, true), output)
+end)
+
+test("CLI --package-manager is rejected for non-Vite templates, accepted for Vite ones without --tailwind", function()
+  local bad = assert(io.popen([[lua ./src/main.lua /tmp/test-cli-pm-non-vite --minimal --package-manager npm --dry-run 2>&1; printf '\n__EXIT__%s\n' "$?"]]))
+  local bad_output = bad:read("*a")
+  bad:close()
+  assert(bad_output:find("__EXIT__1", 1, true), bad_output)
+  assert(bad_output:find("Vite%-based"), bad_output)
+
+  local ok = assert(io.popen([[lua ./src/main.lua /tmp/test-cli-pm-vite-no-tailwind --template spa --package-manager npm --dry-run 2>&1; printf '\n__EXIT__%s\n' "$?"]]))
+  local ok_output = ok:read("*a")
+  ok:close()
+  assert(ok_output:find("__EXIT__0", 1, true), ok_output)
+  assert(ok_output:find("Vite: enabled %(npm%)"), ok_output)
 end)
 
 -- Real scaffold (not dry-run) of every new tailwind/router combination,
@@ -1134,6 +1320,56 @@ test("package manager and router fields disable with a real reason when they don
   assert(count == 1, "the router disabled reason must print exactly once, not per option: " .. text)
   assert(text:find("Typed routes and client%-side navigation", 1, false), "each option must keep its own description even while the field is disabled")
   assert(text:find("One server%-declared route, no router manifest", 1, false), "each option must keep its own description even while the field is disabled")
+  sess:close()
+end)
+
+test("package manager field is enabled for any Vite-based framework independent of Tailwind, disabled with a reason otherwise", function()
+  local session_mod = require("hydronium_ink.session")
+  local hydronium = require("hydronium")
+  local wizard_app = require("create.ui.wizard_app")
+
+  -- SSR (Vite-based), Tailwind left OFF (the default): package manager must
+  -- still be reachable and show no "only for Vite" disabled reason --
+  -- package manager is tied to Vite, never to Tailwind.
+  local sess = session_mod.create(hydronium.h(wizard_app.create_wizard_app({ dry_run = true, name = "x" })), { columns = 84, rows = 200 })
+  sess:write("4") -- digit-jump to Tooling; package manager is reachable since this machine has at least one manager on PATH
+  local text = wizard_text(sess)
+  assert(not text:find("Only used by Vite-based frameworks", 1, true),
+    "package manager must not show a disabled reason for the default (Vite-based) SSR framework: " .. text)
+  sess:close()
+
+  -- Minimal (NOT Vite-based): package manager shows its field-level
+  -- disabled reason exactly once, every option struck through.
+  local sess2 = session_mod.create(hydronium.h(wizard_app.create_wizard_app({
+    dry_run = true, name = "x", initial_framework_id = "minimal",
+  })), { columns = 84, rows = 200 })
+  sess2:write("4")
+  local text2 = wizard_text(sess2)
+  assert(text2:find("Only used by Vite-based frameworks", 1, true), "package manager must show why it's moot for a non-Vite framework: " .. text2)
+  local _, count = text2:gsub("Only used by Vite%-based frameworks", "")
+  assert(count == 1, "the reason must print once, not per option: " .. text2)
+  sess2:close()
+end)
+
+test("package manager field shows a field-level note (not a disabled reason) when nothing is detected on PATH, and submit still works", function()
+  local session_mod = require("hydronium_ink.session")
+  local hydronium = require("hydronium")
+  local wizard_app = require("create.ui.wizard_app")
+  local no_managers_pm = { detect = function() return {} end }
+
+  local sess = session_mod.create(hydronium.h(wizard_app.create_wizard_app({
+    dry_run = true, name = "no-pm-app", pm_mod = no_managers_pm,
+  })), { columns = 84, rows = 200 })
+  local text = wizard_text(sess)
+  assert(text:find("none found on PATH", 1, true), "must show an informational note when no package manager is detected: " .. text)
+  assert(text:find("install one to run Vite", 1, true), text)
+  assert(not text:find("Only used by Vite-based frameworks", 1, true),
+    "a note about nothing being detected is not the same as the field being disabled for a non-Vite framework")
+  -- Every option is individually disabled ("not found on PATH"), but the
+  -- form must still let the user submit -- files are created regardless.
+  sess:write("\19") -- Ctrl+S: submit from anywhere
+  local after = wizard_text(sess)
+  assert(after:find("Write project files", 1, true), "submitting with no package manager detected must still succeed: " .. after)
   sess:close()
 end)
 

@@ -2,6 +2,7 @@ local writer = require("create.writer")
 local luals = require("create.luals")
 local process = require("create.process")
 local jsonc = require("alter_jsonc")
+local vite = require("create.vite")
 local tailwind = require("create.tailwind")
 local router_mode = require("create.router_mode")
 local pm = require("create.pm")
@@ -394,29 +395,45 @@ function create.scaffold(opts, ctx)
     files = router_mode.apply_islands(files, { name = project_name })
   end
 
-  -- Package manager for the Tailwind/Vite side-build. Resolved even when
-  -- `opts.tailwind` is false, purely so an explicit-but-unused
-  -- `--package-manager` still gets validated rather than silently ignored.
+  -- Package manager: tied to VITE (any ssr/spa/islands scaffold), not to
+  -- Tailwind -- Vite is the base every one of those three templates always
+  -- gets now (create.vite.apply below), and Tailwind is a purely additive
+  -- layer on top of it (see create/tailwind.lua's own header comment).
+  local pm_mod = opts.pm_mod or pm
+  local is_vite_template = vite.supported_templates[template_id] == true
+
   local package_manager = opts.package_manager
-  if package_manager ~= nil and not pm.is_known(package_manager) then
+  if package_manager ~= nil and not pm_mod.is_known(package_manager) then
     return nil, string.format("Unknown package manager '%s'. Expected one of: %s",
-      tostring(package_manager), table.concat(pm.candidates, ", "))
+      tostring(package_manager), table.concat(pm_mod.candidates, ", "))
+  end
+  if package_manager ~= nil and not is_vite_template then
+    return nil, string.format(
+      "--package-manager is only used by Vite-based templates ('ssr', 'spa', or 'islands'; got template '%s')", template_id)
   end
 
-  if opts.tailwind then
-    if template_id ~= "ssr" and template_id ~= "islands" and template_id ~= "spa" then
-      return nil, string.format(
-        "--tailwind is only supported for the 'ssr', 'islands', or 'spa' templates (got template '%s')", template_id)
-    end
+  if opts.tailwind and not is_vite_template then
+    return nil, string.format(
+      "--tailwind is only supported for the 'ssr', 'islands', or 'spa' templates (got template '%s')", template_id)
+  end
+
+  -- Scaffolding never refuses for lack of a JS package manager -- like
+  -- `npm create vite`, the files are written regardless; only the actual
+  -- "install dependencies now" step (create.wizard_tasks' `js_install`
+  -- task) needs one to really exist on PATH, and fails there with a clear,
+  -- actionable message instead. `package_manager` here is resolved purely
+  -- for reporting (result.package_manager, "next steps" text): explicit
+  -- flag first, else the first one detected on PATH, else a plain "npm"
+  -- fallback so there is always something sensible to print.
+  if is_vite_template then
     if not package_manager then
-      local available = pm.detect()
-      if #available == 0 then
-        return nil, "Tailwind CSS v4 needs a JS package manager to install and build its Vite side-build "
-          .. "(npm, pnpm, or bun), and none was found on PATH. Install one, or scaffold without --tailwind."
-      end
-      package_manager = available[1]
+      local available = pm_mod.detect()
+      package_manager = available[1] or "npm"
     end
-    files = tailwind.apply(files, { template = template_id, name = project_name, router = router_choice })
+    files = vite.apply(files, { template = template_id, name = project_name, router = router_choice })
+    if opts.tailwind then
+      files = tailwind.apply(files, { template = template_id, name = project_name, router = router_choice })
+    end
   end
 
   local results, err = writer.write_project(target_dir, files, {
@@ -472,8 +489,9 @@ function create.scaffold(opts, ctx)
     luals = luals_res,
     next_script = next_script,
     dry_run = opts.dry_run,
+    vite = is_vite_template,
     tailwind = opts.tailwind and true or false,
-    package_manager = opts.tailwind and package_manager or nil,
+    package_manager = is_vite_template and package_manager or nil,
     router = router_choice,
   }
 end

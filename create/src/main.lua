@@ -33,10 +33,15 @@ local function render_result(result)
     io.stdout:write(string.format("   + %s (%d bytes)\n", f.path, f.size))
   end
 
-  if result.tailwind or result.router then
+  if result.package_manager or result.router then
     io.stdout:write("\n")
-    if result.tailwind then
-      io.stdout:write(string.format("  Tailwind CSS v4: enabled (public/dist/styles.css via Vite, %s)\n", result.package_manager or "npm"))
+    if result.package_manager then
+      io.stdout:write(string.format("  Vite: enabled (%s%s)\n",
+        result.tailwind and "Tailwind CSS v4 + " or "", result.package_manager))
+      if #pm.detect() == 0 then
+        io.stdout:write("    note: no package manager (npm, pnpm, or bun) found on PATH -- files are\n")
+        io.stdout:write(string.format("    still created; install one to run %s\n", result.package_manager))
+      end
     end
     if result.router then io.stdout:write(string.format("  Routing: %s\n", result.router)) end
   end
@@ -47,9 +52,12 @@ local function render_result(result)
   end
   if not result.synced then io.stdout:write("  moon sync\n") end
   io.stdout:write("  moon run " .. result.next_script .. "\n")
-  if result.tailwind and not result.dry_run and not result.js_installed then
-    io.stdout:write(string.format("  %s && %s   # compiles public/dist/styles.css\n",
-      pm.install_command(result.package_manager or "npm"), pm.run_command(result.package_manager or "npm", "build")))
+  -- Every Vite template (ssr/spa/islands), not only when Tailwind is on --
+  -- Vite is the base now, Tailwind a purely additive layer on top of it
+  -- (see create/vite.lua and create/tailwind.lua's own header comments).
+  if result.package_manager and not result.dry_run and not result.js_installed then
+    io.stdout:write(string.format("  %s && %s\n",
+      pm.install_command(result.package_manager), pm.run_command(result.package_manager, "build")))
   end
   io.stdout:write("\n")
   if result.package_script then
@@ -230,7 +238,7 @@ app = c.create({
       -- anything new for the ordinary `create.scaffold` path.
       if not result.dry_run and (ctx.args.install or ctx.args.git) and action == create.scaffold then
         local plan = wizard_tasks.plan({
-          install_deps = ctx.args.install == true, tailwind = result.tailwind, git_init = ctx.args.git == true,
+          install_deps = ctx.args.install == true, vite = result.vite, git_init = ctx.args.git == true,
           package_manager = result.package_manager,
         })
         for _, task in ipairs(plan) do

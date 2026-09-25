@@ -78,6 +78,25 @@ return lab.collection({
       args = { initial_active_id = "package_manager", name = "my-hydronium-app", initial_tailwind = true },
     },
 
+    -- Package manager is tied to Vite (any ssr/spa/islands framework), not
+    -- to Tailwind -- see create/init.lua's own "Package manager: tied to
+    -- VITE" comment. `pm_mod` lets this story force the "nothing on PATH"
+    -- state deterministically, regardless of what's actually installed on
+    -- whatever machine renders this story: every package manager option
+    -- shows its own "not found on PATH" per-option reason, PLUS one
+    -- field-level NOTE (not a disabled reason -- the field stays live,
+    -- Vite-based frameworks always get their files) explaining that
+    -- scaffolding still works without one.
+    ["section-tooling-no-package-manager"] = {
+      title = "Section: Tooling (no package manager detected)",
+      description = "The Tooling group with npm/pnpm/bun all forced 'not found on PATH' -- every option shows its own "
+        .. "reason, plus one field-level note that files are still created and Tailwind still works; submitting is unaffected.",
+      args = {
+        initial_active_id = "package_manager", name = "my-hydronium-app",
+        pm_mod = { detect = function() return {} end },
+      },
+    },
+
     -- Landed on the final rail node with every other field already
     -- decided: this is what the form's OWN scrollback looks like once
     -- you've moved on from a field -- every alternative you did NOT pick
