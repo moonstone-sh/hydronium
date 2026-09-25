@@ -30,6 +30,13 @@ function Runtime:open(id, options)
     columns = options.columns or size.columns,
     rows = options.rows or size.rows,
     color = options.color or story.color,
+    -- Independent of `color` above (ANSI encoding depth) -- this is the
+    -- color PROFILE control (adds "none"/NO_COLOR preview), so a story can
+    -- be opened under any of truecolor/ansi256/ansi16/none regardless of
+    -- what `color`/`story.color` says. Falls back to "auto" (real
+    -- NO_COLOR/FORCE_COLOR detection), matching session.lua's own default,
+    -- when neither the open request nor the story specifies one.
+    colorProfile = options.colorProfile or story.colorProfile,
   })
   return snapshot.from_session(self.active)
 end
@@ -55,6 +62,12 @@ function Runtime:request(request)
     active:resize(request.columns, request.rows)
   elseif op == "color" then
     active:setColorCapability(request.color)
+  elseif op == "colorProfile" then
+    -- The profile control: switches the SAME running story/session between
+    -- truecolor/ansi256/ansi16/none live, so `ink.byProfile`/`ink.adaptive`
+    -- prop values (and anything reading `hooks.useColorProfile()`) can be
+    -- compared side by side without reopening the story.
+    active:setColorProfile(request.colorProfile)
   elseif op == "step" then
     active:step(request.nowMs)
   elseif op == "interaction" then

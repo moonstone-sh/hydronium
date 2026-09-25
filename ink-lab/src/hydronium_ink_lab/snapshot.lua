@@ -41,6 +41,12 @@ function M.from_session(session)
     width = frame.w,
     height = frame.h,
     color = capability,
+    -- Independent of `color` above (see hydronium_ink.color's own doc
+    -- comment): the color PROFILE (adds "none"), reflecting whatever the
+    -- most recent `op = "colorProfile"` request (or the story's own
+    -- default) actually resolved to -- so a client can confirm/display
+    -- which profile is live after switching it.
+    colorProfile = session:colorProfile(),
     rows = rows,
     cursor = session:cursor(),
     status = session:status(),

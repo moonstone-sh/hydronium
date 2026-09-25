@@ -35,6 +35,17 @@ local function normalizeSizes(sizes)
 end
 
 local control_types = { text = true, number = true, boolean = true, select = true, color = true }
+local COLOR_PROFILES = { truecolor = true, ansi256 = true, ansi16 = true, none = true }
+
+--- @param value? "truecolor"|"ansi256"|"ansi16"|"none"
+--- @return "truecolor"|"ansi256"|"ansi16"|"none"|nil
+local function normalizeColorProfile(value, where)
+  if value == nil then return nil end
+  if not COLOR_PROFILES[value] then
+    error(where .. ": colorProfile must be truecolor, ansi256, ansi16, or none", 3)
+  end
+  return value
+end
 
 local function json_value(value, seen, where)
   local kind = type(value)
@@ -93,6 +104,16 @@ end
 --- @field args? table
 --- @field sizes? {name?: string, columns: integer, rows: integer}[]
 --- @field color? "ansi16"|"ansi256"|"truecolor"
+--- @field colorProfile? "truecolor"|"ansi256"|"ansi16"|"none" Default color
+---   PROFILE this story opens under (see hydronium_ink.color's own doc
+---   comment for how this differs from `color` above -- that one picks the
+---   ANSI encoding depth, this is the superset a component actually reads
+---   via `hydronium_ink.hooks.useColorProfile()`/`ink.byProfile`, and adds
+---   "none"). Unset means "auto" -- real NO_COLOR/FORCE_COLOR detection,
+---   same as a session created with no `colorProfile` option at all. A
+---   host that runs stories interactively can send an `op = "colorProfile"`
+---   request (hydronium_ink_lab.runtime) at any time to preview the SAME
+---   open story under a different profile, independent of this default.
 --- @field interactions? {name: string, run: fun(session: table)}[]
 
 function M.story(spec)
@@ -103,6 +124,7 @@ function M.story(spec)
   if color ~= "ansi16" and color ~= "ansi256" and color ~= "truecolor" then
     error("hydronium_lab.story: color must be ansi16, ansi256, or truecolor", 2)
   end
+  local colorProfile = normalizeColorProfile(spec.colorProfile, "hydronium_lab.story")
   local interactions, interactionNames = {}, {}
   for index, interaction in ipairs(spec.interactions or {}) do
     if type(interaction) ~= "table" or type(interaction.name) ~= "string" or type(interaction.run) ~= "function" then
@@ -126,6 +148,7 @@ function M.story(spec)
     source = spec.source and copy(spec.source) or nil,
     sizes = normalizeSizes(spec.sizes),
     color = color,
+    colorProfile = colorProfile,
     interactions = interactions,
   }
 end
@@ -158,6 +181,7 @@ function M.collection(spec)
     controls = normalizeControls(spec.controls),
     sizes = spec.sizes and normalizeSizes(spec.sizes) or nil,
     color = spec.color,
+    colorProfile = normalizeColorProfile(spec.colorProfile, "hydronium_lab.collection"),
     stories = stories,
   }
 end
@@ -189,7 +213,8 @@ function M.registry(entries)
         for i, interaction in ipairs(story.interactions) do interactions[i] = interaction.name end
         result[index] = {
           id = story.id, title = story.title, args = copy(story.args), sizes = copy(story.sizes),
-          color = story.color, interactions = interactions, controls = copy(story.controls or {}),
+          color = story.color, colorProfile = story.colorProfile,
+          interactions = interactions, controls = copy(story.controls or {}),
           group = story.group, description = story.description, source = copy(story.source),
         }
       end

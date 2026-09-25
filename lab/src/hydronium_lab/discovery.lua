@@ -135,6 +135,7 @@ function M.bind(record, value)
       controls = merge(value.controls, variant.controls),
       sizes = variant.sizes or value.sizes,
       color = variant.color or value.color,
+      colorProfile = variant.colorProfile or value.colorProfile,
       interactions = variant.interactions,
       render = renderer,
       source = { path = record.path, key = key },

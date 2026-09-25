@@ -3,7 +3,7 @@ manifest_version = 2
 [package]
 name = "hydronium/ink-lab"
 registry_name = "hydronium"
-version = "0.2.0"
+version = "0.3.0"
 kind = "lib"
 description = "Hydronium Ink stories in a browser-rendered virtual terminal"
 
