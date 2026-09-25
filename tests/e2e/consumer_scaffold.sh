@@ -33,6 +33,21 @@ cleanup() {
 trap cleanup EXIT
 
 fail() { echo "consumer gate: $*" >&2; exit 1; }
+
+# Registries with equal priority resolve in no guaranteed order (Moonstone
+# collects them from a hash map), and `registry add --default` is currently a
+# no-op. Without an explicit priority the public registry can win, and this
+# gate silently tests the last PUBLISHED Hydronium instead of this checkout.
+prefer_local_registry() {
+  "$moon" registry add "$registry_name" "file://$registry"
+  awk -v want="\"$registry_name\"" '
+    /^\[\[registries\]\]/ { current = "" }
+    /^name = / { current = $3 }
+    /^priority = / && current == want { $0 = "priority = 100" }
+    { print }
+  ' moonstone.toml > moonstone.toml.tmp && mv moonstone.toml.tmp moonstone.toml
+  grep -q 'priority = 100' moonstone.toml || fail "could not prioritize the local registry"
+}
 [[ -x "$moon" ]] || fail "MOON_BIN is not executable: $moon"
 [[ -d "$release_root" ]] || fail "package release is missing: $release_root (run ballad export first)"
 
@@ -76,14 +91,14 @@ mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$tool_project"
 "$moon" init "$tool_project" --name hydronium-consumer-tool --kind script --interpreter luajit@2.1 --no-sync --no-git
 (
   cd "$tool_project"
-  "$moon" registry add "$registry_name" "file://$registry"
+  prefer_local_registry
   "$moon" add hydronium/create
   "$moon" exec -- hydronium-create "$app" --template islands --name consumer-islands
 )
 
 (
   cd "$app"
-  "$moon" registry add "$registry_name" "file://$registry"
+  prefer_local_registry
   "$moon" sync
   "$moon" sync --locked
 
