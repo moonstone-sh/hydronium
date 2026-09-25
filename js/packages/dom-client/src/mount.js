@@ -74,6 +74,11 @@
 */
 
 import { createDomBridge } from "./dom_bridge.js";
+import {
+  defaultBrowserEngineProvider,
+  DEFAULT_WASMOON_URL,
+  DEFAULT_WASMOON_WASM_URL,
+} from "./engine_provider.js";
 import { whenPriority, PRIORITIES } from "./priority.js";
 
 /*
@@ -141,7 +146,7 @@ function measure(name, startMark, endMark) {
 }
 
 /*
-  wasmoon is SELF-HOSTED, served from ./vendor/wasmoon/ next to this file,
+  Wasmoon is SELF-HOSTED, served from ./vendor/wasmoon/ next to this file,
   rather than fetched from a public CDN. Both URLs are resolved against
   `import.meta.url` -- this module's own real location -- and NOT against
   the page, so they keep working no matter what base path an app mounts
@@ -167,28 +172,35 @@ function measure(name, startMark, endMark) {
   comes from this argument or from wasmoon's hardcoded unpkg fallback,
   never from where index.js happens to sit on disk.
 */
-const DEFAULT_WASMOON_URL = new URL("./vendor/wasmoon/wasmoon.esm.js", import.meta.url).href;
-const DEFAULT_WASMOON_WASM_URL = new URL("./vendor/wasmoon/glue.wasm", import.meta.url).href;
-
 /**
- * Boots the Lua VM. Kept as its own function so mount() can start it as a
+ * Boots the selected Lua VM. Kept as its own function so mount() can start it as a
  * promise and let it run CONCURRENTLY with the HTTP fetches of the Lua
  * sources -- see mount()'s own comment at the Promise.all.
  */
-async function createLuaEngine(wasmoonUrl, wasmoonWasmUrl) {
-  mark("engine:import:start");
-  const { LuaFactory } = await import(/* @vite-ignore */ wasmoonUrl);
-  mark("engine:import:end");
-
-  // Marked separately from the import above because the two are fixed by
-  // completely different things: the import is one JS fetch, while
-  // createEngine() is where glue.wasm is fetched AND compiled.
-  mark("engine:create:start");
-  const factory = new LuaFactory(wasmoonWasmUrl);
-  const engine = await factory.createEngine();
-  mark("engine:create:end");
-  return engine;
+async function createLuaEngine(engineProvider, { wasmoonUrl, wasmoonWasmUrl }) {
+  // The legacy provider marks import and WebAssembly creation separately;
+  // another provider may emit the same optional phases for comparable traces.
+  return engineProvider.create({
+    wasmoonUrl,
+    wasmoonWasmUrl,
+    onPhase: (phase) => mark(`engine:${phase}`),
+  });
 }
+
+// Lua 5.1 exposes loadstring rather than load. Install this once per browser
+// VM before any application source is evaluated, so bundled chunks, preload
+// modules, asset manifests, and mount/remount props all use the same compiler.
+// The helper deliberately returns the standard `chunk, err` pair; callers
+// retain their own useful chunk/module context via assert().
+const INSTALL_LUA_COMPILER = `
+  local compile = loadstring or load
+  if type(compile) ~= "function" then
+    error("hydronium.client.mount: Lua runtime exposes neither loadstring nor load", 0)
+  end
+  _G.__hydronium_compile = function(source, chunk_name)
+    return compile(source, chunk_name)
+  end
+`;
 
 async function fetchText(url, describe) {
   const res = await fetch(url);
@@ -201,7 +213,7 @@ async function fetchText(url, describe) {
 /**
  * Bundled path: every chunk is fetched in parallel, but the resolved
  * array preserves `chunkUrls` order because that order is real -- chunks
- * are `load()`ed sequentially by the caller, and a later chunk may
+ * are compiled sequentially by the caller, and a later chunk may
  * legitimately overwrite a `package.preload` entry an earlier one set.
  * Only the network waiting is parallelized, never the evaluation.
  */
@@ -247,14 +259,14 @@ async function fetchUnbundledSources({ hydroniumBaseUrl, manifestUrl, appModuleU
 
 /**
  * Serializes a plain JSON-like JS value into real Lua table-constructor
- * SOURCE TEXT (evaluated Lua-side via `load()`), rather than passing it
+ * SOURCE TEXT (evaluated Lua-side through the compatibility compiler), rather than passing it
  * to wasmoon's own JS<->Lua value marshalling directly. Found the hard
  * way, verified live: `lua.global.set("props", { initial: 10 })` does
  * NOT reliably deep-marshal into a plain Lua table wasmoon.doString code
  * can index with `props.initial` -- the real, working pattern this
  * whole codebase already uses everywhere else for passing structured
  * data across the JS/Lua boundary is a source string evaluated with
- * `load(...)`, not the automatic object marshaller.
+ * source compilation, not the automatic object marshaller.
  */
 function toLuaLiteral(value) {
   if (value === null || value === undefined) return "nil";
@@ -277,7 +289,7 @@ function toLuaLiteral(value) {
  * @param {object} options
  * @param {string[]} [options.chunkUrls] Bundled path: URLs of real
  *   "package_preload_v1"-format Lua chunks (hydronium_ballad.plugins.client.bundle()'s
- *   output), fetched and `load()`ed in order. Each chunk installs
+ *   output), fetched and compiled in order. Each chunk installs
  *   `package.preload` for every module it carries, INCLUDING the app's
  *   own entry module -- so no `hydroniumBaseUrl`/`manifestUrl`/`appModuleUrl`
  *   is needed alongside this. Mutually exclusive with the unbundled options below.
@@ -291,7 +303,7 @@ function toLuaLiteral(value) {
  *   project modules.
  * @param {string} [options.assetManifestUrl] URL of the build's own
  *   `hydronium-manifest.lua` (the Lua table literal, NOT the `.json`
- *   sibling). Fetched as text and `load()`ed inside the VM, then handed to
+ *   sibling). Fetched as text and compiled inside the VM, then handed to
  *   `hydronium_dom.assets.configure_table` before the app module is
  *   required -- so `assets.url("logo.svg")` returns the real content-hashed
  *   URL client-side. Needed because `assets.configure()` reads a FILE and
@@ -318,7 +330,10 @@ function toLuaLiteral(value) {
  *   the Lua VM before the app module is required. This is the composition
  *   seam for host extensions such as hydronium-router's `__router_*`
  *   history bridge; mount does not need to know each extension by name.
- * @param {string} [options.wasmoonUrl] Override the wasmoon ESM import URL.
+ * @param {{ id?: string, create: (options?: { wasmoonUrl?: string, wasmoonWasmUrl?: string, onPhase?: (phase: string) => void }) => Promise<any> }} [options.engineProvider]
+ *   Browser Lua engine provider. Defaults to the vendored Wasmoon PUC Lua
+ *   5.4 provider; callers may supply a compatible future vendor explicitly.
+ * @param {string} [options.wasmoonUrl] Legacy Wasmoon-provider import URL override.
  *   Defaults to the copy vendored next to this file
  *   (`./vendor/wasmoon/wasmoon.esm.js`, resolved against `import.meta.url`).
  *   Still a fully supported override -- point it at a CDN build or a
@@ -559,7 +574,7 @@ const RENDER_LUA = `
   local element = _G.__hydronium_element
   local dom = _G.__hydronium_dom
   local App = _G.__hydronium_App
-  local props = assert(load(__hydronium_props_src, "hydronium.client.mount props"))()
+  local props = assert(__hydronium_compile(__hydronium_props_src, "hydronium.client.mount props"))()
 
   _G.__hydronium_host = _G.__hydronium_domhost_mod.createDomHost()
   _G.__hydronium_reconciler = _G.__hydronium_reconciler_mod.Reconciler.new(_G.__hydronium_host)
@@ -589,7 +604,7 @@ const REMOUNT_RENDER_LUA = `
   local element = _G.__hydronium_element
   local dom = _G.__hydronium_dom
   _G.__hydronium_App = require(__hydronium_app_module_id)
-  local props = assert(load(__hydronium_props_src, "hydronium.client.remount props"))()
+  local props = assert(__hydronium_compile(__hydronium_props_src, "hydronium.client.remount props"))()
   _G.__hydronium_tree = dom.lua.mount(element.h(_G.__hydronium_App, props))
   _G.__hydronium_root_host_node = _G.__hydronium_reconciler:mount(
     _G.__hydronium_tree, __hydronium_container, nil, nil)
@@ -634,11 +649,15 @@ export async function boot(options) {
     hmr = false,
     luaGlobals = {},
     placeholder,
+    engineProvider = defaultBrowserEngineProvider,
     wasmoonUrl = DEFAULT_WASMOON_URL,
     wasmoonWasmUrl = DEFAULT_WASMOON_WASM_URL,
   } = options;
 
   const bundled = Array.isArray(chunkUrls) && chunkUrls.length > 0;
+  if (!engineProvider || typeof engineProvider.create !== "function") {
+    throw new Error("hydronium.client.mount: engineProvider must expose create(options)");
+  }
   if (!appModuleId) throw new Error("hydronium.client.mount: appModuleId is required");
   if (!bundled) {
     if (!hydroniumBaseUrl) throw new Error("hydronium.client.mount: hydroniumBaseUrl is required (or pass chunkUrls)");
@@ -688,7 +707,7 @@ export async function boot(options) {
     // rejection -- the first error is thrown and the other stays observed.
     mark("sources:start");
     const [lua, sources, assetManifestSrc] = await Promise.all([
-      createLuaEngine(wasmoonUrl, wasmoonWasmUrl),
+      createLuaEngine(engineProvider, { wasmoonUrl, wasmoonWasmUrl }),
       (bundled
         ? fetchChunkSources(chunkUrls)
         : fetchUnbundledSources({ hydroniumBaseUrl, manifestUrl, appModuleUrl, moduleUrls })
@@ -724,11 +743,12 @@ export async function boot(options) {
     for (const [name, value] of Object.entries(luaGlobals)) {
       lua.global.set(name, value);
     }
+    await lua.doString(INSTALL_LUA_COMPILER);
 
     mark("preload:start");
     if (bundled) {
-      // Real chunk source is passed as a global string and load()ed
-      // Lua-side, never interpolated into a JS template literal -- a
+      // Real chunk source is passed as a global string and compiled Lua-side,
+      // never interpolated into a JS template literal -- a
       // compiled Lua chunk routinely contains ]==]/backtick/${-looking
       // byte sequences that would corrupt a naive string interpolation.
       // Same reasoning as toLuaLiteral()'s own doc comment for props.
@@ -737,7 +757,7 @@ export async function boot(options) {
       // parallelized (in fetchChunkSources), never the evaluation.
       for (const src of sources) {
         lua.global.set("__hydronium_chunk_src", src);
-        await lua.doString('assert(load(__hydronium_chunk_src, "@hydronium-chunk"))()');
+        await lua.doString('assert(__hydronium_compile(__hydronium_chunk_src, "@hydronium-chunk"))()');
       }
     } else {
       const { moduleEntries, appModuleEntries, appSource } = sources;
@@ -757,12 +777,12 @@ export async function boot(options) {
         .map((_, index) => {
           const idKey = `__hydronium_preload_id_${index}`;
           const sourceKey = `__hydronium_preload_src_${index}`;
-          return `package.preload[${idKey}] = assert(load(${sourceKey}, "@" .. ${idKey}))`;
+          return `package.preload[${idKey}] = assert(__hydronium_compile(${sourceKey}, "@" .. ${idKey}))`;
         })
         .join("\n");
       await lua.doString(preloadLua);
       await lua.doString(
-        "package.preload[__hydronium_app_module_id_unbundled] = assert(load(__hydronium_app_src, __hydronium_app_module_id_unbundled))"
+        "package.preload[__hydronium_app_module_id_unbundled] = assert(__hydronium_compile(__hydronium_app_src, __hydronium_app_module_id_unbundled))"
       );
     }
     mark("preload:end");
@@ -780,7 +800,7 @@ export async function boot(options) {
             .. "app's require graph reaches it, so the bundler dropped it ("
             .. tostring(assets) .. ")", 0)
         end
-        local chunk = assert(load(__hydronium_asset_manifest_src, "@hydronium-manifest"))
+        local chunk = assert(__hydronium_compile(__hydronium_asset_manifest_src, "@hydronium-manifest"))
         assets.configure_table(chunk())
       `);
     }

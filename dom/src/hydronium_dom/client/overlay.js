@@ -30,7 +30,8 @@ const OVERLAY_ID = "__hydronium_error_overlay__";
 
 /**
  * Lua tracebacks name chunks as `[string "<chunkname>"]:<line>:` — and
- * `mount.js` loads every module with `load(src, "@" .. module_id)`, so the
+ * `mount.js` compiles every module with its Lua-version-compatible compiler,
+ * using `"@" .. module_id` as the chunk name, so the
  * chunkname IS the module id. That is what makes a frame addressable.
  * Also matches the `@id` form some Lua builds print.
  */

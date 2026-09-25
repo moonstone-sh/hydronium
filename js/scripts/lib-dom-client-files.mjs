@@ -7,6 +7,7 @@
 // The 9 hand-written runtime files, moved byte-for-byte in M0 from
 // dom/src/hydronium_dom/client/ into packages/dom-client/src/.
 export const RUNTIME_FILES = [
+  "engine_provider.js",
   "mount.js",
   "dom_bridge.js",
   "bootstrap.js",
