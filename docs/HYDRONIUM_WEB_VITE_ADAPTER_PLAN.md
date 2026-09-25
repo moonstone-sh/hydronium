@@ -136,6 +136,121 @@ New plugin `build/src/hydronium_ballad/plugins/vite_assets.lua`: ingest Vite's `
 
 ---
 
+## 4a. Honest status ledger (2026-09-25)
+
+Per this workspace's own CLAUDE.md rule ("don't trust 'VERIFIED'/'Production
+Ready' language without re-running the repro yourself"): this section
+records what was actually found on disk and in CI this session, not what
+an earlier session's docs *said*. Anyone picking this plan back up should
+re-verify the "done" rows below with the cited commands before building on
+top of them, exactly as this session did.
+
+| Milestone | Status | Evidence checked this session |
+|---|---|---|
+| M0 (extract client runtime) | **Done** | `js/packages/dom-client/src/*.js`, `js/scripts/check-dom-client-drift.mjs`, CI job `web` runs the drift check and `node --test tests/client/*.test.mjs` |
+| M1 (Vite 8 + Tailwind v4 standalone) | **Done** | `js/examples/islands-tailwind/` real app + `tests/hmr.test.mjs`, `tests/tailwind-source.test.mjs`; both wired into CI's `web` job |
+| M2 (`hy_asset_ref` + dual dev server) | **Done** | `dom/src/hydronium_dom/server/vite_module.lua` (commit `6cb8a88`), `js/packages/vite/src/{plugin,dev-origin}.ts` (commit `a5f9a2e`, renamed to `@hydronium-js` scope in `42ad47e`), `js/packages/vite/src/supervisor.mjs` + `bin/dual-dev.mjs`, `tests/server/vite_module_spec.lua`, `js/packages/vite/tests/{supervisor,dual-dev}.test.mjs`. CI's `validate` job runs `tests/e2e/meteorite_vite_browser.sh` (the M2 dual-HMR + M3 production gate, both needing the full zig/moonstone/ballad toolchain, hence not in the lighter `web` job) |
+| M3 (production manifest merge) | **Done** | `build/src/hydronium_ballad/plugins/vite_assets.lua` (commit `8d7432d`), `tests/build/vite_assets_spec.lua`. `site.lua` was in fact left unchanged, as the plan required |
+| CI open question 3 ("should CI gain a node step?") | **Resolved: yes, already done** | `.github/workflows/ci.yml` has a second top-level job, `web`, plus a `meteorite_vite_browser.sh` step inside `validate` — this predates the "STEP 1" work below |
+
+**What was actually missing when STEP 1 (below) started, verified by grep,
+not assumption:** no `provider` concept anywhere in `dom/` or `build/`
+(`grep -rn provider dom/src/hydronium_dom/assets.lua
+dom/src/hydronium_dom/server/vite_module.lua
+build/src/hydronium_ballad/plugins/vite_assets.lua` → zero hits), and no
+`tags()` function on `hydronium_dom.assets`. `hy_asset_ref`/`vite_module`
+resolve a single specifier to a single URL; they do not know how to
+express "this entry also pulls in two CSS files and a shared chunk",
+which is what a `<head>` full of `<link>`/`<script>` tags needs. That gap
+is real STEP 1 scope, not a re-implementation of M2/M3.
+
+Separately, verified still true and NOT part of STEP 1's fix:
+`create/src/create/vite.lua` writes its own CSS-only `vite.config.js` and
+hardcodes `/public/dist/styles.css`, using none of `@hydronium-js/vite` or
+the asset-provider contract below. Its own header comment documents two
+concrete, verified reasons a naive full integration was tried and reverted
+(`hydronium_ballad.plugins.site`'s directory sink deletes a separately-run
+`vite build`'s output; a dual dev server has nothing to serve when the
+page has no Vite-owned HTML entry). Wiring the templates onto the
+provider contract (this plan's STEP 2) has to account for both.
+
+## 4b. The asset-provider contract (STEP 1, added 2026-09-25)
+
+`hydronium_dom.assets` (`dom/src/hydronium_dom/assets.lua`) gained a small
+provider interface so a Document component can ask for a build entry's
+full markup without knowing whether Vite is involved at all:
+
+```lua
+local assets = require("hydronium_dom.assets")
+assets.configure_provider({ provider = "static" | "vite-dev" | "vite-manifest", ... })
+
+assets.provider()        --> the active provider name ("static" default)
+assets.url(source)       --> single resolved URL; NEVER raises (dev-fallback, unchanged from before this step)
+assets.tags(entry)       --> array of real d.link/d.script vnodes for `entry`, CSS first, then the entry's own tag;
+                              RAISES for "vite-manifest" when `entry` was never declared as a build input
+```
+
+Three providers, one call to select:
+
+- **`static`** (default, zero Node) — hydronium_ballad's own hashed
+  `hydronium-manifest.lua`. Exactly the pre-existing
+  `configure()`/`configure_table()` behavior; `tags()` on it emits one tag
+  per entry (a flat manifest has no CSS/imports graph to walk).
+- **`vite-dev`** — `{ provider = "vite-dev", vite_origin = "http://localhost:5173" }`.
+  No manifest to read; every URL is the entry prefixed with Vite's own
+  origin, matching `@hydronium-js/vite`'s `resolveDevOrigin`
+  (`js/packages/vite/src/dev-origin.ts`) and `vite_module.lua`'s existing
+  dev-mode resolution.
+- **`vite-manifest`** — `{ provider = "vite-manifest", manifest_path = "dist/.vite/manifest.json" }`.
+  Reads Vite's **real JSON** manifest directly (new:
+  `hydronium_dom.server.json.decode`, a minimal JSON reader scoped to this
+  one use — see that module's header for why `dom/`'s "zero runtime
+  dependencies" rule doesn't reach for `dkjson` here) and walks
+  `imports`/`css` transitively, so a JS entry's `tags()` includes CSS
+  pulled in by chunks it imports, not just its own.
+
+**Selection convention (the "one line of project config" the plan asks
+for):** a project's own bootstrap (`main.lua` / the Meteorite entry point)
+calls `assets.configure_provider(...)` exactly once, typically switching
+on an env var:
+
+```lua
+if os.getenv("HYDRONIUM_VITE_MODE") == "dev" then
+  assets.configure_provider({ provider = "vite-dev", vite_origin = os.getenv("HYDRONIUM_VITE_ORIGIN") })
+else
+  assets.configure_provider({ provider = "vite-manifest", manifest_path = "dist/.vite/manifest.json" })
+end
+```
+
+This is a documented convention, not something `assets.lua` reads itself
+— consistent with the module's pre-existing "no automatic discovery/magic
+paths" stance. `create/src/create/vite.lua`'s scaffolded `main.lua` is
+meant to become the reference implementation once STEP 2 lands (not done
+yet — see §4a).
+
+**Deliberately NOT built in STEP 1:** `hydronium_ballad.plugins.vite_assets`
+(the ballad-side ingestion that merges a Vite build into ONE
+`hydronium-manifest.lua`, M3, already existed) still flattens each built
+file into an independent `hy_asset` keyed by its own specifier — a JS
+entry's associated CSS lands under the CSS file's *own* built path, not
+attached to the JS entry. That means the post-merge **`static`** provider
+cannot recover a JS entry's CSS/imports graph the way **`vite-manifest`**
+(reading Vite's manifest directly) can. Both providers are real and
+tested; they simply answer different questions — "what does hydronium's
+own merged manifest say" vs. "what does Vite's own build graph say" — and
+an app is free to pick whichever fits how it deploys. Reconciling this
+(e.g. having `vite_assets.lua` additionally record `metadata.hydronium.css`
+on the JS entry's own `hy_asset`) is future work, not required by any
+STEP 1 gate.
+
+**Test coverage:** `tests/host/assets_provider_spec.lua` (provider
+selection, `tags()` for a CSS-only entry, a JS entry with CSS+imports,
+the missing-entry error, and `vite-dev` origin prefixing) and
+`tests/server/json_decode_spec.lua` (the new decoder). Full suite:
+`moon exec -- luajit tests/runner.lua`.
+
+---
+
 ## 5. Hazards — read before writing code
 
 1. **Do not make the root `partiture.lua` depend on Vite output.** CI's last step is `ballad play partiture.lua`, and CI has **no node/npm step whatsoever**. A framework-level partiture that requires `dist/.vite/manifest.json` breaks CI immediately. `vite_assets` belongs in *consuming app* partitures, and must degrade gracefully when the manifest is absent.
