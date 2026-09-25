@@ -10,7 +10,22 @@ return ballad.partiture(function(p)
 		bin = "hydronium-create",
 		entry = "src/main.lua",
 		interpreter = "luajit",
-		include = { "src/**" },
+		-- The Ink Lab story and its presentation helpers live alongside the
+		-- generator for local development, but are intentionally absent from
+		-- the released create executable. Lab is an opt-in workbench, not a
+		-- production dependency of `hydronium-create`.
+		include = {
+			"src/main.lua",
+			"src/create/init.lua",
+			"src/create/luals.lua",
+			"src/create/pm.lua",
+			"src/create/process.lua",
+			"src/create/router_mode.lua",
+			"src/create/tailwind.lua",
+			"src/create/wizard.lua",
+			"src/create/writer.lua",
+			"src/create/templates/**",
+		},
 	})
 
 	local source_artifact = moonstone.registry.package(app, {

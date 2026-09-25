@@ -19,7 +19,7 @@ abi = "5.1"
 
 [scripts]
 run = "luajit run.lua"
-lab = "moon exec -- hydronium lab"
+lab = "moon exec --dev -- hydronium-lab dev"
 
 [[dependencies]]
 name = "hydronium/core"
@@ -28,7 +28,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/ink"
-constraint = "^0.4.0"
+constraint = "^0.5.0"
 role = "runtime"
 
 [[dependencies]]
@@ -41,21 +41,21 @@ role = "runtime"
 [[dependencies]]
 name = "hydronium/lab"
 constraint = "^0.2.0"
-role = "runtime"
+role = "dev"
 
 [[dependencies]]
 name = "hydronium/ink-lab"
 constraint = "^0.2.0"
-role = "runtime"
+role = "dev"
 
 [[dependencies]]
 name = "hydronium/meteorite"
 constraint = "^0.2.0"
-role = "runtime"
+role = "dev"
 
 [[dependencies]]
-name = "hydronium/cli"
-constraint = "^0.3.0"
+name = "hydronium/lab-cli"
+constraint = "^0.2.0"
 role = "tool"
 
 [[dependencies]]

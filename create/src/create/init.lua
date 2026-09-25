@@ -2,10 +2,13 @@ local writer = require("create.writer")
 local luals = require("create.luals")
 local process = require("create.process")
 local jsonc = require("alter_jsonc")
+local tailwind = require("create.tailwind")
+local router_mode = require("create.router_mode")
+local pm = require("create.pm")
 
 local create = {}
 
-local template_order = { "ssr", "islands", "minimal", "ink", "love" }
+local template_order = { "ssr", "spa", "islands", "minimal", "ink", "love" }
 local template_specs = {
   ssr = {
     module = require("create.templates.ssr"),
@@ -17,6 +20,18 @@ local template_specs = {
     -- editor -- see luals.lua's comment for the verified before/after.
     tooling = { luax = true, dom = true, bare_dom = true, meteorite = true },
     next_script = "dev",
+  },
+  spa = {
+    module = require("create.templates.spa"),
+    name = "SPA (Client-only, Ballad-bundled)",
+    description = "Client-only app: framework and app bundled into one Lua chunk, no SSR",
+    -- Plain `.lua` (no LUAX compile step), and no ambient DOM globals --
+    -- app.lua uses `d.div(...)` function calls, not bare `<div>` tags.
+    -- `meteorite` and `next_script` vary by router choice (hydronium =
+    -- no Meteorite at all vs. meteorite = a real server) -- resolved
+    -- per-scaffold in create.scaffold, not statically here.
+    tooling = { luax = false, dom = true, bare_dom = false },
+    next_script = "build",
   },
   islands = {
     module = require("create.templates.islands"),
@@ -53,15 +68,6 @@ local template_specs = {
   },
 }
 
--- Load the disabled template so syntax regressions remain visible even though
--- it is not advertised or scaffoldable yet.
-require("create.templates.spa")
-
--- `spa` is intentionally excluded here (and from src/main.lua's
--- `--template` completion list) -- see templates/spa.lua's own header
--- comment for why. Root mounting and client bundling now exist; routing and
--- a server-less delivery contract remain the blockers. The file stays on disk
--- so those prerequisites remain attached to the disabled template.
 function create.available_templates()
   local result = {}
   for _, id in ipairs(template_order) do
@@ -297,18 +303,6 @@ function create.scaffold(opts, ctx)
   opts = opts or {}
   local template_id = opts.template or "ssr"
 
-  -- `spa` stays a known template key (templates/spa.lua still loads
-  -- cleanly) but is deliberately unreachable through the normal
-  -- unknown-template path below -- see that file's own header comment
-  -- for exactly what's missing in the framework. Passing it directly
-  -- must fail loudly with an explanation, not silently generate broken
-  -- output (the bug this whole template set was audited for).
-  if template_id == "spa" then
-    return nil, "Template 'spa' is not yet supported -- hydronium has client mounting, bundling, and routing, "
-      .. "but no complete server-less build and delivery recipe. "
-      .. "Use 'ssr', 'islands', 'minimal', or 'ink'."
-  end
-
   local template_spec = template_specs[template_id]
   if not template_spec then
     return nil, string.format("Unknown template '%s'. Available templates: %s", template_id, table.concat(template_order, ", "))
@@ -365,16 +359,85 @@ function create.scaffold(opts, ctx)
     end
   end
 
+  -- Routing mode -- meaningful for `ssr`, `islands`, and `spa`, the three
+  -- templates with a real client boundary. `ssr` always uses Hydronium
+  -- Router for its browser Lua VM's client-side navigation; `minimal`,
+  -- `ink`, and `love` have no server/router surface at all, so an
+  -- explicit `--router` there is a clear usage error rather than a
+  -- silent no-op.
+  local router_choice = opts.router
+  if router_choice ~= nil and router_choice ~= "hydronium" and router_choice ~= "meteorite" then
+    return nil, string.format("Unknown router '%s'. Expected 'hydronium' or 'meteorite'.", tostring(router_choice))
+  end
+  if router_choice ~= nil and template_id ~= "ssr" and template_id ~= "islands" and template_id ~= "spa" then
+    return nil, string.format(
+      "--router is only configurable for the 'ssr', 'islands', or 'spa' templates (got template '%s')", template_id)
+  end
+  if template_id == "ssr" and router_choice ~= nil and router_choice ~= "hydronium" then
+    return nil, "Template 'ssr' always uses Hydronium Router for its browser Lua VM's client-side navigation; "
+      .. "--router meteorite is only valid with --template islands or --template spa"
+  end
+
+  -- `spa` needs its router choice AS AN INPUT to `.files()` (it generates
+  -- a structurally different app.lua/partiture.lua/moonstone.toml per
+  -- variant -- see templates/spa.lua's own header comment); `islands`
+  -- instead post-processes its always-generated base files via
+  -- router_mode.lua below, to keep its own existing default (no
+  -- `--router` given) byte-for-byte unchanged.
   local files = template_spec.module.files({
     name = project_name,
     interpreter = interpreter,
+    router = template_id == "spa" and (router_choice or "hydronium") or nil,
   })
+
+  if template_id == "islands" and router_choice == "hydronium" then
+    files = router_mode.apply_islands(files, { name = project_name })
+  end
+
+  -- Package manager for the Tailwind/Vite side-build. Resolved even when
+  -- `opts.tailwind` is false, purely so an explicit-but-unused
+  -- `--package-manager` still gets validated rather than silently ignored.
+  local package_manager = opts.package_manager
+  if package_manager ~= nil and not pm.is_known(package_manager) then
+    return nil, string.format("Unknown package manager '%s'. Expected one of: %s",
+      tostring(package_manager), table.concat(pm.candidates, ", "))
+  end
+
+  if opts.tailwind then
+    if template_id ~= "ssr" and template_id ~= "islands" and template_id ~= "spa" then
+      return nil, string.format(
+        "--tailwind is only supported for the 'ssr', 'islands', or 'spa' templates (got template '%s')", template_id)
+    end
+    if not package_manager then
+      local available = pm.detect()
+      if #available == 0 then
+        return nil, "Tailwind CSS v4 needs a JS package manager to install and build its Vite side-build "
+          .. "(npm, pnpm, or bun), and none was found on PATH. Install one, or scaffold without --tailwind."
+      end
+      package_manager = available[1]
+    end
+    files = tailwind.apply(files, { template = template_id, name = project_name, router = router_choice })
+  end
 
   local results, err = writer.write_project(target_dir, files, {
     dry_run = opts.dry_run,
   })
   if not results then
     return nil, err
+  end
+
+  -- `spa`'s two router variants have different `meteorite`-aids and
+  -- `next_script` needs -- the "hydronium" variant has no Meteorite/Zig
+  -- involvement at all (only a `build` script), the "meteorite" variant
+  -- has a real one (`dev` + `build`, like ssr/islands). Both share one
+  -- `template_specs.spa` entry, so this resolves the per-variant value
+  -- instead of a per-template static one.
+  local uses_meteorite_aids = template_spec.tooling.meteorite
+  local next_script = template_spec.next_script
+  if template_id == "spa" then
+    local spa_router = router_choice or "hydronium"
+    uses_meteorite_aids = spa_router == "meteorite"
+    next_script = spa_router == "meteorite" and "dev" or "build"
   end
 
   -- Configure LuaLS with Alter
@@ -384,7 +447,7 @@ function create.scaffold(opts, ctx)
     luax = template_spec.tooling.luax,
     dom = template_spec.tooling.dom,
     bare_dom = template_spec.tooling.bare_dom,
-    meteorite = template_spec.tooling.meteorite,
+    meteorite = uses_meteorite_aids,
   })
   if not luals_res then
     return nil, string.format("Scaffolding succeeded but LuaLS configuration failed: %s", tostring(luals_err))
@@ -407,8 +470,11 @@ function create.scaffold(opts, ctx)
     template = template_id,
     created = results.created,
     luals = luals_res,
-    next_script = template_spec.next_script,
+    next_script = next_script,
     dry_run = opts.dry_run,
+    tailwind = opts.tailwind and true or false,
+    package_manager = opts.tailwind and package_manager or nil,
+    router = router_choice,
   }
 end
 
