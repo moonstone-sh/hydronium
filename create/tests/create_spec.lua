@@ -1638,6 +1638,25 @@ test("bubble diorama: seeded closed-form motion, depth layering around the title
   assert(saw_front and saw_behind, "expected both layering cases within 30s of motion")
 end)
 
+test("every create.* module the CLI requires is in the release include list", function()
+  -- A module that is required but not exported works from the source tree
+  -- and crashes only in the published package (this shipped once for
+  -- wizard_tasks, and nearly for the whole wizard UI).
+  local partiture = io.open("./partiture.lua"):read("*a")
+  local function listed(path)
+    if partiture:find('"' .. path .. '"', 1, true) then return true end
+    return path:match("^src/create/templates/") and partiture:find('"src/create/templates/**"', 1, true) ~= nil
+  end
+  local handle = io.popen("grep -rhoE 'require\\(\"create\\.[a-z_.]+\"\\)' ./src")
+  local missing = {}
+  for req in handle:read("*a"):gmatch('require%("(create%.[%w_.]+)"%)') do
+    local path = "src/" .. req:gsub("%.", "/") .. ".lua"
+    if not listed(path) then missing[#missing + 1] = path end
+  end
+  handle:close()
+  assert(#missing == 0, "required but not exported: " .. table.concat(missing, ", "))
+end)
+
 print(string.format("\nResults: %d/%d passed\n", passed, total))
 if passed < total then
   os.exit(1)
