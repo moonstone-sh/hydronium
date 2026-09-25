@@ -66,8 +66,29 @@ for _, env_name in ipairs({ %s }) do expose_lab_package(env_name) end
 ]=], table.concat(names, ", "))
 end
 
-local function runtime_environment()
+local function module_roots(config)
+  local roots = config.module_roots or { "src" }
+  if type(roots) ~= "table" or #roots == 0 then error("Lab module_roots must be a non-empty list", 3) end
+  local paths = {}
+  for index, root in ipairs(roots) do
+    if type(root) ~= "string" or root == "" or root:sub(1, 1) == "/" or root:match("^%a:/")
+      or root:find("[%z\r\n]") then
+      error("Lab module roots must be non-empty project-relative paths", 3)
+    end
+    for segment in root:gmatch("[^/\\\\]+") do
+      if segment == "." or segment == ".." then error("Lab module roots cannot escape the project", 3) end
+    end
+    paths[index] = root:gsub("\\\\", "/"):gsub("/+$", "")
+  end
+  return paths
+end
+
+local function runtime_environment(config)
   local lua_paths, c_paths, environment = {}, {}, {}
+  for _, root in ipairs(module_roots(config)) do
+    lua_paths[#lua_paths + 1] = root .. "/?.lua"
+    lua_paths[#lua_paths + 1] = root .. "/?/init.lua"
+  end
   for _, env_name in ipairs(runtime_package_envs) do
     local root = os.getenv(env_name)
     if (not root or root == "") and env_name == "MOONSTONE_PACKAGE_ROOT_HYDRONIUM_METEORITE" then
@@ -131,7 +152,7 @@ return app
       "--router-dispatch param_matchers --graph-input " .. graph_input,
       "--lua-root .moonstone/env/libexec/luajit",
     }, " "),
-    environment = runtime_environment(),
+    environment = runtime_environment(input.config),
     url = "http://" .. input.host .. ":" .. tostring(input.port) .. base_path .. "/",
   }
 end

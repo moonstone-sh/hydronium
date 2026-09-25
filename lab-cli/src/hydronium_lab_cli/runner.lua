@@ -26,6 +26,40 @@ local M = {}
 local function lua_quote(value) return string.format("%q", tostring(value)) end
 local function shell_quote(value) return "'" .. tostring(value):gsub("'", "'\\''") .. "'" end
 
+--- The setup transaction intentionally does not install hydronium/lab-cli.
+--- This executable is already running from the project's tool profile; adding
+--- it again obscures that boundary and can duplicate manifest entries on older
+--- Moonstone versions. The stable commands below are safe to run repeatedly.
+function M.init_commands()
+  return {
+    "moon add --dev --no-sync hydronium/lab hydronium/ink-lab hydronium/meteorite",
+    "moon add --tool --no-sync moonstone/meteorite",
+    "moon manifest script set lab --command 'moon exec --dev -- hydronium-lab dev'",
+    "moon sync",
+  }
+end
+
+local function command_succeeded(ok, code)
+  return ok == true or ok == 0 or code == 0
+end
+
+--- Materialize the optional Lab development closure in the current project.
+--- `execute` is injectable so the transaction can be tested without changing
+--- a manifest. Use `dry_run` to inspect the exact command list.
+function M.initialize(opts)
+  opts = opts or {}
+  local commands = M.init_commands()
+  if opts.dry_run then return { commands = commands } end
+  local execute = opts.execute or os.execute
+  for _, command in ipairs(commands) do
+    local ok, _, code = execute(command)
+    if not command_succeeded(ok, code) then
+      return nil, "command failed: " .. command .. " (" .. tostring(code or ok) .. ")"
+    end
+  end
+  return { commands = commands }
+end
+
 local function command_with_environment(command, environment)
   if not environment or next(environment) == nil then return command end
   local keys = {}
@@ -171,15 +205,19 @@ function M.scan(config, fs)
 end
 
 local function config_source(config, paths)
-  local roots, story_paths = {}, {}
+  local roots, story_paths, module_roots = {}, {}, {}
   for index, root in ipairs(config.roots or { "src" }) do roots[index] = lua_quote(root) end
   for index, path in ipairs(paths) do story_paths[index] = lua_quote(path) end
+  if config.module_roots ~= nil then
+    for index, root in ipairs(config.module_roots) do module_roots[index] = lua_quote(root) end
+  end
   return "return {\n"
     .. "  title = " .. lua_quote(config.title or "Hydronium Lab") .. ",\n"
     .. "  project_name = " .. lua_quote(config.project_name or "hydronium-lab") .. ",\n"
     .. "  project_id = " .. lua_quote(config.project_id or config.project_name or "hydronium-lab") .. ",\n"
     .. "  base_path = " .. lua_quote(config.base_path or "/__hydronium/lab") .. ",\n"
     .. "  roots = { " .. table.concat(roots, ", ") .. " },\n"
+    .. (config.module_roots ~= nil and "  module_roots = { " .. table.concat(module_roots, ", ") .. " },\n" or "")
     .. "  paths = { " .. table.concat(story_paths, ", ") .. " },\n"
     .. "}\n"
 end

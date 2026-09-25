@@ -43,20 +43,19 @@ app = c.create({
       return 0
     end), { description = "Run the Lab workbench" }),
     init = c.node({
+      c.flag({ key = "dry_run", aliases = { "--dry-run" } }),
       c.run(function(ctx)
         if ctx.args.help then io.stdout:write(app:help() .. "\n"); return 0 end
         if ctx.args.version then io.stdout:write("hydronium-lab 0.1.0\n"); return 0 end
-        local commands = {
-          "moon add --dev --no-sync hydronium/lab hydronium/ink-lab hydronium/meteorite",
-          "moon add --tool --no-sync hydronium/lab-cli moonstone/meteorite",
-          "moon manifest script set lab --command 'moon exec --dev -- hydronium-lab dev'",
-          "moon sync",
-        }
-        for _, command in ipairs(commands) do
-          local ok, _, code = os.execute(command)
-          if not (ok == true or ok == 0) then ctx:fail("command failed: " .. command .. " (" .. tostring(code or ok) .. ")", 1); return end
+        local result, err = runner.initialize({ dry_run = ctx.args.dry_run })
+        if not result then ctx:fail(err, 1); return end
+        if ctx.args.dry_run then
+          for _, command in ipairs(result.commands) do
+            io.stdout:write(command .. "\n")
+          end
+          return 0
         end
-        io.stdout:write("Hydronium Lab added. Create a *.stories.lua or *.stories.luax file, then run `moon run lab`.\n")
+        io.stdout:write("Hydronium Lab is ready. Create a *.stories.lua or *.stories.luax file, then run `moon run lab`.\n")
         return 0
       end),
     }, { description = "Add Lab development and host dependencies to a project" }),

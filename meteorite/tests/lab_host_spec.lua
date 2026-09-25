@@ -2,7 +2,7 @@ package.path = "src/?.lua;src/?/init.lua;../lab/src/?.lua;../lab/src/?/init.lua;
 
 local adapter = require("hydronium_meteorite.lab_host")
 local plan = adapter.plan({
-  config = { roots = { "src", "features" }, base_path = "/tools/lab" },
+  config = { roots = { "src", "features" }, module_roots = { "src", "shared" }, base_path = "/tools/lab" },
   config_path = ".hydronium/lab/config.lua",
   state_dir = ".hydronium/lab",
   paths = { "src/Status.stories.lua" },
@@ -13,6 +13,7 @@ local plan = adapter.plan({
 assert(plan.url == "http://127.0.0.1:6200/tools/lab/")
 assert(plan.command:find("--hybrid-profile single_owner", 1, true))
 assert(plan.environment.LUA_PATH:find("hydronium/lab/src/?.lua", 1, true))
+assert(plan.environment.LUA_PATH:find("shared/?.lua", 1, true))
 assert(plan.environment.LUA_CPATH:find("lua%-cjson") or plan.environment.LUA_CPATH:find("lua_cjson"))
 local main = assert(plan.files[".hydronium/lab/main.lua"])
 assert(main:find("MOONSTONE_PACKAGE_ROOT_HYDRONIUM_LAB", 1, true))

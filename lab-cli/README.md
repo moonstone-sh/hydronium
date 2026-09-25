@@ -5,9 +5,14 @@ hands a deterministic launch plan to an explicit host adapter.
 
 ```sh
 moon add --tool hydronium/lab-cli
-moon exec --dev -- hydronium-lab init
+moon exec -- hydronium-lab init
 moon run lab
 ```
+
+`init` is safe to rerun. It installs only the renderer and host packages in
+the `dev` profile, the Meteorite executable in the `tool` profile, and never
+adds `hydronium/lab-cli` a second time: that tool is the command already
+running the setup.
 
 The default `meteorite` adapter is supplied by `hydronium/meteorite`. A custom
 adapter may be selected explicitly in `hydronium.lab.lua`:

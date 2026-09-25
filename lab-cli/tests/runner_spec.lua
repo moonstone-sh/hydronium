@@ -32,13 +32,29 @@ end
 
 local original_read = runner.read_config
 runner.read_config = function()
-  return { roots = { "src" }, title = "Test", project_name = "test", project_id = "test", host = "test_lab_host", base_path = "/lab" }
+  return { roots = { "src" }, module_roots = { "src", "shared" }, title = "Test", project_name = "test", project_id = "test", host = "test_lab_host", base_path = "/lab" }
 end
 local plan = assert(runner.plan({ fs = fs, dry_run = true }))
 runner.read_config = original_read
 assert(plan.adapter == "test_lab_host")
 assert(plan.command == "test-host")
 assert(plan.files[".hydronium/lab/config.lua"]:find('base_path = "/lab"', 1, true))
+assert(plan.files[".hydronium/lab/config.lua"]:find('module_roots = { "src", "shared" }', 1, true))
+
+local setup = assert(runner.initialize({ dry_run = true }))
+assert(#setup.commands == 4, "Lab setup must remain one small, repeatable transaction")
+local setup_text = table.concat(setup.commands, "\n")
+assert(setup_text:find("moon add %-%-dev %-%-no%-sync hydronium/lab hydronium/ink%-lab hydronium/meteorite"))
+assert(setup_text:find("moon add %-%-tool %-%-no%-sync moonstone/meteorite"))
+assert(not setup_text:find("hydronium/lab%-cli", 1, false), "the running Lab tool must not add itself again")
+assert(setup_text:find("moon exec %-%-dev %-%- hydronium%-lab dev"))
+
+local executed = {}
+assert(runner.initialize({ execute = function(command)
+  executed[#executed + 1] = command
+  return true, "exit", 0
+end }))
+assert(#executed == #setup.commands, "repeat setup must execute the same idempotent commands")
 
 local env_command = runner.command_with_environment("test-host", { LUA_PATH = "one;two", LAB_VALUE = "has a space" })
 assert(env_command:find("test%-host"))
