@@ -249,6 +249,34 @@ the missing-entry error, and `vite-dev` origin prefixing) and
 `tests/server/json_decode_spec.lua` (the new decoder). Full suite:
 `moon exec -- luajit tests/runner.lua`.
 
+## 4c. Decoupling guardrails (STEP 3, partial)
+
+**3b (dependency lint) — done, 2026-09-25.**
+`tests/build/vite_dependency_lint_spec.lua` mechanically enforces the
+boundary this whole plan exists to protect: it parses every `require(...)`
+call (not a raw substring search — a doc comment naming `vite_module.lua`
+or `@hydronium-js/vite` in prose must not trip it) in `core/src`,
+`router/src`, `query/src`, `table/src`, `virtual/src`, `ink/src`,
+`luax/src`, `dom/src`, and fails if anything Vite-named is required from
+outside two allowed files: `dom/src/hydronium_dom/server/vite_module.lua`
+(the resolver itself) and `dom/src/hydronium_dom/server/init.lua` (M2's
+one call site, resolving a `d.js.island` module through it). It also
+separately asserts `hydronium_dom.assets` — STEP 1's neutral contract —
+requires no Vite-specific module itself; "vite-dev"/"vite-manifest" are
+opaque config-value strings a caller passes in, not something the module
+reaches for. `build/` (hydronium_ballad) is deliberately out of scope:
+`vite_assets.lua` is the ballad-side half of the same adapter and is
+*expected* to know about Vite's manifest shape.
+
+**3a (static-provider conformance) and 3c (wizard "Bundler: None" choice)
+— NOT done.** Both depend on STEP 2 (the create templates actually
+consuming the provider contract) existing first: 3a's gate is "each Vite
+template also builds/serves with the static provider and no Node", which
+needs a template that already builds through the contract in the Vite
+case; 3c's "None ⇒ static provider, no package.json" needs the same
+templates to have a real static-provider code path to fall back to. See
+§4a for why STEP 2 itself has not started.
+
 ---
 
 ## 5. Hazards — read before writing code

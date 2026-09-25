@@ -428,6 +428,7 @@ local function main()
       "tests/server/render_page_spec.lua",
       "tests/server/json_decode_spec.lua",
       "tests/build/vite_assets_spec.lua",
+      "tests/build/vite_dependency_lint_spec.lua",
       "tests/build/assets_hash_spec.lua",
       "tests/build/style_bundle_spec.lua",
       "tests/core/hmr_spec.lua",
