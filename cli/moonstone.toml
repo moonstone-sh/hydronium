@@ -3,7 +3,7 @@ manifest_version = 2
 [package]
 name = "hydronium/cli"
 registry_name = "hydronium"
-version = "0.3.0"
+version = "0.4.0"
 kind = "bin"
 description = "Hydronium developer CLI: `hydronium dev` wraps a Meteorite dev server with a live Hydronium Ink status view"
 

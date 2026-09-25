@@ -159,6 +159,18 @@ end
 --- Moves the selection by `delta` rows, clamped at both ends (no wrapping
 --- -- a debug list is not a carousel; hitting the top and staying there is
 --- what every pager does).
+---
+--- `selection` is clamped into `[1, count]` BEFORE `delta` is applied, not
+--- after. A caller can hand this a `selection` that is stale relative to
+--- `count` -- typically because the list just shrank under a filter and
+--- nothing has re-clamped the stored selection yet -- and clamping only
+--- the SUM would strand that staleness: e.g. `move_selection(50, 1, 3)`
+--- computes 51, clamps to 3, same as before the delta, so the very next
+--- press looks identical and the list appears frozen. Pressing the same
+--- key enough times eventually walks the stale value back into range by
+--- accident, which read as "arrow keys stop working" for exactly as many
+--- presses as the selection had drifted. Clamping first means the first
+--- press after a shrink both snaps into range AND moves, in one step.
 --- @param selection integer
 --- @param delta integer
 --- @param count integer
@@ -167,7 +179,8 @@ function M.move_selection(selection, delta, count)
   if count <= 0 then
     return 0
   end
-  return M.clamp_selection((selection or 0) + (delta or 0), count)
+  local current = M.clamp_selection(selection, count)
+  return M.clamp_selection(current + (delta or 0), count)
 end
 
 --- FOLLOW-THE-TAIL RULE: the selection stays pinned to the newest row

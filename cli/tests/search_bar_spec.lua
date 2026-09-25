@@ -8,6 +8,8 @@ local describe, it, assert = runner.describe, runner.it, runner.assert
 
 local hydronium = require("hydronium")
 local session = require("hydronium_ink.session")
+local ink_color = require("hydronium_ink.color")
+local oklab = require("hydronium_oklab_utils")
 local query = require("query")
 local field = require("ui.search_field")
 local bar = require("ui.search_bar")
@@ -141,6 +143,132 @@ describe("hydronium_cli.ui.search_bar -- atomic wrapping", function()
         assert.truthy(line:find(" json ", 1, true),
           "a chip's value must wrap with its field:\n" .. table.concat(painted, "\n"))
       end
+    end
+  end)
+end)
+
+describe("hydronium_cli.ui.search_bar -- chip contrast (APCA, post-quantization)", function()
+  -- Guards the actual point of the OKLCH rewrite: each chip role's {bg, fg}
+  -- must stay legible not just as requested (truecolor) but as it will
+  -- REALLY paint once hydronium_ink.color quantizes it down to 256 colors --
+  -- the old palette-name chips ("blue"/"white"/"yellow"/"cyan") could never
+  -- even be checked this way, since a palette name has no absolute RGB
+  -- until the user's own terminal theme supplies one.
+  --
+  -- ansi16/"none" are NOT color-quantization cases any more (see
+  -- `ui/search_bar.lua`'s own `STRUCTURAL_STYLE` doc comment for why: an
+  -- ansi16 slot's RGB is theme-guessed, so contrast math against it is
+  -- false precision, not a real guarantee) -- those are checked by the
+  -- separate structural-style `describe` below instead.
+  --
+  -- `bar.build_colors(nil, capability)` -- no detected terminal background
+  -- -- is used rather than the live, TTY-detecting `colors()` so this is
+  -- deterministic under the test runner (never a real TTY).
+  local ROLES = { "field", "unknown_field", "value", "selection", "caret" }
+  local CAPABILITIES = { "truecolor", "ansi256" }
+
+  -- APCA's own commonly-cited floor for small/bold text (matches
+  -- `ui/search_bar.lua`'s own TEXT_LC) -- both truecolor and ansi256 must
+  -- clear it for REAL, post-quantization, not just as requested: ansi256's
+  -- own `derive_chip_colors` re-verifies and nudges specifically so this
+  -- holds rather than the softer historical floor of 40.
+  local MIN_LC = 60
+
+  --- @return number lc, table eff_bg, table eff_fg
+  local function painted_lc(bg, fg, capability)
+    local eff_bg = ink_color.effective_srgb(ink_color.resolve(bg), capability)
+    local eff_fg = ink_color.effective_srgb(ink_color.resolve(fg), capability)
+    local lc = oklab.lc(oklab.srgb(eff_fg.r, eff_fg.g, eff_fg.b), oklab.srgb(eff_bg.r, eff_bg.g, eff_bg.b))
+    return lc, eff_bg, eff_fg
+  end
+
+  for _, capability in ipairs(CAPABILITIES) do
+    for _, role in ipairs(ROLES) do
+      it("keeps '" .. role .. "' at or above Lc " .. MIN_LC .. " under " .. capability .. ", post-quantization", function()
+        local pair = bar.build_colors(nil, capability)[role]
+        local lc = painted_lc(pair.bg, pair.fg, capability)
+        assert.truthy(math.abs(lc) >= MIN_LC,
+          string.format("%s under %s: |Lc|=%.1f < floor %d", role, capability, math.abs(lc), MIN_LC))
+      end)
+    end
+  end
+
+  it("derives a real OKLCH color, not a palette name, for every role, under truecolor and ansi256", function()
+    for _, capability in ipairs(CAPABILITIES) do
+      local built = bar.build_colors(nil, capability)
+      for _, role in ipairs(ROLES) do
+        assert.truthy(built[role].bg.space, capability .. ": expected an oklab-utils color value for " .. role .. " bg")
+        assert.truthy(built[role].fg.space, capability .. ": expected an oklab-utils color value for " .. role .. " fg")
+      end
+    end
+  end)
+
+  it("pushes a chip background away from a detected terminal background that would collide with it", function()
+    -- The 'value' role's default is a pale near-white -- picking a nearly
+    -- identical pale terminal background must not leave it blending in.
+    local collidingTerminalBg = oklab.hex("#ece9df")
+    local isolated = bar.build_colors(nil).value.bg
+    local separated = bar.build_colors(collidingTerminalBg).value.bg
+    local isolatedLc = math.abs(oklab.lc(isolated, collidingTerminalBg))
+    local separatedLc = math.abs(oklab.lc(separated, collidingTerminalBg))
+    assert.truthy(separatedLc > isolatedLc,
+      string.format("expected separation to improve bg-vs-terminal contrast: %.1f -> %.1f", isolatedLc, separatedLc))
+  end)
+end)
+
+describe("hydronium_cli.ui.search_bar -- structural style (ansi16 / none)", function()
+  -- ansi16's own 16 RGB values are theme-defined, not real absolute colors
+  -- (see search_bar.lua's own STRUCTURAL_STYLE doc comment) -- so, unlike
+  -- truecolor/ansi256 above, there is no APCA number to assert on here.
+  -- What's checkable instead: every role gets a REAL, non-empty structural
+  -- override (never silently falling through to plain, undecorated text),
+  -- and no role's style prop leaks an absolute color -- only `inverse`/
+  -- `bold` (this package's stated design: NO_COLOR/ansi16 lean on the
+  -- terminal's own theme, never a guessed hue).
+  local ROLES = { "field", "unknown_field", "value", "selection", "caret" }
+  local PROFILES = { "ansi16", "none" }
+  local ALLOWED_KEYS = { inverse = true, bold = true }
+
+  for _, profile in ipairs(PROFILES) do
+    it("gives every role a non-empty inverse/bold-only style under " .. profile, function()
+      local built = bar.build_colors(nil, profile)
+      for _, role in ipairs(ROLES) do
+        local style = built[role]
+        assert.truthy(type(style) == "table", profile .. ": expected a structural style table for " .. role)
+        assert.falsy(style.bg, profile .. ": " .. role .. " must not carry an absolute background color")
+        assert.falsy(style.fg, profile .. ": " .. role .. " must not carry an absolute foreground color")
+        for key in pairs(style) do
+          assert.truthy(ALLOWED_KEYS[key], profile .. ": " .. role .. " has an unexpected style key '" .. key .. "'")
+        end
+        assert.truthy(style.inverse or style.bold,
+          profile .. ": " .. role .. " must set inverse and/or bold, or it would look like plain text")
+      end
+    end)
+  end
+
+  it("keeps every chip role distinguishable from plain, undecorated raw text", function()
+    -- Plain raw text (an untouched Text run) has neither flag set --
+    -- asserted above already ensures no role matches that exact shape, but
+    -- spelling it out here as its own assertion documents WHY that check
+    -- exists: {} would be visually indistinguishable from ordinary text.
+    for _, profile in ipairs(PROFILES) do
+      local built = bar.build_colors(nil, profile)
+      for _, role in ipairs(ROLES) do
+        local style = built[role]
+        assert.falsy(style.inverse == nil and style.bold == nil,
+          profile .. ": " .. role .. " resolved to no style at all")
+      end
+    end
+  end)
+
+  it("field props end up bold via style_text_props for every profile, matching chip()'s own guarantee", function()
+    -- chip() always forces `bold = true` on the field label regardless of
+    -- profile (see its own doc comment) -- this just confirms the
+    -- structural source data agrees for ansi16/none, so that forced
+    -- assignment is reinforcing the design, not papering over a gap in it.
+    for _, profile in ipairs(PROFILES) do
+      assert.truthy(bar.build_colors(nil, profile).field.bold,
+        profile .. ": expected the field role's own structural style to already be bold")
     end
   end)
 end)

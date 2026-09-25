@@ -81,6 +81,33 @@ function M.visible_rows(rows)
   return math.max(M.MIN_ROWS, rows - inspector.CHROME_ROWS)
 end
 
+--- The history actually on screen right now: `state.history` itself, or a
+--- `filtered_view` over it when the filter bar holds a non-empty query.
+---
+--- SHARED, deliberately, with ui/app.lua's key handler (`move`, `g`/`G`).
+--- That handler used to clamp against `state.history:count()` -- the RAW,
+--- unfiltered count -- while this view was already clamping against the
+--- FILTERED count for painting. The two agreeing by coincidence (no filter
+--- active) hid the bug; the moment a filter shrank the visible list below
+--- the stored selection, up/down kept clamping the selection against the
+--- big unfiltered count, so it wandered around way outside what was on
+--- screen and the painted cursor -- which this view always re-clamps
+--- locally -- looked stuck. One function, called from both places, means
+--- the count used to clamp a keypress and the count used to paint a frame
+--- can never disagree again.
+--- @param state table From ui.app's new_state (it owns `history` and `search`).
+--- @return table history, integer count
+function M.visible_history(state)
+  local parsed = query.parse(state.search and state.search().text or "")
+  local history = state.history
+  if not parsed.empty then
+    history = inspector.filtered_view(state.history, function(event)
+      return query.matches(event, parsed)
+    end)
+  end
+  return history, history:count()
+end
+
 --- @param state table From ui.app's new_state (it owns `history`,
 ---   `selection` and `requests_revision`).
 --- @return fun(): fun(): any A Hydronium component.
@@ -108,14 +135,7 @@ function M.create_view(state)
       -- list immediately rather than waiting for the next request.
       state.search_revision()
 
-      local parsed = query.parse(state.search and state.search().text or "")
-      local history = state.history
-      if not parsed.empty then
-        history = inspector.filtered_view(state.history, function(event)
-          return query.matches(event, parsed)
-        end)
-      end
-      local count = history:count()
+      local history, count = M.visible_history(state)
       local selection = inspector.clamp_selection(state.selection(), count)
       local height = M.visible_rows(rows)
       -- Plain-field write (NOT a signal -- see ui/app.lua's own note on
@@ -129,7 +149,17 @@ function M.create_view(state)
 
       local title
       if count == 0 then
-        title = "Requests - none captured yet"
+        -- Distinguish "nothing has happened yet" from "a filter hid
+        -- everything" -- `history.total` only exists on a filtered_view
+        -- (see inspector.filtered_view), so its presence alone says which
+        -- case this is. Saying "none captured yet" while N requests sit
+        -- behind the filter would read as the dev server having gone
+        -- quiet, which is the opposite of what happened.
+        if history.total then
+          title = string.format("Requests - none match filter (0 of %d)", history.total)
+        else
+          title = "Requests - none captured yet"
+        end
       else
         title = string.format("Requests %d-%d of %d", first, last, count)
         if history.total then
@@ -156,8 +186,10 @@ function M.create_view(state)
         inspector.header_row(columns, { show_ips = state.show_ips }))
 
       if count == 0 then
-        children[#children + 1] = hydronium.h(ink.Text, { dimColor = true },
-          "  waiting for the first request -- the dev server has not served one yet")
+        local empty_message = history.total
+          and "  no requests match the current filter"
+          or "  waiting for the first request -- the dev server has not served one yet"
+        children[#children + 1] = hydronium.h(ink.Text, { dimColor = true }, empty_message)
       else
         for _, row in ipairs(history:slice(first, last)) do
           local selected = row.index == selection

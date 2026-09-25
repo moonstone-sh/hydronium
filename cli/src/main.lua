@@ -174,10 +174,6 @@ local M = {}
 
 M.VERSION = "0.2.0"
 
-local function shell_quote(value)
-  return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
-end
-
 M.USAGE = table.concat({
   "hydronium " .. M.VERSION,
   "",
@@ -194,9 +190,6 @@ M.USAGE = table.concat({
   "                 render its dev-event stream.",
   "  build          Run the project's declared partiture.lua once, to",
   "                 completion, and exit. See `hydronium build --help`.",
-  "  lab            Compatibility alias for `hydronium-lab dev`.",
-  "  lab init       Install the standalone Lab tool and host adapter.",
-  "",
   "Options:",
   "  --verbose      Show more rows in the events pane (display density only).",
   "  --show-hmr     Include hydronium dev-endpoint requests (HMR watch,",
@@ -302,28 +295,6 @@ function M.parse_args(argv)
     return M.parse_build_args(argv)
   end
   if first ~= "dev" then
-    if first == "lab" then
-      local parsed = { command = "lab", init = argv[2] == "init", host = "127.0.0.1", port = 6100 }
-      local index = parsed.init and 3 or 2
-      while index <= #argv do
-        local token = argv[index]
-        if token == "--no-open" then parsed.no_open = true
-        elseif token == "--ci" then parsed.ci = true; parsed.no_open = true
-        elseif token == "--host" or token == "--port" or token == "--config" or token == "--adapter" then
-          local value = argv[index + 1]
-          if not value then return nil, token .. " requires a value" end
-          parsed[token:sub(3):gsub("%-", "_")] = token == "--port" and tonumber(value) or value
-          index = index + 1
-        elseif token:match("^%-%-host=") then parsed.host = token:match("=(.*)$")
-        elseif token:match("^%-%-port=") then parsed.port = tonumber(token:match("=(.*)$"))
-        elseif token:match("^%-%-config=") then parsed.config = token:match("=(.*)$")
-        elseif token:match("^%-%-adapter=") then parsed.adapter = token:match("=(.*)$")
-        else return nil, "unknown argument '" .. tostring(token) .. "' for `hydronium lab`" end
-        index = index + 1
-      end
-      if not parsed.port or parsed.port < 1 or parsed.port > 65535 or parsed.port % 1 ~= 0 then return nil, "--port must be an integer from 1 to 65535" end
-      return parsed
-    end
     if first:sub(1, 1) == "-" then
       return nil, "unknown option '" .. first .. "' (expected a command first)"
     end
@@ -558,19 +529,6 @@ end
 function M.dual_dev_argv(repo_root, meteorite_argv, parsed, encode)
   local script = repo_root .. "/js/packages/vite/bin/dual-dev.mjs"
   return { "node", script, "--specs", encode(M.dual_dev_specs(meteorite_argv, parsed)) }
-end
-
---- Compatibility command only. Lab discovery and host planning live in the
---- standalone hydronium/lab-cli package, keeping this developer console free
---- of renderer and web-host dependencies.
-function M.lab_command(parsed)
-  local parts = { "hydronium-lab", "dev", "--host", shell_quote(parsed.host or "127.0.0.1"),
-    "--port", tostring(parsed.port or 6100) }
-  if parsed.config then parts[#parts + 1], parts[#parts + 2] = "--config", shell_quote(parsed.config) end
-  if parsed.adapter then parts[#parts + 1], parts[#parts + 2] = "--adapter", shell_quote(parsed.adapter) end
-  if parsed.no_open then parts[#parts + 1] = "--no-open" end
-  if parsed.ci then parts[#parts + 1] = "--ci" end
-  return table.concat(parts, " ")
 end
 
 --- How long to wait for a `startup` event before concluding the server is
@@ -1022,32 +980,6 @@ function M.main(argv)
   end
   if parsed.command == "build" then
     return M.build(parsed)
-  end
-  if parsed.command == "lab" then
-    if parsed.init then
-      local commands = {
-        "moon add --dev --no-sync hydronium/lab hydronium/ink-lab hydronium/meteorite",
-        "moon add --tool --no-sync hydronium/lab-cli moonstone/meteorite",
-        "moon manifest script set lab --command 'moon exec --dev -- hydronium-lab dev'",
-        "moon sync",
-      }
-      for _, command in ipairs(commands) do
-        local ok, _, code = os.execute(command)
-        if not (ok == true or ok == 0) then
-          io.stderr:write("hydronium lab init: command failed: " .. command .. " (" .. tostring(code or ok) .. ")\n")
-          return 1
-        end
-      end
-      io.stdout:write("Hydronium Lab added. Create a *.stories.lua or *.stories.luax file, then run `moon run lab`.\n")
-      return 0
-    end
-    local ok, why, code = os.execute(M.lab_command(parsed))
-    if not (ok == true or ok == 0) then
-      io.stderr:write("hydronium lab: standalone `hydronium-lab` failed (is hydronium/lab-cli installed?): "
-        .. tostring(code or why or ok) .. "\n")
-      return 1
-    end
-    return 0
   end
   return M.dev(parsed)
 end

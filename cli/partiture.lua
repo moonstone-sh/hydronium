@@ -10,7 +10,23 @@ return ballad.partiture(function(p)
 		bin = "hydronium",
 		entry = "src/main.lua",
 		interpreter = "luajit",
-		include = { "src/**" },
+		-- Stories belong to the optional Lab workbench. Keep the console's
+		-- runtime UI, but do not ship its Lab catalog entry in this executable.
+		include = {
+			"src/build_runner.lua",
+			"src/build_verify.lua",
+			"src/dev_log.lua",
+			"src/dev_supervisor.lua",
+			"src/event_model.lua",
+			"src/inspector.lua",
+			"src/main.lua",
+			"src/query.lua",
+			"src/ui/app.lua",
+			"src/ui/build_view.lua",
+			"src/ui/inspector_view.lua",
+			"src/ui/search_bar.lua",
+			"src/ui/search_field.lua",
+		},
 	})
 
 	local source_artifact = moonstone.registry.package(app, {

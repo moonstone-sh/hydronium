@@ -1,103 +1,173 @@
---[[
-  Stories for the filter bar and its chips.
-
-  These exist because the specs for this component assert on the painted CELL
-  GRID -- that a chip label survives a row break, that no character is lost at
-  any caret position. Those assertions are correct and completely unreadable:
-  nothing in them tells you whether the chip is legible, whether the caret is
-  visible against a selection, or whether the colours work. A story does.
-
-  The `wrapping` story is the one worth opening first. Chips are Boxes, a Box
-  is a flex item, and Yoga never splits a flex item -- so narrowing the
-  terminal moves a whole chip to the next row rather than tearing it in half.
-  That is asserted in cli/tests/search_bar_spec.lua and is much easier to
-  believe when you can drag the width.
---]]
-
 local lab = require("hydronium_lab")
+local hydronium = require("hydronium")
+local ink = require("hydronium_ink")
+local hooks = require("hydronium_ink.hooks")
+local app = require("ui.app")
 local field = require("ui.search_field")
 local query = require("query")
 local search_bar = require("ui.search_bar")
 
---- Builds field state from story args, clamping the caret so a controls-panel
---- edit can never produce an out-of-range cursor.
---- @param args table
---- @return table
-local function state_from(args)
-  local state = field.new_state(args.text or "")
-  local cursor = tonumber(args.cursor)
-  state.cursor = cursor and math.max(0, math.min(math.floor(cursor), #state.text)) or #state.text
-  local anchor = tonumber(args.anchor)
-  if anchor then
-    state.anchor = math.max(0, math.min(math.floor(anchor), #state.text))
+local function request(method, path, status, duration_ms, body)
+  return {
+    v = 1,
+    source = "meteorite",
+    kind = "request",
+    ts = 1,
+    method = method,
+    path = path,
+    status = status,
+    duration_ms = duration_ms,
+    body = body,
+  }
+end
+
+-- A real fullscreen Hydronium CLI, populated with a small but varied request
+-- history. It is intentionally one interactive scenario, rather than a
+-- collection of screenshots for selection and cursor positions:
+--   j/k or arrows navigate; / focuses the live filter; Escape leaves it.
+local function SyntheticDevSession()
+  local state = app.new_state({ fullscreen = true })
+  state:apply({
+    v = 1,
+    source = "meteorite",
+    kind = "startup",
+    ts = 1,
+    routes = 12,
+    ready_ms = 84,
+    url = "http://127.0.0.1:6100/",
+  })
+
+  for _, event in ipairs({
+    request("GET", "/api/projects", 200, 18, "project list"),
+    request("POST", "/api/session", 201, 43, "signed in"),
+    request("GET", "/assets/app.js", 200, 6, "bundle"),
+    request("POST", "/api/contact", 422, 31, "email is required"),
+    request("GET", "/health", 200, 2, "ok"),
+    request("GET", "/api/projects/42", 500, 107, "database timeout"),
+  }) do
+    state:record_request(event)
   end
-  return state
+
+  return hydronium.h(app.create_app(state, { onQuit = function() end }))
+end
+
+-- A focused editing surface for validating real text input, caret movement,
+-- deletion, and the transition between raw text and completed chips.
+--
+-- `profile` is the STATIC preview the story's own `profile` control drives
+-- (see `lab.collection`'s `controls` below) -- it is passed straight to
+-- `search_bar.render`'s `opts.profile`, the same explicit argument
+-- `cli/tests/search_bar_spec.lua` uses, since a plain `render(args)` story
+-- has no mounted component/hook context to read a LIVE
+-- `hooks.useColorProfile()` from (see search_bar.lua's own top doc comment
+-- on why `M.render` takes `opts.profile` explicitly rather than reaching
+-- for the hook itself).
+--
+-- @param profile "truecolor"|"ansi256"|"ansi16"|"none"
+local function InteractiveFilter(profile)
+  local state, set_state = hydronium.signal(field.new_state(""))
+
+  hooks.useInput(function(input, key, event)
+    set_state(field.handle_key(state(), { input = input, key = key or {} }))
+    if event then event.stop() end
+  end)
+
+  return function()
+    local current = state()
+    return hydronium.h(ink.Box, { flexDirection = "column" },
+      hydronium.h(ink.Text, { dimColor = true },
+        "Type a filter. Left/Right, Backspace, Ctrl+A, and Ctrl+W are live. Color profile: " .. profile),
+      search_bar.render(current, query.tokenize(current.text), { focused = true, profile = profile }))
+  end
+end
+
+-- A deliberately dense completed query. Its value is visual: at the cramped
+-- size every chip must wrap as one flex item rather than split mid-label.
+-- @param profile "truecolor"|"ansi256"|"ansi16"|"none"
+local function CrowdedWrapping(profile)
+  local state = field.new_state(
+    "method:GET status:200 path:/api/projects mime:json origin:local ip:127.0.0.1 duration:>100")
+  return hydronium.h(ink.Box, { flexDirection = "column" },
+    hydronium.h(ink.Text, { dimColor = true },
+      "Use the cramped size: completed chips wrap whole, never mid-token. Color profile: " .. profile),
+    search_bar.render(state, query.tokenize(state.text), { focused = false, profile = profile }))
+end
+
+-- Every chip role (known field, negated, unknown field, selection, caret)
+-- painted under all four color profiles stacked in one view, so a
+-- truecolor-vs-ansi256-vs-ansi16-vs-none comparison needs no control
+-- flipping at all -- see search_bar.lua's own STRUCTURAL_STYLE doc comment
+-- for why ansi16/"none" look structurally different (inverse/bold, no
+-- absolute color) rather than a degraded version of the same hues.
+local function ProfileComparison()
+  local state = field.new_state("method:GET -status:5xx nope:1 plain-text")
+  local tokens = query.tokenize(state.text)
+  local rows = {}
+  for _, profile in ipairs({ "truecolor", "ansi256", "ansi16", "none" }) do
+    rows[#rows + 1] = hydronium.h(ink.Box, { key = profile, flexDirection = "column", marginBottom = 1 },
+      hydronium.h(ink.Text, { dimColor = true }, profile .. ":"),
+      -- selFrom/selTo aren't exposed by search_field's plain new_state, so
+      -- the selection role is shown via `filter-input`'s own `selection`
+      -- story control instead -- this view is about the four CHIP roles
+      -- (field/unknown_field/value + caret) side by side per profile.
+      search_bar.render(state, tokens, { focused = false, profile = profile }))
+  end
+  return hydronium.h(ink.Box, { flexDirection = "column" }, rows)
 end
 
 return lab.collection({
-  title = "CLI/Filter bar",
-
+  title = "CLI/Dev session",
   render = function(args)
-    local state = state_from(args)
-    return search_bar.render(state, query.tokenize(state.text), { focused = args.focused })
+    local profile = args.profile or "truecolor"
+    if args.mode == "session" then return SyntheticDevSession() end
+    if args.mode == "input" then return hydronium.h(function() return InteractiveFilter(profile) end) end
+    if args.mode == "profiles" then return ProfileComparison() end
+    return CrowdedWrapping(profile)
   end,
-
+  -- Applies to every story below (hydronium_lab.discovery merges
+  -- collection-level and story-level controls) -- so any of them can be
+  -- viewed under truecolor/ansi256/ansi16/none from the Lab's own controls
+  -- panel, in addition to `synthetic-events`/`profiles` below which show
+  -- profile handling more directly (a live session override and a
+  -- side-by-side comparison, respectively).
   controls = {
-    text = { type = "text" },
-    focused = { type = "boolean" },
-    cursor = { type = "number" },
-    anchor = { type = "number" },
+    profile = { type = "select", options = { "truecolor", "ansi256", "ansi16", "none" } },
   },
-
-  sizes = {
-    { name = "wide", columns = 100, rows = 6 },
-    { name = "narrow", columns = 56, rows = 8 },
-    { name = "cramped", columns = 34, rows = 10 },
-  },
-
   stories = {
-    -- Nothing typed: the bar shows its own syntax as a hint rather than an
-    -- empty box, since an empty filter bar teaches nobody the language.
-    empty = { args = { text = "", focused = false } },
-
-    -- One recognised tag, caret elsewhere, so it renders as a chip.
-    chip = { args = { text = "method:GET", focused = false } },
-
-    -- Every chip state side by side: recognised, negated, and a field that
-    -- does not exist. The unknown one must LOOK wrong while you type it.
-    ["chip-states"] = {
-      args = { text = "method:GET -status:5xx nope:1 plain-text", focused = false },
+    ["synthetic-events"] = {
+      args = { mode = "session" },
+      sizes = {
+        { name = "default", columns = 100, rows = 28 },
+        { name = "compact", columns = 76, rows = 20 },
+      },
+      -- The real fullscreen app (search_bar.create's own component, with
+      -- hooks.useColorProfile() live) -- so this one is previewed by
+      -- switching the SESSION's color profile (Ink Lab's own profile
+      -- control / an `op = "colorProfile"` request, see
+      -- hydronium_ink_lab.runtime), not this story's `profile` arg control
+      -- above, which only reaches the two plain-render stories below.
     },
-
-    -- The caret inside a token renders it as RAW TEXT, not a chip: a chip has
-    -- nowhere sensible to put a caret. Move the caret out and it snaps back.
-    ["editing-a-token"] = {
-      args = { text = "method:GET status:200", focused = true, cursor = 4 },
-    },
-
-    -- Caret past the last token, which is what typing at the end looks like.
-    ["caret-at-end"] = {
-      args = { text = "method:GET ", focused = true, cursor = 11 },
-    },
-
-    -- A selection, as Shift+Left produces. Needs the Kitty keyboard protocol
-    -- in a real terminal; here it is just state.
-    selection = {
-      args = { text = "method:GET status:200", focused = true, cursor = 21, anchor = 11 },
-    },
-
-    -- Open this at the `cramped` size. Six chips cannot fit on one row, and
-    -- each one moves whole.
-    wrapping = {
-      args = {
-        text = "method:GET status:200 path:/api mime:json origin:local ip:127",
-        focused = false,
+    ["filter-input"] = {
+      args = { mode = "input", profile = "truecolor" },
+      sizes = {
+        { name = "wide", columns = 100, rows = 6 },
+        { name = "narrow", columns = 56, rows = 8 },
       },
     },
-
-    -- A quoted value keeps its spaces and stays one chip.
-    ["quoted-value"] = {
-      args = { text = 'body:"user not found" status:4xx', focused = false },
+    ["crowded-wrapping"] = {
+      args = { mode = "wrapping", profile = "truecolor" },
+      sizes = {
+        { name = "wide", columns = 100, rows = 6 },
+        { name = "narrow", columns = 56, rows = 8 },
+        { name = "cramped", columns = 34, rows = 12 },
+      },
+    },
+    ["color-profiles"] = {
+      args = { mode = "profiles" },
+      description = "Every chip role under truecolor/ansi256/ansi16/none, stacked for direct comparison.",
+      sizes = {
+        { name = "default", columns = 70, rows = 24 },
+      },
     },
   },
 })

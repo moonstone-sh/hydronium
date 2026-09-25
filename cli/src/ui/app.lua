@@ -293,7 +293,14 @@ function M.create_app(state, opts)
     end
 
     local function move(delta)
-      state.set_selection(inspector.move_selection(state.selection(), delta, state.history:count()))
+      -- The FILTERED count, not `state.history:count()` -- see
+      -- inspector_view.visible_history's own note. Clamping a keypress
+      -- against the raw history while the view paints against the
+      -- filtered one is exactly what let the selection drift out of the
+      -- visible range and made up/down look like they had stopped
+      -- responding once a filter shrank the list.
+      local _, count = inspector_view.visible_history(state)
+      state.set_selection(inspector.move_selection(state.selection(), delta, count))
     end
 
     hooks.useInput(function(input, key)
@@ -332,7 +339,6 @@ function M.create_app(state, opts)
         return
       end
 
-      local count = state.history:count()
       if input == "j" or key.downArrow then
         move(1)
       elseif input == "k" or key.upArrow then
@@ -342,8 +348,10 @@ function M.create_app(state, opts)
       elseif key.pageUp then
         move(-page_rows())
       elseif input == "g" or key.home then
+        local _, count = inspector_view.visible_history(state)
         state.set_selection(inspector.clamp_selection(1, count))
       elseif input == "G" or key["end"] then
+        local _, count = inspector_view.visible_history(state)
         state.set_selection(inspector.clamp_selection(count, count))
       end
     end)

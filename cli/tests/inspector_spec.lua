@@ -119,6 +119,26 @@ describe("hydronium-cli inspector -- selection and scroll window", function()
     assert.equal(inspector.move_selection(0, 1, 0), 0, "nothing to select")
   end)
 
+  it("snaps a stale, out-of-range selection into bounds AND applies the delta in one call", function()
+    -- Reproduces the "list becomes immovable" bug: a filter (or anything
+    -- else) shrinks `count` out from under a `selection` that was valid a
+    -- moment ago. Clamping only the SUM (the old behaviour) would compute
+    -- 51, then clamp to 3 -- identical to the previous frame, so the very
+    -- first keypress after the shrink looked like a no-op and it took
+    -- several presses to walk the stale value back into range. Clamping
+    -- `selection` first means the first press both snaps in and moves.
+    -- Stale selection (50) is way past the shrunk count (3): "down" clamps
+    -- to the last row, same as the display already showed -- correct, not
+    -- a bug, since row 3 really is the bottom.
+    assert.equal(inspector.move_selection(50, 1, 3), 3)
+    -- "up" from that same stale 50 must actually move, on the FIRST press:
+    -- clamp 50 down to 3, then apply the -1 delta, landing on 2. The old
+    -- (buggy) `clamp(selection + delta, count)` computed clamp(49, 3) = 3
+    -- here -- identical to the current display, i.e. no visible movement.
+    assert.equal(inspector.move_selection(50, -1, 3), 2,
+      "up must move off the clamped boundary on the very first press, not the second")
+  end)
+
   it("follows the tail only while the selection already was the tail", function()
     -- Pinned to the newest row: new traffic keeps it pinned.
     assert.equal(inspector.follow_tail(10, 10, 12, 0), 12)
