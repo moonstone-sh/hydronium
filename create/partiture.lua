@@ -23,6 +23,7 @@ return ballad.partiture(function(p)
 			"src/create/router_mode.lua",
 			"src/create/tailwind.lua",
 			"src/create/wizard.lua",
+			"src/create/wizard_tasks.lua",
 			"src/create/writer.lua",
 			"src/create/templates/**",
 		},

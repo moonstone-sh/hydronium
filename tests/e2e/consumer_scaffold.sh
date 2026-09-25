@@ -48,6 +48,99 @@ prefer_local_registry() {
   ' moonstone.toml > moonstone.toml.tmp && mv moonstone.toml.tmp moonstone.toml
   grep -q 'priority = 100' moonstone.toml || fail "could not prioritize the local registry"
 }
+
+# `priority` only governs which registry Moonstone tries first for a
+# dependency whose registry identity is genuinely unset. It is NOT consulted
+# for the overwhelmingly common case: an unprefixed package spec (`moon add
+# hydronium/create`) or an unprefixed `[[dependencies]]` manifest entry
+# (exactly what every `hydronium-create` template writes for hydronium/core,
+# hydronium/dom, hydronium/luax, hydronium/cli, ...). Moonstone treats
+# "no explicit registry" on those as the literal registry identity
+# "moonstone" -- the name of the real public default registry, not "search
+# every same-kind registry by priority" -- so no priority setting on a
+# differently-named local registry can ever be reached for them. See the
+# fix commit's report for the exact code path
+# (RegistryProvider.get_artifact's `requested_registry` filtering in
+# moonstone's src/core/resolution/provider/graph_provider.zig).
+#
+# Work around this from the consumer side by rewriting every unprefixed
+# hydronium/* dependency line in a manifest to carry an explicit
+# `registry = "<registry_name>"`, which Moonstone does respect.
+pin_hydronium_deps_to_local_registry() {
+  awk -v want="$registry_name" '
+    function flush() {
+      if (in_dep && name ~ /^hydronium\// && !printed_registry) print "registry = \"" want "\""
+      in_dep = 0; name = ""; printed_registry = 0
+    }
+    /^\[/ {
+      flush()
+      if ($0 == "[[dependencies]]") in_dep = 1
+      print
+      next
+    }
+    in_dep && /^name[ \t]*=/ {
+      name = $0
+      sub(/^name[ \t]*=[ \t]*"/, "", name)
+      sub(/"[ \t]*$/, "", name)
+      print
+      next
+    }
+    in_dep && /^registry[ \t]*=/ { printed_registry = 1; print; next }
+    { print }
+    END { flush() }
+  ' moonstone.toml > moonstone.toml.tmp && mv moonstone.toml.tmp moonstone.toml
+}
+
+# The same defaulting bug applies one level down: every exported package
+# descriptor's own `[[dependencies]]` on another hydronium/* package (e.g.
+# hydronium/cli -> hydronium/ink) carries `resolver = "moonstone"` --
+# Moonstone's registry-package export always writes this -- and never an
+# explicit `registry = "..."`. Moonstone's StoreDependency.toSpecString()
+# (src/core/domain/manifest.zig) falls back to that resolver string as the
+# registry IDENTITY whenever no explicit registry is set, so the *entire*
+# transitive hydronium/* graph resolves only from whatever registry happens
+# to be literally named "moonstone", never from this disposable local one,
+# no matter its priority. A descriptor's `registry = "<name>"` key (as
+# opposed to `resolver = "<name>"`) does NOT trip Moonstone's
+# DependencyRegistryConflict check and flows through as a real registry
+# identity lookup against `[[registries]]` -- so rewrite descriptors to use
+# it before publishing them into the disposable registry.
+rewrite_hydronium_deps() {
+  local src="$1" dst="$2"
+  awk -v want="$registry_name" '
+    function flush_block() {
+      if (in_dep && name ~ /^hydronium\//) {
+        gsub(/resolver = "moonstone"/, "registry = \"" want "\"", block)
+      }
+      printf "%s", block
+      block = ""; in_dep = 0; name = ""
+    }
+    /^\[\[dependencies\]\]/ {
+      flush_block()
+      in_dep = 1
+      block = $0 "\n"
+      next
+    }
+    /^\[/ {
+      flush_block()
+      print
+      next
+    }
+    {
+      if (in_dep) {
+        block = block $0 "\n"
+        if ($0 ~ /^name[ \t]*=/) {
+          name = $0
+          sub(/^name[ \t]*=[ \t]*"/, "", name)
+          sub(/"[ \t]*$/, "", name)
+        }
+      } else {
+        print
+      }
+    }
+    END { flush_block() }
+  ' "$src" > "$dst"
+}
 [[ -x "$moon" ]] || fail "MOON_BIN is not executable: $moon"
 [[ -d "$release_root" ]] || fail "package release is missing: $release_root (run ballad export first)"
 
@@ -74,7 +167,9 @@ while IFS= read -r descriptor; do
   package_dir=$(dirname "$descriptor")
   blob=$(find "$package_dir" -maxdepth 1 -type f -name '*.tar.gz' -print -quit)
   [[ -n "$blob" ]] || fail "no artifact beside exported descriptor: $descriptor"
-  "$moon" registry push "$registry" --descriptor "$descriptor" --blob "$blob"
+  rewritten="$scratch/$(echo "$descriptor" | tr '/' '_').package.toml"
+  rewrite_hydronium_deps "$descriptor" "$rewritten"
+  "$moon" registry push "$registry" --descriptor "$rewritten" --blob "$blob"
 done < <(find "$release_root" -type f \( -path '*/dist/registry/package.toml' -o -path '*/dist/registry/*/package.toml' \) -print | sort)
 
 (( descriptor_count > 0 )) || fail "export contained no package descriptors: $release_root"
@@ -92,15 +187,61 @@ mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$tool_project"
 (
   cd "$tool_project"
   prefer_local_registry
-  "$moon" add hydronium/create
+  # Explicit registry prefix: an unprefixed `hydronium/create` resolves the
+  # literal "moonstone" registry identity regardless of priority (see
+  # prefer_local_registry's comment above), which is exactly how this gate
+  # kept silently testing the last published Hydronium.
+  "$moon" add "$registry_name:hydronium/create"
   "$moon" exec -- hydronium-create "$app" --template islands --name consumer-islands
 )
 
 (
   cd "$app"
   prefer_local_registry
+  pin_hydronium_deps_to_local_registry
   "$moon" sync
   "$moon" sync --locked
+
+  # Assert every hydronium/* package this run's export produced was actually
+  # what the app's lock resolved -- not merely that the sync commands above
+  # exited 0. A regression here (Moonstone or gate) would otherwise resurface
+  # only as a mystifyingly stale runtime behavior in the built app, exactly
+  # like the bug this gate was silently missing before this fix.
+  expected_versions="$scratch/hydronium-expected-versions.txt"
+  awk '
+    /^\[\[package\]\]/ { name = ""; version = "" }
+    /^name[ \t]*=/ { name = $0; sub(/^name[ \t]*=[ \t]*"/, "", name); sub(/"[ \t]*$/, "", name) }
+    /^version[ \t]*=/ { version = $0; sub(/^version[ \t]*=[ \t]*"/, "", version); sub(/"[ \t]*$/, "", version) }
+    name ~ /^hydronium\// && version != "" { print name "\t" version; name = ""; version = "" }
+  ' "$registry/index.toml" | sort -u >"$expected_versions"
+  [[ -s "$expected_versions" ]] || fail "could not derive expected hydronium/* versions from the local registry index"
+
+  lock_versions="$scratch/hydronium-lock-versions.txt"
+  awk '
+    function flush() {
+      if (name ~ /^hydronium\//) print name "\t" version "\t" registry
+      name = ""; version = ""; registry = ""
+    }
+    /^\[\[package\]\]/ || /^\[\[realization\]\]/ { flush() }
+    /^name[ \t]*=/ { name = $0; sub(/^name[ \t]*=[ \t]*"/, "", name); sub(/"[ \t]*$/, "", name) }
+    /^version[ \t]*=/ { version = $0; sub(/^version[ \t]*=[ \t]*"/, "", version); sub(/"[ \t]*$/, "", version) }
+    /^registry[ \t]*=/ { registry = $0; sub(/^registry[ \t]*=[ \t]*"/, "", registry); sub(/"[ \t]*$/, "", registry) }
+    END { flush() }
+  ' moonstone.lock | sort -u >"$lock_versions"
+
+  [[ -s "$lock_versions" ]] || fail "moonstone.lock has no hydronium/* packages at all"
+
+  verified=0
+  while IFS=$'\t' read -r actual_name actual_version actual_registry; do
+    expected_version=$(awk -F'\t' -v n="$actual_name" '$1 == n { print $2; found = 1 } END { if (!found) exit 1 }' "$expected_versions") \
+      || fail "moonstone.lock resolved $actual_name@$actual_version, which is not among this run's exported packages"
+    [[ "$actual_registry" == "$registry_name" ]] \
+      || fail "package $actual_name resolved from registry '$actual_registry' (version $actual_version), expected it from the local exported registry '$registry_name'"
+    [[ "$actual_version" == "$expected_version" ]] \
+      || fail "package $actual_name resolved to version $actual_version from registry '$actual_registry', expected the exported version $expected_version"
+    verified=$((verified + 1))
+  done <"$lock_versions"
+  echo "consumer gate: verified $verified hydronium/* package(s) resolved from the local exported registry at their exported versions"
 
   # Every type library the scaffold points LuaLS at must actually have been
   # installed by `moon sync` (packages ship them as `collect.assets`, which
