@@ -87,6 +87,19 @@ mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$tool_project"
   "$moon" sync
   "$moon" sync --locked
 
+  # Every type library the scaffold points LuaLS at must actually have been
+  # installed by `moon sync` (packages ship them as `collect.assets`, which
+  # Moonstone materializes under .moonstone/env/libexec/<pkg>/). Without this
+  # a green run proved nothing: a Moonstone that ignores assets leaves the
+  # editor paths dangling and everything else still passes.
+  [[ -f .luarc.json ]] || fail "scaffold did not write .luarc.json"
+  type_paths=$(grep -oE '\.moonstone/env/libexec/[^"]+' .luarc.json | sort -u)
+  [[ -n "$type_paths" ]] || fail ".luarc.json lists no installed type libraries"
+  while IFS= read -r type_path; do
+    [[ -d "$type_path" ]] || fail "type library $type_path referenced by .luarc.json was not installed"
+    [[ -n "$(find "$type_path" -name '*.lua' -print -quit)" ]] || fail "type library $type_path is empty"
+  done <<<"$type_paths"
+
   # The application must be materialized from package artifacts, not be able
   # to fall through to this repository via an accidentally inherited path.
   if grep -rnF "$root" .moonstone moonstone.lock; then

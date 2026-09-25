@@ -13,6 +13,7 @@ abi = "5.1"
 
 [scripts]
 package = "moon exec -- ballad play partiture.lua"
+lab = "moon exec --dev -- hydronium-lab dev"
 
 [[orbits.member]]
 name = "core"
@@ -89,10 +90,44 @@ path = "cli"
 # Ballad 0.3.13 exposes the ordinary-node progress events and cooperative
 # checkpoints consumed by hydronium build. Keep both roles: the workspace
 # packages itself with Ballad and the build-runner specs require it in-process.
+#
+# The lab-cli/meteorite tools and the lab/ink-lab/meteorite/router dev
+# entries make `moon run lab` serve this repo's own stories from the local
+# workspace members (see hydronium.lab.lua).
+[[dependencies]]
+name = "hydronium/lab-cli"
+constraint = "^0.3.0"
+role = "tool"
+
 [[dependencies]]
 name = "moonstone/ballad"
 constraint = "^0.3.13"
 role = "tool"
+
+[[dependencies]]
+name = "moonstone/meteorite"
+constraint = "^0.3.0"
+role = "tool"
+
+[[dependencies]]
+name = "hydronium/ink-lab"
+constraint = "^0.3.0"
+role = "dev"
+
+[[dependencies]]
+name = "hydronium/lab"
+constraint = "^0.3.0"
+role = "dev"
+
+[[dependencies]]
+name = "hydronium/meteorite"
+constraint = "^0.3.0"
+role = "dev"
+
+[[dependencies]]
+name = "hydronium/router"
+constraint = "^0.2.0"
+role = "dev"
 
 [[dependencies]]
 name = "moonstone/ballad"

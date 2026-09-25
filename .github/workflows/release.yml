@@ -28,7 +28,7 @@ jobs:
           repository: moonstone-sh/moonstone
           # Includes artifact export and target-profile lock validation fixes
           # required by this multi-package workspace.
-          ref: v0.5.3
+          ref: v0.5.7
           path: .ci/moonstone
       - uses: actions/checkout@v4
         with:

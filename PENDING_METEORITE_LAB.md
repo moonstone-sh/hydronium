@@ -11,13 +11,13 @@ The ordinary path should be:
 
 ```sh
 # Once, in an existing Hydronium project
-hydronium lab init
+hydronium-lab init
 
 # Every day after that
 moon run lab
 ```
 
-`hydronium lab init` must use Moonstone commands to add dependencies and set the
+`hydronium-lab init` must use Moonstone commands to add dependencies and set the
 script. It must not edit `.moonstone/env`, `moonstone.lock`, or hand-patch TOML.
 It adds an example only when the project has no stories, and never edits the
 application's `src/main.lua`.
@@ -81,10 +81,12 @@ teach Meteorite about stories or Ink.
   packaged shell assets, and watch/HMR coordination. It consumes renderer
   adapters through a narrow Lab adapter contract rather than embedding Ink
   logic in the server plugin.
-- `hydronium/cli` owns `hydronium lab`, `hydronium lab init`, process UX,
-  browser opening, diagnostics, and Moonstone orchestration.
+- `hydronium/lab-cli` owns setup, process UX, diagnostics, discovery, and
+  Moonstone orchestration. It is an optional tool, not a subcommand of the
+  ordinary `hydronium` developer CLI.
 - `hydronium/create` may opt new Ink templates into Lab, but additive setup for
-  an existing project remains the CLI's `lab init` operation.
+  an existing project remains the standalone tool's `hydronium-lab init`
+  operation.
 - Meteorite owns only the generic dev-extension and single-owner-service
   primitives required by the plugin.
 
@@ -104,9 +106,8 @@ Meteorite lifecycle primitives that do not exist yet:
 - `hydronium/ink-lab` is a renderer layer over the shared Workbench. Its
   virtual terminal, terminal controls, and renderer preferences remain
   specific to Ink.
-- `hydronium lab` remains a compatibility delegate. Lab libraries/host adapters
-  are development dependencies; launcher/server executables are tool
-  dependencies.
+- `hydronium-lab` is the only Lab launcher. Lab libraries/host adapters are
+  development dependencies; launcher/server executables are tool dependencies.
 
 The following are still forward TDs and are not implied by the current mount
 adapter:
@@ -121,7 +122,7 @@ adapter:
   rather than resolving exact package files at request time.
 - [ ] Complete startup-token/cookie/CSRF security and explicit remote-bind
   acknowledgement before supporting non-loopback use.
-- [ ] Make `lab init` transactional and refusal-safe for an existing conflicting
+- [ ] Make `hydronium-lab init` transactional and refusal-safe for an existing conflicting
   script; add the optional starter story only when the project has none.
 
 Keep the current explicit API working:
@@ -363,12 +364,12 @@ opening.
 
 ## Generated project changes
 
-`hydronium lab init` is additive, idempotent, and rollback-aware:
+`hydronium-lab init` is additive and idempotent:
 
 1. inspect `moonstone.toml` through `moon manifest export --json`;
 2. preflight existing `lab` script and proposed generated files;
 3. add missing packages through `moon add --no-sync` with valid Moonstone roles;
-4. set `lab = "moon exec --dev hydronium lab"` through
+4. set `lab = "moon exec --dev -- hydronium-lab dev"` through
    `moon manifest script set`, refusing to replace a different command;
 5. create `hydronium.lab.lua` only when non-default configuration is needed;
 6. create `src/App.stories.luax` only when no matching story exists and without
@@ -439,7 +440,7 @@ validated catalog and ids on macOS, Linux, and Windows fixtures.
 - [ ] Route every Ink session through the single-owner service.
 - [ ] Reuse the existing client-paced SSE transport strategy.
 
-Exit criterion: `hydronium lab` opens two isolated interactive sessions, and a
+Exit criterion: `hydronium-lab` opens two isolated interactive sessions, and a
 cross-origin page cannot read the catalog or mutate either one.
 
 ### Phase 3 — authoring loop and workbench UX
@@ -460,7 +461,8 @@ the server without manually refreshing the browser.
 
 ### Phase 4 — installation and release closure
 
-- [ ] Add `hydronium lab` and idempotent `hydronium lab init` to the CLI.
+- [x] Provide the standalone `hydronium-lab` and idempotent
+  `hydronium-lab init` tool workflow.
 - [ ] Add optional Lab scaffolding to the Ink create template.
 - [ ] Build/publish all package artifacts and verify their Ballad closures.
 - [ ] Write package-first registry READMEs and one end-to-end documentation
@@ -477,7 +479,7 @@ daily command is `moon run lab`, with no hand-written route or asset wiring.
 - [ ] Add accessibility audit automation for the shell.
 - [ ] Add docs/notes panels and optional source links once source disclosure is
   explicitly enabled.
-- [ ] Add CI catalog build and interaction runner (`hydronium lab test`) without
+- [ ] Add CI catalog build and interaction runner (`hydronium-lab test`) without
   requiring a visible browser.
 - [ ] Evaluate a combined `hydronium dev --lab` only after the dedicated server
   is stable.

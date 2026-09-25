@@ -50,6 +50,7 @@ moon run dev ssr my-app
 | [`luax`](luax/) | `hydronium/luax` | LUAX compiler, formatter, Tree-sitter grammar, and editor integrations. |
 | [`ink`](ink/) | `hydronium/ink` | Terminal host with `Box`, `Text`, and `Newline` intrinsics. |
 | [`lab`](lab/) | `hydronium/lab` | Portable component stories and explicit registries. |
+| [`lab-cli`](lab-cli/) | `hydronium/lab-cli` | Optional standalone Lab setup, discovery, and launch tool. |
 | [`ink-lab`](ink-lab/) | `hydronium/ink-lab` | Resizable browser workbench for canonical Ink cell frames. |
 | [`router`](router/) | `hydronium/router` | Reactive Router/Outlet/hooks, typed hrefs, route matching, and memory/browser histories. |
 | [`query`](query/) | `hydronium/query` | Optional browser-side cache for shared server data. |
