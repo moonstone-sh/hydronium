@@ -101,8 +101,8 @@ describe("hydronium Ink Lab", function()
     local runtime = inkLab.new(registry)
 
     -- Deltas address changed cells as `{y, x, styleId, {ch, ...}}` row runs
-    -- (see hydronium_ink_lab.frame); resolve the character at (x, y) the
-    -- same way the browser client does.
+    -- with 0-based y/x (see hydronium_ink_lab.frame); resolve the character
+    -- at (x, y) the same way the browser client does.
     local function delta_char_at(frame, x, y)
       for _, change in ipairs(frame.changes or {}) do
         if change[1] == y and x >= change[2] and x < change[2] + #change[4] then
@@ -123,9 +123,9 @@ describe("hydronium Ink Lab", function()
 
     frame = runtime:request({ op = "input", input = "x", key = {} })
     assert.equal(frame.kind, "delta")
-    assert.equal(delta_char_at(frame, 1, 1), "x")
+    assert.equal(delta_char_at(frame, 0, 0), "x")
     frame = runtime:request({ op = "interaction", name = "complete", nowMs = 10 })
-    assert.equal(delta_char_at(frame, 1, 1), "d")
+    assert.equal(delta_char_at(frame, 0, 0), "d")
     frame = runtime:request({ op = "resize", columns = 12, rows = 3 })
     assert.equal(frame.kind, "full")
     assert.equal(frame.width, 12)

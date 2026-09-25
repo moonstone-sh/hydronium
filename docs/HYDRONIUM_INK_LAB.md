@@ -37,7 +37,7 @@ instead of one object per cell. `open`/`resize`/`color`/`colorProfile`/
 `snapshot` produce a self-contained "full" frame (every style it uses,
 embedded); every other op (`step`/`input`/`bytes`/`paste`/`interaction`)
 produces a "delta" -- only the cells that changed since the previous frame,
-as `{y, x, styleId, [ch, ...]}` row runs, plus any styles the peer hasn't
+as `{y, x, styleId, [ch, ...]}` row runs (0-based `y`/`x`), plus any styles the peer hasn't
 seen yet. Palette references remain palette references, so a Lab theme can
 show the user's terminal palette. Absolute colors remain sRGB in truecolor
 mode and project to the same ANSI-256 or ANSI-16 slots as the native encoder

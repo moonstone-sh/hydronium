@@ -35,7 +35,8 @@ local function apply(model, encoded)
     end
   elseif encoded.kind == "delta" then
     for _, change in ipairs(encoded.changes or {}) do
-      local y, x0, styleId, chars = change[1], change[2], change[3], change[4]
+      -- Wire coordinates are 0-based; this Lua model is 1-based.
+      local y, x0, styleId, chars = change[1] + 1, change[2] + 1, change[3], change[4]
       local row = model.cells[y]
       for offset, ch in ipairs(chars) do
         row[x0 + offset - 1] = { style = styleId, ch = ch }
@@ -184,6 +185,28 @@ describe("hydronium_ink_lab.frame", function()
     assert.equal(after_resize_delta.base, resized.seq)
     apply(model, after_resize_delta)
     assert.same(resolve(model, model.styles), resolve(snapshot.from_session(runtime.active)))
+  end)
+
+  it("addresses delta changes with 0-based wire coordinates, as the browser indexes them", function()
+    -- The client computes `y * width + x`; 1-based coordinates painted every
+    -- change one row down and one column right, so cells an overlay had
+    -- covered were never restored.
+    local function raw(top_left, bottom_right)
+      local function cell(ch) return { ch = ch } end
+      return { width = 2, height = 2, rows = {
+        { cell(top_left), cell(".") },
+        { cell("."), cell(bottom_right) },
+      } }
+    end
+    local stream = frame.new_stream()
+    frame.encode(stream, raw("a", "b"), true)
+    local delta = frame.encode(stream, raw("x", "b"), false)
+    assert.equal(#delta.changes, 1)
+    assert.equal(delta.changes[1][1], 0, "top row is y = 0")
+    assert.equal(delta.changes[1][2], 0, "left column is x = 0")
+    delta = frame.encode(stream, raw("x", "y"), false)
+    assert.equal(delta.changes[1][1], 1)
+    assert.equal(delta.changes[1][2], 1)
   end)
 
   it("never emits an ambiguous empty changes/styles table on an idle tick", function()

@@ -21,7 +21,8 @@
 --   * delta frames -- everything but the first frame of a session (and any
 --     op that can change the canvas itself: open/resize/color/colorProfile/
 --     snapshot) is encoded as only the cells that changed since the frame
---     before it, addressed as `{y, x, styleId, {ch, ...}}` runs.
+--     before it, addressed as `{y, x, styleId, {ch, ...}}` runs, with y and x
+--     0-BASED (the browser indexes cells as y * width + x).
 --
 -- One `Stream` is owned per Lab session (see runtime.lua) and lives exactly
 -- as long as that session's active story: it holds the growing style table,
@@ -147,7 +148,8 @@ function M.encode(stream, raw, force_full)
       if full then
         row_runs[#row_runs + 1] = { run_style, run_chars }
       else
-        changes_out[#changes_out + 1] = { y, run_x, run_style, run_chars }
+        -- Wire coordinates are 0-based (the browser indexes y * width + x).
+        changes_out[#changes_out + 1] = { y - 1, run_x - 1, run_style, run_chars }
       end
       run_style = nil
     end
