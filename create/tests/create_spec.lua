@@ -796,7 +796,7 @@ end)
 -- exactly what create.scaffold itself does.
 --------------------------------------------------------------------------------
 
-test("vite.apply wires the base Vite build into the ssr template, with nothing Tailwind-specific", function()
+test("vite.apply wires the REAL adapter into the ssr template (STEP 2, not the CSS-only side-build)", function()
   local files = require("create.templates.ssr").files({ name = "test-ssr-vite" })
   files = vite.apply(files, { template = "ssr", name = "test-ssr-vite" })
   assert(files["package.json"], "missing package.json")
@@ -806,9 +806,40 @@ test("vite.apply wires the base Vite build into the ssr template, with nothing T
   assert(not files["vite.config.js"]:find("tailwind", 1, true), "base vite.config.js must not mention Tailwind")
   assert(files["src/styles.css"], "missing src/styles.css")
   assert(not files["src/styles.css"]:find("tailwind", 1, true), "base src/styles.css must not mention Tailwind")
-  assert(files["src/views/Document.luax"]:find('/public/dist/styles.css', 1, true),
-    "Document must link the Vite-built stylesheet")
   assert(files[".gitignore"]:find("node_modules/", 1, true), "must gitignore node_modules")
+
+  -- No hardcoded /public/dist/... path -- the Document asks the neutral
+  -- provider contract for its markup instead (ssr has no JS island of its
+  -- own; only the CSS entry goes through Vite).
+  assert(not files["src/views/Document.luax"]:find("/public/dist/", 1, true),
+    "Document must not hardcode a Vite build path -- use assets.tags() instead")
+  assert(files["src/views/Document.luax"]:find('assets.tags("src/styles.css")', 1, true),
+    "Document must render its stylesheet via hydronium_dom.assets.tags()")
+  assert(files["src/views/Document.luax"]:find('local assets = require("hydronium_dom.assets")', 1, true),
+    "Document must require hydronium_dom.assets")
+
+  assert(files["vite.config.js"]:find('import { hydronium } from "@hydronium%-js/vite";'),
+    "vite.config.js must import the real @hydronium-js/vite plugin")
+  assert(files["vite.config.js"]:find('hydronium%(%{ islands: %["src/styles.css"%] %}%)', 1, false),
+    "vite.config.js must declare the CSS entry as a real Vite build input")
+
+  assert(files["package.json"]:find('"@hydronium%-js/vite": "file:./vendor/hydronium%-js%-vite"'),
+    "package.json must depend on the vendored @hydronium-js/vite via file:")
+  assert(files["vendor/hydronium-js-vite/package.json"], "missing vendored @hydronium-js/vite package.json")
+
+  -- ssr ALWAYS renders through src/app/page_handler.lua (its Document uses
+  -- the hydronium/router site manifest unconditionally) -- the provider
+  -- bootstrap must be inlined there, for the same "hybrid inline handlers
+  -- must be source-liftable" reason as islands (see create.vite's own
+  -- header comment on apply_ssr/VITE_PROVIDER_BOOTSTRAP).
+  assert(files["src/app/page_handler.lua"]:find('render = function(c, page, opts)\n  local assets = require', 1, true),
+    "the provider bootstrap must be inlined directly inside page_handler.lua's render callback")
+  assert(files["src/app/page_handler.lua"]:find('base = "/public/dist"', 1, true),
+    "page_handler.lua's vite-manifest provider must set base = \"/public/dist\", or every hashed asset URL 404s")
+
+  assert(files["scripts/dev.mjs"], "missing scripts/dev.mjs")
+  assert(files["moonstone.toml"]:find('dev = "npm run dev"', 1, true),
+    "moon run dev must run the real dual dev-server, not the old Vite-less hydronium dev")
 end)
 
 test("vite.apply wires the REAL adapter into the islands template (STEP 2, not the CSS-only side-build)", function()
