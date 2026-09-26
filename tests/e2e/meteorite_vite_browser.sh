@@ -15,7 +15,14 @@ vite_pid=""
 cleanup() {
   for pid in "$vite_pid" "$server_pid"; do
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      # An idle Meteorite server only notices SIGTERM between connections;
+      # a bare `wait` on it blocks forever. Give it a moment, then force it.
       kill "$pid" 2>/dev/null || true
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.5
+      done
+      kill -9 "$pid" 2>/dev/null || true
       wait "$pid" 2>/dev/null || true
     fi
   done
@@ -40,6 +47,8 @@ export PATH="$(dirname "$moon"):$PATH"
 (cd "$vite_example" && pnpm exec vite build)
 (
   cd "$example"
+  # Not an orbit member: nothing else syncs this example's environment.
+  "$moon" sync --locked
   "$moon" run package
   "$moon" run graph
   # `hybrid_dev` is a dev-server profile, not a build mode.  The packaged

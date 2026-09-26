@@ -129,7 +129,8 @@ jobs:
         run: bash tests/e2e/data_primitives_consumer.sh
       - name: Static SPA browser gate
         run: |
-          (cd examples/spa_hash_demo && moon exec -- ballad play partiture.lua)
+          # Examples are not orbit members, so nothing above syncs them.
+          (cd examples/spa_hash_demo && moon sync --locked && moon exec -- ballad play partiture.lua)
           node --test js/tests/spa_hash_demo.browser.test.mjs
       - name: Meteorite + Vite production and dual-HMR gates
         env:

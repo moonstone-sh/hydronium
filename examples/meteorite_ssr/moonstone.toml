@@ -17,7 +17,7 @@ abi = "5.1"
 
 [[dependencies]]
 name = "moonstone/meteorite"
-constraint = "path:../../../meteorite"
+constraint = "^0.3.0"
 role = "tool"
 
 [[dependencies]]
