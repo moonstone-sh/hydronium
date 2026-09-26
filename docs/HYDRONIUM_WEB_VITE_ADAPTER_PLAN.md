@@ -224,9 +224,17 @@ end
 
 This is a documented convention, not something `assets.lua` reads itself
 — consistent with the module's pre-existing "no automatic discovery/magic
-paths" stance. `create/src/create/vite.lua`'s scaffolded `main.lua` is
-meant to become the reference implementation once STEP 2 lands (not done
-yet — see §4a).
+paths" stance. `create/src/create/vite.lua`'s scaffolded `islands`
+template (§4d, done) is the real reference implementation, and it
+actually uses a slightly different, more robust convention than the env
+vars sketched above: it detects dev vs. prod by whether
+`.hydronium/vite-dev.json` exists (published by `@hydronium-js/vite`'s
+own dev plugin the instant its dev server binds a port — see
+`js/packages/vite/src/plugin.ts`'s `devOriginFile`), which can never point
+at a stale/dead port the way a hand-set env var surviving past its dev
+session could. Critically, per §4d's finding #1, this bootstrap must be
+inlined directly into the function that renders the Document, not called
+from this file's own top level or a shared function.
 
 **Deliberately NOT built in STEP 1:** `hydronium_ballad.plugins.vite_assets`
 (the ballad-side ingestion that merges a Vite build into ONE
@@ -269,13 +277,101 @@ reaches for. `build/` (hydronium_ballad) is deliberately out of scope:
 *expected* to know about Vite's manifest shape.
 
 **3a (static-provider conformance) and 3c (wizard "Bundler: None" choice)
-— NOT done.** Both depend on STEP 2 (the create templates actually
-consuming the provider contract) existing first: 3a's gate is "each Vite
-template also builds/serves with the static provider and no Node", which
-needs a template that already builds through the contract in the Vite
-case; 3c's "None ⇒ static provider, no package.json" needs the same
-templates to have a real static-provider code path to fall back to. See
-§4a for why STEP 2 itself has not started.
+— NOT done.** Both depend on the `ssr`/`spa` templates (still the CSS-only
+Vite side-build — see §4d) also moving onto the provider contract first:
+3a's gate is "each Vite template also builds/serves with the static
+provider and no Node"; 3c's "None ⇒ static provider" needs a real
+static-provider code path for every template to fall back to, not just
+`islands`.
+
+---
+
+## 4d. STEP 2, `islands` (2026-09-25) — done, gated for real
+
+**What changed** (`create/src/create/vite.lua`'s `apply_islands`,
+`create/src/create/tailwind.lua`, new `create/src/create/vite_vendor.lua`):
+the Document renders its stylesheet via `assets.tags("src/styles.css")`
+(no hardcoded `/public/dist/...` path); the JS island's `module` is a
+plain Vite entry specifier (`"src/islands/counter.js"`), resolved dev/prod
+by the already-wired `hydronium_dom.server.vite_module` (no explicit
+`hy_asset_ref` call needed at the component level — `hydronium_dom.server.
+init`'s ISLAND branch already does this for every `interpreter = "js"`
+island); `vite.config.js` registers the real `@hydronium-js/vite` plugin
+with both the island and the CSS entry as real build inputs; `moon run
+dev` now runs a real dual dev-server (`scripts/dev.mjs`, `@hydronium-js/
+vite`'s own `runDualDevServer`) instead of the old Vite-less `hydronium
+dev`. Works for both router variants (`--router meteorite` default and
+`--router hydronium`, which moves rendering into `src/app/page_handler.
+lua`).
+
+**`@hydronium-js/vite` distribution — decided: vendor the built package.**
+Considered the three options the earlier draft of this plan named:
+(a) a `file:` dependency into a sibling hydronium checkout — rejected,
+breaks for any real user without this monorepo cloned next to their
+project; (b) a real registry semver range now, with a documented manual
+interim — rejected, makes `npm install` fail *today*, not just for some
+future user; (c) **vendor the built package — chosen.**
+`js/scripts/sync-vite-vendor.mjs` generates `create/src/create/
+vite_vendor.lua` from a real `pnpm build` of `js/packages/vite` (dist/*.js,
+dist/*.d.ts, dist/supervisor.mjs, a trimmed package.json, embedded as
+literal Lua strings — the same reasoning `templates/islands.lua` already
+uses for `public/js/bootstrap/*.js`); `js/scripts/check-vite-vendor-drift.
+mjs` fails CI if it's stale. `apply_islands` writes those bytes into the
+scaffolded project's own `vendor/hydronium-js-vite/`, and its
+`package.json` depends on `"@hydronium-js/vite": "file:./vendor/
+hydronium-js-vite"` — a real, self-contained local-directory dependency,
+no sibling checkout required. Once published, this becomes a real semver
+range and the vendoring goes away.
+
+**Two real bugs found only by the live gate below, not by unit tests
+(both now regression-tested in `create/tests/create_spec.lua`):**
+
+1. **Meteorite's hybrid build requires an inline route handler to be
+   fully self-contained ("source-liftable").** A shared `local function
+   configure_vite()` called from the inline `"/"` handler fails `moon run
+   build` outright ("hybrid inline handlers must be source-liftable ...
+   move requires and mutable values inside the handler body"). Worse:
+   configuring providers at `src/main.lua`'s own top level (outside any
+   handler) **builds and runs with no error, but silently does nothing**
+   — each lifted handler is independently loaded with its own fresh
+   module cache, so `require("hydronium_dom.assets")` inside the handler
+   is a *different* table than the one configured at the file's top
+   level. The fix: inline the entire provider-bootstrap block directly
+   into the function that calls `require("views.Document")` — the `"/"`
+   handler in `src/main.lua` for the default router, or
+   `src/app/page_handler.lua`'s `render` callback under `--router
+   hydronium`.
+2. **`base` must be `"/public/dist"`, not the default `"/"`.** Vite's
+   manifest `file` paths are relative to its own `outDir`
+   (`public/dist`), but the URL a browser fetches is resolved against
+   Meteorite's `/public/:path*` static route — i.e. site-root-relative.
+   Without this, every hashed asset URL 404s even though the SSR HTML
+   looks completely plausible.
+
+**Gate, run for real, both Tailwind on and off:** real scaffold (`lua
+create/src/main.lua <dir> --template islands [--tailwind]`, hydronium/
+core+luax+dom pointed at this checkout via `registry = "path"` — the
+public moonstone registry only has the last *published* versions, which
+predate STEP 1's new `hydronium_dom.assets` API) → `moon sync` → `npm
+install` → `npm run build` (real `vite build`, real hashed manifest) →
+`moon run build` (real `meteorite build --mode release-hybrid`, real
+`zig` compile) → real `./dist/server` → `curl` the page and **every**
+asset URL it references (all 200, both variants) → a real headless
+Chromium (Playwright, already installed in `js/`) loads the page, reads
+`window` state via `getByTestId("js-counter-btn")`, asserts `"Count: 10"`
+initially, clicks it, asserts `"Count: 11"` — real island hydration
+through the actual Vite-built, hashed JS file — with zero console errors,
+zero page errors, zero failed requests, for both Tailwind on and off.
+Servers killed after each run; Ink Lab (`:6100`) never touched.
+
+**Not done for `islands` in this pass:** wiring `moon run dev`'s new dual
+dev-server into an *automated* CI gate (it was verified manually via the
+production path above, not via `vite dev` + HMR — that's STEP 4); the
+`--router hydronium` + Tailwind combination was verified only by unit
+test (file-content assertions), not a second live build/curl/browser
+pass, since the underlying render mechanism (`page_handler.lua`'s
+`render` callback) is identical to what the live-verified default variant
+already exercises.
 
 ---
 

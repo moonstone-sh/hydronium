@@ -63,21 +63,39 @@ local SOURCE_GLOB = {
 M.supported_templates = { ssr = true, islands = true, spa = true }
 
 -- vite.config.js anchors -- exact text create/vite.lua's own generated
--- file always contains, for both the document-based (ssr/islands) and spa
--- shapes (see that module's own `apply_document_based`/`apply_spa`).
+-- file always contains. `islands` has its own real plugin-based shape now
+-- (create.vite's `apply_islands`, STEP 2 of
+-- docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md); `ssr`/`spa` are still the
+-- CSS-only `plugins: []` shape. The `// hydronium-vite-plugin` marker
+-- (emitted unconditionally by apply_islands, regardless of Tailwind) is
+-- what makes the island-list-dependent `hydronium({ islands: [...] })`
+-- call anchorable without hardcoding its contents here.
 local VITE_IMPORT_ANCHOR = 'import { defineConfig } from "vite";'
 local TAILWIND_IMPORT = '\nimport tailwindcss from "@tailwindcss/vite";'
 local EMPTY_PLUGINS = "plugins: [],"
 local TAILWIND_PLUGIN = "plugins: [tailwindcss()],"
+local ISLANDS_PLUGIN_MARKER = "// hydronium-vite-plugin"
+local ISLANDS_PLUGIN_MARKER_WITH_TAILWIND = "// hydronium-vite-plugin\n    tailwindcss(),"
 
 -- package.json anchor -- exact text create/vite.lua's own generated file
--- always ends its devDependencies block with (both template shapes pin the
--- same Vite version at the same indentation).
+-- ends its devDependencies block with. `islands` additionally vendors
+-- @hydronium-js/vite (see create.vite's own header comment); `ssr`/`spa`
+-- do not yet.
 local BASE_DEV_DEPENDENCIES = [["devDependencies": {
     "vite": "^8.3.0"
   }]]
 local TAILWIND_DEV_DEPENDENCIES = [["devDependencies": {
     "vite": "^8.3.0",
+    "tailwindcss": "^4.3.3",
+    "@tailwindcss/vite": "^4.3.3"
+  }]]
+local ISLANDS_BASE_DEV_DEPENDENCIES = [["devDependencies": {
+    "vite": "^8.3.0",
+    "@hydronium-js/vite": "file:./vendor/hydronium-js-vite"
+  }]]
+local ISLANDS_TAILWIND_DEV_DEPENDENCIES = [["devDependencies": {
+    "vite": "^8.3.0",
+    "@hydronium-js/vite": "file:./vendor/hydronium-js-vite",
     "tailwindcss": "^4.3.3",
     "@tailwindcss/vite": "^4.3.3"
   }]]
@@ -117,11 +135,21 @@ function M.apply(files, opts)
 
   local vite_config, err = insert_after(files["vite.config.js"], VITE_IMPORT_ANCHOR, TAILWIND_IMPORT)
   if not vite_config then error("create.tailwind: " .. tostring(err) .. " in vite.config.js (was create.vite applied first?)", 2) end
-  vite_config, err = replace_once(vite_config, EMPTY_PLUGINS, TAILWIND_PLUGIN)
+  if opts.template == "islands" then
+    -- `islands`' plugins array already has a real `hydronium({ islands:
+    -- [...] })` call (island list varies with the template, so it cannot
+    -- be a fixed anchor) -- register Tailwind alongside it via the
+    -- content-independent marker comment `apply_islands` always emits.
+    vite_config, err = replace_once(vite_config, ISLANDS_PLUGIN_MARKER, ISLANDS_PLUGIN_MARKER_WITH_TAILWIND)
+  else
+    vite_config, err = replace_once(vite_config, EMPTY_PLUGINS, TAILWIND_PLUGIN)
+  end
   if not vite_config then error("create.tailwind: " .. tostring(err) .. " in vite.config.js (was create.vite applied first?)", 2) end
   files["vite.config.js"] = vite_config
 
-  local package_json, pkg_err = replace_once(files["package.json"], BASE_DEV_DEPENDENCIES, TAILWIND_DEV_DEPENDENCIES)
+  local base_deps = opts.template == "islands" and ISLANDS_BASE_DEV_DEPENDENCIES or BASE_DEV_DEPENDENCIES
+  local tailwind_deps = opts.template == "islands" and ISLANDS_TAILWIND_DEV_DEPENDENCIES or TAILWIND_DEV_DEPENDENCIES
+  local package_json, pkg_err = replace_once(files["package.json"], base_deps, tailwind_deps)
   if not package_json then error("create.tailwind: " .. tostring(pkg_err) .. " in package.json (was create.vite applied first?)", 2) end
   files["package.json"] = package_json
 

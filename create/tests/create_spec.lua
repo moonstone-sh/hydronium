@@ -391,7 +391,16 @@ test("scaffold dry-run produces expected files for islands template", function()
   assert(file_map["public/js/bootstrap/bootstrap.js"], "missing public/js/bootstrap/bootstrap.js")
   assert(file_map["public/js/bootstrap/boundary_registry.js"], "missing public/js/bootstrap/boundary_registry.js")
   assert(file_map["public/js/bootstrap/priority.js"], "missing public/js/bootstrap/priority.js")
-  assert(file_map["public/js/island/counter.js"], "missing public/js/island/counter.js")
+  -- `create.scaffold` always applies create.vite to islands (it is a
+  -- Vite-based template, regardless of --tailwind -- see create.vite's
+  -- own header comment), which moves the JS island from a raw static file
+  -- to a real Vite build entry (STEP 2 of
+  -- docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md). See
+  -- create.vite's own "wires the REAL adapter" test for the full
+  -- assertion set on that transform; this is just the base-template smoke
+  -- test noticing the file moved.
+  assert(not file_map["public/js/island/counter.js"], "counter.js must no longer be a raw static file after create.vite runs")
+  assert(file_map["src/islands/counter.js"], "missing src/islands/counter.js (the real Vite build entry)")
   local generated = require("create.templates.islands").files({ name = "test-islands-app" })
   assert(not generated["moonstone.toml"]:find("path:../", 1, true), "Islands dependencies must install without sibling checkouts")
   assert(generated["build.zig"]:find("meteorite/meteorite/zig/build_api.zig", 1, true),
@@ -802,13 +811,106 @@ test("vite.apply wires the base Vite build into the ssr template, with nothing T
   assert(files[".gitignore"]:find("node_modules/", 1, true), "must gitignore node_modules")
 end)
 
-test("vite.apply wires the base Vite build into the islands template", function()
+test("vite.apply wires the REAL adapter into the islands template (STEP 2, not the CSS-only side-build)", function()
   local files = require("create.templates.islands").files({ name = "test-islands-vite" })
   files = vite.apply(files, { template = "islands", name = "test-islands-vite" })
   assert(files["package.json"] and files["vite.config.js"] and files["src/styles.css"],
     "missing one of package.json/vite.config.js/src/styles.css")
-  assert(files["views/Document.luax"]:find('/public/dist/styles.css', 1, true),
-    "Document must link the Vite-built stylesheet")
+
+  -- No hardcoded /public/dist/... path in application Lua -- the Document
+  -- asks the neutral provider contract for its markup instead.
+  assert(not files["views/Document.luax"]:find("/public/dist/", 1, true),
+    "Document must not hardcode a Vite build path -- use assets.tags() instead")
+  assert(files["views/Document.luax"]:find('assets.tags("src/styles.css")', 1, true),
+    "Document must render its stylesheet via hydronium_dom.assets.tags()")
+  assert(files["views/Document.luax"]:find('local assets = require("hydronium_dom.assets")', 1, true),
+    "Document must require hydronium_dom.assets")
+
+  -- The JS island is a real Vite entry now, resolved dev/prod by
+  -- hydronium_dom.server.vite_module (already wired into
+  -- hydronium_dom.server.init's ISLAND branch) -- not a raw static path.
+  assert(files["views/Document.luax"]:find('module="src/islands/counter.js"', 1, true),
+    "the island's module must be a Vite entry specifier, not a static /js/island/ path")
+  assert(files["src/islands/counter.js"], "counter.js must move to a real Vite build entry under src/islands/")
+  assert(not files["public/js/island/counter.js"], "counter.js must no longer be served as a raw static file")
+
+  -- vite.config.js registers the real plugin with both real build inputs.
+  assert(files["vite.config.js"]:find('import { hydronium } from "@hydronium%-js/vite";'),
+    "vite.config.js must import the real @hydronium-js/vite plugin")
+  assert(files["vite.config.js"]:find('hydronium%(%{ islands: %["src/islands/counter.js", "src/styles.css"%] %}%)', 1, false),
+    "vite.config.js must declare the island and the CSS entry as real Vite build inputs")
+
+  -- @hydronium-js/vite is vendored (not published yet -- see create.vite's
+  -- own header comment), resolved via a real local-directory dependency.
+  assert(files["package.json"]:find('"@hydronium%-js/vite": "file:./vendor/hydronium%-js%-vite"'),
+    "package.json must depend on the vendored @hydronium-js/vite via file:")
+  assert(files["vendor/hydronium-js-vite/package.json"], "missing vendored @hydronium-js/vite package.json")
+  assert(files["vendor/hydronium-js-vite/dist/index.js"], "missing vendored @hydronium-js/vite dist/index.js")
+  assert(files["vendor/hydronium-js-vite/dist/supervisor.mjs"], "missing vendored runDualDevServer")
+
+  -- Dual dev-server launcher, reusing the vendored runDualDevServer.
+  assert(files["scripts/dev.mjs"], "missing scripts/dev.mjs")
+  assert(files["scripts/dev.mjs"]:find('from "@hydronium%-js/vite"'),
+    "scripts/dev.mjs must import runDualDevServer from the vendored package")
+  assert(files["moonstone.toml"]:find('dev = "npm run dev"', 1, true),
+    "moon run dev must run the real dual dev-server (npm run dev -> scripts/dev.mjs), not the old Vite-less hydronium dev")
+
+  -- src/main.lua bootstraps the provider contract and no longer serves the
+  -- island as a raw static file.
+  assert(files["src/main.lua"]:find('assets.configure_provider', 1, true),
+    "src/main.lua must configure the asset provider")
+  assert(files["src/main.lua"]:find('vite_module.configure', 1, true),
+    "src/main.lua must configure vite_module")
+  assert(not files["src/main.lua"]:find('/js/island/:path%*'),
+    "src/main.lua must no longer serve a static /js/island/ route")
+  -- REGRESSION (found by a real scaffold -> build -> curl gate, not unit
+  -- tests): Vite's manifest `file` paths are relative to its `outDir`
+  -- (public/dist), but the URL a browser fetches must be relative to
+  -- Meteorite's `/public/:path*` static route. Without this exact `base`,
+  -- every hashed asset URL 404s in a real running server even though the
+  -- SSR HTML looks plausible and every unit/dry-run test still passes.
+  assert(files["src/main.lua"]:find('base = "/public/dist"', 1, true),
+    "src/main.lua's vite-manifest provider must set base = \"/public/dist\" (Vite's outDir), or every hashed asset URL 404s")
+  -- The provider bootstrap must be INLINED into the actual render
+  -- call site, not a shared function or top-level state -- Meteorite's
+  -- hybrid build requires an inline route handler to be fully
+  -- self-contained (verified live: a shared function call from inside
+  -- the handler fails `moon run build` outright), and even when a build
+  -- succeeds, top-level state configured outside the handler is invisible
+  -- inside it (a separately-loaded chunk with its own fresh module cache).
+  assert(files["src/main.lua"]:find('app:get("/", function(c)\n  local assets = require', 1, true),
+    "the provider bootstrap must be inlined directly inside the \"/\" handler body, immediately after its opening line")
+
+  -- Vite now owns HMR for the island/CSS it builds; the Lua-side
+  -- full-page-reload watcher must not also watch them.
+  assert(not files["src/dev_watch.lua"]:find("public/js/island/counter.js", 1, true),
+    "dev_watch.lua must not watch a file Vite's own dev server now HMRs")
+end)
+
+test("vite.apply on islands also works when --router hydronium already moved the island to views/Home.luax", function()
+  local router_mode = require("create.router_mode")
+  local files = require("create.templates.islands").files({ name = "test-islands-router-vite" })
+  files = router_mode.apply_islands(files, { name = "test-islands-router-vite" })
+  files = vite.apply(files, { template = "islands", name = "test-islands-router-vite" })
+
+  assert(files["views/Home.luax"]:find('module="src/islands/counter.js"', 1, true),
+    "the island moved to views/Home.luax under --router hydronium; vite.apply must patch it there")
+  assert(not files["views/Home.luax"]:find('module="/js/island/counter.js"', 1, true),
+    "the old static module path must be gone")
+  assert(files["views/Document.luax"]:find('assets.tags("src/styles.css")', 1, true),
+    "the shared shell (views/Document.luax) must still render the stylesheet via assets.tags()")
+
+  -- Under --router hydronium, main.lua has NO inline Document render at
+  -- all (router_mode.apply_islands moves it to src/app/page_handler.lua's
+  -- `render` callback) -- the provider bootstrap must follow it there,
+  -- inlined into that callback for the same "hybrid inline handlers must
+  -- be source-liftable" reason as the plain case.
+  assert(files["src/app/page_handler.lua"]:find('render = function(c, page, opts)\n  local assets = require', 1, true),
+    "the provider bootstrap must be inlined directly inside page_handler.lua's render callback")
+  assert(files["src/app/page_handler.lua"]:find('base = "/public/dist"', 1, true),
+    "page_handler.lua's vite-manifest provider must also set base = \"/public/dist\"")
+  assert(not files["src/main.lua"]:find("configure_provider", 1, true),
+    "--router hydronium: src/main.lua itself must NOT get the provider bootstrap (it has no Document render of its own in this mode)")
 end)
 
 test("vite.apply wires the base Vite build into the spa template, both router variants", function()

@@ -24,6 +24,7 @@ return ballad.partiture(function(p)
 			"src/create/tailwind.lua",
 			"src/create/update_check.lua",
 			"src/create/vite.lua",
+			"src/create/vite_vendor.lua",
 			-- The interactive wizard (create.stories.lua is Lab-only, not shipped).
 			"src/create/ui/bubbles.lua",
 			"src/create/ui/checklist.lua",

@@ -45,13 +45,14 @@
   the "serve/build the static shell + assets, not replace Ballad's Lua
   bundling" split this task calls for.
 
-  NOT WIRED, having tried and verified why not: hydronium/cli's real,
-  already-shipped `hydronium dev --vite` / `hydronium build --vite`
-  (cli/src/main.lua) pair a `vite dev`/`vite build` (via `npx`, so
-  `node_modules/.bin` resolves cwd-relatively) with Meteorite/Ballad. Tried
-  both against this module's CSS-only Vite config (no HTML/JS entry of its
-  own -- `rollupOptions.input` is a bare `.css` file) and found two real,
-  verified problems, not hypothetical ones:
+  STILL TRUE for `ssr` and `spa` below (not yet migrated -- see
+  docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md's STEP 2 status): hydronium/cli's
+  `hydronium dev --vite` / `hydronium build --vite` (cli/src/main.lua) pair
+  a `vite dev`/`vite build` (via `npx`, so `node_modules/.bin` resolves
+  cwd-relatively) with Meteorite/Ballad. Tried both against the OLD
+  CSS-only Vite config (no HTML/JS entry of its own -- `rollupOptions.input`
+  was a bare `.css` file) and found two real, verified problems, not
+  hypothetical ones:
     1. `hydronium build --vite` runs `vite build` BEFORE the partiture
        (cli/src/main.lua's own `M.build`), and `hydronium_ballad.plugins.
        site`'s directory sink REMOVES its whole `out` tree before writing
@@ -59,16 +60,31 @@
        freshly-built asset has already been deleted by Ballad's own sink.
        Verified live: ran a full `spa` (`router = "meteorite"`) build with
        this wired in, `dist/assets/` only ever contained Ballad's own
-       scoped CSS, never Vite's.
-    2. `hydronium dev --vite`'s dual dev server is real value only when
-       Vite owns the page's own HTML/JS module graph; these templates'
-       pages are Meteorite's/Ballad's own static shell, and this Vite
-       config has no HTML entry at all -- pairing a `vite dev` server here
-       would start a real process that serves nothing the actual page ever
-       requests.
-  So the build here stays a plain, separate `vite build`/`vite build
-  --watch`, run by the user's own package manager, which -- unlike `moon
-  exec` or `hydronium build`/`dev` -- puts a project's own
+       scoped CSS, never Vite's. STILL APPLIES to `spa` (its client bundle
+       genuinely goes through `hydronium_ballad`); does NOT apply to
+       `islands`/`ssr`, which have no partiture.lua/Ballad build at all --
+       `apply_islands` below uses a real dual-dev-server script instead
+       (see its own comment).
+    2. `hydronium dev --vite`'s dual dev server (js/packages/vite/bin/
+       dual-dev.mjs) is spawned via a path computed relative to
+       cli/src/main.lua's OWN location (`repo_root = this_dir .. "/../.."`,
+       then `repo_root .. "/js/packages/vite/bin/dual-dev.mjs"`) -- this
+       resolves correctly only when `hydronium` is run FROM INSIDE the
+       hydronium monorepo checkout. A real consumer's materialized
+       `hydronium/cli` package (moonstone exports exactly `src/**` from
+       cli/'s own directory -- see the root partiture.lua's
+       `package_orbit` helper) has no sibling `js/` directory at all, so
+       this path does not exist for any real scaffolded project. VERIFIED
+       BY READING cli/src/main.lua's `M.dual_dev_argv`/top-of-file
+       `repo_root` computation this session (2026-09-25), not by running
+       it broken -- a real framework bug, out of scope for this template
+       work to fix. `apply_islands` below sidesteps it entirely: it
+       vendors `@hydronium-js/vite` itself (see vite_vendor.lua) and calls
+       its `runDualDevServer` directly from a project-local
+       `scripts/dev.mjs`, which needs no path back into this monorepo.
+  So `ssr`/`spa`'s build below stays a plain, separate `vite build`/`vite
+  build --watch`, run by the user's own package manager, which -- unlike
+  `moon exec` or `hydronium build`/`dev` -- puts a project's own
   `node_modules/.bin` on PATH itself.
 
   Package manager: `create.scaffold` resolves and reports a
@@ -80,9 +96,39 @@
   needs the resolved manager to really exist on PATH, and fails with a
   clear, actionable message rather than a generic shell error when it
   doesn't.
+
+  DISTRIBUTING `@hydronium-js/vite` (decided 2026-09-25, STEP 2 of
+  docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md). It is not published to npm yet
+  (js/packages/vite/package.json's own `publishConfig` describes intent,
+  not reality). Considered three options: (a) a `file:` dependency
+  pointing back into a sibling hydronium checkout -- rejected, breaks for
+  any real user who does not happen to have this monorepo cloned next to
+  their project, the exact fragility the Lua side's own README explicitly
+  calls out as a LOCAL-DEV-ONLY convenience, not the real story; (b)
+  declare a real registry semver range now and document a manual interim
+  -- rejected, it makes `npm install` fail today, which fails this
+  template's own build gate, not just a hypothetical future user's; (c)
+  VENDOR THE BUILT PACKAGE, chosen: `create/src/create/vite_vendor.lua`
+  (generated by `js/scripts/sync-vite-vendor.mjs` from a real `pnpm build`
+  of js/packages/vite, checked for staleness by
+  `js/scripts/check-vite-vendor-drift.mjs`) embeds `dist/*.js`,
+  `dist/*.d.ts`, `dist/supervisor.mjs`, and a trimmed `package.json` as
+  literal Lua strings -- the same reasoning `templates/islands.lua` already
+  uses for `public/js/bootstrap/*.js` (a scaffolded project's files come
+  from an in-memory table, not disk, so "ship real bytes" means "embed
+  them in Lua source", not "read them from a path that may not exist at
+  runtime"). `apply_islands` writes those bytes into the new project's own
+  `vendor/hydronium-js-vite/`, and its `package.json` depends on
+  `"@hydronium-js/vite": "file:./vendor/hydronium-js-vite"` -- a real,
+  resolvable local npm directory dependency, self-contained inside the
+  generated project, no sibling checkout required. Once the package is
+  actually published, this becomes a real semver range and the vendoring
+  goes away; the provider CONTRACT (`hydronium_dom.assets`) does not
+  change either way.
 ]]
 
 local M = {}
+local vite_vendor = require("create.vite_vendor")
 
 local function insert_after(haystack, anchor, insertion)
   local s, e = haystack:find(anchor, 1, true)
@@ -98,13 +144,13 @@ end
 
 M.supported_templates = { ssr = true, islands = true, spa = true }
 
--- Per-template Document location for the document-based templates (ssr,
--- islands) -- where to insert the second stylesheet link. `spa` has no
--- editable Document source at all (see this file's own header comment),
--- so it is handled entirely separately by `apply_spa` below.
+-- Per-template Document location for the still-CSS-only document-based
+-- template (`ssr`) -- where to insert the second stylesheet link. `islands`
+-- has its own real integration now (`apply_islands` below); `spa` has no
+-- editable Document source at all (see this file's own header comment), so
+-- it is handled entirely separately by `apply_spa` below.
 local DOCUMENT_KEY = {
   ssr = "src/views/Document.luax",
-  islands = "views/Document.luax",
 }
 
 local STYLESHEET_LINK_ANCHOR = '<link rel="stylesheet" href="/public/style.css" />'
@@ -196,6 +242,317 @@ npm install
 npm run build   # or: npm run dev, to rebuild on change (vite build --watch)
 ```
 ]]
+end
+
+--------------------------------------------------------------------------------
+-- islands: the REAL adapter integration (STEP 2 of
+-- docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md), not the CSS-only side-build
+-- above. Document uses `hydronium_dom.assets.tags(...)` (no hardcoded
+-- `/public/dist/...` path in application Lua); the JS island's `module`
+-- becomes a plain Vite entry specifier, resolved dev/prod by
+-- `hydronium_dom.server.vite_module` -- already wired into
+-- `hydronium_dom.server.init`'s ISLAND branch for every `interpreter =
+-- "js"` island, so the component itself needs no explicit `hy_asset_ref`
+-- call; `vite.config.js` registers the real `@hydronium-js/vite` plugin
+-- with both the island and the CSS entry declared, so Vite actually
+-- bundles/minifies/hashes them (previously: raw, unbundled files served
+-- verbatim from `public/js/island/`). `islands`/`ssr` have no
+-- partiture.lua/Ballad client bundle at all, so Vite's build output can
+-- live inside `public/` (Meteorite's own static root) with no sink-order
+-- hazard -- unlike `spa`, see this file's own header comment.
+--------------------------------------------------------------------------------
+
+local ISLAND_MODULE_ATTR = 'module="/js/island/counter.js"'
+local ISLAND_MODULE_SPECIFIER = 'module="src/islands/counter.js"'
+local H_REQUIRE_LINE = 'local H = require("hydronium")'
+local ASSETS_REQUIRE_INSERT = '\nlocal assets = require("hydronium_dom.assets")'
+local ISLAND_ASSET_ROUTE_LINE = '\n    ["/js/island/:path*"] = { dir = "public/js/island", param = "path" },'
+local DEV_WATCH_ISLAND_LINE = '\n    "public/js/island/counter.js",'
+local MOONSTONE_DEV_SCRIPT_OLD = [[dev = "moon exec --dev -- hydronium dev --meteorite-args='--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit'"]]
+local MOONSTONE_DEV_SCRIPT_NEW = 'dev = "npm run dev"'
+
+-- The opening of whichever function actually renders the Document, for
+-- each router variant: `src/main.lua`'s inline "/" handler
+-- (`--router meteorite`, the default), or `src/app/page_handler.lua`'s
+-- `render` callback (`--router hydronium` -- router_mode.apply_islands,
+-- which runs BEFORE this module, moves rendering there; `src/main.lua`
+-- has no inline Document render left in that mode at all).
+local INLINE_HANDLER_OPEN = 'app:get("/", function(c)\n'
+local PAGE_HANDLER_RENDER_OPEN = 'render = function(c, page, opts)\n'
+
+--- Provider bootstrap, INLINED directly into whichever function actually
+--- calls `require("views.Document")` and renders it -- not factored into a
+--- shared top-level local function, and not configured at this file's own
+--- top level either. Both were tried and both are real, verified bugs, not
+--- style preferences:
+---
+---  1. A shared `local function configure_vite() ... end` called FROM the
+---     inline "/" handler fails `moon run build` outright: "hybrid inline
+---     handlers must be source-liftable ... move requires and mutable
+---     values inside the handler body" -- Meteorite's hybrid build
+---     compiles an inline route handler as a fully self-contained chunk
+---     with NO upvalues over any other local/function in the file, not
+---     even one defined earlier in the same file.
+---  2. Configuring providers at this file's own TOP LEVEL (outside any
+---     handler) builds and runs with no error, but SILENTLY has no effect:
+---     each lifted handler is its own independently-loaded chunk with a
+---     fresh module cache, so `require("hydronium_dom.assets")` INSIDE the
+---     handler returns a DIFFERENT table than the one configured back at
+---     the file's top level. Verified live: the served page kept every
+---     asset URL at its raw, unconfigured fallback (`/src/styles.css`,
+---     the bare island specifier) until this block moved to literally
+---     where its sibling `require("views.Document")` call already lives.
+---
+--- Detects dev vs. prod by whether Vite's dev plugin has published its
+--- bound origin -- see js/packages/vite/src/plugin.ts's `devOriginFile`
+--- (default ".hydronium/vite-dev.json") -- rather than an env var: the
+--- file only exists while `vite dev` is actually running, so this can
+--- never point at a stale/dead port the way a hand-set env var surviving
+--- past its dev session could.
+local VITE_PROVIDER_BOOTSTRAP = [=[
+  local assets = require("hydronium_dom.assets")
+  local vite_module = require("hydronium_dom.server.vite_module")
+  local vite_json = require("hydronium_dom.server.json")
+
+  local vite_dev_origin = nil
+  local vite_dev_file = io.open(".hydronium/vite-dev.json", "r")
+  if vite_dev_file then
+    local vite_dev_raw = vite_dev_file:read("*a")
+    vite_dev_file:close()
+    local vite_dev_ok, vite_dev_decoded = pcall(vite_json.decode, vite_dev_raw)
+    if vite_dev_ok and type(vite_dev_decoded) == "table" and type(vite_dev_decoded.origin) == "string" then
+      vite_dev_origin = vite_dev_decoded.origin
+    end
+  end
+
+  if vite_dev_origin then
+    vite_module.configure({ mode = "dev", vite_origin = vite_dev_origin })
+    assets.configure_provider({ provider = "vite-dev", vite_origin = vite_dev_origin })
+  else
+    vite_module.configure({ mode = "prod" })
+    -- `base = "/public/dist"`: Vite's own manifest `file` paths are
+    -- relative to its `outDir` (public/dist), but the URL a browser
+    -- fetches must be relative to Meteorite's `/public/:path*` static
+    -- route -- i.e. site-root-relative, "/public/dist/<file>", not
+    -- "/<file>". Verified live: without this, every hashed asset URL
+    -- 404'd (assets.lua's default base of "/" produced "/assets/..." with
+    -- nothing registered to serve it).
+    assets.configure_provider({ provider = "vite-manifest", manifest_path = "public/dist/.vite/manifest.json", base = "/public/dist" })
+  end
+]=]
+
+--- Replaces the JS island's hardcoded static `module` path with a real
+--- Vite entry specifier, wherever the island actually lives -- plain
+--- `views/Document.luax`, or `views/Home.luax` when `--router hydronium`
+--- (router_mode.apply_islands, which runs BEFORE this module, moves the
+--- island there -- see that module's own generated content).
+local function patch_island_module(files)
+  for _, key in ipairs({ "views/Home.luax", "views/Document.luax" }) do
+    if files[key] and files[key]:find(ISLAND_MODULE_ATTR, 1, true) then
+      local patched, err = replace_once(files[key], ISLAND_MODULE_ATTR, ISLAND_MODULE_SPECIFIER)
+      if not patched then error("create.vite: " .. tostring(err) .. " in " .. key, 2) end
+      files[key] = patched
+      return
+    end
+  end
+  error("create.vite: could not find the JS island's " .. ISLAND_MODULE_ATTR
+    .. " in views/Home.luax or views/Document.luax -- has templates/islands.lua or router_mode.lua drifted?", 2)
+end
+
+local function apply_islands(files, opts)
+  -- The shared shell always has this file, in both router modes, and
+  -- always contains the base stylesheet link -- see this module's own
+  -- header comment on why `islands`' Vite build lives in `public/` with no
+  -- sink-order hazard.
+  local document = files["views/Document.luax"]
+  if not document then
+    error("create.vite: apply_islands expected views/Document.luax to exist", 2)
+  end
+  local patched, err = insert_after(document, STYLESHEET_LINK_ANCHOR, '\n        {assets.tags("src/styles.css")}')
+  if not patched then error("create.vite: " .. tostring(err) .. " in views/Document.luax", 2) end
+  patched, err = replace_once(patched, H_REQUIRE_LINE, H_REQUIRE_LINE .. ASSETS_REQUIRE_INSERT)
+  if not patched then error("create.vite: " .. tostring(err) .. " in views/Document.luax (H require anchor)", 2) end
+  files["views/Document.luax"] = patched
+
+  patch_island_module(files)
+
+  -- The island's JS source moves from a raw, unbundled static file under
+  -- `public/js/island/` to a real Vite build entry under `src/`.
+  files["src/islands/counter.js"] = files["public/js/island/counter.js"]
+  files["public/js/island/counter.js"] = nil
+
+  -- Placeholder CSS entry (same reasoning as apply_document_based's own
+  -- BASE_STYLES_CSS): a real, empty-but-present Vite-processed stylesheet
+  -- so `npm run build` compiles something even before Tailwind (or any
+  -- hand-written CSS) is added, and create/tailwind.lua overwrites this in
+  -- place when Tailwind is turned on.
+  files["src/styles.css"] = BASE_STYLES_CSS
+
+  local main, main_err = replace_once(files["src/main.lua"], ISLAND_ASSET_ROUTE_LINE, "")
+  if not main then error("create.vite: " .. tostring(main_err) .. " in src/main.lua (island asset route)", 2) end
+  files["src/main.lua"] = main
+
+  -- Provider bootstrap goes wherever the Document actually gets rendered
+  -- -- see VITE_PROVIDER_BOOTSTRAP's own comment for why it must be
+  -- inlined exactly there (a real, verified Meteorite hybrid-build
+  -- constraint), not at this file's top level or a shared function.
+  if files["src/app/page_handler.lua"] then
+    local handler, handler_err = insert_after(files["src/app/page_handler.lua"], PAGE_HANDLER_RENDER_OPEN, VITE_PROVIDER_BOOTSTRAP)
+    if not handler then error("create.vite: " .. tostring(handler_err) .. " in src/app/page_handler.lua (render anchor)", 2) end
+    files["src/app/page_handler.lua"] = handler
+  else
+    local patched_main, patched_main_err = insert_after(files["src/main.lua"], INLINE_HANDLER_OPEN, VITE_PROVIDER_BOOTSTRAP)
+    if not patched_main then error("create.vite: " .. tostring(patched_main_err) .. " in src/main.lua (\"/\" handler anchor)", 2) end
+    files["src/main.lua"] = patched_main
+  end
+
+  -- Vite now owns HMR for the island/CSS it builds (its own dev server,
+  -- `import.meta.hot`) -- the Lua-side full-page-reload watcher must not
+  -- also react to their edits, or the two would race. See
+  -- docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md section 2.4, "two HMR systems,
+  -- deliberately uncoordinated".
+  if files["src/dev_watch.lua"] then
+    local watch, watch_err = replace_once(files["src/dev_watch.lua"], DEV_WATCH_ISLAND_LINE, "")
+    if not watch then error("create.vite: " .. tostring(watch_err) .. " in src/dev_watch.lua", 2) end
+    files["src/dev_watch.lua"] = watch
+  end
+
+  -- `moon run dev` now runs the real dual dev-server (Meteorite + `vite
+  -- dev` together, see scripts/dev.mjs below) instead of the old
+  -- Vite-less `hydronium dev` -- without this, a fresh `moon run dev`
+  -- would try to serve an island whose real bytes only exist once Vite has
+  -- built or is serving them, and 404. STEP 4 territory in the plan, but
+  -- correctness for THIS template requires it now: the island source
+  -- moved out of `public/js/island/` above, so there is no static file
+  -- left to fall back to.
+  local moonstone, moonstone_err = replace_once(files["moonstone.toml"], MOONSTONE_DEV_SCRIPT_OLD, MOONSTONE_DEV_SCRIPT_NEW)
+  if not moonstone then error("create.vite: " .. tostring(moonstone_err) .. " in moonstone.toml (dev script anchor)", 2) end
+  files["moonstone.toml"] = moonstone
+
+  -- Vendor @hydronium-js/vite -- see this file's own header comment
+  -- ("DISTRIBUTING @hydronium-js/vite") for why this is a real, checked-in
+  -- copy rather than an npm registry dependency.
+  for rel_path, content in pairs(vite_vendor) do
+    files["vendor/hydronium-js-vite/" .. rel_path] = content
+  end
+
+  files["package.json"] = string.format([[{
+  "name": "%s-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Vite build for this project's JS island(s) and CSS -- bundled, minified, and content-hashed for production; served directly from Vite's dev server in development. Run alongside the Lua/Meteorite server, not instead of it.",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "^8.3.0",
+    "@hydronium-js/vite": "file:./vendor/hydronium-js-vite"
+  }
+}
+]], opts.name)
+
+  files["vite.config.js"] = [[import { defineConfig } from "vite";
+import { hydronium } from "@hydronium-js/vite";
+
+// Real Vite build: this project's JS island(s) (fetched at runtime by
+// public/js/bootstrap/bootstrap.js -- nothing in Vite's own module graph
+// imports them, so they must be declared as explicit build inputs, see the
+// `hydronium` plugin's own `islands` option) plus its CSS entry, bundled,
+// minified, and content-hashed. `publicDir: false` -- Meteorite's static
+// root is this project's own `public/`, not Vite's: Vite's default
+// behavior is to copy `publicDir` wholesale into `build.outDir` on every
+// build, which here would nest a second copy of the whole `public/` tree
+// under `public/dist/` (verified with a real `vite build` -- see this
+// file's own header comment on the identical hazard for the CSS-only
+// ssr/spa builds this template used to share).
+export default defineConfig({
+  plugins: [
+    hydronium({ islands: ["src/islands/counter.js", "src/styles.css"] }), // hydronium-vite-plugin
+  ],
+  publicDir: false,
+  build: {
+    outDir: "public/dist",
+    emptyOutDir: true,
+  },
+});
+]]
+
+  files["scripts/dev.mjs"] = [[// Dual dev-server launcher for this project: Meteorite's own dev server
+// (SSR + API) and `vite dev` (this project's JS island(s) + CSS, with real
+// HMR) run TOGETHER -- docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md section
+// 2.5: Meteorite cannot serve websockets, so Vite's HMR socket (and every
+// dev-time asset URL) must reach Vite's own origin directly.
+//
+// Uses @hydronium-js/vite's own runDualDevServer (vendor/hydronium-js-vite/
+// -- see that directory's own package.json for why this isn't a normal npm
+// dependency yet): signals forwarded to both children, output merged with
+// a `[name]` prefix, and one child exiting brings the other down too (a
+// half-alive dev session -- Vite up, Meteorite gone, or vice versa --
+// would otherwise silently serve stale/broken pages instead of failing
+// loudly).
+import { runDualDevServer } from "@hydronium-js/vite";
+
+const supervisor = runDualDevServer([
+  {
+    name: "meteorite",
+    command: "moon",
+    args: [
+      "exec", "--dev", "--", "meteorite", "dev",
+      "--mode", "hybrid_dev", "--backend", "fast_http",
+      "--lua-root", ".moonstone/env/libexec/luajit",
+    ],
+  },
+  // npx, not a bare `vite`: resolves node_modules/.bin relative to cwd,
+  // so this works from a project that only declared vite as a local
+  // devDependency (this one does).
+  { name: "vite", command: "npx", args: ["vite"] },
+]);
+
+supervisor.exited.then((results) => {
+  for (const r of results) {
+    console.error(`dev: ${r.name} exited (code=${r.code ?? "null"} signal=${r.signal ?? "null"})`);
+  }
+  process.exit(results.every((r) => r.code === 0 && r.signal === null) ? 0 : 1);
+});
+]]
+
+  files[".gitignore"] = (files[".gitignore"] or "") .. "node_modules/\npublic/dist/\n.hydronium/vite-dev.json\n"
+
+  files["README.md"] = (files["README.md"] or "") .. [[
+
+## Vite
+
+This project's JS island(s) and CSS are built by a real Vite 8 pipeline
+(`@hydronium-js/vite`, vendored into `vendor/hydronium-js-vite/` -- see
+that directory's own `package.json` for why): bundled, minified, and
+content-hashed in production; served with real HMR from Vite's own dev
+server in development.
+
+```bash
+npm install
+```
+
+**Development** (both servers together -- note this replaces `hydronium
+dev` for this template; see `scripts/dev.mjs`'s own header comment for
+why the fancy TUI status view isn't part of this dual-server flow):
+
+```bash
+npm run dev
+```
+
+**Production:**
+
+```bash
+npm run build      # vite build -- public/dist/, hashed, with a manifest
+moon sync
+moon run build      # meteorite build -- bakes public/ into the server binary
+./dist/server
+```
+]]
+
+  return files
 end
 
 -- The base "meteorite" spa variant's single combined
@@ -342,6 +699,8 @@ function M.apply(files, opts)
 
   if opts.template == "spa" then
     apply_spa(files, opts)
+  elseif opts.template == "islands" then
+    apply_islands(files, opts)
   else
     apply_document_based(files, opts)
   end
