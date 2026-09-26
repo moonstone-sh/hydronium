@@ -47,8 +47,9 @@ export PATH="$(dirname "$moon"):$PATH"
 (cd "$vite_example" && pnpm exec vite build)
 (
   cd "$example"
-  # Not an orbit member: nothing else syncs this example's environment.
-  "$moon" sync --locked
+  # Not an orbit member: nothing else syncs this example's environment. Not
+  # --locked: the committed lock may lack this machine's target profile.
+  "$moon" sync
   "$moon" run package
   "$moon" run graph
   # `hybrid_dev` is a dev-server profile, not a build mode.  The packaged
