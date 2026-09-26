@@ -2,7 +2,7 @@ manifest_version = 2
 
 [package]
 name = "hydronium/create"
-version = "0.5.0"
+version = "0.5.1"
 kind = "bin"
 description = "Starter project generator and scaffolding tool for Hydronium reactive applications"
 
@@ -36,26 +36,28 @@ name = "moonstone/clingy"
 constraint = "^0.7.0"
 role = "runtime"
 
-# Hydronium Ink Lab stories for the create wizard's UI
-# (src/create/ui/*.lua, discovered via the repo-root hydronium.lab.lua) --
-# NOT needed by the scaffolding CLI itself (main.lua/wizard.lua never
-# require any of these), only by `hydronium-lab` when it loads
-# create/src/create/ui/create.stories.lua. `path:../X` mirrors
-# hydronium/cli's own moonstone.toml, which depends on hydronium/core and
-# hydronium/ink the same way for the identical reason (its own
-# `*.stories.lua` files under cli/src/ui/).
+# Core and Ink runtime dependencies for the interactive CLI wizard (src/create/ui/*),
+# mounted by main.lua whenever running interactively in a TTY.
 [[dependencies]]
 name = "hydronium/core"
 constraint = "path:../core"
 registry = "path"
-role = "dev"
+role = "runtime"
 
 [[dependencies]]
 name = "hydronium/ink"
 constraint = "path:../ink"
 registry = "path"
-role = "dev"
+role = "runtime"
 
+[[dependencies]]
+name = "hydronium/oklab-utils"
+constraint = "path:../oklab-utils"
+registry = "path"
+role = "runtime"
+
+# Hydronium Ink Lab stories for the create wizard's UI
+# (src/create/ui/*.stories.lua, discovered via repo-root hydronium.lab.lua)
 [[dependencies]]
 name = "hydronium/lab"
 constraint = "path:../lab"
