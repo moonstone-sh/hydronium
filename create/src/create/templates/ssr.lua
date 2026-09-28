@@ -341,7 +341,9 @@ return Document
   -- declared above it.
 
 
-  files["src/app/page_handler.lua"] = string.format([[local adapter = require("hydronium_router.meteorite")
+  files["src/app/page_handler.lua"] = string.format([[-- Hybrid request VMs have their own package loaders; install once at this entry.
+require("hydronium_luax").loader.install()
+local adapter = require("hydronium_router.meteorite")
 local dom = require("hydronium_dom.server.meteorite")
 local site = require("views.Site")
 

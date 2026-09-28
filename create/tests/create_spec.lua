@@ -1785,6 +1785,11 @@ test("every template's generated content actually parses/compiles (content-valid
     local manifest = manifest_file:read("*a")
     manifest_file:close()
     assert(not manifest:find("symlink_to", 1, true), "[" .. tmpl.id .. "] manifest must not use source symlinks")
+    if tmpl.id == "ssr" then
+      local handler = assert(io.open(dir .. "/src/app/page_handler.lua", "r"))
+      local handler_source = handler:read("*a"); handler:close()
+      assert(handler_source:find('require("hydronium_luax").loader.install()', 1, true), "SSR request VM must install the project loader at its entry")
+    end
     assert(manifest:find('name = "hydronium/core"', 1, true), "[" .. tmpl.id .. "] missing hydronium core dependency")
     for package_name, constraint in manifest:gmatch('name = "hydronium/([^"\n]+)"\nconstraint = "([^"\n]+)"') do
       local member = package_name == "ballad" and "build" or package_name
