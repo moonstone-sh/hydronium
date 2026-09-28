@@ -159,7 +159,7 @@ end
 --- families. This is intentionally the first point at which live scopes can
 --- change.
 function familyLoaderModule.commit(staged)
-  local results = {}
+  local results, pending = {}, {}
   for module_id, exported in pairs(staged.modules) do
     local found = scan_staged(module_id, exported)
     for family_id, fn in pairs(found) do
@@ -169,8 +169,13 @@ function familyLoaderModule.commit(staged)
       -- it through lookup().
       if not fam then fam = family.get_or_create(family_id) end
       reverseMap[fn] = fam
-      results[family_id] = fam:update_definition(fn)
+      fam.current_definition = fn
+      pending[#pending + 1] = { family_id = family_id, family = fam, definition = fn }
     end
+  end
+  table.sort(pending, function(a, b) return a.family_id < b.family_id end)
+  for _, item in ipairs(pending) do
+    results[item.family_id] = item.family:update_definition(item.definition)
   end
   return results
 end

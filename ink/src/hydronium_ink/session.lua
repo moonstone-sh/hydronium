@@ -89,6 +89,7 @@ end
 ---   deliberately NOT tied to `color` above, since OSC 8 support does not
 ---   correlate with color depth support.
 --- @field exitOnCtrlC? boolean Default true.
+--- @field inline? boolean Scrollable inline viewport; writes the complete receipt on close.
 --- @field writeFn? fun(bytes: string) Optional ANSI sink. The Lab normally omits it.
 --- @field onCursor? fun(position: {x: integer, y: integer}|nil)
 --- @field onAltScreen? fun(enabled: boolean)
@@ -124,7 +125,7 @@ function M.create(element, opts)
   self._onClipboardWrite = opts.onClipboardWrite
   self._onTick = opts.onTick
 
-  self._host = terminalHost.createTerminalHost(opts.writeFn or function() end)
+  self._host = terminalHost.createTerminalHost(opts.writeFn or function() end, { inline = opts.inline })
   self._host.setColorCapability(opts.color or "auto")
   self._host.setColorProfile(opts.colorProfile or "auto")
   -- `opts.hyperlinks == nil and "auto" or opts.hyperlinks`, not `opts.hyperlinks
@@ -558,8 +559,9 @@ end
 
 function Session:close()
   if self._closed then return end
+  self._host.finishInline()
   self._reconciler:unmount(self._wrapped)
-  self._host.flush()
+  if not self._host._inline then self._host.flush() end
   self._closed = true
 end
 

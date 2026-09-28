@@ -330,7 +330,9 @@ test("scaffold dry-run produces expected files for ssr template", function()
   end
   assert(file_map["moonstone.toml"], "missing moonstone.toml")
   assert(file_map["src/main.lua"], "missing src/main.lua")
-  assert(file_map["src/views/Document.lua"], "missing src/views/Document.lua")
+  assert(not file_map["src/views/Document.lua"], "LUAX modules must not need Lua shims")
+  assert(file_map["scripts/sources.mjs"], "missing automatic source discovery")
+  assert(file_map["src/app/package_roots.lua"], "missing package layout resolver")
   assert(file_map["src/views/Document.luax"], "missing src/views/Document.luax")
   assert(file_map["src/views/App.luax"], "missing src/views/App.luax")
   assert(file_map["src/views/Counter.luax"], "missing src/views/Counter.luax")
@@ -356,19 +358,19 @@ test("scaffold dry-run produces expected files for ssr template", function()
   assert(not generated["moonstone.toml"]:find("path:../", 1, true), "SSR dependencies must install without sibling checkouts")
   assert(generated["build.zig"]:find("meteorite/meteorite/zig/build_api.zig", 1, true),
     "SSR build must use the installed Meteorite package layout")
-  assert(generated["src/main.lua"]:find("libexec/router/hydronium_router/client/history.js", 1, true),
+  assert(generated["src/main.lua"]:find('package_roots.router .. "hydronium_router/client/history.js"', 1, true),
     "SSR must serve the packaged router client assets")
-  assert(generated["src/main.lua"]:find("libexec/dom/hydronium_dom/client/vendor", 1, true),
+  assert(generated["src/main.lua"]:find('package_roots.dom .. "hydronium_dom/client/vendor"', 1, true),
     "SSR must serve DOM client assets from Moonstone's package-leaf libexec layout")
   assert(not generated["src/main.lua"]:find("dev_registry", 1, true),
     "SSR hybrid handlers must not capture an outer registry helper")
-  assert(generated["src/main.lua"]:find("hydronium_dom.dev.source_registry", 1, true),
+  assert(generated["src/app/sources.lua"]:find("hydronium_dom.dev.source_registry", 1, true),
     "SSR must resolve browser modules through the source registry")
-  assert(generated["src/main.lua"]:find("load_inventory", 1, true),
-    "SSR must prefer Ballad's generated source inventory when it exists")
+  assert(generated["src/app/sources.lua"]:find(".hydronium/sources.lua", 1, true),
+    "SSR must load the automatically discovered source inventory")
   assert(generated["src/main.lua"]:find("registry:module(id)", 1, true),
     "SSR must whitelist declared module IDs")
-  assert(generated["src/main.lua"]:find("passive = { \"src/views/App.luax\"", 1, true),
+  assert(generated["src/main.lua"]:find("passive = hot_sources", 1, true),
     "SSR must classify client UI source as passive Meteorite input")
   assert(not generated["src/main.lua"]:find('id:gsub("%%.", "/")', 1, true),
     "SSR must not reconstruct filesystem paths from request IDs")
@@ -659,8 +661,16 @@ end)
 test("--install and --git mirror the wizard's own toggles, running the real (non-dry-run) task runner", function()
   local target = "/tmp/test-cli-install-git"
   os.execute(string.format('rm -rf "%s"', target))
+  -- The candidate ranges are deliberately unpublished before release. The
+  -- packaged consumer gate checks real resolution; this checks CLI task wiring.
+  local fake_bin = target .. "-bin"
+  os.execute(string.format('mkdir -p "%s"', fake_bin))
+  local fake_moon = assert(io.open(fake_bin .. "/moon", "w"))
+  fake_moon:write("#!/bin/sh\n[ \"$1\" = sync ] || exit 1\ntouch sync-called\n")
+  fake_moon:close()
+  os.execute(string.format('chmod +x "%s/moon"', fake_bin))
   local handle = assert(io.popen(string.format(
-    [[lua ./src/main.lua "%s" --minimal --install --git 2>&1; printf '\n__EXIT__%%s\n' "$?"]], target)))
+    [[PATH="%s:$PATH" lua ./src/main.lua "%s" --minimal --install --git 2>&1; printf '\n__EXIT__%%s\n' "$?"]], fake_bin, target)))
   local output = handle:read("*a")
   handle:close()
   assert(output:find("__EXIT__0", 1, true), output)
@@ -669,13 +679,9 @@ test("--install and --git mirror the wizard's own toggles, running the real (non
   local git_dir = io.open(target .. "/.git/HEAD", "r")
   assert(git_dir ~= nil, "--git must really run `git init`, not just print a next step")
   if git_dir then git_dir:close() end
-  local env_dir = io.open(target .. "/.moonstone/env", "r")
-  -- .moonstone/env is a directory, not a readable file, but its mere
-  -- existence proves `moon sync` really ran -- assert via `ls` instead.
-  local ls = assert(io.popen(string.format('ls -d "%s/.moonstone/env" 2>/dev/null', target)))
-  local ls_out = ls:read("*a")
-  ls:close()
-  assert(ls_out:find(".moonstone/env", 1, true), "--install must really run `moon sync`, not just print a next step")
+  local marker = assert(io.open(target .. "/sync-called", "r"), "--install must invoke the sync task")
+  marker:close()
+  os.execute(string.format('rm -rf "%s"', fake_bin))
   os.execute(string.format('rm -rf "%s"', target))
 end)
 
@@ -881,8 +887,8 @@ test("vite.apply wires the REAL adapter into the islands template (STEP 2, not t
 
   -- Dual dev-server launcher, reusing the vendored runDualDevServer.
   assert(files["scripts/dev.mjs"], "missing scripts/dev.mjs")
-  assert(files["scripts/dev.mjs"]:find('from "@hydronium%-js/vite"'),
-    "scripts/dev.mjs must import runDualDevServer from the vendored package")
+  assert(files["scripts/dev.mjs"]:find('"hydronium", "dev", "--vite"', 1, true),
+    "scripts/dev.mjs must launch the packaged Hydronium CLI")
   assert(files["moonstone.toml"]:find('dev = "npm run dev"', 1, true),
     "moon run dev must run the real dual dev-server (npm run dev -> scripts/dev.mjs), not the old Vite-less hydronium dev")
 
@@ -991,7 +997,7 @@ test("tailwind.apply layers Tailwind v4 on top of an already-vite-applied ssr/is
   end
   local ssr_files = vite.apply(require("create.templates.ssr").files({ name = "x" }), { template = "ssr", name = "x" })
   ssr_files = tailwind.apply(ssr_files, { template = "ssr", name = "x" })
-  assert(ssr_files["src/styles.css"]:find('@source "./views/**/*.luax";', 1, true),
+  assert(ssr_files["src/styles.css"]:find('@source "./**/*.{lua,luax}";', 1, true),
     "missing explicit @source for .luax views -- Tailwind cannot detect that extension on its own")
   -- tailwind.apply never touches the Document -- create.vite already linked
   -- the stylesheet Tailwind's CSS compiles into (see both modules' own
@@ -2024,6 +2030,105 @@ test("every create.* module the CLI requires is in the release include list", fu
   end
   handle:close()
   assert(#missing == 0, "required but not exported: " .. table.concat(missing, ", "))
+end)
+
+
+test("all Vite templates adapt npm, pnpm and Bun commands after Tailwind", function()
+  for _, template in ipairs({ "ssr", "spa", "islands" }) do
+    for _, manager in ipairs(pm.candidates) do
+      for _, tw in ipairs({ false, true }) do
+        local files = require("create.templates." .. template).files({ name = "manager-test" })
+        vite.apply(files, { template = template, name = "manager-test" })
+        if tw then tailwind.apply(files, { template = template, name = "manager-test" }) end
+        pm.apply(files, manager)
+        if manager ~= "npm" then
+          assert(not files["README.md"]:find("%f[%a]npm install"), template .. ": stale install command")
+          assert(not files["README.md"]:find("%f[%a]npm run "), template .. ": stale run command")
+          assert(not files["README.md"]:find("npx %-%-yes serve"), template .. ": stale preview command")
+          assert(not files["moonstone.toml"]:find("%f[%a]npm run "), template .. ": stale Moonstone command")
+        end
+        if files["scripts/dev.mjs"] then
+          assert(files["scripts/dev.mjs"]:find('HYDRONIUM_PACKAGE_MANAGER: "' .. manager .. '"', 1, true))
+        end
+        if manager == "bun" then
+          assert(not files["package.json"]:find("node scripts/", 1, true))
+        end
+      end
+    end
+  end
+end)
+
+test("24-row inline wizard follows focus, scrolls, removes confirmation and leaves a receipt", function()
+  local H = require("hydronium")
+  local session = require("hydronium_ink.session")
+  local app = require("create.ui.wizard_app")
+  local writes = {}
+  local sess = session.create(H.h(app.create_wizard_app({ dry_run = true, name = "receipt-app",
+    initial_install_deps = false, initial_git_init = false })), {
+    columns = 80, rows = 24, inline = true, color = "ansi16",
+    writeFn = function(bytes) writes[#writes + 1] = bytes end,
+  })
+  assert(sess:frame().h > 24, "full form must not be height-constrained")
+  local start = sess._host._inlineTop
+  sess:write("\27[6~")
+  assert(sess._host._inlineTop > start, "Page Down must scroll the actual viewport")
+  sess:write("\27[5~")
+  assert(sess._host._inlineTop == start, "Page Up must restore the viewport")
+  sess:write("jk")
+  assert(wizard_text(sess):find("receipt%-appjk"), "j/k must type normally in text fields")
+  sess:write("\127\127")
+  sess:write("\t\r") -- directory, then framework via Enter
+  sess:write("j")
+  assert(wizard_text(sess):find("◉ SPA", 1, true), "j must select the next option")
+  sess:write("k")
+  assert(wizard_text(sess):find("◉ SSR", 1, true), "k must select the previous option")
+  sess:write("\27[B")
+  assert(wizard_text(sess):find("◉ SPA", 1, true), "Down must match j")
+  sess:write("\27[A")
+  assert(wizard_text(sess):find("◉ SSR", 1, true), "Up must match k")
+  sess:write("4")
+  local tooling_top = sess._host._inlineTop
+  assert(tooling_top > 0, "section 4 must reveal tooling")
+  sess:write("2")
+  assert(sess._host._inlineTop < tooling_top, "section 2 must reveal stack")
+  sess:write("\27[6~")
+  local manual_top = sess._host._inlineTop
+  sess:write("2")
+  assert(sess._host._inlineTop < manual_top, "re-focusing the same section must restore its viewport")
+  sess:write("3")
+  assert(sess._host._inlineTop > 0, "section 3 must reveal styling")
+  sess:write("1")
+  assert(sess._host._inlineTop < tooling_top, "section 1 must reveal project")
+  sess:write("\t\t")
+  for _ = 1, 7 do sess:write("\t") end
+  assert(sess._host._inlineTop > 0, "keyboard focus must reveal lower fields")
+  sess:resize(42, 12)
+  sess:write("\19")
+  local text = wizard_text(sess)
+  assert(text:find("receipt%-app"), "chosen name must remain")
+  assert(not text:find("▐ Create", 1, true), "confirm must disappear after submission")
+  assert(not text:find("▍", 1, true), "receipt must have no editing caret")
+  local before = #writes
+  sess:close()
+  assert(#writes == before + 1, "close must print one full receipt without erasing it")
+  assert(writes[#writes]:find("receipt%-app"), "receipt must contain chosen values")
+  assert(writes[#writes]:find("Tooling", 1, true), "receipt must contain the complete form")
+  assert(not table.concat(writes):find("\27[2J", 1, true), "inline rendering must never clear the terminal screen")
+  assert(not table.concat(writes):find("\27[H", 1, true), "inline rendering must never move to absolute home")
+end)
+
+
+test("isolated header diorama animates and follows its own terminal size", function()
+  local collection = dofile("./src/create/ui/create.stories.lua")
+  local story = collection.stories["header-bubbles"]
+  local session = require("hydronium_ink.session").create(story.render(), { columns = 84, rows = 4 })
+  session:step(0)
+  local initial = wizard_text(session)
+  session:step(1800)
+  assert(wizard_text(session) ~= initial, "isolated diorama must animate without mounting the whole form")
+  session:resize(50, 4)
+  assert(session:frame().w == 50, "diorama must honor selected dimensions")
+  session:close()
 end)
 
 print(string.format("\nResults: %d/%d passed\n", passed, total))

@@ -33,6 +33,10 @@
              margin / marginX / marginY (integer, spaces)
              position ("relative" | "absolute"), top / right / bottom / left (integer)
              display ("flex" | "none")
+             inlineViewport / focusRevision / scrollRevision / scrollDelta:
+               inline-render controls; focusRevision requests revealing a
+               scrollFocus=true descendant, scrollRevision applies scrollDelta.
+             scrollFocus (boolean): marks the active row for inline rendering.
              overflow ("visible" | "hidden" | "scroll")
              scrollTop / scrollLeft (integer, controlled cell offsets for
                overflow="scroll"; compose with a signal and useInput)

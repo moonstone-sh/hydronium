@@ -45,47 +45,12 @@
   the "serve/build the static shell + assets, not replace Ballad's Lua
   bundling" split this task calls for.
 
-  STILL TRUE for `ssr` and `spa` below (not yet migrated -- see
-  docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md's STEP 2 status): hydronium/cli's
-  `hydronium dev --vite` / `hydronium build --vite` (cli/src/main.lua) pair
-  a `vite dev`/`vite build` (via `npx`, so `node_modules/.bin` resolves
-  cwd-relatively) with Meteorite/Ballad. Tried both against the OLD
-  CSS-only Vite config (no HTML/JS entry of its own -- `rollupOptions.input`
-  was a bare `.css` file) and found two real, verified problems, not
-  hypothetical ones:
-    1. `hydronium build --vite` runs `vite build` BEFORE the partiture
-       (cli/src/main.lua's own `M.build`), and `hydronium_ballad.plugins.
-       site`'s directory sink REMOVES its whole `out` tree before writing
-       its own output -- so by the time that command returns, Vite's
-       freshly-built asset has already been deleted by Ballad's own sink.
-       Verified live: ran a full `spa` (`router = "meteorite"`) build with
-       this wired in, `dist/assets/` only ever contained Ballad's own
-       scoped CSS, never Vite's. STILL APPLIES to `spa` (its client bundle
-       genuinely goes through `hydronium_ballad`); does NOT apply to
-       `islands`/`ssr`, which have no partiture.lua/Ballad build at all --
-       `apply_islands` below uses a real dual-dev-server script instead
-       (see its own comment).
-    2. `hydronium dev --vite`'s dual dev server (js/packages/vite/bin/
-       dual-dev.mjs) is spawned via a path computed relative to
-       cli/src/main.lua's OWN location (`repo_root = this_dir .. "/../.."`,
-       then `repo_root .. "/js/packages/vite/bin/dual-dev.mjs"`) -- this
-       resolves correctly only when `hydronium` is run FROM INSIDE the
-       hydronium monorepo checkout. A real consumer's materialized
-       `hydronium/cli` package (moonstone exports exactly `src/**` from
-       cli/'s own directory -- see the root partiture.lua's
-       `package_orbit` helper) has no sibling `js/` directory at all, so
-       this path does not exist for any real scaffolded project. VERIFIED
-       BY READING cli/src/main.lua's `M.dual_dev_argv`/top-of-file
-       `repo_root` computation this session (2026-09-25), not by running
-       it broken -- a real framework bug, out of scope for this template
-       work to fix. `apply_islands` below sidesteps it entirely: it
-       vendors `@hydronium-js/vite` itself (see vite_vendor.lua) and calls
-       its `runDualDevServer` directly from a project-local
-       `scripts/dev.mjs`, which needs no path back into this monorepo.
-  So `ssr`/`spa`'s build below stays a plain, separate `vite build`/`vite
-  build --watch`, run by the user's own package manager, which -- unlike
-  `moon exec` or `hydronium build`/`dev` -- puts a project's own
-  `node_modules/.bin` on PATH itself.
+  SSR and islands launch the packaged Hydronium CLI with --vite.
+  The CLI owns process supervision and the request inspector; Vite owns
+  CSS/JS transformations and its browser websocket. SSR additionally
+  discovers project sources before startup and on file additions/removals.
+  SPA's Ballad build still runs before Vite so the directory sink cannot
+  delete Vite's output.
 
   Package manager: `create.scaffold` resolves and reports a
   `package_manager` for every Vite-based template (this module's
@@ -393,43 +358,14 @@ export default defineConfig({
 });
 ]]
 
-  files["scripts/dev.mjs"] = [[// Dual dev-server launcher for this project: Meteorite's own dev server
-// (SSR + API) and `vite dev` (this project's JS island(s) + CSS, with real
-// HMR) run TOGETHER -- docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md section
-// 2.5: Meteorite cannot serve websockets, so Vite's HMR socket (and every
-// dev-time asset URL) must reach Vite's own origin directly.
-//
-// Uses @hydronium-js/vite's own runDualDevServer (vendor/hydronium-js-vite/
-// -- see that directory's own package.json for why this isn't a normal npm
-// dependency yet): signals forwarded to both children, output merged with
-// a `[name]` prefix, and one child exiting brings the other down too (a
-// half-alive dev session -- Vite up, Meteorite gone, or vice versa --
-// would otherwise silently serve stale/broken pages instead of failing
-// loudly).
-import { runDualDevServer } from "@hydronium-js/vite";
-
-const supervisor = runDualDevServer([
-  {
-    name: "meteorite",
-    command: "moon",
-    args: [
-      "exec", "--dev", "--", "meteorite", "dev",
-      "--mode", "hybrid_dev", "--backend", "fast_http",
-      "--lua-root", ".moonstone/env/libexec/luajit",
-    ],
-  },
-  // npx, not a bare `vite`: resolves node_modules/.bin relative to cwd,
-  // so this works from a project that only declared vite as a local
-  // devDependency (this one does).
-  { name: "vite", command: "npx", args: ["vite"] },
-]);
-
-supervisor.exited.then((results) => {
-  for (const r of results) {
-    console.error(`dev: ${r.name} exited (code=${r.code ?? "null"} signal=${r.signal ?? "null"})`);
-  }
-  process.exit(results.every((r) => r.code === 0 && r.signal === null) ? 0 : 1);
-});
+  files["scripts/dev.mjs"] = [[
+import { spawn } from "node:child_process";
+const child = spawn("moon", ["exec", "--dev", "--", "hydronium", "dev", "--vite",
+  "--meteorite-args=--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit"],
+  { stdio: "inherit", env: { ...process.env, HYDRONIUM_JS_RUNTIME: process.versions.bun ? "bun" : "node" } });
+for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));
+child.on("error", error => { console.error(error); process.exitCode = 1; });
+child.on("exit", (code, signal) => { process.exitCode = signal ? 1 : (code ?? 1); });
 ]]
 
   files[".gitignore"] = (files[".gitignore"] or "") .. "node_modules/\npublic/dist/\n.hydronium/vite-dev.json\n"
@@ -448,9 +384,7 @@ server in development.
 npm install
 ```
 
-**Development** (both servers together -- note this replaces `hydronium
-dev` for this template; see `scripts/dev.mjs`'s own header comment for
-why the fancy TUI status view isn't part of this dual-server flow):
+**Development** (Hydronium CLI, Meteorite and Vite together):
 
 ```bash
 npm run dev
@@ -491,13 +425,13 @@ local function apply_ssr(files, opts)
   if not document then
     error("create.vite: apply_ssr expected src/views/Document.luax to exist", 2)
   end
-  local patched, err = insert_after(document, STYLESHEET_LINK_ANCHOR, '\n        {assets.tags("src/styles.css")}')
+  local patched, err = replace_once(document, STYLESHEET_LINK_ANCHOR, '{assets.tags("src/styles.css")}')
   if not patched then error("create.vite: " .. tostring(err) .. " in src/views/Document.luax", 2) end
   patched, err = replace_once(patched, H_REQUIRE_LINE, H_REQUIRE_LINE .. ASSETS_REQUIRE_INSERT)
   if not patched then error("create.vite: " .. tostring(err) .. " in src/views/Document.luax (H require anchor)", 2) end
   files["src/views/Document.luax"] = patched
 
-  files["src/styles.css"] = BASE_STYLES_CSS
+  files["src/styles.css"] = BASE_STYLES_CSS .. '@import "../public/style.css" layer(components);\n'
 
   local handler, handler_err = insert_after(files["src/app/page_handler.lua"], PAGE_HANDLER_RENDER_OPEN, VITE_PROVIDER_BOOTSTRAP)
   if not handler then error("create.vite: " .. tostring(handler_err) .. " in src/app/page_handler.lua (render anchor)", 2) end
@@ -551,46 +485,16 @@ export default defineConfig({
 });
 ]]
 
-  files["scripts/dev.mjs"] = [[// Dual dev-server launcher for this project: Meteorite's own dev server
-// (SSR + the browser Lua VM's own HMR) and `vite dev` (this project's CSS,
-// with real HMR) run TOGETHER -- docs/HYDRONIUM_WEB_VITE_ADAPTER_PLAN.md
-// section 2.5: Meteorite cannot serve websockets, so Vite's HMR socket
-// (and every dev-time asset URL) must reach Vite's own origin directly.
-// The two HMR systems are deliberately uncoordinated (section 2.4): Vite
-// never touches anything under src/views/ or src/app/, and Meteorite's
-// own Lua-side HMR never touches src/styles.css.
-//
-// Uses @hydronium-js/vite's own runDualDevServer (vendor/hydronium-js-vite/
-// -- see that directory's own package.json for why this isn't a normal npm
-// dependency yet): signals forwarded to both children, output merged with
-// a `[name]` prefix, and one child exiting brings the other down too (a
-// half-alive dev session -- Vite up, Meteorite gone, or vice versa --
-// would otherwise silently serve stale/broken pages instead of failing
-// loudly).
-import { runDualDevServer } from "@hydronium-js/vite";
-
-const supervisor = runDualDevServer([
-  {
-    name: "meteorite",
-    command: "moon",
-    args: [
-      "exec", "--dev", "--", "meteorite", "dev",
-      "--mode", "hybrid_dev", "--backend", "fast_http",
-      "--lua-root", ".moonstone/env/libexec/luajit",
-    ],
-  },
-  // npx, not a bare `vite`: resolves node_modules/.bin relative to cwd,
-  // so this works from a project that only declared vite as a local
-  // devDependency (this one does).
-  { name: "vite", command: "npx", args: ["vite"] },
-]);
-
-supervisor.exited.then((results) => {
-  for (const r of results) {
-    console.error(`dev: ${r.name} exited (code=${r.code ?? "null"} signal=${r.signal ?? "null"})`);
-  }
-  process.exit(results.every((r) => r.code === 0 && r.signal === null) ? 0 : 1);
-});
+  files["scripts/dev.mjs"] = [[
+import { prepareSources } from "./sources.mjs";
+prepareSources();
+import { spawn } from "node:child_process";
+const child = spawn("moon", ["exec", "--dev", "--", "hydronium", "dev", "--vite",
+  "--meteorite-args=--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit"],
+  { stdio: "inherit", env: { ...process.env, HYDRONIUM_JS_RUNTIME: process.versions.bun ? "bun" : "node" } });
+for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));
+child.on("error", error => { console.error(error); process.exitCode = 1; });
+child.on("exit", (code, signal) => { process.exitCode = signal ? 1 : (code ?? 1); });
 ]]
 
   files[".gitignore"] = (files[".gitignore"] or "") .. "node_modules/\npublic/dist/\n.hydronium/vite-dev.json\n"
@@ -627,6 +531,10 @@ moon run build      # meteorite build -- bakes public/ into the server binary
 ./dist/server
 ```
 ]]
+
+  files["scripts/sources.mjs"] = require("create.source_discovery")
+  files["vite.config.js"] = 'import { hydroniumSources } from "./scripts/sources.mjs";\n' .. files["vite.config.js"]
+  files["vite.config.js"] = files["vite.config.js"]:gsub("plugins: %[%s*", "plugins: [\n    hydroniumSources(),\n    ", 1)
 
   return files
 end
@@ -786,6 +694,8 @@ function M.apply(files, opts)
     -- branch here.
     error("create.vite: '" .. tostring(opts.template) .. "' is declared supported but has no apply_* branch -- programmer error", 2)
   end
+
+  if opts.package_manager then require("create.pm").apply(files, opts.package_manager) end
 
   return files
 end

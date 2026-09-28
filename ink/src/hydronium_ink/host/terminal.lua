@@ -1487,7 +1487,8 @@ end
 ---   hydronium.host.dom uses for its __dom_* bridge functions, applied
 ---   here to the one function this host actually needs from its
 ---   environment.
-function M.createTerminalHost(writeFn)
+function M.createTerminalHost(writeFn, opts)
+  opts = opts or {}
   writeFn = writeFn or io.write
 
   local host = {
@@ -1504,6 +1505,8 @@ function M.createTerminalHost(writeFn)
     -- mechanism, which lives entirely in session.lua/render.lua and is
     -- unaware of this field except by informing it -- see there).
     _cursorVisible = true,
+    _inline = opts.inline == true,
+    _autoInline = opts.inline == "auto",
   }
 
   local root = {
@@ -1743,6 +1746,70 @@ function M.createTerminalHost(writeFn)
     host._dirty = true
   end
 
+  -- Inline rendering owns only its current lines, never the entire screen.
+  -- Layout stays unbounded vertically; the interactive viewport follows a
+  -- scrollFocus node, with explicit page requests taking priority until focus moves.
+  local function clearInline()
+    local height = math.min(host._inlineHeight or 0, math.max((host._rows or 24) - 1, 1))
+    return "\r" .. (height > 0 and ("\27[" .. height .. "A") or "") .. "\27[J"
+  end
+
+  function host.finishInline()
+    if not host._inline then return end
+    local frame = host._lastFrame
+    if not frame then return end
+    local buf = { clearInline() }
+    for y = 1, frame.h do
+      buf[#buf + 1] = encodeRun(frame.rows[y], 1, frame.w, host._colorCapability, host._hyperlinkCapability) .. "\27[0m\r\n"
+    end
+    writeFn(table.concat(buf))
+    host._inlineHeight = 0
+  end
+
+  local function paintInline(frame)
+    local capacity = math.max((host._rows or 24) - 2, 1)
+    local focus, controls
+    local function visit(node)
+      if node.props and node.props.inlineViewport then controls = node.props end
+      if node.props and node.props.scrollFocus then focus = node end
+      for _, child in ipairs(childrenArray(node)) do visit(child) end
+    end
+    visit(root)
+    controls = controls or {}
+    local top = host._inlineTop or 0
+    if focus and (focus.id ~= host._inlineFocus or controls.focusRevision ~= host._inlineFocusRevision) then
+      local y = focus._layout.y - 1
+      local margin = math.min(2, capacity - 1)
+      if y < top then top = math.max(y - margin, 0)
+      elseif y >= top + capacity - margin then top = y - capacity + 1 + margin end
+    elseif controls.scrollRevision ~= host._inlineRevision then
+      top = top + (controls.scrollDelta or 0)
+    end
+    host._inlineFocusRevision = controls.focusRevision
+    host._inlineFocus = focus and focus.id
+    host._inlineRevision = controls.scrollRevision
+    top = math.max(0, math.min(top, math.max(frame.h - capacity, 0)))
+    host._inlineTop = top
+    local buf = {}
+    local count = math.min(frame.h, capacity)
+    for y = top + 1, top + count do
+      buf[#buf + 1] = encodeRun(frame.rows[y], 1, frame.w, host._colorCapability, host._hyperlinkCapability) .. "\27[0m\r\n"
+    end
+    if frame.h > capacity then
+      local hint = string.format("Lines %d–%d/%d · PgUp/PgDn scroll", top + 1, top + count, frame.h)
+      if controls.scrollHint then hint = hint .. " · " .. controls.scrollHint end
+      buf[#buf + 1] = hint:sub(1, math.max((host._cols or 80) - 1, 1)) .. "\r\n"
+      count = count + 1
+    end
+    local body = table.concat(buf)
+    if body ~= host._inlineBody then
+      writeFn("\27[?2026h\27[?25l" .. clearInline() .. body
+        .. (host._cursorVisible and "\27[?25h" or "") .. "\27[?2026l")
+      host._inlineBody = body
+      host._inlineHeight = count
+    end
+  end
+
   --- Recomputes layout for the whole tree from `root` down, diffs the
   --- resulting character grid against the previous paint's grid, and
   --- writes only the minimal ANSI needed to fix the difference (a full
@@ -1758,7 +1825,16 @@ function M.createTerminalHost(writeFn)
   --- separately for a test/tool that genuinely wants to force a repaint
   --- right now.
   function host.paint()
-    local availW, availH = host._cols or YG_UNDEFINED, host._rows or YG_UNDEFINED
+    local focus, controls
+    local function inspect(node)
+      if node.props and node.props.inlineViewport then controls = node.props end
+      if node.props and node.props.scrollFocus then focus = node end
+      for _, child in ipairs(childrenArray(node)) do inspect(child) end
+    end
+    inspect(root)
+    if host._autoInline then host._inline = controls ~= nil end
+    local availW = host._cols or YG_UNDEFINED
+    local availH = host._inline and YG_UNDEFINED or (host._rows or YG_UNDEFINED)
     -- Set once per paint(), read by every plain module-level function this
     -- pass touches (buildYogaTree/textStyleOf/paintNode/resolveBorderEdge
     -- via `resolveStyleValue`/`currentColorProfile` above) -- see that
@@ -1833,6 +1909,13 @@ function M.createTerminalHost(writeFn)
     local w, h = math.max(rootLayout.w, 0), math.max(rootLayout.h, 0)
     local frame = newFrame(w, h)
     paintNode(root, frame)
+
+    if host._inline then
+      host._lastFrame = frame
+      paintInline(frame)
+      host._scrollFocus = focus and { x = focus._layout.x - 1, y = focus._layout.y - 1 - (host._inlineTop or 0), width = focus._layout.w, height = focus._layout.h, token = tostring(focus.id) .. ":" .. tostring(controls and controls.focusRevision or 0) }
+      return
+    end
 
     local buf = {}
     local prev = host._lastFrame
@@ -1975,6 +2058,7 @@ function M.createTerminalHost(writeFn)
   --- external `clear`, a subprocess printing to the same terminal).
   function host.invalidate()
     host._lastFrame = nil
+    host._inlineBody = nil
     host._dirty = true
   end
 

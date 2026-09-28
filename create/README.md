@@ -57,3 +57,21 @@ moon exec -- hydronium-create ./my-component --minimal
 - `-i, --interpreter <VALUE>`: Lua runtime selection. LÖVE and Ink require `luajit@2.1`.
 - `-f, --force`: Force file creation even if destination directory is non-empty.
 - `--dry-run`: Output generated file paths without writing files.
+
+
+## Package managers and interactive form
+
+For SSR, SPA and islands, `--package-manager bun|pnpm|npm` selects the install
+command, generated Moonstone scripts, development Vite runner, and README
+commands. Bun templates also run their JavaScript helper scripts with Bun.
+Tailwind uses the same selected manager.
+
+The terminal wizard renders inline, with the full form available through
+Page Up/Page Down. Tab/Shift+Tab, Enter, arrows, `j`/`k`, and section jumps
+`1`–`4` reveal the focused choice automatically. Letters and digits remain
+ordinary input in the name and directory fields. Manual scrolling does not
+change a choice; re-focusing a section brings its active field back into view.
+
+Enter on Create, Ctrl+Enter, or Ctrl+S confirms. Confirmation disappears,
+choices freeze, and tasks run. On completion, the wizard exits and leaves the
+complete form and results in terminal scrollback as a receipt.

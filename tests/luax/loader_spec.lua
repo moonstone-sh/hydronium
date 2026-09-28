@@ -29,3 +29,22 @@ describe("Hydronium LUAX loader", function()
     assert.truthy(ok, err)
   end)
 end)
+
+describe("automatic LUAX require", function()
+  it("registers once and loads a module without a Lua shim", function()
+    local prefix = os.tmpname()
+    local path = prefix .. "_automatic_luax_fixture.luax"
+    local old_path = package.path
+    local id = "automatic_luax_fixture"
+    local ok, err = pcall(function()
+      write(path, "return { value = 42 }\n")
+      package.path = prefix .. "_?.lua;" .. old_path
+      assert.equal(loader.install(), loader.install())
+      assert.equal(require(id).value, 42)
+      assert.equal(require(id), package.loaded[id])
+    end)
+    package.path = old_path; package.loaded[id] = nil
+    os.remove(path); os.remove(prefix); loader.invalidate(path)
+    assert.truthy(ok, err)
+  end)
+end)

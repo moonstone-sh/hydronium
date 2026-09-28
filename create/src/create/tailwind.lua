@@ -55,7 +55,7 @@ end
 -- Tailwind's automatic content scanner needs (see this file's own header
 -- comment: Tailwind cannot see `.luax`/plain `.lua` on its own).
 local SOURCE_GLOB = {
-  ssr = "./views/**/*.luax",
+  ssr = "./**/*.{lua,luax}",
   islands = "../views/**/*.luax",
   spa = "./app.lua",
 }
@@ -138,6 +138,9 @@ function M.apply(files, opts)
   end
 
   files["src/styles.css"] = tailwind_styles_css(SOURCE_GLOB[opts.template])
+  if opts.template == "ssr" then
+    files["src/styles.css"] = files["src/styles.css"]:gsub('@import "tailwindcss";', '@import "tailwindcss";\n@import "../public/style.css" layer(components);', 1)
+  end
 
   local vite_config, err = insert_after(files["vite.config.js"], VITE_IMPORT_ANCHOR, TAILWIND_IMPORT)
   if not vite_config then error("create.tailwind: " .. tostring(err) .. " in vite.config.js (was create.vite applied first?)", 2) end

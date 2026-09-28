@@ -5,6 +5,20 @@ local wizard_app = require("create.ui.wizard_app")
 local logo = require("create.ui.logo")
 local checklist_ui = require("create.ui.checklist")
 
+-- A story render factory runs before the Ink provider mounts. Hooks must
+-- live inside a component so the isolated header gets the session's clock.
+local function AnimatedDiorama()
+  local hooks = require("hydronium_ink.hooks")
+  local animation = hooks.useAnimation({ interval = 100, isActive = true })
+  local bubbles = require("create.ui.bubbles")
+  return function()
+    local columns = hooks.useWindowSize().columns
+    return bubbles.render_diorama({ time = animation.time(), columns = columns },
+      logo.render({ columns = columns, version = "0.5.2", frame = animation.frame(),
+        update_status = { state = "current" } }))
+  end
+end
+
 -- The wizard is the product surface. The shared `render` below mounts the
 -- real, stateful create.ui.wizard_app -- the exact same component
 -- `hydronium-create`'s real TTY path mounts (see create/src/main.lua): one
@@ -15,14 +29,10 @@ local checklist_ui = require("create.ui.checklist")
 -- them), or renders one of its pure presentational pieces
 -- (create.ui.logo/checklist) in isolation.
 --
--- SIZES: the form is a "whole thing always rendered" inline scrollback
--- form (see wizard_app.lua's own header comment) -- there is no
--- alternate-screen viewport clipping it to one page. A real terminal's own
--- scrollback holds all of it; Ink Lab's headless grid needs a tall enough
--- `rows` to capture the same thing without truncating mid-form, which is
--- why every wide story below asks for generous height rather than the
--- old step-wizard's own 16-20 rows (correct for a UI that only ever showed
--- one field panel at a time -- this one never does).
+-- Ink Lab now consumes native ANSI and follows explicit field focus.
+-- Tall story presets show the complete form. Standard terminal presets use
+-- the same native inline viewport as the CLI: PageUp/PageDown browse it,
+-- and field navigation brings the active control back into view.
 return lab.collection({
   title = "Create/Wizard",
   render = function(args)
@@ -181,19 +191,19 @@ return lab.collection({
     ["header-sweep"] = {
       title = "Header: mid-sweep",
       description = "The one-time pH-scale gradient sweep partway across the inline H3O+ (skippable by any key -- see wizard_app.lua).",
-      render = function() return logo.render({ columns = 84, version = "0.5.0", sweep = 0.35, update_status = { available = false } }) end,
+      render = function() return logo.render({ columns = 84, version = "0.5.2", sweep = 0.35, update_status = { available = false } }) end,
       sizes = { { name = "default", columns = 84, rows = 3 } },
     },
     ["header-static"] = {
       title = "Header: settled gradient, up to date",
       description = "The header after the startup sweep has finished (or was skipped) -- a static pH-scale gradient across H3O+, and the green \"Up to date\" status.",
-      render = function() return logo.render({ columns = 84, version = "0.5.0", update_status = { available = false } }) end,
+      render = function() return logo.render({ columns = 84, version = "0.5.2", update_status = { available = false } }) end,
       sizes = { { name = "default", columns = 84, rows = 3 } },
     },
     ["header-update-available"] = {
       title = "Header: update available",
       description = "Yellow \"!\" badge. Resize through the breakpoints: full label at >=80 columns, version only at 64-79, badge only below.",
-      render = function() return logo.render({ columns = 84, version = "0.5.0", update_status = { state = "available", latest = "0.6.0" } }) end,
+      render = function() return logo.render({ columns = 84, version = "0.5.2", update_status = { state = "available", latest = "0.6.0" } }) end,
       sizes = { { name = "wide", columns = 84, rows = 3 }, { name = "medium", columns = 70, rows = 3 }, { name = "compact", columns = 50, rows = 3 } },
     },
     ["header-status-breakpoints"] = {
@@ -201,10 +211,10 @@ return lab.collection({
       description = "checking (blue spinner) / available (! on yellow) / up to date (✓ on green), each at 84, 70 and 50 columns. Unknown renders nothing.",
       render = function()
         local rows = {}
-        for _, state in ipairs({ { state = "checking" }, { state = "available", latest = "0.6.0" }, { state = "current", latest = "0.5.0" } }) do
+        for _, state in ipairs({ { state = "checking" }, { state = "available", latest = "0.6.0" }, { state = "current", latest = "0.5.2" } }) do
           for _, columns in ipairs({ 84, 70, 50 }) do
             rows[#rows + 1] = hydronium.h(ink.Box, { key = state.state .. columns, width = columns },
-              logo.render({ columns = columns, version = "0.5.0", frame = 3, update_status = state }))
+              logo.render({ columns = columns, version = "0.5.2", frame = 3, update_status = state }))
           end
         end
         return hydronium.h(ink.Box, { flexDirection = "column" }, rows)
@@ -213,12 +223,8 @@ return lab.collection({
     },
     ["header-bubbles"] = {
       title = "Header: bubble diorama",
-      description = "The 4-row diorama (two open rows, title, one open row; bubbles born below the window) at a fixed time: whole bubbles (o) and dissipating ones (* ° `) at three depths -- far ones single braille dots climbing within each cell (⠄ ⠂ ⠁) behind the title, near ones vivid and in front of it.",
-      render = function()
-        local bubbles = require("create.ui.bubbles")
-        return bubbles.render_diorama({ time = 1800, columns = 84 },
-          logo.render({ columns = 84, version = "0.5.0", update_status = { state = "current" } }))
-      end,
+      description = "The 4-row diorama (two open rows, title, one open row; bubbles born below the window) animated live: whole bubbles (o) and dissipating ones (* ° `) at three depths -- far ones single braille dots climbing within each cell (⠄ ⠂ ⠁) behind the title, near ones vivid and in front of it.",
+      render = function() return hydronium.h(AnimatedDiorama) end,
       sizes = { { name = "default", columns = 84, rows = 4 } },
     },
   },

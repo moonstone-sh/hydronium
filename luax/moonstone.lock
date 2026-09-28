@@ -175,26 +175,6 @@ registry = "moonstone"
 roles = ["tool"]
 
 [[realization]]
-realization_hash = "b3:da187973e7f320e39da2fee903660bdd505ff7e5972355f5f3d26acdcd059c2c"
-name = "moonstone/valua"
-version = "0.3.0"
-kind = "lib"
-source_hash = "b3:62ce667312941d8e07da7347bc8ec63222bab9f1fbb14af62c77b5d77f81b75f"
-recipe_hash = "b3:d2e41933ad8630efc51b58105f24854c5b1334a22bcc831468478665240fb5ee"
-artifact_hash = "b3:62ce667312941d8e07da7347bc8ec63222bab9f1fbb14af62c77b5d77f81b75f"
-replay_mode = "portable_source"
-runtime = "5.1"
-lua_abi = "5.4"
-target = "aarch64-macos"
-constellation = "default"
-source = "https://github.com/moonstone-sh/valua/releases/download/v0.3.0/valua-0.3.0-any.tar.gz"
-source_kind = "archive"
-source_payload = "sources/blob.tar.gz"
-resolver = "moonstone"
-registry = "moonstone"
-roles = ["tool"]
-
-[[realization]]
 realization_hash = "b3:d7f0d2704b3452616b33eab0030d884d1b230a7cd1d775ac269d181a384a1699"
 name = "moonstone/luals-composer"
 version = "0.2.1"
@@ -274,6 +254,26 @@ resolver = "moonstone"
 registry = "moonstone"
 roles = ["tool"]
 
+[[realization]]
+realization_hash = "b3:5ac4527ade78260733eb14ee472c6c56530a84ca8e652311ef6779dd1b14bb4e"
+name = "moonstone/valua"
+version = "0.3.0"
+kind = "bin"
+source_hash = "b3:62ce667312941d8e07da7347bc8ec63222bab9f1fbb14af62c77b5d77f81b75f"
+recipe_hash = "b3:d2e41933ad8630efc51b58105f24854c5b1334a22bcc831468478665240fb5ee"
+artifact_hash = "b3:62ce667312941d8e07da7347bc8ec63222bab9f1fbb14af62c77b5d77f81b75f"
+replay_mode = "portable_source"
+runtime = "5.1"
+lua_abi = "5.4"
+target = "aarch64-macos"
+constellation = "default"
+source = "https://github.com/moonstone-sh/valua/releases/download/v0.3.0/valua-0.3.0-any.tar.gz"
+source_kind = "archive"
+source_payload = "sources/blob.tar.gz"
+resolver = "moonstone"
+registry = "moonstone"
+roles = ["tool"]
+
 [[profile]]
 id = "aarch64-macos+moonstone/lua+5.4"
 target = "aarch64-macos"
@@ -287,5 +287,5 @@ id = "aarch64-macos+moonstone/luajit+5.1"
 target = "aarch64-macos"
 runtime = "moonstone/luajit"
 lua_abi = "5.1"
-packages = [{ name = "moonstone/luajit", version = "2.1.0", realization_hash = "b3:b273ed93742b3274d926ff850b47337909e6b900321e028fc78e053e95849002" }, { name = "moonstone/ballad", version = "0.4.1", realization_hash = "b3:45b50fb00e84718e7599fbf1c915210ce88857517f9da0175bb1bed73260d266" }, { name = "dkjson", version = "2.11-1", realization_hash = "b3:8db16d679ac99eb5b7c3235a5a17011a0a988b1df39dc92b056cd02b6f851868" }, { name = "moonstone/clingy", version = "0.7.0", realization_hash = "b3:289c66271c543a2f61d8eca40c041296e7b1bde49db7c728dcc59ac5c3ef7a70" }, { name = "moonstone/lua", version = "5.4.9", realization_hash = "b3:3a7fc20b3d68601c9be511dae05db4666556406b5cbbaa0ace9e2c6f510eeec8" }, { name = "moonstone/valua", version = "0.3.0", realization_hash = "b3:da187973e7f320e39da2fee903660bdd505ff7e5972355f5f3d26acdcd059c2c" }, { name = "moonstone/luals-composer", version = "0.2.1", realization_hash = "b3:d7f0d2704b3452616b33eab0030d884d1b230a7cd1d775ac269d181a384a1699" }, { name = "moonstone/alter", version = "0.2.2", realization_hash = "b3:05e73d8a444fda80c18255907feebf07e3fdbab63fa1f7c496a5afe89edd5bff" }, { name = "moonstone/alter-jsonc", version = "0.2.2", realization_hash = "b3:0bf2cb175a4f1881ee03c86a7b55f766009c7f944f459d551aa9ce0f563e0823" }, { name = "moonstone/alter-json", version = "0.2.2", realization_hash = "b3:d5e50ddcc42f6a079b9cc03505b2e890ef134d48c0bfa1f6eb83c321bbbb30f6" }]
+packages = [{ name = "moonstone/luajit", version = "2.1.0", realization_hash = "b3:b273ed93742b3274d926ff850b47337909e6b900321e028fc78e053e95849002" }, { name = "moonstone/ballad", version = "0.4.1", realization_hash = "b3:45b50fb00e84718e7599fbf1c915210ce88857517f9da0175bb1bed73260d266" }, { name = "dkjson", version = "2.11-1", realization_hash = "b3:8db16d679ac99eb5b7c3235a5a17011a0a988b1df39dc92b056cd02b6f851868" }, { name = "moonstone/clingy", version = "0.7.0", realization_hash = "b3:289c66271c543a2f61d8eca40c041296e7b1bde49db7c728dcc59ac5c3ef7a70" }, { name = "moonstone/valua", version = "0.3.0", realization_hash = "b3:5ac4527ade78260733eb14ee472c6c56530a84ca8e652311ef6779dd1b14bb4e" }, { name = "moonstone/luals-composer", version = "0.2.1", realization_hash = "b3:d7f0d2704b3452616b33eab0030d884d1b230a7cd1d775ac269d181a384a1699" }, { name = "moonstone/alter", version = "0.2.2", realization_hash = "b3:05e73d8a444fda80c18255907feebf07e3fdbab63fa1f7c496a5afe89edd5bff" }, { name = "moonstone/alter-jsonc", version = "0.2.2", realization_hash = "b3:0bf2cb175a4f1881ee03c86a7b55f766009c7f944f459d551aa9ce0f563e0823" }, { name = "moonstone/alter-json", version = "0.2.2", realization_hash = "b3:d5e50ddcc42f6a079b9cc03505b2e890ef134d48c0bfa1f6eb83c321bbbb30f6" }, { name = "moonstone/lua", version = "5.4.9", realization_hash = "b3:3a7fc20b3d68601c9be511dae05db4666556406b5cbbaa0ace9e2c6f510eeec8" }]
 edges = []

@@ -9,6 +9,7 @@ return ballad.partiture(function(p)
 		name = "hydronium-cli",
 		bin = "hydronium",
 		entry = "src/main.lua",
+			"src/dual-dev.mjs",
 		interpreter = "luajit",
 		-- Stories belong to the optional Lab workbench. Keep the console's
 		-- runtime UI, but do not ship its Lab catalog entry in this executable.
@@ -20,6 +21,7 @@ return ballad.partiture(function(p)
 			"src/event_model.lua",
 			"src/inspector.lua",
 			"src/main.lua",
+			"src/dual-dev.mjs",
 			"src/query.lua",
 			"src/ui/app.lua",
 			"src/ui/build_view.lua",

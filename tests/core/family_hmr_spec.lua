@@ -198,3 +198,41 @@ describe("HMR generalization: ComponentFamily + family_loader (no hand-wiring)",
     family.reset()
   end)
 end)
+
+describe("parent and child batch refresh", function()
+  it("keeps the child instance, signal and live scope when its importer refreshes", function()
+    family.reset(); familyLoader.reset(); familyLoader.enable()
+    local function childLoader()
+      return function(props, scope)
+        local count, set = scope.refresh_registry:signal(0, {kind="signal", name="count", block_path="child"})
+        return function() return H.h("button", {onClick=function() set(count()+1) end}, count) end
+      end
+    end
+    package.preload["scratch.batch_child"] = childLoader
+    package.preload["scratch.batch_parent"] = function()
+      local Child = require("scratch.batch_child")
+      return function() return function() return H.h("div", nil, H.h(Child)) end end
+    end
+    local Parent = require("scratch.batch_parent")
+    local host = H.test.createTestHost()
+    local reconciler = H.Reconciler.new(host)
+    local vnode = H.h(Parent)
+    reconciler:mount(vnode, host.getRoot())
+    local parent = vnode.componentInstance
+    local child = parent.subTree.children[1].componentInstance
+    child.subTree.props.onClick(); require("hydronium.core.scheduler").flush()
+    local staged = familyLoader.stage({"scratch.batch_parent", "scratch.batch_child"})
+    familyLoader.commit(staged)
+    assert.equal(parent.subTree.children[1].componentInstance, child)
+    assert.falsy(child.scope.isDisposed)
+    assert.equal(child.scope.parent, parent.scope)
+    assert.equal(child.subTree.children[1].hostNode.text, "1")
+    child.subTree.props.onClick(); require("hydronium.core.scheduler").flush()
+    assert.equal(child.subTree.children[1].hostNode.text, "2")
+    reconciler:unmount(vnode)
+    assert.truthy(child.scope.isDisposed)
+    package.loaded["scratch.batch_child"] = nil; package.loaded["scratch.batch_parent"] = nil
+    package.preload["scratch.batch_child"] = nil; package.preload["scratch.batch_parent"] = nil
+    familyLoader.reset(); family.reset()
+  end)
+end)

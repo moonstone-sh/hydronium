@@ -70,7 +70,7 @@ end
 local app
 app = c.create({
   name = "hydronium-create",
-  version = "0.5.0",
+  version = "0.5.2",
   description = "Scaffold and initialize new Hydronium reactive Lua projects",
 
   root = c.node({
@@ -110,7 +110,7 @@ app = c.create({
 
     c.run(function(ctx)
       if ctx.args.version then
-        ctx:log("info", "hydronium-create v0.5.0")
+        ctx:log("info", "hydronium-create v0.5.2")
         return 0
       end
 
@@ -166,9 +166,10 @@ app = c.create({
             intro = os.getenv("CI") == nil and os.getenv("NO_COLOR") == nil,
             -- Reads a cached registry index; refreshes it in the background.
             check_updates = true,
+            auto_exit = true,
             onDone = function(res, err) captured_result, captured_err = res, err end,
           }))
-          ink_render.render(element)
+          ink_render.render(element, { inline = true })
 
           if not captured_result then
             if captured_err == nil or captured_err == "cancelled" then
@@ -178,7 +179,7 @@ app = c.create({
             ctx:fail(tostring(captured_err), 1)
             return
           end
-          return render_result(captured_result)
+          return 0 -- The inline wizard already left its form and results as a receipt.
         end
       end
 

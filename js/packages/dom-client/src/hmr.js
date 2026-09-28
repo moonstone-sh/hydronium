@@ -251,16 +251,15 @@ export function installHmr(options) {
     }
 
     const { rules, missing } = classify(paths);
+    const reloadRule = rules.find((rule) => rule.action === "reload");
+    if (reloadRule) {
+      fullReload({ reason: `explicit reload boundary: ${reloadRule.path}`, paths });
+      return;
+    }
     if (missing.length > 0) {
       const reason = `no update policy for: ${missing.join(", ")}`;
       console.warn(`hydronium.client.hmr: ${reason}`);
       report({ status: "unhandled", reason, paths, missing });
-      return;
-    }
-
-    const reloadRule = rules.find((rule) => rule.action === "reload");
-    if (reloadRule) {
-      fullReload({ reason: `explicit reload boundary: ${reloadRule.path}`, paths });
       return;
     }
 

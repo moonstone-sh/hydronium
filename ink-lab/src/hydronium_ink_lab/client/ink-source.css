@@ -1,0 +1,37 @@
+/* Ink renderer additions for the shared Hydronium Lab workbench. */
+.hydronium-lab[data-lab-renderer="ink"] .hydronium-lab__renderer-controls {
+  display: contents;
+}
+
+.hydronium-lab[data-lab-renderer="ink"] .hydronium-lab__terminal {
+  flex: none;
+  max-width: none;
+  color: var(--hy-terminal-foreground, #e5e7eb);
+  background: var(--hy-terminal-background, #111318);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 7%), 0 16px 38px rgb(0 0 0 / 42%);
+  cursor: text;
+}
+
+.hydronium-lab[data-lab-renderer="ink"] .hydronium-lab__terminal,
+.hydronium-lab[data-lab-renderer="ink"] .hydronium-lab__terminal span {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.hydronium-lab[data-lab-renderer="ink"] .hydronium-lab__stage:fullscreen .hydronium-lab__terminal {
+  max-width: none;
+  max-height: none;
+}
+
+/* Editable cell counts keep the compact, zero-padded HUD typography. */
+.hydronium-ink-lab .hydronium-ink-lab__dimensions { display:flex; align-items:center; }
+.hydronium-ink-lab .hydronium-ink-lab__dimension-input { width:3.5ch; min-width:0; min-height:26px; padding:2px 0; border:1px solid transparent; border-radius:4px; background:transparent; color:inherit; font:inherit; text-align:center; font-variant-numeric:tabular-nums; }
+.hydronium-ink-lab .hydronium-ink-lab__dimension-input:hover { border-color:var(--hy-lab-line); }
+.hydronium-ink-lab .hydronium-ink-lab__dimension-input:focus { border-color:var(--hy-lab-accent); background:var(--hy-lab-panel-raised); }
+
+.hydronium-ink-lab__stage[data-pan-mode="true"], .hydronium-ink-lab__stage[data-pan-mode="true"] .hydronium-ink-lab__terminal { cursor:grab; }
+.hydronium-ink-lab__stage[data-panning="true"], .hydronium-ink-lab__stage[data-panning="true"] .hydronium-ink-lab__terminal { cursor:grabbing; }
+.hydronium-ink-lab [data-lab-pan-toggle][aria-pressed="true"] { border-color:var(--hy-lab-accent); background:#213258; }
+
+[data-lab-terminal] { display: block !important; grid-template-columns: none !important; padding: 0; width: max-content; height: max-content; }
+[data-lab-terminal] .xterm-screen { touch-action: none; }

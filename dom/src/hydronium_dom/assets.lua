@@ -276,7 +276,9 @@ local function static_tags(entry)
 end
 
 local function dev_tags(entry)
-  return { tag_for_file(dev_url(entry)) }
+  -- Meteorite serves the document, so Vite cannot inject its HMR client.
+  -- Browser module execution is deduplicated when several entries emit it.
+  return { tag_for_file(dev_url("@vite/client")), tag_for_file(dev_url(entry)) }
 end
 
 --- Recursively collects the CSS files a Vite manifest entry pulls in,

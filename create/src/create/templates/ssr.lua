@@ -156,7 +156,7 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/cli"
-constraint = "^0.3.0"
+constraint = "^0.4.1"
 role = "tool"
 
 [[dependencies]]
@@ -166,17 +166,17 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.0"
+constraint = "^0.2.2"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/luax"
-constraint = "^0.2.0"
+constraint = "^0.2.2"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.2.0"
+constraint = "^0.3.1"
 role = "runtime"
 
 [[dependencies]]
@@ -197,15 +197,28 @@ zig-out/
 *.log
 ]]
 
+  files["src/app/package_roots.lua"] = [[
+-- Both published source packages and local Moonstone path dependencies.
+local roots = {}
+for _, package in ipairs({ "core", "dom", "router" }) do
+  local namespace = package == "core" and "hydronium" or "hydronium_" .. package
+  local root = ".moonstone/env/libexec/" .. package .. "/"
+  local file = io.open(root .. "src/" .. namespace .. "/init.lua", "r")
+  if file then file:close(); root = root .. "src/" end
+  roots[package] = root
+end
+return roots
+]]
+
+  files["src/app/sources.lua"] = [[return require("hydronium_dom.dev.source_registry").load(".hydronium/sources.lua")
+]]
+
   files["hydronium.sources.lua"] = [[-- Project-owned browser/source topology. This explicit inventory lets the
 -- Meteorite dev handler stay manifest-whitelisted rather than scan on request.
 return {
   entry = "views.App",
-  files = {
-    "src/views/App.luax", "src/views/Counter.luax", "src/views/Home.luax", "src/views/About.luax",
-    "src/views/Site.lua", "src/views/Actions.lua", "src/views/Document.luax",
-  },
   roots = {
+    { path = "src/components", namespace = "components", target = "client", update = "hot", effects = "safe" },
     { path = "src/views", namespace = "views", target = "client", update = "hot", effects = "safe",
       transforms = { lua = "lua", luax = "luax" } },
   },
@@ -307,7 +320,7 @@ local function Document(props)
             remount,
             updates: {
               ...sourceManifest.updates,
-              "public/style.css": { action: "style", href: "/public/style.css" },
+              "hydronium.sources.lua": { action: "reload" },
             },
           });
         ]]}</script>
@@ -326,24 +339,7 @@ return Document
   -- mirrors structurally: Meteorite's hybrid build lifts inline route
   -- handlers, so a handler cannot close over a `local App = require(...)`
   -- declared above it.
-  files["src/views/Document.lua"] = [[-- Compiles views/Document.luax on demand via hydronium_luax's serve-time
--- loader, cached by content -- editing and saving views/Document.luax needs no
--- rebuild. Lives in its own requirable module (not a main.lua upvalue):
--- Meteorite's hybrid build mode lifts each inline route handler
--- (extracts its own source text, reloads it standalone per request), so
--- a handler cannot close over a `local App = require(...)` declared
--- above it -- `require("views.Document")` from inside a handler is fine.
-local loader = require("hydronium_luax").loader
 
-return loader.load("src/views/Document.luax")
-]]
-
-  files["src/views/Home.lua"] = [[return require("hydronium_luax").loader.load("src/views/Home.luax")
-]]
-  files["src/views/About.lua"] = [[return require("hydronium_luax").loader.load("src/views/About.luax")
-]]
-  files["src/views/Counter.lua"] = [[return require("hydronium_luax").loader.load("src/views/Counter.luax")
-]]
 
   files["src/app/page_handler.lua"] = string.format([[local adapter = require("hydronium_router.meteorite")
 local dom = require("hydronium_dom.server.meteorite")
@@ -408,15 +404,21 @@ return r.createSite({
 
   files["src/main.lua"] = string.format([[-- Server entrypoint
 local meteorite = require("meteorite")
+require("hydronium_luax").loader.install()
+local package_roots = require("app.package_roots")
+local hot_sources = {}
+for _, record in ipairs(require("app.sources").records) do
+  if record.update == "hot" then hot_sources[#hot_sources + 1] = record.path end
+end
 
 local app = meteorite.app({
   name = "%s",
   host = "127.0.0.1",
   port = 8080,
   dev_watch = {
-    graph = { "src", "zig", "public", "build.zig", "moonstone.toml" },
-    passive = { "src/views/App.luax", "src/views/Counter.luax", "src/views/Home.luax", "src/views/About.luax" },
-    exclude = { "src/views/App.luax", "src/views/Counter.luax", "src/views/Home.luax", "src/views/About.luax" },
+    graph = { "src", "zig", "public", "build.zig", "moonstone.toml", "hydronium.sources.lua", ".hydronium/sources.lua" },
+    passive = hot_sources,
+    exclude = hot_sources,
   },
 })
 
@@ -472,7 +474,7 @@ meteorite.site(app, {
 -- self-heals as soon as the day expires.
 app:get("/js/bootstrap/vendor/:path*", {
   memory = { request_arena = "1mb" },
-}, meteorite.dir(".moonstone/env/libexec/dom/hydronium_dom/client/vendor", {
+}, meteorite.dir(package_roots.dom .. "hydronium_dom/client/vendor", {
   param = "path",
   cache = "public, max-age=86400, must-revalidate",
 }))
@@ -483,16 +485,16 @@ app:get("/js/bootstrap/vendor/:path*", {
 -- small (~35KB combined) -- the caching win was never here.
 app:get("/js/bootstrap/:path*", {
   memory = { request_arena = "1mb" },
-}, meteorite.dir(".moonstone/env/libexec/dom/hydronium_dom/client", {
+}, meteorite.dir(package_roots.dom .. "hydronium_dom/client", {
   param = "path",
   cache = "no-cache",
 }))
 
-app:get("/js/router/history.js", meteorite.file(".moonstone/env/libexec/router/hydronium_router/client/history.js", {
+app:get("/js/router/history.js", meteorite.file(package_roots.router .. "hydronium_router/client/history.js", {
   cache = "no-cache",
 }))
 
-app:get("/js/router/http.js", meteorite.file(".moonstone/env/libexec/router/hydronium_router/client/http.js", {
+app:get("/js/router/http.js", meteorite.file(package_roots.router .. "hydronium_router/client/http.js", {
   cache = "no-cache",
 }))
 
@@ -506,12 +508,13 @@ app:get("/hydronium-src/:path*", function(c)
     return c:text(400, "invalid path")
   end
   local source_root
+  local package_roots = require("app.package_roots")
   if rel:match("^hydronium/") then
-    source_root = ".moonstone/env/libexec/core/"
+    source_root = package_roots.core
   elseif rel:match("^hydronium_dom/") then
-    source_root = ".moonstone/env/libexec/dom/"
+    source_root = package_roots.dom
   elseif rel:match("^hydronium_router/") then
-    source_root = ".moonstone/env/libexec/router/"
+    source_root = package_roots.router
   else
     return c:text(404, "not found")
   end
@@ -537,12 +540,7 @@ app:get("/__hydronium/client_manifest.json", function(c)
 end)
 
 app:get("/__hydronium/dev/manifest.json", function(c)
-  local source_registry = require("hydronium_dom.dev.source_registry")
-  local inventory_path = ".hydronium/source-inventory.lua"
-  local inventory = io.open(inventory_path, "r")
-  local registry = inventory and source_registry.load_inventory(inventory_path)
-    or source_registry.load("hydronium.sources.lua")
-  if inventory then inventory:close() end
+  local registry = require("app.sources")
   return c:json(registry:browser_manifest())
 end)
 
@@ -561,12 +559,7 @@ end)
 -- only name a declared client/shared record; it never becomes a path lookup.
 app:get("/__hydronium/dev/module/:id", function(c)
   local id = c:param("id") or ""
-  local source_registry = require("hydronium_dom.dev.source_registry")
-  local inventory_path = ".hydronium/source-inventory.lua"
-  local inventory = io.open(inventory_path, "r")
-  local registry = inventory and source_registry.load_inventory(inventory_path)
-    or source_registry.load("hydronium.sources.lua")
-  if inventory then inventory:close() end
+  local registry = require("app.sources")
   local record = registry:module(id)
   if not record or (record.target ~= "client" and record.target ~= "shared") then return c:text(404, "module not found") end
 
@@ -574,7 +567,7 @@ app:get("/__hydronium/dev/module/:id", function(c)
   -- browser is applying. A concurrent edit produces 409, never a mixed
   -- multi-module HMR batch.
   local watch = require("hydronium_dom.dev.watch")
-  local source, revision, reason, err = watch.read_snapshot(registry:watch_files({ "public/style.css" }), c:query("revision"), function()
+  local source, revision, reason, err = watch.read_snapshot(registry:watch_files({ "hydronium.sources.lua" }), c:query("revision"), function()
     if record.transform == "luax" then
       local ok, code = pcall(require("hydronium_luax").loader.source, record.path)
       if not ok then error("compile failed for " .. id .. ": " .. tostring(code), 0) end
@@ -628,13 +621,8 @@ end)
 -- page HMR is trying to preserve.
 app:get("/__hydronium/watch", function(c)
   local watch = require("hydronium_dom.dev.watch")
-  local source_registry = require("hydronium_dom.dev.source_registry")
-  local inventory_path = ".hydronium/source-inventory.lua"
-  local inventory = io.open(inventory_path, "r")
-  local registry = inventory and source_registry.load_inventory(inventory_path)
-    or source_registry.load("hydronium.sources.lua")
-  if inventory then inventory:close() end
-  watch.serve_sse(c, registry:watch_files({ "public/style.css" }))
+  local registry = require("app.sources")
+  watch.serve_sse(c, registry:watch_files({ "hydronium.sources.lua" }))
 end)
 
 router_adapter.validate_final(app, pages)

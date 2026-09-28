@@ -203,6 +203,7 @@ function M.render(element, opts)
       exitOnCtrlC = opts.exitOnCtrlC,
       writeFn = writeFn,
       altScreen = opts.altScreen,
+      inline = opts.inline,
       onCursor = writeCursor,
       onAltScreen = function(enabled)
         altScreenActive = enabled

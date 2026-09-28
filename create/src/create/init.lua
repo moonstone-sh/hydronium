@@ -434,6 +434,7 @@ function create.scaffold(opts, ctx)
     if opts.tailwind then
       files = tailwind.apply(files, { template = template_id, name = project_name, router = router_choice })
     end
+    files = pm.apply(files, package_manager)
   end
 
   local results, err = writer.write_project(target_dir, files, {

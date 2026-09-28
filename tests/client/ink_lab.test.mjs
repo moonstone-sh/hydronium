@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  colorToCss, keyboardEvent, paintFrame, createFrameModel, applyFrame, flushFrameModel, createAnimationPacer,
+  colorToCss, keyboardEvent, paintFrame, createFrameModel, applyFrame, flushFrameModel, createAnimationPacer, createInkLab, STANDARD_TERMINAL_SIZES, terminalSizeGroups, parseCellDimension,
 } from "../../ink-lab/src/hydronium_ink_lab/client/virtual_terminal.js";
 
 test("Ink Lab preserves terminal palette references and absolute colors", () => {
@@ -196,4 +196,155 @@ test("Ink Lab's animation pacer holds a steady cadence while animating and backs
 
   pacer.noteActivity();
   assert.equal(pacer.delay, 55, "any activity resumes the base cadence immediately");
+});
+
+
+test("dimension presets distinguish story, saved user and standard sizes", () => {
+  const groups = terminalSizeGroups({ sizes: [{ name: "default", columns: 84, rows: 4 }] }, [{ name: "90×32", columns: 90, rows: 32 }]);
+  assert.deepEqual(groups.map(group => group.label), ["Story-specific", "User-defined", "Standard"]);
+  assert.equal(groups[0].sizes[0].rows, 4);
+  assert.equal(groups[1].sizes[0].columns, 90);
+  assert.ok(groups[2].sizes.some(size => size.columns === 80 && size.rows === 24));
+  assert.deepEqual(terminalSizeGroups({})[0].sizes[0], { name: "default", columns: 80, rows: 24 });
+  assert.equal(terminalSizeGroups({}).length, 2, "empty user sizes should not create an empty dropdown group");
+  assert.ok(Object.isFrozen(STANDARD_TERMINAL_SIZES));
+});
+
+test("editable cell counts accept padded positive cells and reject malformed input", () => {
+  assert.equal(parseCellDimension("080"), 80);
+  assert.equal(parseCellDimension("004"), 4);
+  assert.equal(parseCellDimension("999"), 999);
+  for (const value of ["", "000", "-1", "1.5", "1e2", "abc", "1000"]) assert.equal(parseCellDimension(value), null);
+});
+
+class InteractiveNode extends Node {
+  constructor(document, tag = 'div', fragment = false) {
+    super(document, fragment); this.tag = tag; this.attributes = new Map(); this.listeners = new Map();
+    this.style.setProperty = (key, value) => { this.style[key] = value; };
+  }
+  setAttribute(key, value) { this.attributes.set(key, value); }
+  hasAttribute(key) { return this.attributes.has(key); }
+  matches(selector) { return selector.split(',').some(part => part.trim() === this.tag || (part.trim().startsWith('[') && this.attributes.has(part.trim().slice(1, -1)))); }
+  querySelector(selector) {
+    for (const child of this.children) { if (child.matches?.(selector)) return child; const found = child.querySelector?.(selector); if (found) return found; }
+    return null;
+  }
+  querySelectorAll() { return []; }
+  contains(node) { return node === this || this.children.some(child => child.contains?.(node)); }
+  append(...children) { for (const child of children) { child.parent = this; this.appendChild(child); } }
+  prepend(child) { child.parent = this; this.children.unshift(child); }
+  addEventListener(type, handler) { this.listeners.set(type, [...(this.listeners.get(type) || []), handler]); }
+  removeEventListener(type, handler) { this.listeners.set(type, (this.listeners.get(type) || []).filter(item => item !== handler)); }
+  async fire(type, data = {}) { for (const handler of this.listeners.get(type) || []) await handler({ target: this, preventDefault() {}, ...data }); }
+  focus() { this.ownerDocument.activeElement = this; }
+  select() {}
+  blur() { this.ownerDocument.activeElement = null; this.parent?.fire('focusout', { target: this }); }
+  setPointerCapture() {}
+  getBoundingClientRect() { return { width: 640, height: 400, right: 640, bottom: 400 }; }
+}
+
+test('live dimension controls preserve drafts, commit Enter and blur, and save user presets', async () => {
+  const harness = await inkHarness();
+  try {
+    const { roles, lab, document, requests, saved } = harness;
+    const dimensions = roles.get('dimensions');
+    const columns = dimensions.querySelector('[data-lab-columns]');
+    const rows = dimensions.querySelector('[data-lab-rows]');
+    columns.focus(); columns.value = '091';
+    await lab.step(1000);
+    assert.equal(document.activeElement, columns);
+    assert.equal(columns.value, '091', 'animation must not overwrite an unfinished edit');
+    await dimensions.fire('keydown', { target: columns, key: 'Enter' });
+    assert.equal(roles.get('terminal').dataset.columns, '91');
+    rows.focus(); rows.value = '032';
+    document.activeElement = null;
+    await dimensions.fire('focusout', { target: rows });
+    assert.equal(roles.get('terminal').dataset.rows, '32');
+    assert.deepEqual(saved.terminalSizes[0], { name: '91×32', columns: 91, rows: 32 });
+    assert.deepEqual(roles.get('size').children.filter(node => node.tag === 'optgroup').map(node => node.label), ['Story-specific', 'User-defined', 'Standard']);
+    const resizeCount = requests.filter(message => message.op === 'resize').length;
+    rows.value = '000';
+    await dimensions.fire('keydown', { target: rows, key: 'Enter' });
+    assert.equal(rows.value, '032');
+    assert.equal(requests.filter(message => message.op === 'resize').length, resizeCount);
+  } finally { await harness.close(); }
+});
+
+test('canvas navigation pans touch descendants, handles cancellation, and preserves mouse selection', async () => {
+  const harness = await inkHarness();
+  try {
+    const { roles } = harness;
+    const stage = roles.get('stage'), viewport = roles.get('viewport');
+    const leaf = roles.get('terminal').children[0];
+    const initial = viewport.style.transform;
+    await stage.fire('pointerdown', { target: leaf, pointerType: 'mouse', pointerId: 1, button: 0, clientX: 100, clientY: 100 });
+    await stage.fire('pointermove', { pointerId: 1, clientX: 140, clientY: 150 });
+    assert.equal(viewport.style.transform, initial, 'ordinary terminal mouse drags remain text selection');
+    await stage.fire('pointerdown', { target: leaf, pointerType: 'touch', pointerId: 2, button: 0, clientX: 100, clientY: 100 });
+    await stage.fire('pointermove', { pointerId: 2, clientX: 140, clientY: 150 });
+    assert.equal(viewport.style.transform, 'translate(40px, 50px)');
+    await stage.fire('pointercancel');
+    assert.equal(stage.dataset.panning, undefined);
+    await stage.fire('pointermove', { pointerId: 2, clientX: 250, clientY: 250 });
+    assert.equal(viewport.style.transform, 'translate(40px, 50px)');
+    await roles.get('pan-toggle').fire('click');
+    await stage.fire('pointerdown', { target: leaf, pointerType: 'mouse', pointerId: 3, button: 0, clientX: 100, clientY: 100 });
+    await stage.fire('pointermove', { pointerId: 3, clientX: 110, clientY: 120 });
+    await stage.fire('pointerup');
+    assert.equal(viewport.style.transform, 'translate(50px, 70px)');
+    await stage.fire('wheel', { deltaX: 10, deltaY: 20, deltaMode: 0 });
+    assert.equal(viewport.style.transform, 'translate(40px, 50px)');
+    await stage.fire('wheel', { ctrlKey: true, deltaY: -10 });
+    assert.ok(harness.saved.zoom > 1.1);
+  } finally { await harness.close(); }
+});
+
+async function inkHarness(options = {}) {
+  const previous = { window: globalThis.window, document: globalThis.document, style: globalThis.getComputedStyle };
+  const document = { activeElement: null, hidden: false };
+  document.createElement = tag => {
+    const node = new InteractiveNode(document, tag);
+    if (tag === 'canvas') node.getContext = () => ({ measureText: () => ({ width: 8 }) });
+    return node;
+  };
+  document.createDocumentFragment = () => new InteractiveNode(document, 'fragment', true);
+  const docEvents = new InteractiveNode(document);
+  document.addEventListener = docEvents.addEventListener.bind(docEvents);
+  document.removeEventListener = docEvents.removeEventListener.bind(docEvents);
+  const window = new InteractiveNode(document);
+  window.requestAnimationFrame = callback => callback();
+  window.setTimeout = () => 1; window.clearTimeout = () => {};
+  window.getSelection = () => ({ isCollapsed: true, removeAllRanges() {} });
+  globalThis.window = window; globalThis.document = document;
+  globalThis.getComputedStyle = () => ({ fontSize: '16px', lineHeight: '20px', fontWeight: '400', fontFamily: 'monospace' });
+  const root = new InteractiveNode(document);
+  const roles = new Map(['terminal', 'stage', 'viewport', 'size', 'dimensions', 'pan-toggle'].map(role => [role, new InteractiveNode(document, role === 'size' ? 'select' : 'div')]));
+  root.querySelector = selector => roles.get(selector.slice(10, -1)) || null;
+  const saved = {}, requests = []; let width = 84, height = 4, seq = 0;
+  const lab = await createInkLab({ root, terminalAdapter: () => ({ write: (frame, done) => done(), font() {}, ligatures() {}, dispose() {} }), workbench: { loadProjectPreferences: async () => saved, saveProjectPreferences: (_, value) => Object.assign(saved, value) }, request: async message => {
+    requests.push(message);
+    if (message.op === 'catalog') return { stories: [{ id: 'demo', title: 'Demo', group: 'Demo', sizes: [{ name: 'default', columns: width, rows: height }], color: 'truecolor' }] };
+    if (message.op === 'close') return {};
+    if (message.op === 'scroll') await options.onScroll?.(message);
+    width = message.columns || width; height = message.rows || height;
+    return { version: 2, kind: 'full', seq: ++seq, width, height, terminal: {columns: width, rows: height, inline: options.inline || false, scrollable: options.inline || false}, cursor: null, status: null, styles: {}, rows: Array.from({ length: height }, () => [[0, Array(width).fill(' ')]]) };
+  } });
+  return { roles, lab, document, saved, requests, close: async () => { await lab.close(); globalThis.window = previous.window; globalThis.document = previous.document; globalThis.getComputedStyle = previous.style; } };
+}
+
+test('inline wheel input coalesces pending events and reverses without replaying the old direction', async () => {
+  let release, first = true;
+  const harness = await inkHarness({ inline: true, onScroll: () => {
+    if (first) { first = false; return new Promise(resolve => { release = resolve; }); }
+  } });
+  try {
+    const {roles, requests} = harness;
+    const stage = roles.get('stage'), terminal = roles.get('terminal');
+    terminal.contains = target => target === terminal;
+    for (const deltaY of [100, 100, 100, -3, -2]) await stage.fire('wheel', {target:terminal, deltaY, deltaMode:1});
+    assert.deepEqual(requests.filter(x => x.op === 'scroll').map(x => x.lines), [100]);
+    release();
+    for (let i = 0; i < 12; i++) await Promise.resolve();
+    assert.deepEqual(requests.filter(x => x.op === 'scroll').map(x => x.lines), [100, -5]);
+  } finally { release?.(); await harness.close(); }
 });

@@ -84,6 +84,12 @@ test("HMR requires explicit update policies and preserves state for hot modules"
     assert.equal(reports.at(-1).status, "full-reload");
     assert.equal(reloads, 1);
 
+    sources[3].emit("changed", "views/Document.luax|views/NewComponent.luax");
+    sources[3].emit("reload", "fingerprint-4");
+    await turn();
+    assert.equal(reports.at(-1).status, "full-reload");
+    assert.equal(reloads, 2, "a manifest reload boundary wins over newly discovered paths");
+
     hmr.close();
   } finally {
     globalThis.EventSource = originalEventSource;

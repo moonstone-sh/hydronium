@@ -32,8 +32,11 @@ function Runtime:open(id, options)
   local args = lab.copy(story.args)
   for key, value in pairs(options.args or {}) do args[key] = value end
   local size = story.sizes[1]
+  self.output = {}
   self.story = story
   self.active = session.create(story.render(args), {
+    inline = "auto",
+    writeFn = function(bytes) self.output[#self.output + 1] = bytes end,
     columns = options.columns or size.columns,
     rows = options.rows or size.rows,
     color = options.color or story.color,
@@ -57,7 +60,13 @@ end
 --- forcing a full (self-contained) frame when `force_full` is set.
 function Runtime:_emit(force_full)
   local raw = snapshot.from_session(self.active)
-  return frame.encode(self.frame_stream, raw, force_full)
+  local encoded = frame.encode(self.frame_stream, raw, force_full)
+  encoded.ansi = table.concat(self.output or {})
+  self.output = {}
+  local host = self.active._host
+  encoded.terminal = { columns = host._cols, rows = host._rows, inline = host._inline, scrollable = raw.height > math.max(host._rows - 2, 1) }
+  encoded.focus = host._scrollFocus or false
+  return encoded
 end
 
 function Runtime:_active()
@@ -75,6 +84,14 @@ function Runtime:request(request)
     active:dispatch({ type = "key", input = request.input or "", key = request.key or {} })
   elseif op == "bytes" then
     active:write(request.bytes or "")
+  elseif op == "scroll" then
+    local lines = request.lines
+    if type(lines) ~= "number" or lines % 1 ~= 0 or math.abs(lines) > 10000 then
+      error("hydronium_ink_lab.runtime: scroll lines must be an integer between -10000 and 10000", 2)
+    end
+    if lines ~= 0 then active:dispatch({ type = "key", input = "", key = {
+      pageUp = lines < 0, pageDown = lines > 0, scrollRows = math.abs(lines),
+    } }) end
   elseif op == "paste" then
     active:paste(request.text or "")
   elseif op == "resize" then
@@ -98,7 +115,8 @@ function Runtime:request(request)
     found.run(active)
     active:step(request.nowMs)
   elseif op == "snapshot" then
-    -- No mutation.
+    active._host.invalidate()
+    active._host.flush()
   elseif op == "close" then
     active:close()
     self.active, self.story = nil, nil

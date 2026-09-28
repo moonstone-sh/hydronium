@@ -4,8 +4,9 @@
   Lab "install-flow" story (create.stories.lua). One component, two hosts.
 
   DESIGN, from the 20-question interview this implements faithfully:
-    - inline form in scrollback, never the alternate screen -- the whole
-      form is always rendered, and stays readable once scrolled back. No
+    - scrollable inline form, never the alternate screen -- focus reveals
+      the active choice; PgUp/PgDn inspect without changing it. The whole
+      frozen form is printed into scrollback on completion. No
       separate "review" step: what you see while filling it in IS the
       final record of what will be created.
     - a left RAIL ("|") joins the four groups (Project/Stack/Styling/
@@ -88,7 +89,7 @@ local checklist_ui = require("create.ui.checklist")
 
 local M = {}
 
-local VERSION = "0.5.0"
+local VERSION = "0.5.2"
 
 -- Two subgroups: "Vite-based" frameworks always get the real Vite build
 -- (create.vite -- package.json + vite.config.js, see that module's own
@@ -214,6 +215,7 @@ function M.create_wizard_app(opts)
 
   return function()
     local exit = hooks.useApp().exit
+    local terminal_rows = 24
     local managers = pm_mod.detect()
     local function detected(name)
       for _, m in ipairs(managers) do if m == name then return true end end
@@ -253,6 +255,8 @@ function M.create_wizard_app(opts)
     local install_deps, setInstallDeps = signals.createSignal(opts.initial_install_deps ~= false)
     local git_init, setGitInit = signals.createSignal(opts.initial_git_init ~= false)
     local cheat, setCheat = signals.createSignal(opts.initial_cheat == true)
+    local scroll_revision, setScrollRevision = signals.createSignal(0)
+    local scroll_delta, setScrollDelta = signals.createSignal(0)
 
     -- `initial_*` opts exist purely for create.stories.lua's isolated
     -- section/state snapshots -- `hydronium-create`'s real TTY path and
@@ -264,7 +268,12 @@ function M.create_wizard_app(opts)
       for i, s in ipairs(STOPS) do if s.field == field_name then return i end end
       return 1
     end
-    local active, setActive = signals.createSignal(opts.initial_active_id and first_stop_of_field(opts.initial_active_id) or 1)
+    local active, writeActive = signals.createSignal(opts.initial_active_id and first_stop_of_field(opts.initial_active_id) or 1)
+    local focus_revision, setFocusRevision = signals.createSignal(0)
+    local function setActive(index)
+      writeActive(index)
+      setFocusRevision(focus_revision() + 1)
+    end
 
     local phase, setPhase = signals.createSignal("form") -- "form" | "tasks" | "done"
     local tasks, setTasks = signals.createSignal({})
@@ -490,6 +499,7 @@ function M.create_wizard_app(opts)
       if #plan == 1 then
         setPhase("done")
         if opts.onDone then opts.onDone(res, nil) end
+        if opts.auto_exit then exit() end
       end
     end
 
@@ -530,12 +540,19 @@ function M.create_wizard_app(opts)
       if scaffold_result() then
         setPhase("done")
         if opts.onDone then opts.onDone(scaffold_result(), scaffold_error()) end
+        if opts.auto_exit then exit() end
       end
     end)
 
     hooks.useInput(function(input, key)
       if sweeping() and header_time_ms < SWEEP_MS then
         setSweeping(false)
+        return
+      end
+      if key.pageUp or key.pageDown then
+        local rows = terminal_rows
+        setScrollDelta((key.pageUp and -1 or 1) * (key.scrollRows or math.max(rows - 4, 1)))
+        setScrollRevision(scroll_revision() + 1)
         return
       end
       if phase() ~= "form" then
@@ -563,6 +580,10 @@ function M.create_wizard_app(opts)
 
       local field_name = STOPS[active()].field
       local is_text_field = field_name == "name" or field_name == "directory"
+      if not is_text_field and not key.ctrl and (input == "j" or input == "k") then
+        move(input == "j" and 1 or -1)
+        return
+      end
 
       if not is_text_field and input:match("^[1-4]$") then
         jump_to_group(tonumber(input))
@@ -624,11 +645,12 @@ function M.create_wizard_app(opts)
     return function()
       local size = hooks.useWindowSize()
       local columns = size.columns or 80
+      terminal_rows = size.rows or 24
       local header = hydronium.h(Header, { key = "header" })
 
       local current = active()
-      local current_field = STOPS[current].field
-      local active_group = STOPS[current].group
+      local current_field = phase() == "form" and STOPS[current].field or nil
+      local active_group = phase() == "form" and STOPS[current].group or nil
       local lines = {}
       local function push(prefix, element, dim)
         lines[#lines + 1] = hydronium.h(ink.Box, { key = #lines + 1, flexDirection = "row" },
@@ -640,8 +662,8 @@ function M.create_wizard_app(opts)
       end
 
       for group_number, title in ipairs(GROUP_TITLES) do
-        local is_active_group = group_number == active_group
-        local marker = is_active_group and "\226\151\134" or "\226\151\135" -- ◆ ◇
+        local is_active_group = phase() ~= "form" or group_number == active_group
+        local marker = phase() == "form" and is_active_group and "\226\151\134" or "\226\151\135" -- ◆ ◇
         push(marker, hydronium.h(ink.Text, { bold = is_active_group, dimColor = not is_active_group }, title), not is_active_group)
         push_rows({ hydronium.h(ink.Newline, {}) }, not is_active_group)
 
@@ -723,7 +745,9 @@ function M.create_wizard_app(opts)
       -- Final rail node.
       local submit_active = current_field == "submit"
       local submit_label = "\226\150\144 Create " .. clip(name() == "" and "project" or name(), math.max(6, columns - 24)) .. " \226\150\140  \226\134\181"
-      push("\226\151\134", hydronium.h(ink.Text, { bold = true, inverse = submit_active, color = "green" }, submit_label), false)
+      if phase() == "form" then
+        push("\226\151\134", hydronium.h(ink.Text, { bold = true, inverse = submit_active, color = "green", scrollFocus = submit_active }, submit_label), false)
+      end
 
       local footer = hydronium.h(ink.Text, { key = "footer", color = "brightBlack" }, columns >= 64
         and "\226\134\145\226\134\147/\226\134\144\226\134\146 pick & move \194\183 space toggle \194\183 1-4 jump \194\183 ctrl+\226\134\181 create (ctrl+s fallback) \194\183 ? keys"
@@ -731,15 +755,19 @@ function M.create_wizard_app(opts)
 
       local cheat_panel = cheat() and hydronium.h(ink.Box, { key = "cheat", flexDirection = "column", borderStyle = "single", padding = 1 },
         hydronium.h(ink.Text, { bold = true }, "Keys"),
-        hydronium.h(ink.Text, {}, "\226\134\145 / \226\134\147          move within a field, then roll to the next"),
+        hydronium.h(ink.Text, {}, "\226\134\145 / \226\134\147 / j / k  move within a field, then roll to the next"),
         hydronium.h(ink.Text, {}, "\226\134\144 / \226\134\146 / space  same as \226\134\145/\226\134\147 for a radio; flips a toggle"),
         hydronium.h(ink.Text, {}, "Tab / Shift+Tab   jump straight to the next / previous field"),
+        hydronium.h(ink.Text, {}, "PgUp / PgDn      scroll without changing choices"),
         hydronium.h(ink.Text, {}, "1 2 3 4           jump to Project / Stack / Styling / Tooling"),
         hydronium.h(ink.Text, {}, "Enter             advance, or create from the final node"),
         hydronium.h(ink.Text, {}, "Ctrl+Enter        create from anywhere (Ctrl+S if your terminal can't tell)"),
         hydronium.h(ink.Text, {}, "?                 toggle this cheat sheet")
       ) or nil
 
+      local viewport_props = { flexDirection = "column", paddingX = 1, inlineViewport = true,
+        scrollRevision = scroll_revision(), scrollDelta = scroll_delta(), focusRevision = focus_revision(),
+        scrollHint = phase() == "form" and "Tab move · Ctrl+S confirm" or (phase() == "tasks" and "Working" or "Receipt") }
       if phase() ~= "form" then
         local task_list = tasks()
         local body = {}
@@ -747,7 +775,7 @@ function M.create_wizard_app(opts)
           -- Light chemistry pun in the STATUS line only, per the wizard's
           -- own voice guideline -- every label around it (field names,
           -- task labels) stays plain.
-          body[#body + 1] = hydronium.h(ink.Text, { bold = true, color = "cyan" },
+          body[#body + 1] = hydronium.h(ink.Text, { bold = true, color = "cyan", scrollFocus = true },
             "Protonating " .. (name() ~= "" and name() or "your project") .. "\226\128\166")
           body[#body + 1] = hydronium.h(ink.Newline, {})
         end
@@ -757,7 +785,7 @@ function M.create_wizard_app(opts)
           local any_task_error = false
           for _, t in ipairs(task_list) do if t.status == "error" then any_task_error = true end end
           body[#body + 1] = hydronium.h(ink.Newline, {})
-          body[#body + 1] = hydronium.h(ink.Text, { bold = true, color = any_task_error and "yellow" or "green" },
+          body[#body + 1] = hydronium.h(ink.Text, { bold = true, scrollFocus = true, color = any_task_error and "yellow" or "green" },
             any_task_error and "Files are written, but a follow-up step failed -- see above."
             or (res.dry_run and "[DRY RUN] Solution ready." or "Solution ready."))
           body[#body + 1] = hydronium.h(ink.Text, {}, "Next steps:")
@@ -770,12 +798,12 @@ function M.create_wizard_app(opts)
           body[#body + 1] = hydronium.h(ink.Newline, {})
           body[#body + 1] = hydronium.h(ink.Text, { color = "red" }, "Press any key to exit.")
         end
-        return hydronium.h(ink.Box, { flexDirection = "column", paddingX = 1 },
+        return hydronium.h(ink.Box, viewport_props,
           header, hydronium.h(ink.Box, { flexDirection = "column" }, lines),
           hydronium.h(ink.Newline, {}), hydronium.h(ink.Box, { flexDirection = "column" }, body))
       end
 
-      return hydronium.h(ink.Box, { flexDirection = "column", paddingX = 1 },
+      return hydronium.h(ink.Box, viewport_props,
         header,
         hydronium.h(ink.Box, { flexDirection = "column" }, lines),
         footer,

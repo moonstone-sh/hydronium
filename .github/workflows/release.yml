@@ -90,6 +90,15 @@ jobs:
           git -C .ci/ballad checkout --detach "v$ballad_version"
           ln -s "$GITHUB_WORKSPACE/.ci/ballad" "$GITHUB_WORKSPACE/../ballad"
           (cd .ci/ballad && moon sync --locked)
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Verify Ink Lab browser distribution
+        working-directory: ink-lab
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+          git diff --exit-code -- src/hydronium_ink_lab/client/virtual_terminal.js src/hydronium_ink_lab/client/ink.css src/hydronium_ink_lab/client/XTERM-LICENSES.txt
       - name: Export all registry packages
         run: moon exec -- ballad play partiture.lua
       - name: Upload and publish every registry package

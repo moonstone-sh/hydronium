@@ -131,6 +131,7 @@ describe("hydronium_dom.assets.tags -- \"vite-dev\" provider (dev origin)", func
   it("detects a CSS entry by extension in dev too", function()
     assets.configure_provider({ provider = "vite-dev", vite_origin = "http://localhost:5173" })
     local html = render_tags("src/styles.css")
+    assert.truthy(html:find('src="http://localhost:5173/@vite/client"', 1, true))
     assert.truthy(html:find('<link', 1, true))
     assert.truthy(html:find('href="http://localhost:5173/src/styles.css"', 1, true))
     assets.reset()

@@ -177,4 +177,35 @@ function M.invalidate(path)
   end
 end
 
+local installed_searcher
+
+--- Enable ordinary require("views.Home") for .luax modules on package.path.
+--- Register once in each Lua VM, before loading application modules.
+--- Existing Lua and native module loaders retain their normal precedence.
+function M.install()
+  if installed_searcher then return installed_searcher end
+  local searchers = package.searchers or package.loaders
+  installed_searcher = function(id)
+    if type(id) ~= "string" or not id:match("^[%w_%.%-]+$") or id:find("..", 1, true) then
+      return "\n\tinvalid LUAX module id"
+    end
+    local relative = id:gsub("%.", "/")
+    local tried = {}
+    for pattern in package.path:gmatch("[^;]+") do
+      if pattern:match("%.lua$") then
+        local path = pattern:gsub("%.lua$", ".luax"):gsub("%?", relative)
+        local file = io.open(path, "r")
+        if file then
+          file:close()
+          return function() return M.load(path) end, path
+        end
+        tried[#tried + 1] = "\n\tno file '" .. path .. "'"
+      end
+    end
+    return table.concat(tried)
+  end
+  table.insert(searchers, installed_searcher)
+  return installed_searcher
+end
+
 return M

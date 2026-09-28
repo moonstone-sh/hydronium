@@ -93,7 +93,7 @@
                  supervisor.mjs's `runDualDevServer` -- written and tested
                  5/5 well before anything spawned it). Implied by
                  --vite-args or --vite-dir. Spawns ONE child either way
-                 (a small Node wrapper, js/packages/vite/bin/dual-dev.mjs,
+                 (a small Node wrapper, cli/src/dual-dev.mjs,
                  running under this CLI's existing single-pid supervisor
                  model), so `hydronium dev`'s own liveness/stop handling
                  does not need to know two real servers are underneath it.
@@ -172,7 +172,7 @@ local json = require("hydronium_router.history.state")
 
 local M = {}
 
-M.VERSION = "0.2.0"
+M.VERSION = "0.4.1"
 
 M.USAGE = table.concat({
   "hydronium " .. M.VERSION,
@@ -489,7 +489,7 @@ function M.vite_argv(parsed)
 end
 
 --- The `runDualDevServer` process-spec list (Meteorite, then Vite) for
---- js/packages/vite/bin/dual-dev.mjs. Pure data -- no I/O, no repo_root,
+--- cli/src/dual-dev.mjs. Pure data -- no I/O, no repo_root,
 --- so a spec test can assert its shape without a real filesystem.
 --- @param meteorite_argv string[] From M.meteorite_argv (argv[1] is the
 ---   program, e.g. "meteorite"; the rest are its own arguments).
@@ -501,34 +501,35 @@ function M.dual_dev_specs(meteorite_argv, parsed)
     meteorite_rest[#meteorite_rest + 1] = meteorite_argv[i]
   end
   local vite_words = M.vite_argv(parsed)
-  local vite_args = { "vite" }
+  local manager = parsed and (parsed.package_manager or (parsed.js_runtime == "bun" and "bun")) or "npm"
+  local vite_command = manager == "bun" and "bun" or (manager == "pnpm" and "pnpm" or "npx")
+  local vite_args = manager == "bun" and { "run", "--bun", "vite" }
+    or (manager == "pnpm" and { "exec", "vite" } or { "vite" })
   for _, word in ipairs(vite_words) do
     vite_args[#vite_args + 1] = word
   end
   return {
     { name = "meteorite", command = meteorite_argv[1], args = meteorite_rest },
-    -- `npx`, not a bare `vite`: this must work from a project that
-    -- declared vite as a local devDependency (js/examples/islands-tailwind
-    -- does) without requiring it on PATH globally. npx resolves
-    -- node_modules/.bin relative to `cwd`, which is `vite_dir` below.
-    { name = "vite", command = "npx", args = vite_args, cwd = (parsed and parsed.vite_dir) or "." },
+    -- Resolve the project's local Vite binary through its selected manager.
+    -- The runner uses vite_dir so no global Vite installation is needed.
+    { name = "vite", command = vite_command, args = vite_args, cwd = (parsed and parsed.vite_dir) or "." },
   }
 end
 
 --- The full argv for the ONE child `hydronium dev --vite` spawns: a small
---- Node wrapper (js/packages/vite/bin/dual-dev.mjs) that runs Meteorite
+--- Node wrapper (cli/src/dual-dev.mjs) that runs Meteorite
 --- and Vite together via runDualDevServer. Kept separate from
 --- M.dual_dev_specs so the JSON encoding (the part that actually needs
 --- `json`, injected rather than hardcoded to `require`d module so a spec
 --- can pass a fake) is the only impure step.
---- @param repo_root string This file's own repo root (see top-of-file `this_dir`/`repo_root`).
+--- @param source_dir string The CLI src directory (also present in installed packages).
 --- @param meteorite_argv string[]
 --- @param parsed table
 --- @param encode fun(value: any): string JSON encoder, e.g. `json.encode`.
 --- @return string[]
-function M.dual_dev_argv(repo_root, meteorite_argv, parsed, encode)
-  local script = repo_root .. "/js/packages/vite/bin/dual-dev.mjs"
-  return { "node", script, "--specs", encode(M.dual_dev_specs(meteorite_argv, parsed)) }
+function M.dual_dev_argv(source_dir, meteorite_argv, parsed, encode)
+  local script = source_dir .. "/dual-dev.mjs"
+  return { (parsed and parsed.js_runtime) or "node", script, "--specs", encode(M.dual_dev_specs(meteorite_argv, parsed)) }
 end
 
 --- How long to wait for a `startup` event before concluding the server is
@@ -652,13 +653,15 @@ function M.dev(parsed)
   end
 
   -- `--vite` spawns ONE child either way: a small Node wrapper
-  -- (js/packages/vite/bin/dual-dev.mjs) that runs `runDualDevServer` over
+  -- (cli/src/dual-dev.mjs) that runs `runDualDevServer` over
   -- Meteorite + Vite together, so everything below this point -- liveness
   -- polling, SIGTERM/SIGKILL stop, the events.log tailer -- is unchanged
   -- and does not need to know two real servers are underneath it.
   local supervisor_argv = argv
   if parsed.vite then
-    supervisor_argv = M.dual_dev_argv(repo_root, argv, parsed, json.encode)
+    parsed.js_runtime = os.getenv("HYDRONIUM_JS_RUNTIME") or "node"
+    parsed.package_manager = os.getenv("HYDRONIUM_PACKAGE_MANAGER")
+    supervisor_argv = M.dual_dev_argv(this_dir, argv, parsed, json.encode)
   end
 
   local supervisor = dev_supervisor.new_supervisor({

@@ -1,18 +1,4 @@
---[[
-  JS package manager detection for the Tailwind/Vite side-build
-  `create.tailwind` wires in. Nothing this package generates ever shells
-  out to `npm`/`pnpm`/`bun` itself -- this only decides which one to
-  recommend to the user (interactively, in the wizard) or to validate
-  (non-interactively, via `--package-manager`), and to phrase "next steps"
-  with the right command.
-
-  Per this task's requirement: Tailwind support must never be offered as
-  if it will silently work when nothing can actually install or build it.
-  If none of npm/pnpm/bun is on PATH, the wizard visibly disables the
-  Tailwind question instead of asking it, and `create.scaffold({tailwind =
-  true, ...})` refuses with a clear error instead of generating a
-  package.json nothing on the machine can act on.
-]]
+-- JS package-manager detection and generated command adaptation.
 
 local M = {}
 
@@ -60,6 +46,33 @@ end
 
 function M.run_command(name, script)
   return string.format((COMMANDS[name] or COMMANDS.npm).run, script)
+end
+
+--- Apply after Vite and Tailwind so their commands and documentation agree.
+function M.apply(files, name)
+  name = name or "npm"
+  assert(M.is_known(name), "unknown package manager: " .. tostring(name))
+  local paths = { "moonstone.toml", "README.md" }
+  for path in pairs(files) do
+    if path:match("^scripts/.*%.mjs$") then paths[#paths + 1] = path end
+  end
+  for _, path in ipairs(paths) do
+    if files[path] then
+      files[path] = files[path]:gsub("%f[%a]npm install", function() return M.install_command(name) end)
+        :gsub("%f[%a]npm run ([%w_-]+)", function(script) return M.run_command(name, script) end)
+      if name ~= "npm" then
+        files[path] = files[path]:gsub("npx %-%-yes serve", name == "bun" and "bunx serve" or "pnpm dlx serve")
+      end
+    end
+  end
+  if name == "bun" and files["package.json"] then
+    files["package.json"] = files["package.json"]:gsub("node scripts/", "bun scripts/")
+  end
+  if files["scripts/dev.mjs"] and not files["scripts/dev.mjs"]:find("HYDRONIUM_PACKAGE_MANAGER:", 1, true) then
+    files["scripts/dev.mjs"] = files["scripts/dev.mjs"]:gsub("HYDRONIUM_JS_RUNTIME:",
+      'HYDRONIUM_PACKAGE_MANAGER: "' .. name .. '", HYDRONIUM_JS_RUNTIME:')
+  end
+  return files
 end
 
 return M

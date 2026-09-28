@@ -73,7 +73,7 @@ function M.text_field_rows(props)
     props.caret ~= false and CURSOR or "")
   local label_text = string.format("%-" .. LABEL_WIDTH .. "s", props.label or "")
   local rows = {
-    hydronium.h(ink.Box, { key = "value", flexDirection = "row" },
+    hydronium.h(ink.Box, { key = "value", flexDirection = "row", scrollFocus = props.caret == true },
       hydronium.h(ink.Text, { key = "lbl", dimColor = gd }, label_text),
       hydronium.h(ink.Text, { key = "v", bold = not gd and not showing_placeholder, dimColor = gd or showing_placeholder },
         showing_placeholder and props.placeholder or value),
@@ -106,7 +106,7 @@ local function option_rows(opt, selected, active, key_prefix, group_dim, field_d
   if opt.recommended then
     label_children[#label_children + 1] = hydronium.h(ink.Text, { key = "star", color = "yellow", strikethrough = struck, dimColor = group_dim }, STAR)
   end
-  local rows = { hydronium.h(ink.Box, { key = key_prefix .. "_label", flexDirection = "row" }, label_children) }
+  local rows = { hydronium.h(ink.Box, { key = key_prefix .. "_label", flexDirection = "row", scrollFocus = active and selected }, label_children) }
   -- field_disabled: always the option's OWN description (dimmed), never
   -- the field-level reason repeated per option (that prints once, above
   -- the options -- see radio_group_rows). A per-option disable (not
@@ -176,7 +176,7 @@ function M.toggle_rows(props)
   local dim = (props.disabled and not props.value) or props.group_dim
   local marker = props.value and TOGGLE_ON or TOGGLE_OFF
   local rows = {
-    hydronium.h(ink.Box, { key = "label", flexDirection = "row" },
+    hydronium.h(ink.Box, { key = "label", flexDirection = "row", scrollFocus = props.active == true },
       hydronium.h(ink.Text, { key = "m", dimColor = dim, bold = props.value and not props.group_dim }, marker .. " "),
       hydronium.h(ink.Text, { key = "l", dimColor = dim, bold = props.value and not props.group_dim }, props.label)),
   }

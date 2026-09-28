@@ -15,7 +15,11 @@ hydronium_ink.session ──► canonical styled cell frame (hydronium_ink_lab.s
                   style-interned, run-length wire frame (hydronium_ink_lab.frame)
                                 │
                                 ▼
-                    browser virtual terminal grid
+                    canonical model for tooling and tests
+
+Ink terminal host ──► native ANSI stream ──► xterm.js browser preview
+                                           │
+                                           └──► input bytes back to Ink session
 ```
 
 `hydronium_ink.session` owns the component lifecycle, hook registries, key
@@ -116,11 +120,12 @@ that request/response contract.
 `hydronium_ink_lab.dom.element(runtime:catalog().stories)` returns ordinary
 Hydronium DOM. After mounting it, call `createInkLab` from
 `hydronium_ink_lab/client/virtual_terminal.js`. The client adds story, size,
-color and interaction controls; forwards keyboard and paste events; and
-applies each full/delta frame to an in-memory grid model (`createFrameModel`/
-`applyFrame`), repainting only the cells `applyFrame` marks dirty
-(`flushFrameModel`) -- an idle animation touches zero cells, not
-`width * height`. `resize(columns, rows)` is deterministic. With
+color and interaction controls; maintains a canonical model for tooling;
+and writes the native ANSI stream into xterm. Browser keyboard and paste
+arrive as input bytes. Wheel events over inline previews are normalized to
+cell rows and coalesced into `scroll` requests: at most one runs at a time,
+and reversing direction discards the pending movement in the old direction.
+`resize(columns, rows)` is deterministic. With
 `autoResize: true`, a `ResizeObserver` translates a dragged browser surface
 into terminal dimensions.
 
@@ -143,3 +148,23 @@ or interaction snaps it back to the base cadence immediately
 - Authentication and session isolation belong to the development server that
   exposes the protocol. Do not expose an unauthenticated Lab runtime in a
   production application.
+
+## Browser terminal adapter
+
+Runtime responses additionally contain `ansi` (native host output),
+`terminal` (`columns`, `rows`, `inline`, `scrollable`), and `focus` (a
+zero-based cell rectangle and navigation token, or false). Physical terminal
+rows can differ from the full canonical frame height for inline forms.
+Explicit snapshot requests force a native redraw for resynchronization.
+
+The xterm adapter owns input, paste, selection, Unicode widths and ANSI
+rendering. The controller owns story selection, dimensions, canvas panning
+and focus following. Zoom changes the terminal font size rather than
+scaling terminal DOM, preserving mouse coordinates and sharp text.
+
+Bun builds xterm and the controller into the existing `virtual_terminal.js`
+asset and combines xterm CSS with `ink-source.css` into `ink.css`. Both ship
+inside the registry source package; no extra asset routes or CDN are needed.
+The Lab page permits inline styles for xterm's generated renderer CSS while
+keeping scripts restricted to the same origin. Dependency versions and
+licenses are pinned in `ink-lab/bun.lock` and `client/XTERM-LICENSES.txt`.

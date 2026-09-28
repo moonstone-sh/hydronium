@@ -117,3 +117,15 @@ a real Meteorite process:
   from the environment, appended *after* the flag's own words. Kept (it
   predates the flag) for one job: overriding a flag for a single run without
   editing the project's committed `dev` script.
+
+## Vite and Bun
+
+Generated SSR and islands projects launch `hydronium dev --vite` through their
+package-manager dev script. The dual-server wrapper ships inside the CLI
+package and resolves `@hydronium-js/vite` from the consuming project's
+`node_modules`, including when `--vite-dir` selects another directory.
+
+For Bun projects, the generated `bun scripts/dev.mjs` launcher sets
+`HYDRONIUM_JS_RUNTIME=bun`. This runs both the wrapper and the local Vite binary
+with Bun while keeping the Hydronium request inspector. Direct CLI users can
+set the same environment variable when using `--vite`.

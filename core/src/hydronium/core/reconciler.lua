@@ -9,6 +9,7 @@ local symbols = require("hydronium.core.symbols")
 local errors = require("hydronium.core.errors")
 local refModule = require("hydronium.core.ref")
 local componentModule = require("hydronium.core.component")
+local familyLoader = require("hydronium.core.family_loader")
 local effectModule = require("hydronium.signals.effect")
 local scopeModule = require("hydronium.core.scope")
 local scheduler = require("hydronium.core.scheduler")
@@ -336,9 +337,13 @@ function Reconciler:canReuse(oldVNode, newVNode)
   if not oldVNode or not newVNode then
     return false
   end
-  return oldVNode.kind == newVNode.kind
-    and unwrapTag(oldVNode.tag) == unwrapTag(newVNode.tag)
-    and oldVNode.key == newVNode.key
+  if oldVNode.kind ~= newVNode.kind or oldVNode.key ~= newVNode.key then return false end
+  if unwrapTag(oldVNode.tag) == unwrapTag(newVNode.tag) then return true end
+  if oldVNode.kind == symbols.COMPONENT or oldVNode.kind == symbols.BOUNDARY then
+    local oldFamily = familyLoader.lookup(oldVNode.tag)
+    return oldFamily ~= nil and oldFamily == familyLoader.lookup(newVNode.tag)
+  end
+  return false
 end
 
 function Reconciler:getHostNode(vnode)
@@ -557,6 +562,11 @@ function Reconciler:hydrate(vnode, parentHostNode, domNode, boundaryNode, parent
     return domNode, host.nextSibling(domNode)
 
   elseif kind == symbols.TEXT then
+    -- HTML parsing does not materialize empty text nodes. Insert the
+    -- reactive placeholder without consuming the next server-rendered node.
+    if vnode.text == "" then
+      return self:mount(vnode, parentHostNode, domNode, parentComponent), domNode
+    end
     if not domNode or domNode == boundaryNode or not host.isTextNode(domNode) then
       reportMismatch("text_mismatch")
       return fallbackMount(domNode)

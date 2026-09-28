@@ -50,6 +50,7 @@ function ComponentInstance.new(vnode, parentComponent, host)
   -- Hierarchical scope
   local parentScope = parentComponent and parentComponent.scope or nil
   self.scope = scopeModule.Scope.new(parentScope)
+  self.scope.component_owner = self
 
   -- HMR: one RefreshRegistry per instance, persisting across refreshes
   -- (NOT recreated in :refresh() -- it must remember the previous
@@ -414,6 +415,18 @@ function ComponentInstance:refresh(new_definition)
   end
 
   local old_scope = self.scope
+  -- A parent setup refresh must not dispose mounted child components.
+  -- Reconciliation below decides which children survive. Setup-owned
+  -- auxiliary scopes still belong to the old setup and are disposed.
+  local children, owned = {}, {}
+  for _, child in ipairs(old_scope.children) do
+    if child.component_owner and not child.isDisposed then
+      children[#children + 1] = child
+    else
+      owned[#owned + 1] = child
+    end
+  end
+  old_scope.children = owned
   local dispose_ok, dispose_err = pcall(function()
     old_scope:dispose()
   end)
@@ -424,6 +437,11 @@ function ComponentInstance:refresh(new_definition)
 
   local parentScope = self.parent and self.parent.scope or nil
   self.scope = scopeModule.Scope.new(parentScope)
+  self.scope.component_owner = self
+  for _, child in ipairs(children) do
+    child.parent = self.scope
+    self.scope.children[#self.scope.children + 1] = child
+  end
   -- self.refresh_registry itself is NOT recreated -- see its field
   -- comment in .new() -- only re-attached to the fresh scope.
   self.scope.refresh_registry = self.refresh_registry

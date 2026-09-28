@@ -147,7 +147,7 @@ function M.page(c, contract)
     client_url = contract.assets.client,
   }), { doctype = true })
   return c:bytes(200, "text/html; charset=utf-8", body, { headers = { ["Cache-Control"] = "no-store", ["X-Content-Type-Options"] = "nosniff",
-    ["Referrer-Policy"] = "no-referrer", ["Content-Security-Policy"] = "default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self'" } })
+    ["Referrer-Policy"] = "no-referrer", ["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self'" } })
 end
 
 function M.redirect(c)

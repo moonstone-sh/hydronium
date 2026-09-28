@@ -206,7 +206,7 @@ describe("hydronium-cli main -- vite_argv / dual_dev_specs / dual_dev_argv", fun
       return "ENCODED"
     end
     local argv = main.dual_dev_argv("/repo", { "meteorite", "dev" }, { vite_dir = "." }, fake_encode)
-    assert.same(argv, { "node", "/repo/js/packages/vite/bin/dual-dev.mjs", "--specs", "ENCODED" })
+    assert.same(argv, { "node", "/repo/dual-dev.mjs", "--specs", "ENCODED" })
     assert.equal(seen_value[1].name, "meteorite")
     assert.equal(seen_value[2].name, "vite")
   end)
@@ -432,5 +432,26 @@ describe("hydronium-cli drain -- durable log keeps what the views hide", functio
     assert.equal(#logged, 4)
     assert.equal(#pushed, 4)
     assert.equal(ctx.hidden_hmr, 0)
+  end)
+end)
+
+local runner = require("tests.runner")
+runner.describe("Bun Vite process", function()
+  runner.it("launches the local Vite binary with Bun", function()
+    local specs = main.dual_dev_specs({"meteorite", "dev"}, {js_runtime="bun", vite_dir="web"})
+    runner.assert.same(specs[2], {name="vite", command="bun", args={"run", "--bun", "vite"}, cwd="web"})
+  end)
+end)
+
+runner.describe("selected Vite package manager", function()
+  runner.it("uses pnpm exec instead of npx", function()
+    local spec = main.dual_dev_specs({"meteorite", "dev"}, {package_manager="pnpm",js_runtime="node"})[2]
+    runner.assert.equal(spec.command, "pnpm")
+    runner.assert.same(spec.args, {"exec", "vite"})
+  end)
+  runner.it("keeps an explicitly selected npm even under a Bun launcher", function()
+    local spec = main.dual_dev_specs({"meteorite", "dev"}, {package_manager="npm",js_runtime="bun"})[2]
+    runner.assert.equal(spec.command, "npx")
+    runner.assert.same(spec.args, {"vite"})
   end)
 end)
