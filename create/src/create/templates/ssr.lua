@@ -181,7 +181,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/router"
-constraint = "^0.2.0"
+constraint = "^0.2.1"
 role = "runtime"
 ]=], project_name)
 

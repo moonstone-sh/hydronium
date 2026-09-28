@@ -14,9 +14,9 @@ Tailwind scans source text, including explicitly registered Lua/LUAX sources. Co
 
 ## Release train
 
-Latest local repository tag: `v0.3.1`; remote/latest published status was not established by this audit. A candidate `v0.3.2` tag is appropriate only after checking remote tags and published package versions. Member packages have independent versions; the train tag is not their version number.
+Latest public release verified: `v0.3.1`. The `v0.3.2` candidate is committed and its packaged gates are running before publication. Member packages have independent versions; the train tag is not their version number.
 
-Inventory changed packages and bump only those whose shipped contents changed. Current manifest versions include core/luax 0.2.1, dom 0.3.0, cli 0.4.0, create 0.5.1, ink 0.5.0 and ink-lab 0.3.0. The browser-client canonical source and its generated DOM copy both changed. Account for the npm adapter packages as a separate release surface. Choose patch/minor numbers from actual public API changes and published metadata, not just working-tree version strings.
+Inventory changed packages and bump only those whose shipped contents changed. Candidate versions include core/luax 0.2.2, dom 0.3.1, cli 0.4.1, create 0.5.2, ink 0.5.1 and ink-lab 0.3.1. The remaining exported packages also receive patches because their shipped locks and dependency metadata changed. The browser-client canonical source and its generated DOM copy both changed. Account for the npm adapter packages as a separate release surface. Choose patch/minor numbers from actual public API changes and published metadata, not just working-tree version strings.
 
 Do not rebuild changed bytes under an already published immutable version. The release workflow deliberately skips existing-version conflicts; failing to bump a changed member could silently leave its fix unpublished.
 
@@ -25,7 +25,7 @@ Update dependency constraints and locks through Moonstone commands. Build/sync t
 ## Required gates
 
 - Core/compiler/DOM/Ink/generator/CLI suites, client tests, adapter tests and DOM-client drift checks.
-- Install Ink Lab's pinned Bun dependencies, rebuild JS/CSS, assert no generated-asset drift, and run ANSI tests. CI/release currently does not rebuild this newly introduced Bun bundle.
+- Install Ink Lab's pinned Bun dependencies, rebuild JS/CSS, assert no generated-asset drift, and run ANSI tests. CI and release now rebuild this pinned Bun bundle and check generated-asset drift. CI also runs native ANSI parity.
 - Build all source/native registry artifacts and confirm xterm assets/licenses are self-contained. Exercise native targets supported by CI; local macOS results do not establish Linux success.
 - Generate a fresh SSR + Tailwind project from candidate packaged `hydronium/create`. Use registry/artifact dependencies, not sibling paths or developer caches. If the Vite adapter is vendored, prove that it came from the shipped artifact, not a manual local repair.
 - Run with Bun. Confirm correct server/CSS URLs, clean hydration, real browser interactivity, and that one dev command supervises both Vite and Meteorite.
@@ -44,7 +44,7 @@ That workflow does not publish `@hydronium-js/dom-client` or `@hydronium-js/vite
 
 The workflow comments also document a visibility follow-up for first-time registry packages and its existing-version skip behavior. Verify actual release outcomes rather than assuming a successful upload makes every package usable anonymously.
 
-All fixes are currently working-tree changes. Review/commit them, run CI on the final commit, check the exact versioned artifacts, then publish the approved tag. This draft authorizes no publish, tag push or registry mutation.
+The fixes and versioned closure are committed for release. The user explicitly authorized bumps, packaged consumer/HMR gates, adapter verification and publication. Publish the tag only after final-commit CI passes, then verify public registry and npm resolution.
 
 ## Assessment
 

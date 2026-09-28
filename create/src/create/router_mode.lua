@@ -56,7 +56,7 @@ local ROUTER_DEP_BLOCK = [=[
 
 [[dependencies]]
 name = "hydronium/router"
-constraint = "^0.2.0"
+constraint = "^0.2.1"
 role = "runtime"]=]
 
 --- Mutates `files` in place (and returns it) to replace `islands`'s single

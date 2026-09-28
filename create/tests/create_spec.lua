@@ -243,7 +243,7 @@ test("scaffold dry-run produces a portable Ink terminal project", function()
   assert(manifest:find('lab = "moon exec --dev -- hydronium-lab dev"', 1, true), "Ink must expose a standalone Lab script")
   assert(manifest:find('name = "hydronium/lab-cli"', 1, true), "Ink Lab must include the standalone Lab CLI tool")
   assert(manifest:find('name = "hydronium/ink-lab"', 1, true), "Ink Lab must include its renderer adapter")
-  assert(manifest:find('name = "hydronium/lab"\nconstraint = "^0.2.0"\nrole = "dev"', 1, true), "Ink Lab renderer must stay dev-only")
+  assert(manifest:find('name = "hydronium/lab"\nconstraint = "^0.3.1"\nrole = "dev"', 1, true), "Ink Lab renderer must stay dev-only")
   local story = require("create.templates.ink").files({ name = "test-ink-app" })["src/App.stories.luax"]
   assert(story:find("lab.collection", 1, true), "Ink must generate a convention Lab story")
 end)
@@ -1786,6 +1786,11 @@ test("every template's generated content actually parses/compiles (content-valid
     manifest_file:close()
     assert(not manifest:find("symlink_to", 1, true), "[" .. tmpl.id .. "] manifest must not use source symlinks")
     assert(manifest:find('name = "hydronium/core"', 1, true), "[" .. tmpl.id .. "] missing hydronium core dependency")
+    for package_name, constraint in manifest:gmatch('name = "hydronium/([^"\n]+)"\nconstraint = "([^"\n]+)"') do
+      local member = package_name == "ballad" and "build" or package_name
+      local version = sibling_package_version("../" .. member .. "/moonstone.toml")
+      assert(constraint == "^" .. version, "[" .. tmpl.id .. "] stale release floor for hydronium/" .. package_name .. ": " .. constraint .. " vs " .. version)
+    end
     if tmpl.id == "ssr" or tmpl.id == "islands" then
       assert(manifest:find('name = "hydronium/luax"', 1, true), "[" .. tmpl.id .. "] missing hydronium/luax dependency")
       assert(manifest:find('name = "hydronium/dom"', 1, true), "[" .. tmpl.id .. "] missing hydronium/dom dependency")

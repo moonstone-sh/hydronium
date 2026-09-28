@@ -8,7 +8,7 @@ const modules = ['core','ink','luax','lab','ink-lab','oklab-utils','dom','router
 const luaPath = modules.flatMap(name => [`${root}${name}/src/?.lua`, `${root}${name}/src/?/init.lua`]).concat([`${root}.moonstone/env/share/lua/5.1/?.lua`, `${root}.moonstone/env/share/lua/5.1/?/init.lua`, ';;']).join(';');
 const {Terminal} = createRequire(import.meta.url)('@xterm/headless');
 const output = process.argv[2] ? await readFile(process.argv[2], 'utf8') : (() => {
-  const result = spawnSync(`${root}.moonstone/env/bin/lua`, ['tests/xterm_fixture.lua'], {cwd:root, encoding:'utf8', env:{...process.env,LUA_PATH:luaPath,DYLD_LIBRARY_PATH:`${root}ink/native/dist/aarch64-macos:${process.env.DYLD_LIBRARY_PATH || ''}`}});
+  const result = spawnSync(`${root}.moonstone/env/bin/lua`, ['tests/xterm_fixture.lua'], {cwd:root, encoding:'utf8', env:{...process.env,LUA_PATH:luaPath}});
   if (result.status !== 0) throw new Error(result.stderr);
   return result.stdout;
 })();
