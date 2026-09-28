@@ -23,6 +23,8 @@ tool_project="$scratch/tool-project"
 template=${HYDRONIUM_CONSUMER_TEMPLATE:-islands}
 app="$scratch/$template-app"
 server_pid=""
+port=${HYDRONIUM_CONSUMER_PORT:-8080}
+url="http://127.0.0.1:$port"
 
 cleanup() {
   if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
@@ -37,7 +39,7 @@ cleanup() {
     kill -9 "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
   fi
-  rm -rf "$scratch"
+  if [[ "${HYDRONIUM_CONSUMER_KEEP:-0}" == 1 ]]; then echo "consumer scratch: $scratch"; else rm -rf "$scratch"; fi
 }
 trap cleanup EXIT
 
@@ -160,6 +162,7 @@ mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$tool_project"
 
 (
   cd "$app"
+  if [[ "$port" != 8080 ]]; then bun -e 'const fs=require("node:fs");const p="src/main.lua";fs.writeFileSync(p,fs.readFileSync(p,"utf8").replace("port = 8080", "port = " + process.argv[1]));' "$port"; fi
   prefer_local_registry
   pin_hydronium_deps_to_local_registry
   "$moon" sync
@@ -212,13 +215,18 @@ server_pid=$!
 # document response.  Browser assertions below then prove the document and
 # its client island actually execute without invisible failures.
 for _ in $(seq 1 100); do
-  if curl --fail --silent --show-error http://127.0.0.1:8080/ >"$scratch/index.html"; then break; fi
+  if curl --fail-with-body --silent "$url/" >"$scratch/index.html"; then break; fi
   sleep 0.1
 done
-[[ -s "$scratch/index.html" ]] || { cat "$scratch/server.log" >&2 || true; fail "built server never returned /"; }
+if ! grep -q "consumer-$template" "$scratch/index.html"; then
+  cat "$scratch/index.html" >&2 || true
+  cat "$scratch/server.log" >&2 || true
+  cat "$app/.meteorite/dev/server.log" >&2 2>/dev/null || true
+  fail "consumer server never returned the expected document"
+fi
 grep -q "consumer-$template" "$scratch/index.html" || fail "SSR response lacks scaffolded application markup"
 
-HYDRONIUM_CONSUMER_APP="$app" HYDRONIUM_CONSUMER_URL=http://127.0.0.1:8080 HYDRONIUM_CONSUMER_LOG="$scratch/server.log" \
+HYDRONIUM_CONSUMER_APP="$app" HYDRONIUM_CONSUMER_URL="$url" HYDRONIUM_CONSUMER_LOG="$scratch/server.log" \
   bash -lc "$browser_gate"
 
 echo "consumer gate passed: exported registry -> scaffold -> locked sync -> build -> browser"
