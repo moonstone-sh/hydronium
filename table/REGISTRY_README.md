@@ -3,6 +3,41 @@
 Headless, reactive row modeling for Hydronium. It owns no markup, styles, or
 DOM event policy, so the same table can render in DOM or Ink.
 
+## Install and sort rows
+
+In an empty directory:
+
+```sh
+moon init . --name demo --interpreter luajit@2.1
+moon add hydronium/table
+```
+
+Save demo.lua:
+
+```lua
+local tables = require("hydronium_table")
+local users = tables.createTable({
+  rows = { { id = "b", name = "Grace" }, { id = "a", name = "Ada" } },
+  row_id = function(user) return user.id end,
+  columns = { { id = "name", accessor = function(user) return user.name end } },
+})
+users:toggleSort("name")
+for _, row in ipairs(users:getPageRows()) do print(row.original.name) end
+```
+
+```sh
+moon exec -- luajit demo.lua
+```
+
+Expected output: Ada, then Grace on separate lines. The table transforms row
+models without creating UI. Render row.cells in DOM or Ink and connect your
+sort/filter buttons to the table's methods.
+
+## Bind live rows
+
+The following configuration fragment assumes users_signal is a reactive getter
+provided by your app:
+
 ```lua
 local table = require("hydronium_table")
 local users = table.createTable({

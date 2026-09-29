@@ -9,6 +9,73 @@ Ink, memory-history tests, and Meteorite SSR.
 moon add hydronium/router
 ```
 
+## Run routes, navigation and a loader
+
+In an empty directory:
+
+```sh
+moon init . --name demo --interpreter luajit@2.1
+moon add hydronium/router hydronium/dom
+```
+
+Save demo.lua:
+
+```lua
+local H = require("hydronium")
+local r = require("hydronium_router")
+local server = require("hydronium_dom.server")
+
+local views = {
+  Layout = function() return function(props)
+    return H.h("main", nil, props.outlet)
+  end end,
+  Home = function() return H.h("h1", nil, "Home") end,
+  User = function()
+    local params = r.useParams()
+    local data = r.useRouteData()
+    return function()
+      return H.h("h1", nil, data:value().name .. " (" .. params.id .. ")")
+    end
+  end,
+}
+local site = r.createSite({ root = r.node({
+  id = "root", path = "/", screen = "Layout",
+  children = {
+    { id = "home", path = "", screen = "Home" },
+    { id = "user", path = "users/:id", screen = "User", load = "user" },
+  },
+}) })
+local router = site:createRouter({
+  history = r.createMemoryHistory({ initial = "/" }),
+  resolve = function(id) return views[id] end,
+  resolve_loader = function() return function(ctx)
+    return { name = "User " .. ctx.params.id }
+  end end,
+})
+local function html()
+  return server.renderToString(H.h(router.Provider, nil, H.h(r.Outlet)))
+end
+print((html()))
+router.navigate(router.href("user", { id = "ada" }))
+print((html()))
+```
+
+```sh
+moon exec -- luajit demo.lua
+```
+
+Expected output:
+
+```html
+<main><h1>Home</h1></main>
+<main><h1>User ada (ada)</h1></main>
+```
+
+This uses memory history and HTML rendering, so it needs no HTTP server or
+browser. The resolver maps logical screen IDs to local components; the loader
+runs once per matched route. For a browser app, scaffold an SSR project with
+hydronium/create; its bootstrap supplies browser history, HTTP and hydration.
+
 ## Define a site
 
 ```lua
@@ -100,6 +167,7 @@ function.
 
 ```lua
 local H = require("hydronium")
+local r = require("hydronium_router")
 
 return function()
   -- Hooks belong to component setup, not the returned render function.
@@ -139,6 +207,8 @@ across those param changes.
 
 ## Create a router
 
+This fragment assumes site, H, r and registry_client are defined by your app.
+
 ```lua
 local router = site:createRouter({
   history = r.createBrowserHistory(),
@@ -172,6 +242,9 @@ A route resource exposes `status()`, `pending()`, `ready()`, `error()`, and
 `value()`.
 
 ## Mount on Meteorite
+
+The following is a fragment for an existing Meteorite app. app, site and
+meteorite come from that application; it must provide both handler modules.
 
 The adapter emits explicit GET and mutation routes. API routes and assets stay
 ordinary Meteorite declarations.
@@ -212,3 +285,73 @@ and the hooks. The package also exports:
 - Result constructors: `redirect` and `routeError`.
 
 Snake-case aliases remain for Lua codebases that use that convention.
+
+## Development API: named outlets (unreleased)
+
+This section requires a development build containing named-slot support.
+It is not provided by the latest published router package.
+
+Try this with demo.lua above. Add this entry to views before creating site:
+
+```lua
+views.Sidebar = function()
+  local data = r.useRouteData()
+  return function()
+    return H.h("aside", nil, "Sidebar: " .. data:value().name)
+  end
+end
+```
+
+Replace views.Layout with this setup/render component:
+
+```lua
+views.Layout = function()
+  return function(props)
+    return H.h("main", nil, props.outlet, props.outlets.sidebar)
+  end
+end
+```
+
+Add slots = { sidebar = "Sidebar" } to the user route declaration and run
+moon exec -- luajit demo.lua again. The second line becomes:
+
+```html
+<main><h1>User ada (ada)</h1><aside>Sidebar: User ada</aside></main>
+```
+
+The sidebar reads the same loader resource; rendering it does not run a
+second loader. The fragments above extend the complete example and use its
+existing H, r, views and site setup.
+
+A route can also declare target-specific screens for the same matched URL:
+
+```lua
+local r = require("hydronium_router")
+
+r.node({
+  id = "project", path = "projects/:id", screen = "views.Project",
+  slots = {
+    sidebar = "views.ProjectSidebar",
+    toolbar = { dom = "views.ProjectToolbar", ink = "views.TerminalToolbar" },
+  },
+  load = "loaders.Project",
+})
+```
+
+Layouts render `<Outlet />`, `<Outlet name="sidebar" />` and
+`<Outlet name="toolbar" />`, binding `local Outlet = r.Outlet` in the LUAX module.
+Layouts receiving props can instead render `props.outlet` and
+`props.outlets.sidebar`. Each named outlet finds the next declaration of that
+name down the matched route chain. Inside a named screen, `props.outlet`
+continues that same slot, allowing nested sidebar or toolbar layouts.
+
+Slots share route params, loader resources, pending/error boundaries and route
+reuse policies. A loader executes once per route, regardless of outlet count.
+They do not have independent URLs or history. A leaf may declare slots without
+a default screen. Missing slots render an empty placeholder; an Outlet's
+`fallback` prop can supply a component. `name="default"` selects the ordinary
+outlet; `default` is reserved in the slots declaration. Slot names must begin
+with a letter or underscore and contain letters, digits, underscores or hyphens.
+
+Named screens and default screens have separate component identities. Hydrated
+loader data uses the existing route state format and is available to every slot.

@@ -11,6 +11,53 @@ moon add hydronium/dom
 It installs the `hydronium_dom` Lua namespace and resolves
 `hydronium/core` automatically.
 
+## Render HTML now
+
+In an empty directory:
+
+```sh
+moon init . --name demo --interpreter luajit@2.1
+moon add hydronium/dom
+```
+
+Save demo.lua:
+
+```lua
+local H = require("hydronium")
+local d = require("hydronium_dom").d
+local server = require("hydronium_dom.server")
+local function Greeting(props)
+  return d.h1(nil, "Hello, " .. props.name)
+end
+print((server.renderToString(H.h(Greeting, { name = "Ada" }))))
+```
+
+```sh
+moon exec -- luajit demo.lua
+```
+
+Expected output: <h1>Hello, Ada</h1>. This is server-side rendering only; it does
+not launch a browser or attach event handlers.
+
+## Create a hydrated app with Bun
+
+Install the generator in a separate tooling project or your current one:
+
+```sh
+moon add --tool hydronium/create
+moon exec -- hydronium-create ./web-demo --template ssr --package-manager bun --tailwind
+cd web-demo
+moon sync
+bun install
+bun run dev
+```
+
+Open the URL printed by the dev command (normally http://localhost:8080/).
+The counter is interactive after hydration. Edit views/Counter.luax to test
+component HMR; edit styles to test CSS updates. The generated document is a
+reload boundary. Run bun run build to build the application's release output.
+This path requires Bun plus Meteorite's native build prerequisites.
+
 ## Build a DOM tree
 
 `require("hydronium_dom")` exposes `d`, whose descriptors are callable in
@@ -67,6 +114,10 @@ data, headers, request state, and the Meteorite context available through
 same inline handler.
 
 ## Browser mount and HMR
+
+The following snippets are embedding configuration fragments. They assume
+that your server exposes the listed source, manifest and bootstrap URLs. Use
+the generated app above for a complete asset and transport setup.
 
 `mount()` starts one browser Lua VM and preloads the application modules it
 needs. Keep the server-rendered document as a stable bootstrap boundary, then
@@ -151,4 +202,11 @@ it would otherwise leak hundreds of names into every LuaLS workspace. It does
 not create runtime globals. `table` and `select` remain lexical-only as
 `d.table` and `d.select`, preserving Lua's standard globals.
 
-Host embeddings and Ballad provider/effect tracking are documented in [Host capabilities](../docs/HOST_CAPABILITIES.md).
+## Development API: embedding contract (unreleased)
+
+Browser bootstrap installs `dom@1` in `hydronium.runtime.hosts` before
+loading the application. Custom embeddings may install the same capability or
+provide `createDomHost(bridge)` explicitly. Legacy `__dom_*` globals remain
+supported when the capability is absent. The declarative DOM contract records
+methods, effects and cleanup for build tools. This capability API is unreleased;
+see [Host capabilities](../docs/HOST_CAPABILITIES.md).

@@ -3,8 +3,9 @@
 The Hydronium developer CLI.
 
 ```
-hydronium dev [--verbose] [--show-ips] [--fullscreen]
-              [--meteorite-args "<flags>"]
+hydronium dev [--verbose] [--show-ips] [--show-hmr] [--fullscreen]
+              [--meteorite-args "<flags>"] [--vite]
+              [--vite-dir <directory>] [--vite-args "<flags>"]
 ```
 
 `dev` spawns `meteorite dev` as a child process, tails the structured
@@ -20,12 +21,42 @@ renders a live status view with [Hydronium Ink](https://moonstone.sh/packages/hy
     reload ok
 ```
 
+## Start from a complete app
+
+For a new project, the generator installs the CLI with the correct tool role
+and writes its Meteorite/Vite flags for you. With Moonstone and Bun installed:
+
+```sh
+moon init . --name dev-tools --interpreter luajit@2.1
+moon add --tool hydronium/create
+moon exec -- hydronium-create ./my-app --template ssr --package-manager bun
+cd my-app
+moon sync
+bun install
+bun run dev
+```
+
+Expected result: Meteorite and Vite start together, a local application URL is
+printed, and the terminal shows request activity. Open that URL, click the
+counter and edit its LUAX source to exercise state-preserving HMR. Press f to
+inspect requests and q or Ctrl-C to stop the dev process.
+
+In an existing Hydronium/Meteorite app, install the CLI with
+moon add --tool hydronium/cli. Its dev command assumes that the app's graph,
+Meteorite flags and (when using --vite) Vite config are already present; adding
+the CLI alone does not scaffold them. Prefer the generated bun run dev script
+because it supplies those project-specific flags.
+
 ## Flags
 
 | Flag | Effect |
 | :--- | :--- |
 | `--verbose` | Display density only — shows more rows in the collapsed events pane. Does not change what is captured or written to `.hydronium/dev.log`. |
 | `--show-ips` | Appends each request's remote address to its display line. Off by default and independent of `--verbose`; the address is already recorded in the durable log regardless. |
+| `--show-hmr` | Include internal Hydronium dev requests in the displayed request list; durable logging already includes them. |
+| `--vite` | Coordinate Vite and Meteorite in one development command. |
+| `--vite-dir <directory>` | Select the consuming project directory for Vite. |
+| `--vite-args "<flags>"` | Pass arguments to the local Vite runner. |
 | `--fullscreen` | Start in the fullscreen request-debug view below (`f` toggles it either way at runtime). |
 | `--meteorite-args "<flags>"` | Arguments for the spawned `meteorite dev`, e.g. `"--mode hybrid_dev --backend fast_http"`. Required in practice — `meteorite dev` has no defaults of its own. |
 
@@ -47,10 +78,6 @@ the 3-row display ring the status view shows:
  headers: not captured -- meteorite's dev-event stream carries no headers yet
  body: not captured -- meteorite's dev-event stream carries no bodies yet
 ```
-
-(This view is deliberately pure ASCII: the terminal host paints one grid
-cell per *byte* and positions each incremental-diff run by frame column, so
-a multi-byte character makes partial repaints land in the wrong column.)
 
 | Key | Effect |
 | :--- | :--- |

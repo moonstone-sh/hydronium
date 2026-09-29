@@ -39,3 +39,22 @@ executable use the tool role. Therefore Lab does not enter the application's
 production runtime closure merely because it is installed.
 
 Live controls, virtual playback and optional project-owned workbenches are documented in [Lab controls](../docs/LAB_CONTROLS.md).
+
+## Own the workbench
+
+After initialization, create an optional project entry:
+
+```sh
+moon exec --dev -- hydronium-lab customize
+```
+
+This writes `.lab/Workbench.luax` and preserves existing customization.
+Use `customize --copy-shell` instead to copy the default document and chrome
+markup too. Discovery recognizes the convention; `document` and
+`module_roots` in `hydronium.lab.lua` allow an explicit alternative.
+Runtime and renderer code remain library imports.
+
+Stories can provide their own DOM controls without replacing the shell.
+See [controls and playback](../docs/LAB_CONTROLS.md) for hooks, passive outlets,
+opt-in generated fields and virtual time. Customization and these APIs are
+unreleased development features.

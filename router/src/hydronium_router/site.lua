@@ -170,6 +170,7 @@ end
 ---@field id string
 ---@field path string|nil
 ---@field screen string|nil
+---@field slots table<string, string|table>|nil Named logical screens sharing this node.
 ---@field load table|nil
 ---@field actions table|nil
 ---@field pending string|nil
@@ -188,6 +189,15 @@ function M.node(spec)
     fail("node " .. string.format("%q", spec.id) .. " path must be a string or nil", 2)
   end
   if spec.screen ~= nil then validate_logical_ref(spec.screen, "node " .. string.format("%q", spec.id) .. " screen") end
+  if spec.slots ~= nil then
+    if type(spec.slots) ~= "table" then fail("node slots must be a name-keyed table", 2) end
+    for name, declaration in pairs(spec.slots) do
+      if type(name) ~= "string" or not name:match("^[%a_][%w_%-]*$") or name == "default" then
+        fail("slot names must be portable identifiers; default is reserved for screen", 2)
+      end
+      validate_logical_ref(declaration, "node " .. spec.id .. " slot " .. name)
+    end
+  end
   if spec.pending ~= nil then validate_logical_ref(spec.pending, "node " .. string.format("%q", spec.id) .. " pending") end
   if spec.error ~= nil then validate_logical_ref(spec.error, "node " .. string.format("%q", spec.id) .. " error") end
   if spec.reuse ~= nil and spec.reuse ~= "keep" then
@@ -334,8 +344,8 @@ local function compile_site(root)
     chain[#chain + 1] = record
 
     if #node.children == 0 then
-      if record.screen == nil then
-        fail("leaf node " .. string.format("%q", node.id) .. " must declare a screen", 4)
+      if record.screen == nil and next(record.slots or {}) == nil then
+        fail("leaf node " .. string.format("%q", node.id) .. " must declare a screen or named slots", 4)
       end
       if record.prerender then
         if #parsed.params > 0 or parsed.has_wildcard then
@@ -463,6 +473,13 @@ function Site:routes(resolve, target)
     local resolved = {}
     for key, value in pairs(node) do resolved[key] = value end
     resolved.component = resolve_optional(resolve, node.screen, "screen", node, target)
+    resolved.slot_components = {}
+    local names = {}
+    for name in pairs(node.slots or {}) do names[#names + 1] = name end
+    table.sort(names)
+    for _, name in ipairs(names) do
+      resolved.slot_components[name] = resolve_optional(resolve, node.slots[name], "slot " .. name, node, target)
+    end
     resolved.pending_component = resolve_optional(resolve, node.pending, "pending screen", node, target)
     resolved.error_component = resolve_optional(resolve, node.error, "error screen", node, target)
     resolved_nodes[id] = resolved

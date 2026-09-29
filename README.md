@@ -38,7 +38,7 @@ project, use the generator while working in this checkout:
 ```sh
 cd create
 moon sync
-moon run dev ssr my-app
+moon run dev ./my-app --template ssr
 ```
 
 ## Packages
@@ -49,10 +49,10 @@ moon run dev ssr my-app
 | [`dom`](dom/) | `hydronium/dom` | Browser DOM host, SSR renderer, and Meteorite integration. |
 | [`luax`](luax/) | `hydronium/luax` | LUAX compiler, formatter, Tree-sitter grammar, and editor integrations. |
 | [`ink`](ink/) | `hydronium/ink` | Terminal host with `Box`, `Text`, and `Newline` intrinsics. |
-| [`lab`](lab/) | `hydronium/lab` | Portable component stories and explicit registries. |
+| [`lab`](lab/) | `hydronium/lab` | Component stories, reactive args, control outlets and shared Workbench components. |
 | [`lab-cli`](lab-cli/) | `hydronium/lab-cli` | Optional standalone Lab setup, discovery, and launch tool. |
-| [`ink-lab`](ink-lab/) | `hydronium/ink-lab` | Resizable browser workbench for canonical Ink cell frames. |
-| [`router`](router/) | `hydronium/router` | Reactive Router/Outlet/hooks, typed hrefs, route matching, and memory/browser histories. |
+| [`ink-lab`](ink-lab/) | `hydronium/ink-lab` | xterm.js Ink previews with virtual playback and customizable workbenches. |
+| [`router`](router/) | `hydronium/router` | Nested and named outlets, shared route data, typed hrefs, and memory/browser histories. |
 | [`query`](query/) | `hydronium/query` | Optional browser-side cache for shared server data. |
 | [`virtual`](virtual/) | `hydronium/virtual` | Host-neutral virtual-list range and measurement state. |
 | [`table`](table/) | `hydronium/table` | Headless reactive table state: rows, sorting, filtering, pagination, and selection. |
@@ -94,12 +94,18 @@ local site = r.createSite({
         id = "user",
         path = "users/:id",
         screen = "views.User",
+        slots = { sidebar = "views.UserSidebar" },
         load = "loaders.user",
       }),
     },
   }),
 })
 ```
+
+Layouts render the default screen with `<Outlet />` or `props.outlet`, and
+named screens with `<Outlet name="sidebar" />` or `props.outlets.sidebar`.
+Slots follow the same matched route chain and share params, loader data and
+route lifecycle. See the [Router package guide](router/REGISTRY_README.md).
 
 Mutations use host-neutral action descriptors and scoped form state:
 
@@ -209,6 +215,33 @@ runtime globals or LUAX lowering. Use `<d.table>` and `<d.select>` even when
 it is enabled because those names would collide with Lua's `table` and
 `select` globals.
 
+## Component Lab
+
+Stories are ordinary Lua or LUAX modules. Lab supplies reactive story args and
+playback state; users own their control widgets. The default workbench generates
+fields from a schema, while custom DOM controls can occupy a story's
+`controls_view`. Ink previews support pause, frame stepping and forward seek.
+
+```sh
+moon add --tool hydronium/lab-cli
+moon exec -- hydronium-lab init
+moon run lab
+```
+
+For a project-owned shell, run
+`moon exec --dev -- hydronium-lab customize`; add `--copy-shell` to copy
+its default markup. See [Lab controls and playback](docs/LAB_CONTROLS.md) for
+hooks, binding, components and customization boundaries.
+
+## Host embeddings
+
+Versioned host bindings live in the VM-local `hydronium.runtime.hosts`
+registry. Browser mounting installs `dom@1` before application evaluation;
+custom embeddings can install a capability or inject a DOM bridge explicitly.
+[Host capabilities](docs/HOST_CAPABILITIES.md) describes lifecycle, compatibility
+and Ballad's conservative provider/effect inventory. Capability elimination is
+not enabled.
+
 ## Development
 
 The workspace uses Moonstone and LuaJIT. From the repository root:
@@ -225,6 +258,10 @@ runs the same resolution, tests, and export path on every push and pull
 request.
 
 ## Status
+
+This checkout documents the development API. Named router slots, host
+capabilities, and Lab controls/playback are unreleased changes; installing the
+latest published packages does not yet provide these APIs.
 
 Hydronium is early software. The package layout and APIs are being proven by
 the examples in this repository, especially Meteorite SSR and Ink. Expect

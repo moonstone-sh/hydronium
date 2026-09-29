@@ -497,6 +497,7 @@ local function main()
       "tests/router/history_hash_spec.lua",
       "tests/router/flat_routes_spec.lua",
       "tests/router/router_spec.lua",
+      "tests/router/named_slots_spec.lua",
       "tests/router/http_spec.lua",
       "tests/router/site_spec.lua",
       "tests/router/topology_spec.lua",
