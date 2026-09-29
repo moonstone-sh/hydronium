@@ -667,6 +667,12 @@ function Reconciler:reconcileChildren(parentHostNode, oldChildren, newChildren, 
   local oldList, oldLen = getChildrenList({ children = oldChildren })
   local newList, newLen = getChildrenList({ children = newChildren })
 
+  -- Preserve the physical position of single-child provider fragments even
+  -- when their child key changes (pending, error and screen transitions).
+  if oldLen == 1 and newLen == 1 then
+    return { self:reconcile(parentHostNode, oldList[1], newList[1], parentComponent) }
+  end
+
   -- Amendment 4: Duplicate key detection and graceful fallback
   local newKeyCounts = {}
   for i = 1, newLen do
