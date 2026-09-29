@@ -18,7 +18,13 @@ test("published islands scaffold renders and hydrates without browser failures",
     if (message.type() === "error") consoleErrors.push(message.text());
   });
   page.on("pageerror", (error) => pageErrors.push(String(error)));
-  page.on("requestfailed", (request) => requestFailures.push(`${request.url()}: ${request.failure()?.errorText}`));
+  page.on("requestfailed", (request) => {
+    const failure = request.failure()?.errorText;
+    // Development watch requests are cancellable long polls, not assets.
+    // Keep every real watch failure and every asset/module failure visible.
+    if (new URL(request.url()).pathname === "/__hydronium/watch" && failure === "net::ERR_ABORTED") return;
+    requestFailures.push(`${request.url()}: ${failure}`);
+  });
 
   try {
     // The scaffold intentionally opens a long-lived SSE watch connection for

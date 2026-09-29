@@ -139,8 +139,6 @@ jobs:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
           HYDRONIUM_BROWSER_GATE: node --test js/tests/consumer_scaffold.browser.test.mjs
         run: bash tests/e2e/consumer_scaffold.sh
-      - name: Lab controls and playback browser gate
-        run: node --test js/tests/lab_controls.browser.test.mjs
       - name: Packaged SSR + Tailwind hydration and HMR gate
         env:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
@@ -221,6 +219,7 @@ jobs:
           node --test js/tests/overlay.browser.test.mjs
           node --test js/tests/virtual.browser.test.mjs
           node --test js/tests/host_capabilities.browser.test.mjs
+          node --test js/tests/lab_controls.browser.test.mjs
 
       - name: Tailwind + build-manifest gate
         working-directory: js/examples/islands-tailwind
