@@ -738,6 +738,20 @@ function Reconciler:reconcileChildren(parentHostNode, oldChildren, newChildren, 
     if newChild._effectiveKey ~= nil then
       matchedOld = oldKeyMap[newChild._effectiveKey]
       if matchedOld then
+        oldKeyMap[newChild._effectiveKey] = nil
+      end
+    else
+      while unkeyedIdx <= #oldUnkeyed do
+        local candidate = oldUnkeyed[unkeyedIdx]
+        unkeyedIdx = unkeyedIdx + 1
+        if candidate then
+          matchedOld = candidate
+          break
+        end
+      end
+    end
+
+    if matchedOld then
       local reconciled = self:reconcile(parentHostNode, matchedOld, newChild, parentComponent)
       table.insert(reconciledList, reconciled)
     else
