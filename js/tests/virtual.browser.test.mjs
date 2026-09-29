@@ -92,8 +92,13 @@ test("virtual bridge observes real DOM geometry, scrolls on its selected axis, a
   assert.equal(horizontal.scrollLeft, 60);
   assert.equal(horizontal.scrollTop, 80);
 
-  const beforeCleanup = await page.evaluate(() => window.__events.offset.length);
-  await page.evaluate(() => { window.__stopContainer(); window.__stopItem(); document.querySelector("#list").scrollTop = 20; });
+  const beforeCleanup = await page.evaluate(() => {
+    window.__stopContainer();
+    window.__stopItem();
+    const count = window.__events.offset.length;
+    document.querySelector("#list").scrollTop = 20;
+    return count;
+  });
   await page.waitForTimeout(50);
   assert.equal(await page.evaluate(() => window.__events.offset.length), beforeCleanup, "a disposed observer must not receive later scrolls");
   assert.deepEqual(errors, [], "no browser exceptions while running the bridge");
