@@ -118,6 +118,16 @@ local function runtime_environment(config)
   return environment
 end
 
+local function watch_roots(config)
+  local roots, seen = {}, {}
+  for _, list in ipairs({ config.roots or { "src" }, module_roots(config) }) do
+    for _, root in ipairs(list) do
+      if not seen[root] then roots[#roots + 1], seen[root] = root, true end
+    end
+  end
+  return roots
+end
+
 --- @param input {config: table, paths: string[], state_dir: string, host: string, port: integer}
 function M.plan(input)
   local base_path = normalize_base_path(input.config.base_path)
@@ -143,7 +153,7 @@ lab.mount(app, {
 
 return app
 ]=], lua_quote(input.host), input.port, lua_quote(input.state_dir), lua_quote(input.config_path),
-    M.lua_array(input.config.roots or { "src" }), lua_quote(base_path), lua_quote(input.config_path))
+    M.lua_array(watch_roots(input.config)), lua_quote(base_path), lua_quote(input.config_path))
 
   return {
     files = { [graph_input] = main_lua },

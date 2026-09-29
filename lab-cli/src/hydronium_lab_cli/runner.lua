@@ -127,13 +127,25 @@ local function normalize_roots(roots)
   return normalized
 end
 
+local function project_workbench(config)
+  local file = io.open(".lab/Workbench.luax", "rb")
+  if file then
+    file:close()
+    config.document = config.document or "Workbench"
+    config.module_roots = config.module_roots or { "src" }
+    local found = false
+    for _, root in ipairs(config.module_roots) do if root == ".lab" then found = true end end
+    if not found then config.module_roots[#config.module_roots + 1] = ".lab" end
+  end
+  return config
+end
 function M.read_config(path)
   path = path or "hydronium.lab.lua"
   local file = io.open(path, "rb")
   if not file then
     local name = manifest_project_name()
-    return { roots = { "src" }, title = "Hydronium Lab", project_name = name, project_id = name,
-      host = "meteorite", base_path = "/__hydronium/lab" }
+    return project_workbench({ roots = { "src" }, title = "Hydronium Lab", project_name = name, project_id = name,
+      host = "meteorite", base_path = "/__hydronium/lab" })
   end
   file:close()
   local chunk, err = loadfile(path)
@@ -148,7 +160,7 @@ function M.read_config(path)
   config.project_id = config.project_id or config.project_name
   config.host = config.host or "meteorite"
   config.base_path = config.base_path or "/__hydronium/lab"
-  return config
+  return project_workbench(config)
 end
 
 local function default_fs()
@@ -215,6 +227,7 @@ local function config_source(config, paths)
     .. "  title = " .. lua_quote(config.title or "Hydronium Lab") .. ",\n"
     .. "  project_name = " .. lua_quote(config.project_name or "hydronium-lab") .. ",\n"
     .. "  project_id = " .. lua_quote(config.project_id or config.project_name or "hydronium-lab") .. ",\n"
+    .. (config.document and "  document = " .. lua_quote(config.document) .. ",\n" or "")
     .. "  base_path = " .. lua_quote(config.base_path or "/__hydronium/lab") .. ",\n"
     .. "  roots = { " .. table.concat(roots, ", ") .. " },\n"
     .. (config.module_roots ~= nil and "  module_roots = { " .. table.concat(module_roots, ", ") .. " },\n" or "")
@@ -331,6 +344,57 @@ function M.run(opts)
   if type(ok) == "number" then return ok == 0 and true or nil, "Lab host exited with status " .. tostring(ok) end
   if ok == true and (code == nil or code == 0) then return true end
   return nil, "Lab host exited with status " .. tostring(code or why)
+end
+
+local DEFAULT_WORKBENCH = [=[local H = require("hydronium")
+local Default = require("hydronium_ink_lab.components").Document
+local ui = require("hydronium_lab.controls")
+local ControlsOutlet, DefaultControls, Timeline = ui.ControlsOutlet, ui.DefaultControls, ui.Timeline
+
+-- DefaultControls opts into generated fields. Replace it with a
+-- ControlsOutlet containing your own components or ordinary bound inputs.
+-- <input data-lab-control="label" /> updates that story argument live.
+return function(props)
+  return <Default {...props} controls={<DefaultControls />} timeline={<Timeline />} />
+end
+]=]
+local function package_source(package_name, module_name)
+  local root = os.getenv(package_root_env(package_name))
+  local module = module_name:gsub("%.", "/") .. ".luax"
+  local candidates = root and { root .. "/src/" .. module, root .. "/lua/" .. module, root .. "/" .. module,
+    root .. "/share/lua/5.1/" .. module } or {}
+  for _, path in ipairs(candidates) do
+    local file = io.open(path, "rb")
+    if file then local source = file:read("*a"); file:close(); return source end
+  end
+  return nil, "Cannot locate " .. package_name .. " source; run hydronium-lab init first"
+end
+function M.customize(opts)
+  opts = opts or {}
+  local files = { [".lab/Workbench.luax"] = DEFAULT_WORKBENCH }
+  if opts.copy_shell then
+    local read = opts.read_source or package_source
+    local document, err = read("hydronium/ink-lab", "hydronium_ink_lab.dom")
+    if not document then return nil, err end
+    local chrome, chrome_err = read("hydronium/lab", "hydronium_lab.workbench")
+    if not chrome then return nil, chrome_err end
+    files[".lab/Workbench.luax"] = document:gsub('require%("hydronium_lab.workbench"%)', 'require("LabChrome")')
+      :gsub("return { Document = Document, Shell = Shell, InkControls = InkControls, InkPreferences = InkPreferences }", "return Document")
+    files[".lab/LabChrome.luax"] = chrome
+  end
+  if opts.dry_run then return { files = files } end
+  for path in pairs(files) do
+    local file = io.open(path, "rb")
+    if file then file:close(); return nil, "Refusing to overwrite " .. path end
+  end
+  local ok, err = mkdir_p(".lab")
+  if not ok then return nil, err end
+  for path, source in pairs(files) do
+    local file, open_err = io.open(path, "wb")
+    if not file then return nil, open_err end
+    file:write(source); file:close()
+  end
+  return { files = files }
 end
 
 M.command_with_environment = command_with_environment

@@ -42,6 +42,17 @@ app = c.create({
       end
       return 0
     end), { description = "Run the Lab workbench" }),
+    customize = c.node({
+      c.flag({ key = "copy_shell", aliases = { "--copy-shell" } }),
+      c.flag({ key = "dry_run", aliases = { "--dry-run" } }),
+      c.run(function(ctx)
+        if ctx.args.help then io.stdout:write(app:help() .. "\n"); return 0 end
+        local result, err = runner.customize({ copy_shell = ctx.args.copy_shell, dry_run = ctx.args.dry_run })
+        if not result then ctx:fail(err, 1); return end
+        io.stdout:write("Lab customization: .lab/Workbench.luax (run moon run lab after editing)\n")
+        return 0
+      end),
+    }, { description = "Create an optional editable Lab entry; --copy-shell copies default markup" }),
     init = c.node({
       c.flag({ key = "dry_run", aliases = { "--dry-run" } }),
       c.run(function(ctx)

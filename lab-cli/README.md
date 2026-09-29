@@ -37,3 +37,5 @@ The default setup keeps `hydronium/lab`, the renderer, and its host adapter in
 the development dependency graph. Only the launcher and the selected host
 executable use the tool role. Therefore Lab does not enter the application's
 production runtime closure merely because it is installed.
+
+Live controls, virtual playback and optional project-owned workbenches are documented in [Lab controls](../docs/LAB_CONTROLS.md).

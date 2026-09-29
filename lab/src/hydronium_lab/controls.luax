@@ -1,0 +1,44 @@
+-- User controls are ordinary DOM components bound to shared story args.
+local H = require("hydronium")
+local function content(props, fallback)
+  if props.children and props.children[1] ~= nil then return props.children end
+  return fallback
+end
+local function ControlsOutlet(props)
+  return <section class={props.class or "hydronium-lab__controls"} data-lab-controls data-lab-controls-story={props.story_id} hidden={props.story_id ~= nil} aria-label={props.label or "Story controls"}>{props.children}</section>
+end
+local function DefaultControls(props)
+  return <section class={props.class or "hydronium-lab__controls"} data-lab-controls data-lab-default-controls aria-label={props.label or "Story controls"}>{props.children}</section>
+end
+local function PlayPause(props)
+  return <button type="button" aria-label="Pause playback" {...props} data-lab-play>{content(props, <span data-lab-play-label>Pause</span>)}</button>
+end
+local function FrameStep(props)
+  return <button type="button" aria-label="Advance one frame" {...props} data-lab-step>{content(props, "Step")}</button>
+end
+local function Restart(props)
+  return <button type="button" aria-label="Restart story at time zero" {...props} data-lab-restart>{content(props, "Restart")}</button>
+end
+local function FrameInterval(props)
+  return <label class={props.class}>{props.label or "Frame interval (ms)"}<input type="number" min="0.01" step="any" value="16.6666666667" {...(props.input_props or {})} data-lab-frame-interval /></label>
+end
+local function TimeDisplay(props)
+  return <output aria-label="Story time" {...props} data-lab-time>0 ms · frame 0</output>
+end
+local function Timeline(props)
+  return <section class={props.class or "hydronium-lab__timeline"} data-lab-timeline aria-label="Playback">
+    <PlayPause /><Restart /><FrameStep /><FrameInterval /><TimeDisplay />
+  </section>
+end
+-- Compatibility with the earlier draft. Prefer ordinary inputs and hooks.
+local function Control(props)
+  return <input {...props} data-lab-control={props.name} aria-label={props.label or props.name} />
+end
+local function Controls(props)
+  if props.story_id then return <ControlsOutlet {...props} /> end
+  return <DefaultControls {...props} />
+end
+return { ControlsOutlet = ControlsOutlet, DefaultControls = DefaultControls,
+  PlayPause = PlayPause, FrameStep = FrameStep, Restart = Restart,
+  FrameInterval = FrameInterval, TimeDisplay = TimeDisplay, Timeline = Timeline,
+  Controls = Controls, Control = Control }

@@ -28,13 +28,25 @@ function Runtime:open(id, options)
   options = options or {}
   local story = self.registry.get(id)
   if not story then error("hydronium_ink_lab.runtime: unknown story '" .. tostring(id) .. "'", 2) end
-  if self.active then self.active:close() end
-  local args = lab.copy(story.args)
+  local defaults = lab.copy(story.args)
+  for name, control in pairs(story.controls) do if defaults[name] == nil and control.default ~= nil then defaults[name] = lab.copy(control.default) end end
+  local args = lab.copy(defaults)
   for key, value in pairs(options.args or {}) do args[key] = value end
   local size = story.sizes[1]
+  local nextState = lab.state.new(args, story.controls, defaults)
+  if options.playing ~= nil and type(options.playing) ~= "boolean" then error("hydronium_ink_lab: playing must be boolean", 2) end
+  if options.intervalMs ~= nil and (not lab.state.finite(options.intervalMs) or options.intervalMs <= 0) then error("hydronium_ink_lab: interval must be positive and finite", 2) end
+  if self.active then self.active:close() end
   self.output = {}
   self.story = story
-  self.active = session.create(story.render(args), {
+  self.state = nextState
+  self.nowMs, self.playing, self.frameIndex, self.intervalMs = 0, options.playing ~= false, 0, options.intervalMs or (1000 / 60)
+  self:_playback()
+  local function Preview()
+    return function() return story.render(self.state.args()) end
+  end
+  local element = require("hydronium").h(lab.state.Context.Provider, { value = self.state }, require("hydronium").h(Preview))
+  self.active = session.create(element, {
     inline = "auto",
     writeFn = function(bytes) self.output[#self.output + 1] = bytes end,
     columns = options.columns or size.columns,
@@ -53,11 +65,22 @@ function Runtime:open(id, options)
   -- both over rather than let ids accumulate across story switches within
   -- one long-lived Lab session.
   self.frame_stream = frame.new_stream()
+  self.active:step(0) -- Establish ticker epochs before the first inspected frame.
   return self:_emit(true)
 end
 
 --- Encodes the active session's current frame against `self.frame_stream`,
 --- forcing a full (self-contained) frame when `force_full` is set.
+function Runtime:_playback()
+  if self.state then self.state.setPlayback({ nowMs = self.nowMs, playing = self.playing, frame = self.frameIndex, intervalMs = self.intervalMs }) end
+end
+function Runtime:_advance(nowMs)
+  if not lab.state.finite(nowMs) or nowMs < self.nowMs then error("hydronium_ink_lab: time must be finite and monotonic", 2) end
+  self.nowMs = nowMs
+  self.frameIndex = self.frameIndex + 1
+  self:_playback()
+  self.active:step(nowMs)
+end
 function Runtime:_emit(force_full)
   local raw = snapshot.from_session(self.active)
   local encoded = frame.encode(self.frame_stream, raw, force_full)
@@ -66,6 +89,7 @@ function Runtime:_emit(force_full)
   local host = self.active._host
   encoded.terminal = { columns = host._cols, rows = host._rows, inline = host._inline, scrollable = raw.height > math.max(host._rows - 2, 1) }
   encoded.focus = host._scrollFocus or false
+  encoded.lab = { args = lab.copy(self.state.args()), playback = lab.copy(self.state.playback()) }
   return encoded
 end
 
@@ -79,6 +103,11 @@ function Runtime:request(request)
   local op = request.op
   if op == "catalog" then return self:catalog() end
   if op == "open" then return self:open(request.story, request) end
+  if op == "restart" then
+    local active = self:_active()
+    return self:open(self.story.id, { args = self.state.args(), columns = active._host._cols, rows = active._host._rows,
+      color = active._host._colorCapability, colorProfile = active._host._colorProfile, playing = false, intervalMs = self.intervalMs })
+  end
   local active = self:_active()
   if op == "input" then
     active:dispatch({ type = "key", input = request.input or "", key = request.key or {} })
@@ -104,8 +133,32 @@ function Runtime:request(request)
     -- prop values (and anything reading `hooks.useColorProfile()`) can be
     -- compared side by side without reopening the story.
     active:setColorProfile(request.colorProfile)
+  elseif op == "args" then
+    self.state.setArgs(request.args)
+    active:_flush()
+  elseif op == "resetArgs" then
+    self.state.resetArgs()
+    active:_flush()
+  elseif op == "playback" then
+    if request.playing ~= nil and type(request.playing) ~= "boolean" then error("hydronium_ink_lab: playing must be boolean", 2) end
+    if request.intervalMs ~= nil and (not lab.state.finite(request.intervalMs) or request.intervalMs <= 0) then error("hydronium_ink_lab: interval must be positive and finite", 2) end
+    if request.playing ~= nil then
+      self.playing = request.playing
+    end
+    if request.intervalMs ~= nil then
+      self.intervalMs = request.intervalMs
+    end
+    self:_playback()
+    active:_flush()
+  elseif op == "seek" then
+    if not lab.state.finite(request.nowMs) or request.nowMs < self.nowMs then error("hydronium_ink_lab: seek only advances; restart to inspect earlier frames", 2) end
+    self.playing = false
+    self:_advance(request.nowMs)
+  elseif op == "advance" then
+    self.playing = false
+    self:_advance(self.nowMs + self.intervalMs)
   elseif op == "step" then
-    active:step(request.nowMs)
+    if self.playing then self:_advance(request.nowMs or (self.nowMs + self.intervalMs)) end
   elseif op == "interaction" then
     local found
     for _, interaction in ipairs(self.story.interactions) do
@@ -113,7 +166,7 @@ function Runtime:request(request)
     end
     if not found then error("hydronium_ink_lab.runtime: unknown interaction '" .. tostring(request.name) .. "'", 2) end
     found.run(active)
-    active:step(request.nowMs)
+    active:step(self.nowMs)
   elseif op == "snapshot" then
     active._host.invalidate()
     active._host.flush()

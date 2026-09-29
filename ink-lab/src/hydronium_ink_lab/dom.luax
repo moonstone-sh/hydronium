@@ -51,14 +51,18 @@ local function Shell(props)
   if transport.close_session then root_attributes["data-lab-close-session-url"] = transport.close_session end
   return <Workbench
     renderer="ink"
+    class={props.class}
     legacy_class_prefix="hydronium-ink-lab"
     root_attributes={root_attributes}
     project_id={props.project_id or "hydronium-lab"}
     project_name={props.project_name or "Hydronium Ink Lab"}
-    renderer_controls={<InkControls />}
+    renderer_controls={props.renderer_controls or <InkControls />}
+    controls={props.controls}
+    story_controls={props.story_controls}
+    timeline={props.timeline}
     metrics={<span class="hydronium-lab__dimensions hydronium-ink-lab__dimensions" data-lab-dimensions aria-live="polite" />}
-    preview={<div class="hydronium-lab__terminal hydronium-ink-lab__terminal" data-lab-terminal role="application" tabindex="0" aria-label="Interactive terminal preview" />}
-    preferences={<InkPreferences />}
+    preview={props.preview or <div class="hydronium-lab__terminal hydronium-ink-lab__terminal" data-lab-terminal role="application" tabindex="0" aria-label="Interactive terminal preview" />}
+    preferences={props.preferences or <InkPreferences />}
     shortcut_legend={<span>Drag canvas / touch · trackpad pan · <kbd>Space</kbd> drag preview · <kbd>C</kbd> center · <kbd>F</kbd> fullscreen · <kbd>Ctrl</kbd> <kbd>+</kbd>/<kbd>−</kbd> zoom</span>}
     canvas_label="Terminal canvas. Drag or touch pans; trackpad scroll pans; Space drag pans over the preview; C centers; F toggles fullscreen; Control plus or minus zooms."
   />
@@ -88,4 +92,4 @@ local function Document(props)
   )
 end
 
-return Document
+return { Document = Document, Shell = Shell, InkControls = InkControls, InkPreferences = InkPreferences }

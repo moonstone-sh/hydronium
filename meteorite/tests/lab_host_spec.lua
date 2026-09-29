@@ -21,6 +21,7 @@ assert(main:find("MOONSTONE_PACKAGE_ROOT_LUA_CJSON", 1, true))
 assert(main:find('require("hydronium_meteorite.lab")', 1, true))
 assert(main:find("lab.mount(app", 1, true))
 assert(main:find('base_path = "/tools/lab"', 1, true))
+assert(main:find('runtime = { "src", "features", "shared" }', 1, true), "watch story and custom module roots together")
 assert(not main:find("app:get", 1, true), "route ownership must remain in the adapter")
 
 package.loaded["hydronium_ink_lab"] = { service = {} }
