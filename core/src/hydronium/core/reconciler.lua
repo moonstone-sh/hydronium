@@ -738,33 +738,8 @@ function Reconciler:reconcileChildren(parentHostNode, oldChildren, newChildren, 
     if newChild._effectiveKey ~= nil then
       matchedOld = oldKeyMap[newChild._effectiveKey]
       if matchedOld then
-        oldKeyMap[newChild._effectiveKey] = nil
-      end
-    else
-      while unkeyedIdx <= #oldUnkeyed do
-        local candidate = oldUnkeyed[unkeyedIdx]
-        unkeyedIdx = unkeyedIdx + 1
-        if candidate then
-          matchedOld = candidate
-          break
-        end
-      end
-    end
-
-    if matchedOld then
-      if self:canReuse(matchedOld, newChild) then
-        local reconciled = self:reconcile(parentHostNode, matchedOld, newChild, parentComponent)
-        table.insert(reconciledList, reconciled)
-      else
-        self:unmount(matchedOld)
-        local oldHNode = self:getHostNode(matchedOld)
-        if oldHNode and parentHostNode then
-          self.host.removeChild(parentHostNode, oldHNode)
-        end
-
-        self:mount(newChild, parentHostNode, nil, parentComponent)
-        table.insert(reconciledList, newChild)
-      end
+      local reconciled = self:reconcile(parentHostNode, matchedOld, newChild, parentComponent)
+      table.insert(reconciledList, reconciled)
     else
       self:mount(newChild, parentHostNode, nil, parentComponent)
       table.insert(reconciledList, newChild)
@@ -773,10 +748,10 @@ function Reconciler:reconcileChildren(parentHostNode, oldChildren, newChildren, 
 
   -- Unmount remaining old keyed nodes
   for _, remainingOld in pairs(oldKeyMap) do
+    local oldHostNodes = self:getAllHostNodes(remainingOld)
     self:unmount(remainingOld)
-    local oldHNode = self:getHostNode(remainingOld)
-    if oldHNode and parentHostNode then
-      self.host.removeChild(parentHostNode, oldHNode)
+    if parentHostNode then
+      for _, node in ipairs(oldHostNodes) do self.host.removeChild(parentHostNode, node) end
     end
   end
 
@@ -785,13 +760,18 @@ function Reconciler:reconcileChildren(parentHostNode, oldChildren, newChildren, 
     local remainingOld = oldUnkeyed[unkeyedIdx]
     unkeyedIdx = unkeyedIdx + 1
     if remainingOld then
+      local oldHostNodes = self:getAllHostNodes(remainingOld)
       self:unmount(remainingOld)
-      local oldHNode = self:getHostNode(remainingOld)
-      if oldHNode and parentHostNode then
-        self.host.removeChild(parentHostNode, oldHNode)
+      if parentHostNode then
+        for _, node in ipairs(oldHostNodes) do self.host.removeChild(parentHostNode, node) end
       end
     end
   end
+
+  -- A single-child fragment may share its host parent with sibling outlets.
+  -- Reconciliation already inserts replacements at the old position; appending
+  -- here would move this fragment past those unrelated siblings.
+  if oldLen <= 1 and newLen <= 1 then return reconciledList end
 
   -- Ensure physical sibling order in parent host
   for i = 1, #reconciledList do
@@ -814,11 +794,12 @@ function Reconciler:reconcile(parentHostNode, oldVNode, newVNode, parentComponen
   end
 
   if not self:canReuse(oldVNode, newVNode) then
-    local beforeChild = self:getHostNode(oldVNode)
+    local oldHostNodes = self:getAllHostNodes(oldVNode)
+    local beforeChild = oldHostNodes[1]
     local newHostNode = self:mount(newVNode, parentHostNode, beforeChild, parentComponent)
     self:unmount(oldVNode)
-    if beforeChild and parentHostNode then
-      self.host.removeChild(parentHostNode, beforeChild)
+    if parentHostNode then
+      for _, node in ipairs(oldHostNodes) do self.host.removeChild(parentHostNode, node) end
     end
     return newVNode
   end

@@ -212,3 +212,36 @@ and the hooks. The package also exports:
 - Result constructors: `redirect` and `routeError`.
 
 Snake-case aliases remain for Lua codebases that use that convention.
+
+## Named outlets
+
+A route can provide multiple screens for the same matched URL:
+
+```lua
+R.node({
+  id = "project", path = "projects/:id", screen = "views.Project",
+  slots = {
+    sidebar = "views.ProjectSidebar",
+    toolbar = { dom = "views.ProjectToolbar", ink = "views.TerminalToolbar" },
+  },
+  load = "loaders.Project",
+})
+```
+
+Layouts render `<Outlet />`, `<Outlet name="sidebar" />` and
+`<Outlet name="toolbar" />`, using the exported router Outlet component.
+Layouts receiving props can instead render `props.outlet` and
+`props.outlets.sidebar`. Each named outlet finds the next declaration of that
+name down the matched route chain. Inside a named screen, `props.outlet`
+continues that same slot, allowing nested sidebar or toolbar layouts.
+
+Slots share route params, loader resources, pending/error boundaries and route
+reuse policies. A loader executes once per route, regardless of outlet count.
+They do not have independent URLs or history. A leaf may declare slots without
+a default screen. Missing slots render an empty placeholder; an Outlet's
+`fallback` prop can supply a component. `name="default"` selects the ordinary
+outlet; `default` is reserved in the slots declaration. Slot names must begin
+with a letter or underscore and contain letters, digits, underscores or hyphens.
+
+Named screens and default screens have separate component identities. Hydrated
+loader data uses the existing route state format and is available to every slot.
