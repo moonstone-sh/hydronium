@@ -1,5 +1,9 @@
 -- User controls are ordinary DOM components bound to shared story args.
 local H = require("hydronium")
+local function content(props, fallback)
+  if props.children and props.children[1] ~= nil then return props.children end
+  return fallback
+end
 local function ControlsOutlet(props)
   return <section class={props.class or "hydronium-lab__controls"} data-lab-controls data-lab-controls-story={props.story_id} hidden={props.story_id ~= nil} aria-label={props.label or "Story controls"}>{props.children}</section>
 end
@@ -7,13 +11,13 @@ local function DefaultControls(props)
   return <section class={props.class or "hydronium-lab__controls"} data-lab-controls data-lab-default-controls aria-label={props.label or "Story controls"}>{props.children}</section>
 end
 local function PlayPause(props)
-  return <button type="button" aria-label="Pause playback" {...props} data-lab-play>{props.children or <span data-lab-play-label>Pause</span>}</button>
+  return <button type="button" aria-label="Pause playback" {...props} data-lab-play>{content(props, <span data-lab-play-label>Pause</span>)}</button>
 end
 local function FrameStep(props)
-  return <button type="button" aria-label="Advance one frame" {...props} data-lab-step>{props.children or "Step"}</button>
+  return <button type="button" aria-label="Advance one frame" {...props} data-lab-step>{content(props, "Step")}</button>
 end
 local function Restart(props)
-  return <button type="button" aria-label="Restart story at time zero" {...props} data-lab-restart>{props.children or "Restart"}</button>
+  return <button type="button" aria-label="Restart story at time zero" {...props} data-lab-restart>{content(props, "Restart")}</button>
 end
 local function FrameInterval(props)
   return <label class={props.class}>{props.label or "Frame interval (ms)"}<input type="number" min="0.01" step="any" value="16.6666666667" {...(props.input_props or {})} data-lab-frame-interval /></label>
