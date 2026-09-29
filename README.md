@@ -38,7 +38,7 @@ project, use the generator while working in this checkout:
 ```sh
 cd create
 moon sync
-moon run dev ssr my-app
+moon run dev ./my-app --template ssr
 ```
 
 ## Packages
