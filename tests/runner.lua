@@ -411,6 +411,8 @@ local function main()
       -- Core framework specs
       "tests/signals/signals_spec.lua",
       "tests/core/element_spec.lua",
+      "tests/core/host_capabilities_spec.lua",
+      "tests/build/host_capabilities_spec.lua",
       "tests/core/dom_descriptors_spec.lua",
       "tests/core/component_spec.lua",
       "tests/core/reconciler_spec.lua",

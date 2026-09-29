@@ -20,6 +20,8 @@
     for (const [name, fn] of Object.entries(bridge)) {
       lua.global.set("__dom_" + name, fn);
     }
+    // Compatibility embedding only. mount() now uses installHostCapability
+    // to register dom@1 in hydronium.runtime.hosts, then injects that table.
     // then, in Lua: require("hydronium.host.dom").createDomHost()
     //   (no-arg form reads the __dom_* globals just set above)
 

@@ -36,5 +36,8 @@
   "hydronium_dom": "hydronium_dom/init.lua",
   "hydronium_dom.dom.init": "hydronium_dom/dom/init.lua",
   "hydronium_dom.host.dom": "hydronium_dom/host/dom.lua",
-  "hydronium_dom.style": "hydronium_dom/style.lua"
+  "hydronium_dom.style": "hydronium_dom/style.lua",
+  "hydronium.runtime.hosts": "hydronium/runtime/hosts.lua",
+  "hydronium_dom.host.contract": "hydronium_dom/host/contract.lua",
+  "hydronium_dom.host.legacy": "hydronium_dom/host/legacy.lua"
 }

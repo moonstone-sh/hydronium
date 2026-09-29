@@ -1,10 +1,13 @@
 -- Lua-facing DOM virtual host. `ref.current` is the real DOM handle supplied
 -- by the existing Hydronium DOM bridge; no DOM object is inspected in Lua.
+local hosts = require("hydronium.runtime.hosts")
+local legacy = require("hydronium_dom.host.legacy")
 local M = {}
 function M.createVirtualHost(ref, options)
   options = options or {}
   local axis = options.axis or "vertical"
-  local observe, observe_item, scroll = _G.__dom_observe_virtual_container, _G.__dom_observe_virtual_item, _G.__dom_scroll_virtual_container
+  local bridge = hosts.get("dom", 1) or legacy.read(_G)
+  local observe, observe_item, scroll = bridge.observe_virtual_container, bridge.observe_virtual_item, bridge.scroll_virtual_container
   if type(observe) ~= "function" or type(observe_item) ~= "function" or type(scroll) ~= "function" then error("hydronium.dom virtual bridge is not installed", 2) end
   local cleanup, viewport, offset = nil, nil, nil
   local function start()

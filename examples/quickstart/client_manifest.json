@@ -43,5 +43,8 @@
   "hydronium_router.router": "hydronium_router/router.lua",
   "hydronium_router.outlet": "hydronium_router/outlet.lua",
   "hydronium_router.hooks": "hydronium_router/hooks.lua",
-  "hydronium_router.site": "hydronium_router/site.lua"
+  "hydronium_router.site": "hydronium_router/site.lua",
+  "hydronium.runtime.hosts": "hydronium/runtime/hosts.lua",
+  "hydronium_dom.host.contract": "hydronium_dom/host/contract.lua",
+  "hydronium_dom.host.legacy": "hydronium_dom/host/legacy.lua"
 }

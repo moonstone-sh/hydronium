@@ -16,41 +16,18 @@
   shape, through the ordinary Reconciler/ComponentInstance/Family
   machinery every other Hydronium host already uses (TestHost included).
 
-  Host bridge contract -- fifteen functions, either passed explicitly as
-  a table to `createDomHost(bridge)` or (if omitted) read from plain Lua
-  globals named `__dom_<snake_case name below>` (e.g. `create_element`
-  reads global `__dom_create_element`) -- the way every real browser page
-  in this repo wires it today via wasmoon's `lua.global.set`. The
-  explicit-table form exists specifically so native tests can inject a
-  fake bridge instead of mutating real globals (see
-  `tests/host/dom_spec.lua`) -- both forms produce the exact same host;
-  the module doesn't know or care which one supplied it:
+  The embedding provides dom@1 through hydronium.runtime.hosts. mount()
+  registers it after module preloading and passes it explicitly to
+  createDomHost(bridge). The no-argument form resolves that registry first,
+  then supports old __dom_* globals through the compatibility adapter.
 
-    create_element(tag: string) -> element handle
-    create_text(text: string) -> text-node handle
-    set_text(handle, text: string)                 -- text nodes only
-    append_child(parent, child)
-    insert_before(parent, child, before)
-    remove_child(parent, child)
-    set_attr(handle, key: string, value)            -- non-event prop
-    remove_attr(handle, key: string)
-    set_listener(handle, event_name: string, fn)     -- REPLACES any
-      previously-registered listener for that event_name on that handle,
-      exactly like hydronium.interpreter.lua's hy_on_click extension --
-      this is what lets ordinary reconciliation (not RefreshRegistry, not
-      any HMR-specific code) replace a component's onClick behavior
-      across a refresh: see commitUpdate below.
-    remove_listener(handle, event_name: string)
-    first_child(node) -> node | nil
-    next_sibling(node) -> node | nil
-    is_element(node) -> boolean
-    is_text(node) -> boolean
-    tag_of(node) -> string | nil                     -- lowercase tag name
+  hydronium_dom.host.contract is the shared declaration of required and
+  optional functions, the JavaScript provider, effects and cleanup. Explicit
+  bridge injection continues to let native tests avoid global mutation.
 
-  One more, OPTIONAL (unlike the fifteen above, `createDomHost` does not
-  require this one to be present): `hydration_mismatch(reason: string)`
-  -- lets the host bridge surface a hydration mismatch to devtools/console
-  rather than only an in-VM Lua table nothing else reads.
+  set_listener replaces the prior listener for an element/event pair;
+  remove_listener removes it. Ordinary reconciliation therefore updates
+  event callbacks across HMR without special handling in this host.
 
   All handles are opaque to this module, exactly like the interpreter
   bridge's handles -- never inspected, only passed back to the bridge
@@ -75,33 +52,9 @@ local style_util = require("hydronium_dom.style")
 
 local M = {}
 
-local REQUIRED_BRIDGE_FNS = {
-  "create_element", "create_text", "set_text", "append_child", "insert_before",
-  "remove_child", "set_attr", "remove_attr", "set_listener", "remove_listener",
-  "first_child", "next_sibling", "is_element", "is_text", "tag_of",
-}
-
-local function default_bridge()
-  return {
-    create_element = _G.__dom_create_element,
-    create_text = _G.__dom_create_text,
-    set_text = _G.__dom_set_text,
-    append_child = _G.__dom_append_child,
-    insert_before = _G.__dom_insert_before,
-    remove_child = _G.__dom_remove_child,
-    set_attr = _G.__dom_set_attr,
-    remove_attr = _G.__dom_remove_attr,
-    set_listener = _G.__dom_set_listener,
-    remove_listener = _G.__dom_remove_listener,
-    first_child = _G.__dom_first_child,
-    next_sibling = _G.__dom_next_sibling,
-    is_element = _G.__dom_is_element,
-    is_text = _G.__dom_is_text,
-    tag_of = _G.__dom_tag_of,
-    hydration_mismatch = _G.__dom_hydration_mismatch,
-    is_comment = _G.__dom_is_comment,
-  }
-end
+local hosts = require("hydronium.runtime.hosts")
+local contract = require("hydronium_dom.host.contract")
+local legacy = require("hydronium_dom.host.legacy")
 
 -- Props this module never forwards to the DOM as an attribute or event
 -- listener -- structural VNode bookkeeping the reconciler itself
@@ -272,27 +225,11 @@ end
 --- there is no per-root state here beyond the bridge table itself,
 --- matching TestHost's own shape.
 --- @param bridge? table Explicit bridge table (see module doc comment).
----   Omit to read the `__dom_*` globals instead (the real-browser-page
----   default).
+---   Omit to resolve dom@1 from the VM-local registry, with legacy globals
+---   as a compatibility fallback.
 function M.createDomHost(bridge)
-  bridge = bridge or default_bridge()
-
-  local missing = {}
-  for _, name in ipairs(REQUIRED_BRIDGE_FNS) do
-    if type(bridge[name]) ~= "function" then
-      table.insert(missing, name)
-    end
-  end
-  if #missing > 0 then
-    error(
-      "hydronium.host.dom.createDomHost: missing required DOM bridge function(s): " ..
-      table.concat(missing, ", ") ..
-      " -- either pass a bridge table (createDomHost({ create_element = ..., ... })), " ..
-      "or set the corresponding __dom_<name> globals before calling createDomHost() with no argument. " ..
-      "See this module's own doc comment for the full contract.",
-      2
-    )
-  end
+  bridge = bridge or hosts.get("dom", 1) or legacy.read(_G)
+  contract.validate(bridge)
 
   local host = {}
 

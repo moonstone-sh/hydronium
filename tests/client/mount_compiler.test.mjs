@@ -38,6 +38,9 @@ test("boot installs the Lua 5.1-compatible compiler before compiling bundled sou
     assert.ok(compilerIndex >= 0, "the compiler is installed in the browser VM");
     assert.ok(chunkIndex > compilerIndex, "chunks compile only after the helper exists");
     assert.match(commands[chunkIndex], /__hydronium_compile/);
+    const capabilityIndex = commands.findIndex(source => source.includes('require("hydronium.runtime.hosts").install'));
+    const requireAppIndex = commands.findIndex(source => source.includes('_G.__hydronium_App = require'));
+    assert.ok(capabilityIndex > chunkIndex && capabilityIndex < requireAppIndex, 'host is registered after preload and before application evaluation');
     assert.ok(
       commands.every((source) => !source.includes("assert(load(")),
       "mount source evaluation has no Lua-5.4-only load() call",

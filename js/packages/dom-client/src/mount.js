@@ -74,6 +74,7 @@
 */
 
 import { createDomBridge } from "./dom_bridge.js";
+import { installHostCapability } from "./host_capabilities.js";
 import {
   defaultBrowserEngineProvider,
   DEFAULT_WASMOON_URL,
@@ -576,7 +577,7 @@ const RENDER_LUA = `
   local App = _G.__hydronium_App
   local props = assert(__hydronium_compile(__hydronium_props_src, "hydronium.client.mount props"))()
 
-  _G.__hydronium_host = _G.__hydronium_domhost_mod.createDomHost()
+  _G.__hydronium_host = _G.__hydronium_domhost_mod.createDomHost(require("hydronium.runtime.hosts").require("dom", 1))
   _G.__hydronium_reconciler = _G.__hydronium_reconciler_mod.Reconciler.new(_G.__hydronium_host)
   _G.__hydronium_tree = dom.lua.mount(element.h(App, props))
 
@@ -736,9 +737,6 @@ export async function boot(options) {
     mark("boot:end");
 
     const bridge = createDomBridge();
-    for (const [name, fn] of Object.entries(bridge)) {
-      lua.global.set("__dom_" + name, fn);
-    }
     lua.global.set("__hydronium_container", containerEl);
     for (const [name, value] of Object.entries(luaGlobals)) {
       lua.global.set(name, value);
@@ -786,6 +784,7 @@ export async function boot(options) {
       );
     }
     mark("preload:end");
+    await installHostCapability(lua, { name: "dom", version: 1, bindings: bridge, legacyPrefix: "__dom_" });
 
     // After preload (the module has to be registered before it can be
     // required) and before REQUIRE_LUA (the app module's own top level may

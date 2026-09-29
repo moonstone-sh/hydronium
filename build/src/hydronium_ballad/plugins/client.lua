@@ -39,6 +39,7 @@ local graph = require("ballad.graph")
 local process = require("ballad.process")
 
 local M = {}
+local host_capabilities = require("hydronium_ballad.host_capabilities")
 
 local function read_file(path)
   local f, err = io.open(path, "r")
@@ -310,6 +311,7 @@ local MOUNT_BOOTSTRAP_ENTRIES = {
 --- @field include? string[] Which `metadata.hydronium.target` values to consider. Default `{"client","shared"}`.
 --- @field deny_getinfo? boolean Refuse (ctx.fail) any reachable module whose source uses `debug.getinfo` for self-location -- amalgamation changes chunknames, breaking that pattern. Default true.
 --- @field enforce_require_discipline? boolean Refuse (ctx.fail) any reachable module outside `REQUIRE_DISCIPLINE_ALLOWLIST`/`require_discipline_allowlist` that contains a non-literal `require()` call or reassigns `require`/`package.loaded`/`package.preload` -- see `scan_require_violations`'s doc comment for why this is exactly the precondition that makes this function's reachability walk a sound module-level tree-shake. Default true.
+--- @field host_capabilities? table[] Declarative host contracts; defaults to dom@1. Provider/effect evidence is serialized in the module graph and retained in chunks. Analysis inventories literal references; capability elimination is disabled.
 --- @field require_discipline_allowlist? string[] Module ids exempt from the above, in addition to the built-in framework allowlist.
 
 --- @param ctx PluginCtx
@@ -318,6 +320,7 @@ local MOUNT_BOOTSTRAP_ENTRIES = {
 --- @return AssetSet
 function M.resolve(ctx, inputs, opts)
   opts = opts or {}
+  local contracts = opts.host_capabilities or { require("hydronium_dom.host.contract").manifest() }
   local app_entries = opts.entries
   if not app_entries or #app_entries == 0 then
     ctx.fail("hydronium_ballad.plugins.client.resolve: opts.entries is required (a list of module ids to walk from)")
@@ -483,20 +486,23 @@ function M.resolve(ctx, inputs, opts)
       update = mod.update,
       requires = scan_requires(mod.content),
       revision = process.b3sum_string(mod.content),
+      host_capabilities = host_capabilities.scan(mod.content, contracts),
     })
   end
+  local host_manifest = host_capabilities.manifest(module_records, contracts)
   local graph_json = dkjson.encode({
     entries = entries,
     modules = order,
     aliases = sorted_aliases,
     module_records = module_records,
-  }, { indent = false })
+    host_capabilities = host_manifest,
+  }, { indent = false, keyorder = { "entries", "modules", "aliases", "module_records", "host_capabilities", "schema", "contracts", "providers", "retain_all", "elimination", "id", "origin", "target", "transform", "update", "requires", "revision", "analysis", "references", "unresolved", "name", "version", "methods", "provider", "language", "package", "module", "export", "lifecycle", "registration_effect", "method", "group", "effect", "required", "cleanup", "legacy_global", "line", "access", "source", "reason", "base", "real" } })
 
   out:add(ctx.graph:add_asset({
     kind = "hy_module_graph",
     generated = true,
     content = graph_json,
-    metadata = { hydronium = { entries = entries, aliases = aliases, module_records = module_records } },
+    metadata = { hydronium = { entries = entries, aliases = aliases, module_records = module_records, host_capabilities = host_manifest } },
   }))
 
   return out
@@ -649,6 +655,7 @@ local function bundle_single(ctx, inputs, opts)
   local chunk_prefix = opts.chunk_prefix or "client/"
 
   local modules, module_ids, aliases = {}, {}, {}
+  local host_manifests = {}
   local any_minified, any_unminified = false, false
   for _, input_set in ipairs(inputs or {}) do
     for _, asset in ipairs(input_set.assets) do
@@ -666,6 +673,7 @@ local function bundle_single(ctx, inputs, opts)
         end
       elseif asset.kind == "hy_module_graph" then
         local h = asset.metadata and asset.metadata.hydronium
+        if h and h.host_capabilities then host_manifests[#host_manifests + 1] = h.host_capabilities end
         if h and h.aliases then
           for base, real in pairs(h.aliases) do
             aliases[base] = real
@@ -705,6 +713,7 @@ local function bundle_single(ctx, inputs, opts)
       requires = {},
       minified = any_minified,
       format = "package_preload_v1",
+      host_capabilities = host_manifests,
     }},
   }))
   return out
@@ -753,6 +762,7 @@ local function bundle_split(ctx, inputs, opts)
 
   -- module_id -> { content, minified, entry_indices = { [input_index]=true, ... } }
   local modules, module_order, aliases = {}, {}, {}
+  local host_manifests = {}
 
   for idx, input_set in ipairs(inputs) do
     for _, asset in ipairs(input_set.assets) do
@@ -768,6 +778,7 @@ local function bundle_split(ctx, inputs, opts)
         end
       elseif asset.kind == "hy_module_graph" then
         local h = asset.metadata and asset.metadata.hydronium
+        if h and h.host_capabilities then host_manifests[#host_manifests + 1] = h.host_capabilities end
         if h and h.aliases then
           for base, real in pairs(h.aliases) do
             aliases[base] = real
@@ -837,6 +848,7 @@ local function bundle_split(ctx, inputs, opts)
         requires = requires or {},
         minified = chunk_modules[1] and modules[chunk_modules[1].module_id].minified or false,
         format = "package_preload_v1",
+      host_capabilities = host_manifests,
       }},
     }))
   end
