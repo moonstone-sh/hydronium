@@ -19,3 +19,5 @@ Build the registry artifact from this directory with `moon run package`.
 project-relative path inventory. It performs no filesystem calls. The
 standalone `hydronium-lab` executable provides portable enumeration and hands
 the resulting launch request to an explicitly configured host adapter.
+
+Live controls, virtual playback and optional project-owned workbenches are documented in [Lab controls](../docs/LAB_CONTROLS.md).

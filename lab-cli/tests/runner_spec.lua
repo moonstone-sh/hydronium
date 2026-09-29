@@ -80,3 +80,13 @@ local hostile, hostile_err = runner.scan({ roots = { "src" } }, {
 assert(hostile == nil and hostile_err:find("invalid entry", 1, true), "enumerator entries must remain basenames")
 
 print("hydronium_lab_cli.runner: ok")
+
+local customization = assert(runner.customize({ dry_run = true }))
+assert(customization.files[".lab/Workbench.luax"]:find('require("hydronium_ink_lab.components")', 1, true))
+local copy = assert(runner.customize({ dry_run = true, copy_shell = true, read_source = function(package_name)
+  if package_name == "hydronium/ink-lab" then return 'local workbench = require("hydronium_lab.workbench")\nreturn { Document = Document, Shell = Shell, InkControls = InkControls, InkPreferences = InkPreferences }' end
+  return 'return { Shell = function() end }'
+end }))
+assert(copy.files[".lab/Workbench.luax"]:find('require("LabChrome")', 1, true))
+assert(copy.files[".lab/Workbench.luax"]:find('return Document', 1, true))
+assert(copy.files[".lab/LabChrome.luax"])

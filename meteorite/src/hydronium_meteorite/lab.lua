@@ -137,12 +137,25 @@ function M.page(c, contract)
     renderer_stylesheet_asset = "assets/ink.css",
   })
   local h = require("hydronium").h
-  local Document = require("hydronium_ink_lab.dom")
+  install_luax_searcher()
+  local Document = config.document and require(config.document) or require("hydronium_ink_lab.dom")
+  local story_controls = {}
+  local registry, registry_error = refresh()
+  if not registry then return c:text(503, tostring(registry_error)) end
+  local Controls = require("hydronium_lab.controls").Controls
+  for _, story in ipairs(registry.stories) do
+    if story.controls_view then
+      local storyState = require("hydronium_lab.state").new(story.args, story.controls)
+      story_controls[#story_controls + 1] = h(Controls, { story_id = story.id },
+        h(require("hydronium_lab.state").Context.Provider, { value = storyState }, h(story.controls_view, { args = story.args, controls = story.controls })))
+    end
+  end
   local body = require("hydronium_dom.server").render_to_string(h(Document, {
     title = config.title or "Hydronium Ink Lab",
     project_name = config.project_name or config.title or "Hydronium Ink Lab",
     project_id = config.project_id or config.project_name or "hydronium-lab",
     boot = contract,
+    story_controls = story_controls,
     stylesheet_url = contract.assets.stylesheet,
     client_url = contract.assets.client,
   }), { doctype = true })

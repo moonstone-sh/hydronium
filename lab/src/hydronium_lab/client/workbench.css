@@ -554,3 +554,13 @@ body {
     transition: none;
   }
 }
+
+.hydronium-lab__controls, .hydronium-lab__timeline { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:10px 14px; border-top:1px solid var(--hy-lab-line); }
+.hydronium-lab__controls:empty { display:none; }
+.hydronium-lab__timeline label { display:flex; align-items:center; gap:8px; }
+.hydronium-lab__timeline input { width:100px; }
+.hydronium-lab__timeline output { font-variant-numeric:tabular-nums; color:var(--hy-lab-muted); }
+
+.hydronium-lab__controls[hidden] { display:none; }
+.hydronium-lab__controls { max-height:30vh; overflow:auto; flex-shrink:0; }
+.hydronium-lab__timeline { flex-shrink:0; }

@@ -1,0 +1,19 @@
+-- These outlets work in the default SSR shell and in user-authored DOM views.
+-- The browser binder owns events; no per-project hydration setup is required.
+local H = require("hydronium")
+local function Controls(props)
+  return <section class={props.class or "hydronium-lab__controls"} data-lab-controls data-lab-controls-story={props.story_id} hidden={props.story_id ~= nil} aria-label="Story controls">{props.children}</section>
+end
+local function Control(props)
+  return <input {...props} data-lab-control={props.name} aria-label={props.label or props.name} />
+end
+local function Timeline(props)
+  return <section class={props.class or "hydronium-lab__timeline"} data-lab-timeline aria-label="Playback">
+    <button type="button" data-lab-play aria-label="Pause playback">Pause</button>
+    <button type="button" data-lab-restart aria-label="Restart story at time zero">Restart</button>
+    <button type="button" data-lab-step aria-label="Advance one frame">Step</button>
+    <label>Frame interval (ms)<input type="number" min="0.01" step="any" value="16.6666666667" data-lab-frame-interval /></label>
+    <output data-lab-time aria-label="Story time">0 ms · frame 0</output>
+  </section>
+end
+return { Controls = Controls, Control = Control, Timeline = Timeline }

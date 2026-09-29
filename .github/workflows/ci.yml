@@ -95,6 +95,9 @@ jobs:
           mkdir -p "$XDG_DATA_HOME/nvim/site/parser"
           cp "$parser_dir/luax.so" "$XDG_DATA_HOME/nvim/site/parser/luax.so"
           moon exec -- luajit tests/runner.lua
+      - name: Lab CLI customization tests
+        working-directory: lab-cli
+        run: moon exec -- luajit tests/runner_spec.lua
       - name: Generator template and terminal wizard tests
         working-directory: create
         run: moon exec -- luajit tests/create_spec.lua
@@ -136,6 +139,8 @@ jobs:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
           HYDRONIUM_BROWSER_GATE: node --test js/tests/consumer_scaffold.browser.test.mjs
         run: bash tests/e2e/consumer_scaffold.sh
+      - name: Lab controls and playback browser gate
+        run: node --test js/tests/lab_controls.browser.test.mjs
       - name: Packaged SSR + Tailwind hydration and HMR gate
         env:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon

@@ -92,6 +92,21 @@ local function normalizeControls(controls)
     if normalized.type == "select" and (type(normalized.options) ~= "table" or #normalized.options == 0) then
       error("hydronium_lab: select control '" .. name .. "' needs non-empty options", 3)
     end
+    if normalized.type == "number" then
+      for _, key in ipairs({ "min", "max", "step" }) do
+        local value = normalized[key]
+        if value ~= nil and (type(value) ~= "number" or (key == "step" and value <= 0)) then
+          error("hydronium_lab: numeric control '" .. name .. "' has invalid " .. key, 3)
+        end
+      end
+      if normalized.min and normalized.max and normalized.min > normalized.max then error("hydronium_lab: numeric control range is reversed", 3) end
+    end
+    if normalized.type == "select" then
+      for _, option in ipairs(normalized.options) do
+        local value = type(option) == "table" and option.value or option
+        if type(value) ~= "string" and type(value) ~= "number" and type(value) ~= "boolean" then error("hydronium_lab: select values must be scalar", 3) end
+      end
+    end
     out[name] = normalized
   end
   return out
@@ -120,6 +135,7 @@ function M.story(spec)
   if type(spec) ~= "table" then error("hydronium_lab.story: expected a table", 2) end
   checkId(spec.id, "hydronium_lab.story")
   if type(spec.render) ~= "function" then error("hydronium_lab.story: render must be a function", 2) end
+  if spec.controls_view ~= nil and type(spec.controls_view) ~= "function" then error("hydronium_lab.story: controls_view must be a DOM component", 2) end
   local color = spec.color or "truecolor"
   if color ~= "ansi16" and color ~= "ansi256" and color ~= "truecolor" then
     error("hydronium_lab.story: color must be ansi16, ansi256, or truecolor", 2)
@@ -143,6 +159,7 @@ function M.story(spec)
     render = spec.render,
     args = copy(spec.args or {}),
     controls = normalizeControls(spec.controls),
+    controls_view = spec.controls_view,
     group = spec.group,
     description = spec.description,
     source = spec.source and copy(spec.source) or nil,
@@ -223,6 +240,10 @@ function M.registry(entries)
   }
 end
 
+M.json_value = json_value
+M.state = require("hydronium_lab.state")
+M.useStoryArgs = M.state.useStoryArgs
+M.usePlayback = M.state.usePlayback
 M.copy = copy
 M.discovery = require("hydronium_lab.discovery")
 M.host = require("hydronium_lab.host")

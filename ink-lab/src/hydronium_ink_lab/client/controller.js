@@ -1,3 +1,4 @@
+import { createStoryStore, bindStoryControls } from "../../../../lab/src/hydronium_lab/client/workbench.js";
 import { createTerminalAdapter } from "../../../scripts/xterm-entry.js";
 const PALETTE_NAMES = [
   "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
@@ -367,6 +368,15 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
   if (typeof root === "string") root = document.querySelector(root);
   if (!root) throw new Error("hydronium/ink-lab: root was not found");
   if (typeof request !== "function") throw new Error("hydronium/ink-lab: request must be a function");
+  // Serialize all adapter operations, even when a custom transport does not.
+  const transportRequest = request;
+  let operationTail = Promise.resolve();
+  request = message => {
+    if (message.op === "catalog") return transportRequest(message);
+    const next = operationTail.then(() => transportRequest(message));
+    operationTail = next.catch(() => undefined);
+    return next;
+  };
   const terminal = query(root, "terminal");
   const storySelect = query(root, "story");
   const storyRoot = query(root, "stories");
@@ -417,6 +427,10 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
   let sizeOptions = new Map();
   let fillMode = preferences.sizeMode === "fill";
   let closed = false;
+  let animationTimer = null;
+  let playbackAnchor = performance.now();
+  const storyState = (workbench.createStoryStore || createStoryStore)({ send: request, paint: frame => paint(frame) });
+  const storyControls = storyState && (workbench.bindStoryControls || bindStoryControls)({ root, store: storyState });
   let paintedRect = null;
   let manualResizeRect = null;
   let manualResizeUntil = 0;
@@ -691,6 +705,10 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
       if (error && error.desync) { lastPaintActivity = true; resyncFrame(); return frame; }
       throw error;
     }
+    const beforePlayback = storyState?.getSnapshot().playback;
+    storyState?.accept(frame);
+    if (frame.lab && (beforePlayback.nowMs !== frame.lab.playback.nowMs || beforePlayback.playing !== frame.lab.playback.playing)) playbackAnchor = performance.now();
+    if (frame.lab && beforePlayback.playing !== frame.lab.playback.playing) { pacer.noteActivity(); scheduleAnimation(); }
     lastPaintActivity = result.activity;
     presentation = frame.terminal || presentation;
     if (frame.kind === "full") lastFocusToken = undefined;
@@ -701,6 +719,7 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
   }
 
   async function open() {
+    storyState?.select(activeStory);
     cancelScroll();
     const saved = preferences.terminalSize;
     const groups = terminalSizeGroups(activeStory, userSizes);
@@ -957,14 +976,17 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
   // genuinely idle deltas (see `applyFrame`'s `activity` result) shows nothing
   // is animating -- `pacer.noteActivity()` at every real input/interaction
   // site above snaps it back to full cadence immediately.
-  let animationTimer = null;
-  const scheduleAnimation = () => {
+  function scheduleAnimation() {
     window.clearTimeout(animationTimer);
     animationTimer = window.setTimeout(async () => {
       if (closed) return;
       if (!document.hidden) {
         try {
-          paint(await request({ op: "step", nowMs: performance.now() }));
+          const playback = storyState?.getSnapshot().playback;
+          if (!playback || playback.playing) {
+            const nowMs = playback ? playback.nowMs + Math.max(0, performance.now() - playbackAnchor) : performance.now();
+            paint(await request({ op: "step", nowMs }));
+          }
           if (lastPaintActivity) pacer.noteActivity(); else pacer.noteIdle();
         } catch (_) {
           // The transport's visible status surface reports real failures. A
@@ -978,6 +1000,13 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
   return {
     catalog,
     terminal,
+    state: storyState,
+    setArgs: args => storyState?.setArgs(args),
+    pause: () => storyState?.pause(),
+    play: () => storyState?.play(),
+    advance: () => storyState?.advance(),
+    seek: nowMs => storyState?.seek(nowMs),
+    restart: () => storyState?.restart(),
     resize: async (columns, rows) => { pendingResize = { columns, rows }; await runResize(); },
     input: async (input, key = {}) => { pacer.noteActivity(); return paint(await request({ op: "input", input, key })); },
     paste: async (text) => { pacer.noteActivity(); return paint(await request({ op: "paste", text })); },
@@ -994,7 +1023,10 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
       const previousSize = activeSize;
       const previousColor = colorSelect?.value || activeStory.color;
       catalog = nextCatalog;
+      const previousState = storyState?.getSnapshot();
+      const previousArgs = selected.id === activeStory.id ? previousState?.args : undefined;
       activeStory = selected;
+      storyState?.select(selected);
       fillStories();
       activeSize = previousSize;
       fillSizes();
@@ -1003,13 +1035,15 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
       pacer.noteActivity();
       return paint(await request({
         op: "open", story: activeStory.id, columns: activeSize.columns, rows: activeSize.rows,
-        color: previousColor,
+        color: previousColor, args: previousArgs, playing: previousState?.playback.playing,
       }));
     },
     close: async () => {
       closed = true;
       cancelScroll();
       adapter.dispose();
+      storyControls?.destroy();
+      storyState?.destroy();
       window.clearTimeout(resizeTimer);
       window.clearTimeout(fillTimer);
       window.clearTimeout(animationTimer);

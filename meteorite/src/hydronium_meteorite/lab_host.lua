@@ -143,7 +143,7 @@ lab.mount(app, {
 
 return app
 ]=], lua_quote(input.host), input.port, lua_quote(input.state_dir), lua_quote(input.config_path),
-    M.lua_array(input.config.roots or { "src" }), lua_quote(base_path), lua_quote(input.config_path))
+    M.lua_array(input.config.module_roots or input.config.roots or { "src" }), lua_quote(base_path), lua_quote(input.config_path))
 
   return {
     files = { [graph_input] = main_lua },

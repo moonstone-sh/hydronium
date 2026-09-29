@@ -133,6 +133,7 @@ function M.bind(record, value)
       description = variant.description,
       args = args,
       controls = merge(value.controls, variant.controls),
+      controls_view = variant.controls_view or value.controls_view,
       sizes = variant.sizes or value.sizes,
       color = variant.color or value.color,
       colorProfile = variant.colorProfile or value.colorProfile,

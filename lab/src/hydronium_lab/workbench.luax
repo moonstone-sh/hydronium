@@ -6,6 +6,8 @@
 -- DOM preview and an Ink virtual terminal share one workbench without sharing
 -- rendering semantics.
 local H = require("hydronium")
+local controls = require("hydronium_lab.controls")
+local Controls, Timeline = controls.Controls, controls.Timeline
 
 local function Icon(props)
   return <span class="material-symbols-outlined" aria-hidden="true">{props.name}</span>
@@ -48,6 +50,9 @@ local function Shell(props)
           <p class={class_name("__hint", legacy)}>{props.shortcut_legend or <span><kbd>Space</kbd> drag · <kbd>C</kbd> center · <kbd>F</kbd> fullscreen · <kbd>Ctrl</kbd> <kbd>+</kbd>/<kbd>−</kbd> zoom</span>}</p>
           <output class={class_name("__status", legacy)} data-lab-status aria-live="polite">Connecting</output>
         </section>
+        {props.timeline or <Timeline />}
+        {props.controls or <Controls />}
+        {props.story_controls}
         <div class={class_name("__interactions", legacy)} data-lab-interactions />
       </section>
       <aside class={class_name("__sidebar", legacy)} data-lab-sidebar aria-label="Stories">
@@ -90,4 +95,4 @@ local function Shell(props)
   )
 end
 
-return { Shell = Shell, Icon = Icon }
+return { Shell = Shell, Workbench = Shell, Icon = Icon, Controls = Controls, Control = controls.Control, Timeline = Timeline }

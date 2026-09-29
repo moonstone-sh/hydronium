@@ -46,3 +46,5 @@ the drag cleanly. Ordinary mouse dragging on the terminal still selects text.
 Wheel over a short inline preview scrolls the form; wheel over the canvas
 pans it. Tab, Enter, arrows, j/k outside text fields, and section shortcuts
 restore the focused control to view after manual scrolling.
+
+Live controls, virtual playback and optional project-owned workbenches are documented in [Lab controls](../docs/LAB_CONTROLS.md).
