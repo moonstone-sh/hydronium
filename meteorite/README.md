@@ -21,3 +21,10 @@ This is the current concrete integration seam. A generic, first-class
 `meteorite.dev-extension.v1` lifecycle remains future Meteorite work; this
 package does not claim extension collision handling or generalized service
 supervision yet. See `../PENDING_METEORITE_LAB.md` for that forward plan.
+
+The default adapter serves the shared DOM workbench, story-owned control views,
+renderer assets and serialized session operations. It resolves an optional
+project `document` or `.lab/Workbench.luax`; controls use the same story
+schema and args as the Ink preview. Keep these routes in the development graph.
+[Lab controls](../docs/LAB_CONTROLS.md) describes the unreleased customization
+and playback APIs, including the SSR-versus-hydrated control boundary.

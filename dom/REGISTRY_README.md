@@ -151,4 +151,11 @@ it would otherwise leak hundreds of names into every LuaLS workspace. It does
 not create runtime globals. `table` and `select` remain lexical-only as
 `d.table` and `d.select`, preserving Lua's standard globals.
 
-Host embeddings and Ballad provider/effect tracking are documented in [Host capabilities](../docs/HOST_CAPABILITIES.md).
+## Embedding contract
+
+Browser bootstrap installs `dom@1` in `hydronium.runtime.hosts` before
+loading the application. Custom embeddings may install the same capability or
+provide `createDomHost(bridge)` explicitly. Legacy `__dom_*` globals remain
+supported when the capability is absent. The declarative DOM contract records
+methods, effects and cleanup for build tools. This capability API is unreleased;
+see [Host capabilities](../docs/HOST_CAPABILITIES.md).

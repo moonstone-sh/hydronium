@@ -215,10 +215,14 @@ Snake-case aliases remain for Lua codebases that use that convention.
 
 ## Named outlets
 
+Named outlets are unreleased development APIs.
+
 A route can provide multiple screens for the same matched URL:
 
 ```lua
-R.node({
+local r = require("hydronium_router")
+
+r.node({
   id = "project", path = "projects/:id", screen = "views.Project",
   slots = {
     sidebar = "views.ProjectSidebar",
@@ -229,7 +233,7 @@ R.node({
 ```
 
 Layouts render `<Outlet />`, `<Outlet name="sidebar" />` and
-`<Outlet name="toolbar" />`, using the exported router Outlet component.
+`<Outlet name="toolbar" />`, binding `local Outlet = r.Outlet` in the LUAX module.
 Layouts receiving props can instead render `props.outlet` and
 `props.outlets.sidebar`. Each named outlet finds the next declaration of that
 name down the matched route chain. Inside a named screen, `props.outlet`

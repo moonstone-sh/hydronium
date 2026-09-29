@@ -71,4 +71,10 @@ See `docs/HYDRONIUM_BALLAD_ARCHITECTURE_PLAN.md`,
 `docs/HYDRONIUM_CLIENT_BUNDLER_MINIFIER_PLAN.md` in the `hydronium` repo for
 the full design.
 
-Host embeddings and Ballad provider/effect tracking are documented in [Host capabilities](../docs/HOST_CAPABILITIES.md).
+## Host provider inventory
+
+Client resolution records literal host-capability references and declarative
+provider/effect/cleanup contracts in the module graph and bundle metadata.
+Dynamic or unresolved access conservatively retains providers. This inventory
+is unreleased; capability elimination is disabled. See
+[Host capabilities](../docs/HOST_CAPABILITIES.md) for the limits of the analysis.

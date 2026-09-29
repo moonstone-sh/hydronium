@@ -21,3 +21,12 @@ standalone `hydronium-lab` executable provides portable enumeration and hands
 the resulting launch request to an explicitly configured host adapter.
 
 Live controls, virtual playback and optional project-owned workbenches are documented in [Lab controls](../docs/LAB_CONTROLS.md).
+
+Public UI lives in `hydronium_lab.workbench` and `hydronium_lab.controls`;
+shared args/playback state lives in `hydronium_lab.state`. ControlsOutlet is
+a passive surface, DefaultControls opts into generated fields, and individual
+playback components can be composed independently. Story authors may supply
+`controls_view` without replacing the whole workbench.
+
+These APIs are unreleased. Keep renderer-specific behavior in adapters rather
+than making story discovery depend on Ink or Meteorite.

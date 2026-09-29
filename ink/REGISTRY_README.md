@@ -216,3 +216,11 @@ macOS and glibc Linux. Windows needs a separately verified Win32 console
 backend before it can be advertised as interactive; it is not currently a
 supported target. These are explicit host boundaries, not silent fallback
 behavior.
+
+## Browser story inspection
+
+[Hydronium Ink Lab](../ink-lab/REGISTRY_README.md) runs the same native Ink
+session behind a bundled xterm.js preview. Its development API adds reactive
+story args, user-owned DOM control outlets and virtual play/pause/step/seek.
+These Lab features are unreleased and belong to the Lab adapter rather than
+the terminal renderer itself.

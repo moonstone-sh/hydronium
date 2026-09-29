@@ -93,4 +93,10 @@ refresh, and rollback when the replacement module cannot load. Browsers,
 terminal loops, and other hosts remain responsible for detecting edits and
 delivering source.
 
-Host embeddings and Ballad provider/effect tracking are documented in [Host capabilities](../docs/HOST_CAPABILITIES.md).
+## Host capabilities
+
+`require("hydronium.runtime.hosts")` exposes a VM-local registry for versioned
+embedding bindings: `install`, `require`, `get` and `describe`. Installation
+returns an idempotent release function; host owners dispose listeners and
+observers before releasing their capability. This API is unreleased.
+See [Host capabilities](../docs/HOST_CAPABILITIES.md).

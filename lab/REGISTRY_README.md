@@ -28,3 +28,25 @@ enumeration for the ordinary workbench workflow.
 versioned browser boundary: layered Workbench/renderer assets plus catalog and
 session transport URLs. An HTTP adapter mounts that contract; `hydronium/lab`
 does not depend on Meteorite.
+
+## Controls and playback
+
+Story files are normal Lua/LUAX modules. A story or collection may declare
+`controls` metadata and a `controls_view` DOM component. Users own the inputs;
+Lab validates and binds shared args. `lab.useStoryArgs()` returns a getter,
+patch setter and reset function; `lab.usePlayback()` reads virtual playback
+state under the story provider.
+
+The default workbench opts into generated fields through `DefaultControls`.
+`ControlsOutlet` is passive, including when empty. Ordinary
+`data-lab-control="argument"` inputs work in custom server-rendered control
+views; hydrated views can use the hooks. DOM controls and Ink previews are
+separate rendering surfaces. Arbitrary Lua event callbacks in SSR controls
+require hydration to run in the browser.
+
+Compose `PlayPause`, `FrameStep`, `TimeDisplay`, `FrameInterval` and
+`Restart` individually, or use the default `Timeline`. The Ink adapter
+supplies virtual time; other adapters own their playback implementation.
+[Controls and playback](../docs/LAB_CONTROLS.md) documents the complete contract.
+
+These controls and playback APIs are unreleased development features.

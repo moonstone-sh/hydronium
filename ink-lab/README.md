@@ -17,9 +17,10 @@ bun run build
 bun run check:ansi
 ```
 
-Edit `client/controller.js`, `client/ink-source.css`, or
-`scripts/xterm-entry.js`, then rebuild. `client/virtual_terminal.js` and
-`client/ink.css` are generated assets. Zoom changes xterm's font size so
+Edit `src/hydronium_ink_lab/client/controller.js`,
+`src/hydronium_ink_lab/client/ink-source.css`, or
+`scripts/xterm-entry.js`, then rebuild. `src/hydronium_ink_lab/client/virtual_terminal.js` and
+`src/hydronium_ink_lab/client/ink.css` are generated assets. Zoom changes xterm's font size so
 text and mouse selection retain their cell coordinates.
 
 The Lua implementation lives under `src/hydronium_ink_lab`. Focused coverage:
@@ -48,3 +49,13 @@ pans it. Tab, Enter, arrows, j/k outside text fields, and section shortcuts
 restore the focused control to view after manual scrolling.
 
 Live controls, virtual playback and optional project-owned workbenches are documented in [Lab controls](../docs/LAB_CONTROLS.md).
+
+Pause holds virtual time while leaving inputs, args and resize active. Step
+advances by the selected interval; forward seek inspects a timestamp. Restart
+remounts at time zero and keeps current args, dimensions and color settings.
+These are inspection tools, not reversible effect replay.
+
+Project-owned documents compose `hydronium_ink_lab.components` with
+`hydronium_lab.workbench` and its control/playback primitives. Keep named
+terminal surfaces required by the controller. Custom shell markup currently
+requires a page reload. Controls/playback/customization are unreleased APIs.
