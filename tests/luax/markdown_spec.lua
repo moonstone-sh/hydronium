@@ -68,4 +68,37 @@ local Demo = require("Demo")
     os.remove(path)
     package.loaded.hydronium_markdown_require_spec = nil
   end)
+
+  it("server renders compiled documents as normal Hydronium DOM", function()
+    local result = markdown.compile("# Hello\n\nSome **bold** text.\n", { filename = "Page.md" })
+    local component = (loadstring or load)(result.code, "@Page.md")()
+    local H = require("hydronium")
+    local html = require("hydronium_dom.server").renderToString(H.h(component))
+    assert.truthy(html:find('<article><h1 id="hello">Hello</h1><p>Some <strong>bold</strong> text.</p></article>', 1, true))
+  end)
+
+  it("gives headings stable anchors and renders documentation tables", function()
+    local source = [[# API Surface
+
+# API Surface
+
+| Package | Purpose |
+| --- | --- |
+| `lab` | Stories |
+]]
+    local result = markdown.compile(source, { filename = "API.md" })
+    local component = (loadstring or load)(result.code, "@API.md")()
+    local H = require("hydronium")
+    local html = require("hydronium_dom.server").renderToString(H.h(component))
+    assert.truthy(html:find('id="api-surface"', 1, true))
+    assert.truthy(html:find('id="api-surface-2"', 1, true))
+    assert.truthy(html:find("<table><thead>", 1, true))
+    assert.truthy(html:find("<td>Stories</td>", 1, true))
+  end)
+
+  it("keeps a leading Lua example as code unless setup is explicit", function()
+    local result = markdown.compile("~~~lua\nprint('example')\n~~~\n", { filename = "example.mdx" })
+    assert.truthy(result.code:find('H.h%("pre"'))
+    assert.falsy(result.code:find("\nprint%('example'%)"))
+  end)
 end)

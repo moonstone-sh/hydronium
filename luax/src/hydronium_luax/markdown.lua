@@ -7,6 +7,17 @@ local M = {}
 local function trim(value) return (value:gsub("^%s+", ""):gsub("%s+$", "")) end
 local function text_node(value) return "{" .. string.format("%q", value) .. "}" end
 local function attribute(value) return string.format("%q", value) end
+local function slug(value)
+  local result = value:lower():gsub("`", ""):gsub("[^%w%s%-]", ""):gsub("[%s%-]+", "-")
+  result = result:gsub("^%-+", ""):gsub("%-+$", "")
+  return result ~= "" and result or "section"
+end
+local function cells(line)
+  line = trim(line):gsub("^|", ""):gsub("|$", "")
+  local result = {}
+  for cell in (line .. "|"):gmatch("(.-)|") do result[#result + 1] = trim(cell) end
+  return result
+end
 local function safe_url(value)
   local normalized = trim(value):gsub("[%c%s]", "")
   local scheme = normalized:match("^([%a][%w+.-]*):")
@@ -49,21 +60,28 @@ end
 local function blocks(source, mdx)
   local lines = {}
   for line in (source:gsub("\r\n", "\n") .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = line end
-  local nodes, setup, i = {}, {}, 1
+  local nodes, setup, ids, i = {}, {}, {}, 1
   local function emit(tag, body) nodes[#nodes + 1] = "<" .. tag .. ">" .. body .. "</" .. tag .. ">" end
   local function blank(line) return line == nil or trim(line) == "" end
   while i <= #lines do
     local line = lines[i]
-    local fence, language, directive = line:match("^%s*(```+)%s*([%w_-]*)%s*([%w_-]*)%s*$")
+    local fence_run, fence_info = line:match("^%s*([`~]+)%s*(.-)%s*$")
+    local fence = fence_run and #fence_run >= 3 and fence_run:match("^" .. fence_run:sub(1, 1) .. "+$") and fence_run
+    local language, directive
+    if fence_info then language, directive = fence_info:match("^([%w_-]*)%s*([%w_-]*)$") end
     local heading, title = line:match("^%s*(#+)%s+(.+)$")
     local list = line:match("^%s*[-*+]%s+(.+)$")
     local numbered = line:match("^%s*%d+%.%s+(.+)$")
+    local table_separator = lines[i + 1] and lines[i + 1]:find("%-") and lines[i + 1]:match("^%s*[|:%-%s]+%s*$")
     if blank(line) then i = i + 1
     elseif fence then
       local content, closed = {}, false
       i = i + 1
       while i <= #lines do
-        if lines[i]:match("^%s*" .. fence .. "%s*$") then closed = true; i = i + 1; break end
+        local close = lines[i]:match("^%s*([`~]+)%s*$")
+        if close and #close >= #fence and close:match("^" .. fence:sub(1, 1) .. "+$") then
+          closed = true; i = i + 1; break
+        end
         content[#content + 1] = lines[i]; i = i + 1
       end
       if not closed then error("hydronium markdown: unclosed code fence", 2) end
@@ -79,9 +97,29 @@ local function blocks(source, mdx)
       nodes[#nodes + 1] = trim(line)
       i = i + 1
     elseif heading and #heading <= 6 then
-      emit("h" .. #heading, inline(trim(title))); i = i + 1
+      local base = slug(title)
+      ids[base] = (ids[base] or 0) + 1
+      local id = ids[base] == 1 and base or base .. "-" .. ids[base]
+      local tag = "h" .. #heading
+      nodes[#nodes + 1] = "<" .. tag .. " id=" .. attribute(id) .. ">" .. inline(trim(title)) .. "</" .. tag .. ">"
+      i = i + 1
     elseif line:match("^%s*%-%-%-%s*$") then
       nodes[#nodes + 1] = "<hr />"; i = i + 1
+    elseif line:find("|", 1, true) and table_separator then
+      local headers, rows = cells(line), {}
+      i = i + 2
+      while i <= #lines and not blank(lines[i]) and lines[i]:find("|", 1, true) do
+        rows[#rows + 1] = cells(lines[i]); i = i + 1
+      end
+      local head = {}
+      for _, value in ipairs(headers) do head[#head + 1] = "<th>" .. inline(value) .. "</th>" end
+      local body = {}
+      for _, row in ipairs(rows) do
+        local values = {}
+        for index = 1, #headers do values[#values + 1] = "<td>" .. inline(row[index] or "") .. "</td>" end
+        body[#body + 1] = "<tr>" .. table.concat(values) .. "</tr>"
+      end
+      nodes[#nodes + 1] = "<table><thead><tr>" .. table.concat(head) .. "</tr></thead><tbody>" .. table.concat(body) .. "</tbody></table>"
     elseif list or numbered then
       local ordered = numbered ~= nil
       local items = {}
@@ -105,7 +143,8 @@ local function blocks(source, mdx)
       i = i + 1
       while i <= #lines and not blank(lines[i]) and not lines[i]:match("^%s*#%s")
           and not lines[i]:match("^%s*[-*+]%s+") and not lines[i]:match("^%s*%d+%.%s+")
-          and not lines[i]:match("^%s*```") and not (mdx and lines[i]:match("^%s*<[A-Z]")) do
+          and not lines[i]:match("^%s*```") and not lines[i]:match("^%s*~~~")
+          and not (mdx and lines[i]:match("^%s*<[A-Z]")) do
         paragraph[#paragraph + 1] = trim(lines[i]); i = i + 1
       end
       emit("p", inline(table.concat(paragraph, " ")))

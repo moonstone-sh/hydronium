@@ -7,10 +7,11 @@ component. `hydronium_luax.loader.load(path)` and `.source(path)` also accept
 `.md` and `.mdx` files and cache by source content.
 
 `.md` treats the document as prose. Current block support covers headings,
-paragraphs, unordered and ordered lists, blockquotes, horizontal rules, and
-fenced code. Inline support covers emphasis, strong text, code, links, and
-images. Prose is emitted as text nodes, so HTML-looking text cannot become
-active markup accidentally.
+paragraphs, unordered and ordered lists, blockquotes, horizontal rules,
+tables, and fenced code. Headings receive stable, deduplicated anchors.
+Inline support covers emphasis, strong text, code, links, and images. Prose
+is emitted as text nodes, so HTML-looking text cannot become active markup
+accidentally.
 
 `.mdx` adds a leading `lua setup` fence for local imports and setup code, followed
 by standalone, single-line LUAX component elements. For example:
@@ -30,7 +31,7 @@ This is **interactive** documentation.
 The module exports a function component; `require("docs.Intro")` can be used
 as a component after the ordinary loader finds `docs/Intro.md` or
 `docs/Intro.mdx`. The compiler does not yet implement all CommonMark/MDX
-syntax, such as nested lists, tables, multiline component blocks, arbitrary
+syntax, such as nested lists, multiline component blocks, arbitrary
 HTML, JavaScript imports, or JSX expressions. `.mdx` uses **Lua and LUAX**, not
 JavaScript.
 
