@@ -262,3 +262,22 @@ describe("Lab live state and playback", function()
     assert.truthy(html:find('data-lab-step', 1, true))
   end)
 end)
+
+describe("Lab story-specific DOM controls", function()
+  it("preserves collection and variant outlets through discovery and the DOM shell", function()
+    local function Controls() return hydronium.h("input", { ["data-lab-control"] = "label" }) end
+    local function Variant() return hydronium.h("input", { ["data-lab-control"] = "count" }) end
+    local registry = lab.discovery.registry(lab.discovery.plan({ "src/Label.stories.luax" }), function()
+      return lab.collection({ component = function() end, controls_view = Controls,
+        stories = { default = {}, variant = { controls_view = Variant } } })
+    end)
+    assert.equal(registry.get("label--default").controls_view, Controls)
+    assert.equal(registry.get("label--variant").controls_view, Variant)
+    local ui = require("hydronium_lab.controls")
+    local html = server.renderToString(hydronium.h(inkLab.dom, { story_controls = {
+      hydronium.h(ui.Controls, { story_id = "label--default" }, hydronium.h(Controls)),
+    } }))
+    assert.truthy(html:find('data-lab-controls-story="label--default"', 1, true))
+    assert.truthy(html:find('data-lab-control="label"', 1, true))
+  end)
+end)

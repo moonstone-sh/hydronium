@@ -182,6 +182,7 @@ function M.collection(spec)
   if spec.component == nil and spec.render == nil then
     error("hydronium_lab.collection: component or render is required", 2)
   end
+  if spec.controls_view ~= nil and type(spec.controls_view) ~= "function" then error("hydronium_lab.collection: controls_view must be a DOM component", 2) end
   local stories = {}
   for key, value in pairs(spec.stories) do
     if type(key) ~= "string" or not key:match("^[a-z0-9][a-z0-9%-]*$") then
@@ -197,6 +198,7 @@ function M.collection(spec)
     render = spec.render,
     args = json_value(spec.args or {}, {}, "hydronium_lab.collection: args"),
     controls = normalizeControls(spec.controls),
+    controls_view = spec.controls_view,
     sizes = spec.sizes and normalizeSizes(spec.sizes) or nil,
     color = spec.color,
     colorProfile = normalizeColorProfile(spec.colorProfile, "hydronium_lab.collection"),
