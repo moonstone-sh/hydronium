@@ -2,6 +2,36 @@
 
 Declarative scaffolding CLI tool for initializing new [Hydronium](https://moonstone.sh/packages/hydronium) reactive applications and components, built with [Clingy](https://moonstone.sh/packages/moonstone/clingy).
 
+## Create and run a browser app
+
+You need Moonstone, Bun and the native build prerequisites for Meteorite.
+In an empty tooling directory:
+
+```sh
+moon init . --name app-tools --interpreter luajit@2.1
+moon add --tool hydronium/create
+moon exec -- hydronium-create ./my-app --template ssr --package-manager bun --tailwind
+cd my-app
+moon sync
+bun install
+bun run dev
+```
+
+Open the URL printed by dev, normally http://localhost:8080/. Click the counter,
+edit views/Counter.luax and save: eligible component state survives the update.
+CSS changes update in place. The document bootstrap is a page-reload boundary.
+The selected package manager controls install, dev and build helper commands.
+
+```sh
+bun run build
+./dist/server
+```
+
+The build produces the application in dist, including its server and browser
+assets. Stop the development process before starting the release server if
+both use the same port. Use --dry-run to inspect generated files before writing;
+use --minimal for a one-shot HTML program without a live HMR process.
+
 ## Templates
 
 | Template | Description |
@@ -22,8 +52,8 @@ same action as JSON-enhanced or native HTML form submission.
 ## Usage
 
 ```bash
-# Install the generator
-moon add hydronium/create
+# Install the generator as a tool
+moon add --tool hydronium/create
 
 # Scaffold in current directory with default SSR template
 moon exec -- hydronium-create

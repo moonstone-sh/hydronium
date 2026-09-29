@@ -21,6 +21,32 @@ renders a live status view with [Hydronium Ink](https://moonstone.sh/packages/hy
     reload ok
 ```
 
+## Start from a complete app
+
+For a new project, the generator installs the CLI with the correct tool role
+and writes its Meteorite/Vite flags for you. With Moonstone and Bun installed:
+
+```sh
+moon init . --name dev-tools --interpreter luajit@2.1
+moon add --tool hydronium/create
+moon exec -- hydronium-create ./my-app --template ssr --package-manager bun
+cd my-app
+moon sync
+bun install
+bun run dev
+```
+
+Expected result: Meteorite and Vite start together, a local application URL is
+printed, and the terminal shows request activity. Open that URL, click the
+counter and edit its LUAX source to exercise state-preserving HMR. Press f to
+inspect requests and q or Ctrl-C to stop the dev process.
+
+In an existing Hydronium/Meteorite app, install the CLI with
+moon add --tool hydronium/cli. Its dev command assumes that the app's graph,
+Meteorite flags and (when using --vite) Vite config are already present; adding
+the CLI alone does not scaffold them. Prefer the generated bun run dev script
+because it supplies those project-specific flags.
+
 ## Flags
 
 | Flag | Effect |

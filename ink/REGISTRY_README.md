@@ -3,7 +3,10 @@
 `hydronium/ink` renders Hydronium trees in a terminal. Its Yoga
 backed `Box` layout, styled `Text`, and input hooks run on LuaJIT.
 
+In an empty directory, initialize Moonstone and LuaJIT first:
+
 ```sh
+moon init . --name terminal-demo --interpreter luajit@2.1
 moon add hydronium/ink
 ```
 
@@ -15,6 +18,8 @@ x86-64 macOS, plus glibc Linux. Windows is not supported.
 
 `render.render()` mounts the root and owns the terminal event loop. It returns
 when `useApp().exit()` runs or when Ctrl-C ends the app.
+
+Save app.lua:
 
 ```lua
 local h = require("hydronium")
@@ -51,6 +56,11 @@ Run it through Moonstone:
 ```sh
 moon exec -- luajit app.lua
 ```
+
+You should see a cyan counter in a bordered box. Press + to increment it
+and q to exit. Run this in an interactive terminal; redirected output cannot
+provide keyboard interaction. For LUAX components, add hydronium/luax and
+install its require loader once before loading the root.
 
 The repository includes a [small LUAX demo](../examples/ink_demo/) and an
 [interactive todo application](../examples/ink_todo/). The todo is the fuller
@@ -218,6 +228,17 @@ supported target. These are explicit host boundaries, not silent fallback
 behavior.
 
 ## Browser story inspection
+
+To preview stories in a browser, install the launcher in this project:
+
+```sh
+moon add --tool hydronium/lab-cli
+moon exec -- hydronium-lab init
+```
+
+Add a src/*.stories.lua file and run moon run lab. The
+[Ink Lab guide](https://github.com/moonstone-sh/hydronium/blob/main/ink-lab/REGISTRY_README.md)
+contains a complete story, launch URL and expected preview.
 
 [Hydronium Ink Lab](../ink-lab/REGISTRY_README.md) runs the same native Ink
 session behind a bundled xterm.js preview. Its development API adds reactive

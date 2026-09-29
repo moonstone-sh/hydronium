@@ -5,16 +5,30 @@ It provides opaque sRGB, OKLab, and OKLCH values plus deterministic conversion,
 gamut mapping, mixing, and contrast helpers. It is designed to be shared by
 terminal, browser, and server renderers.
 
+In an empty directory:
+
 ```sh
+moon init . --name color-demo --interpreter luajit@2.1
 moon add hydronium/oklab-utils
 ```
+
+Save demo.lua:
 
 ```lua
 local color = require("hydronium_oklab_utils")
 
 local accent = color.oklch(0.72, 0.18, 310)
-local rgb = color.to_srgb(accent) -- { r = 214, g = 124, b = 255 }
+local rgb = color.to_srgb(accent)
+print(rgb.r .. "," .. rgb.g .. "," .. rgb.b)
 ```
+
+```sh
+moon exec -- luajit demo.lua
+```
+
+Expected output: 199,128,247, a gamut-mapped 8-bit sRGB triplet.
+No UI host is required. Change the OKLCH
+lightness, chroma or hue and rerun to inspect the mapped color.
 
 Values are ordinary immutable-by-convention Lua tables. This package performs
 math in Lua because UI color conversion is inexpensive and portability matters;
@@ -30,8 +44,12 @@ on the same final, gamut-mapped, rounded 8-bit sRGB `to_srgb` produces --
 i.e. what a renderer actually paints, not the requested (possibly
 out-of-gamut) color.
 
+This is a contrast fragment; define bg with color.srgb(20, 24, 32) before
+using it:
+
 ```lua
 local color = require("hydronium_oklab_utils")
+local bg = color.srgb(20, 24, 32)
 
 -- Pick legible text for a background, then push it to a real target if it
 -- falls short (hue/chroma preserved; chroma is shed only as a last resort).
