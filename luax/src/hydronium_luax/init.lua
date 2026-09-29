@@ -19,6 +19,7 @@ local formatter = require("hydronium_luax.formatter")
 local sourcemap = require("hydronium_luax.compiler.sourcemap")
 local luals = require("hydronium_luax.luals")
 local loader = require("hydronium_luax.loader")
+local markdown = require("hydronium_luax.markdown")
 
 local Luax = {
   _VERSION = "0.1.0",
@@ -55,6 +56,8 @@ local Luax = {
   -- cached by content (see hydronium_luax.loader's own doc comment).
   loader = loader,
   load_luax = loader.load,
+  markdown = markdown,
+  compile_markdown = markdown.compile,
 }
 
 return Luax
