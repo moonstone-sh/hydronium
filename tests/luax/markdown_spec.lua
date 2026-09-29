@@ -16,11 +16,11 @@ Use **Hydronium** with [Lab](https://example.test/lab).
 ```
 ]]
     local result = markdown.compile(source, { filename = "Guide.md" })
-    assert.truthy(result.code:find('H.h%("h1"'))
-    assert.truthy(result.code:find('H.h%("strong"'))
-    assert.truthy(result.code:find('H.h%("a"'))
-    assert.truthy(result.code:find('H.h%("ul"'))
-    assert.truthy(result.code:find('H.h%("pre"'))
+    assert.truthy(result.code:find('H.h%(HydroniumMdH1'))
+    assert.truthy(result.code:find('H.h%(HydroniumMdStrong'))
+    assert.truthy(result.code:find('H.h%(HydroniumMdA'))
+    assert.truthy(result.code:find('H.h%(HydroniumMdUl'))
+    assert.truthy(result.code:find('H.h%(HydroniumMdPre'))
     assert.falsy(result.code:find('H.h%("unsafe"'))
   end)
 
@@ -77,6 +77,14 @@ local Demo = require("Demo")
     assert.truthy(html:find('<article><h1 id="hello">Hello</h1><p>Some <strong>bold</strong> text.</p></article>', 1, true))
   end)
 
+  it("lets the host replace Markdown elements through component props", function()
+    local result = markdown.compile("# Title\n\nCustom paragraph.\n", { filename = "Page.md" })
+    local component = (loadstring or load)(result.code, "@Page.md")()
+    local H = require("hydronium")
+    local html = require("hydronium_dom.server").renderToString(H.h(component, { components = { p = "section" } }))
+    assert.truthy(html:find("<section>Custom paragraph.</section>", 1, true))
+  end)
+
   it("gives headings stable anchors and renders documentation tables", function()
     local source = [[# API Surface
 
@@ -98,7 +106,7 @@ local Demo = require("Demo")
 
   it("keeps a leading Lua example as code unless setup is explicit", function()
     local result = markdown.compile("~~~lua\nprint('example')\n~~~\n", { filename = "example.mdx" })
-    assert.truthy(result.code:find('H.h%("pre"'))
+    assert.truthy(result.code:find('H.h%(HydroniumMdPre'))
     assert.falsy(result.code:find("\nprint%('example'%)"))
   end)
 end)

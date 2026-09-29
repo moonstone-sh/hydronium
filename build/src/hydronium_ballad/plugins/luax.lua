@@ -65,13 +65,14 @@ function M.compile(ctx, inputs, opts)
 
   for _, input_set in ipairs(inputs or {}) do
     for _, asset in ipairs(input_set.assets) do
-      if asset.virtual_path and asset.virtual_path:match("%.luax$") then
+      local extension = asset.virtual_path and asset.virtual_path:match("%.([%a]+)$")
+      if extension == "luax" or extension == "md" or extension == "mdx" then
         if not asset.source_path then
           ctx.fail("hydronium_ballad.plugins.luax.compile: asset '" .. tostring(asset.virtual_path)
             .. "' has no source_path (only real files can be compiled, not already-generated assets)")
         else
           local source = read_file(asset.source_path)
-          local compiled_vpath = asset.virtual_path:gsub("%.luax$", ".lua")
+          local compiled_vpath = asset.virtual_path:gsub("%.[%a]+$", ".lua")
           -- A topology-aware caller may stamp the logical id in metadata.
           -- Fall back to Ballad's virtual path for existing partitures.
           local declared_id = asset.metadata and asset.metadata.hydronium and asset.metadata.hydronium.module_id
@@ -81,7 +82,8 @@ function M.compile(ctx, inputs, opts)
             runtime = opts.runtime or "hydronium",
             development = opts.development == true,
           }
-          local ok, result = pcall(luax.compile, source, compile_opts)
+          local compiler = extension == "luax" and luax.compile or luax.compile_markdown
+          local ok, result = pcall(compiler, source, compile_opts)
           if not ok then
             ctx.fail("hydronium_ballad.plugins.luax.compile: failed to compile " .. asset.source_path
               .. ": " .. tostring(result))
@@ -126,7 +128,7 @@ function M.compile(ctx, inputs, opts)
                 origin = asset.source_path,
                 module_id = module_id,
                 target = target,
-                sourcemap = result.map_json,
+                sourcemap = extension == "luax" and result.map_json or nil,
                 style_ids = {},
                 asset_ids = {},
                 diagnostics = { bare_tags_without_alias = bare },

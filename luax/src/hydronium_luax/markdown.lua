@@ -4,6 +4,10 @@ local luax = require("hydronium_luax.compiler")
 
 local M = {}
 
+local TAGS = { "article", "h1", "h2", "h3", "h4", "h5", "h6", "p", "a", "img", "em", "strong",
+  "code", "pre", "ul", "ol", "li", "blockquote", "hr", "table", "thead", "tbody", "tr", "th", "td" }
+local function tag(name) return "HydroniumMd" .. name:sub(1, 1):upper() .. name:sub(2) end
+
 local function trim(value) return (value:gsub("^%s+", ""):gsub("%s+$", "")) end
 local function text_node(value) return "{" .. string.format("%q", value) .. "}" end
 local function attribute(value) return string.format("%q", value) end
@@ -48,10 +52,10 @@ local function inline(source)
     if not next_at then plain(source:sub(cursor)); break end
     plain(source:sub(cursor, next_at - 1))
     if kind == "image" then
-      parts[#parts + 1] = safe_url(b) and ('<img alt=' .. attribute(a) .. ' src=' .. attribute(b) .. ' />') or text_node(a)
+      parts[#parts + 1] = safe_url(b) and ('<' .. tag("img") .. ' alt=' .. attribute(a) .. ' src=' .. attribute(b) .. ' />') or text_node(a)
     elseif kind == "link" then
-      parts[#parts + 1] = safe_url(b) and ('<a href=' .. attribute(b) .. '>' .. text_node(a) .. '</a>') or text_node(a)
-    else parts[#parts + 1] = '<' .. kind .. '>' .. text_node(a) .. '</' .. kind .. '>' end
+      parts[#parts + 1] = safe_url(b) and ('<' .. tag("a") .. ' href=' .. attribute(b) .. '>' .. text_node(a) .. '</' .. tag("a") .. '>') or text_node(a)
+    else parts[#parts + 1] = '<' .. tag(kind) .. '>' .. text_node(a) .. '</' .. tag(kind) .. '>' end
     cursor = finish + 1
   end
   return table.concat(parts)
@@ -61,7 +65,10 @@ local function blocks(source, mdx)
   local lines = {}
   for line in (source:gsub("\r\n", "\n") .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = line end
   local nodes, setup, ids, i = {}, {}, {}, 1
-  local function emit(tag, body) nodes[#nodes + 1] = "<" .. tag .. ">" .. body .. "</" .. tag .. ">" end
+  local function emit(name, body)
+    local element = tag(name)
+    nodes[#nodes + 1] = "<" .. element .. ">" .. body .. "</" .. element .. ">"
+  end
   local function blank(line) return line == nil or trim(line) == "" end
   while i <= #lines do
     local line = lines[i]
@@ -89,7 +96,9 @@ local function blocks(source, mdx)
         setup[#setup + 1] = table.concat(content, "\n")
       else
         local code = table.concat(content, "\n")
-        nodes[#nodes + 1] = '<pre><code' .. (language ~= "" and (' class=' .. attribute("language-" .. language)) or "") .. '>' .. text_node(code) .. '</code></pre>'
+        nodes[#nodes + 1] = '<' .. tag("pre") .. '><' .. tag("code")
+          .. (language ~= "" and (' class=' .. attribute("language-" .. language)) or "")
+          .. '>' .. text_node(code) .. '</' .. tag("code") .. '></' .. tag("pre") .. '>'
       end
     elseif mdx and line:match("^%s*<[A-Z][%w_.]*[%s/>]") then
       -- LUAX handles attributes, expressions and lexical component lookup.
@@ -100,11 +109,11 @@ local function blocks(source, mdx)
       local base = slug(title)
       ids[base] = (ids[base] or 0) + 1
       local id = ids[base] == 1 and base or base .. "-" .. ids[base]
-      local tag = "h" .. #heading
-      nodes[#nodes + 1] = "<" .. tag .. " id=" .. attribute(id) .. ">" .. inline(trim(title)) .. "</" .. tag .. ">"
+      local heading_tag = "h" .. #heading
+      nodes[#nodes + 1] = "<" .. tag(heading_tag) .. " id=" .. attribute(id) .. ">" .. inline(trim(title)) .. "</" .. tag(heading_tag) .. ">"
       i = i + 1
     elseif line:match("^%s*%-%-%-%s*$") then
-      nodes[#nodes + 1] = "<hr />"; i = i + 1
+      nodes[#nodes + 1] = "<" .. tag("hr") .. " />"; i = i + 1
     elseif line:find("|", 1, true) and table_separator then
       local headers, rows = cells(line), {}
       i = i + 2
@@ -112,21 +121,23 @@ local function blocks(source, mdx)
         rows[#rows + 1] = cells(lines[i]); i = i + 1
       end
       local head = {}
-      for _, value in ipairs(headers) do head[#head + 1] = "<th>" .. inline(value) .. "</th>" end
+      for _, value in ipairs(headers) do head[#head + 1] = "<" .. tag("th") .. ">" .. inline(value) .. "</" .. tag("th") .. ">" end
       local body = {}
       for _, row in ipairs(rows) do
         local values = {}
-        for index = 1, #headers do values[#values + 1] = "<td>" .. inline(row[index] or "") .. "</td>" end
-        body[#body + 1] = "<tr>" .. table.concat(values) .. "</tr>"
+        for index = 1, #headers do values[#values + 1] = "<" .. tag("td") .. ">" .. inline(row[index] or "") .. "</" .. tag("td") .. ">" end
+        body[#body + 1] = "<" .. tag("tr") .. ">" .. table.concat(values) .. "</" .. tag("tr") .. ">"
       end
-      nodes[#nodes + 1] = "<table><thead><tr>" .. table.concat(head) .. "</tr></thead><tbody>" .. table.concat(body) .. "</tbody></table>"
+      nodes[#nodes + 1] = "<" .. tag("table") .. "><" .. tag("thead") .. "><" .. tag("tr") .. ">"
+        .. table.concat(head) .. "</" .. tag("tr") .. "></" .. tag("thead") .. "><" .. tag("tbody") .. ">"
+        .. table.concat(body) .. "</" .. tag("tbody") .. "></" .. tag("table") .. ">"
     elseif list or numbered then
       local ordered = numbered ~= nil
       local items = {}
       while i <= #lines do
         local item = ordered and lines[i]:match("^%s*%d+%.%s+(.+)$") or lines[i]:match("^%s*[-*+]%s+(.+)$")
         if not item then break end
-        items[#items + 1] = "<li>" .. inline(trim(item)) .. "</li>"
+        items[#items + 1] = "<" .. tag("li") .. ">" .. inline(trim(item)) .. "</" .. tag("li") .. ">"
         i = i + 1
       end
       emit(ordered and "ol" or "ul", table.concat(items))
@@ -137,7 +148,7 @@ local function blocks(source, mdx)
         if quote == nil then break end
         quoted[#quoted + 1] = quote; i = i + 1
       end
-      emit("blockquote", "<p>" .. inline(table.concat(quoted, " ")) .. "</p>")
+      emit("blockquote", "<" .. tag("p") .. ">" .. inline(table.concat(quoted, " ")) .. "</" .. tag("p") .. ">")
     else
       local paragraph = { trim(line) }
       i = i + 1
@@ -158,10 +169,16 @@ function M.compile(source, options)
   local filename = options.filename or "document.md"
   local mdx = filename:match("%.mdx$") ~= nil
   local setup, body = blocks(source, mdx)
+  local bindings = {}
+  for _, name in ipairs(TAGS) do
+    bindings[#bindings + 1] = "  local " .. tag(name) .. " = components." .. name .. " or " .. string.format("%q", name)
+  end
   local generated = table.concat({
     'local H = require("hydronium")', setup,
     'return function(props)',
-    '  return <article class={props and props.class}>' .. body .. '</article>',
+    '  local components = props and props.components or {}',
+    table.concat(bindings, "\n"),
+    '  return <' .. tag("article") .. ' class={props and props.class}>' .. body .. '</' .. tag("article") .. '>',
     'end',
   }, "\n")
   local compiled = luax.compile(generated, { filename = filename, module_id = options.module_id,
