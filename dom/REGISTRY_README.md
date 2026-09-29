@@ -150,3 +150,5 @@ too. That is deliberately separate: it is useful for a DOM-only project, but
 it would otherwise leak hundreds of names into every LuaLS workspace. It does
 not create runtime globals. `table` and `select` remain lexical-only as
 `d.table` and `d.select`, preserving Lua's standard globals.
+
+Host embeddings and Ballad provider/effect tracking are documented in [Host capabilities](../docs/HOST_CAPABILITIES.md).

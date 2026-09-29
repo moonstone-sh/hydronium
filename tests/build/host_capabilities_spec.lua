@@ -22,7 +22,8 @@ return _G["__dom_remove_listener"]]=], contracts)
       'local env = _G; return env[key]', 'rawget(_G, key)',
       'local hosts = require("hydronium.runtime.hosts"); return hosts.require(name, 1)',
       'local hosts = require("hydronium.runtime.hosts"); return hosts[method]("dom", 1)',
-      'local hosts = require("hydronium.runtime.hosts"); hosts = replacement; return hosts.require("dom", 1)' }) do
+      'local hosts = require("hydronium.runtime.hosts"); hosts = replacement; return hosts.require("dom", 1)',
+      'return require("hydronium.runtime.hosts").require("dom", 1)' }) do
       assert.truthy(analysis.scan(source, contracts).retain_all, source)
     end
   end)

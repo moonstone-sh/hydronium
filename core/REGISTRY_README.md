@@ -92,3 +92,5 @@ The core owns compilation, `package.preload` replacement, component-family
 refresh, and rollback when the replacement module cannot load. Browsers,
 terminal loops, and other hosts remain responsible for detecting edits and
 delivering source.
+
+Host embeddings and Ballad provider/effect tracking are documented in [Host capabilities](../docs/HOST_CAPABILITIES.md).
