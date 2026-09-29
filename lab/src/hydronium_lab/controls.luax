@@ -1,19 +1,40 @@
--- These outlets work in the default SSR shell and in user-authored DOM views.
--- The browser binder owns events; no per-project hydration setup is required.
+-- User controls are ordinary DOM components bound to shared story args.
 local H = require("hydronium")
-local function Controls(props)
-  return <section class={props.class or "hydronium-lab__controls"} data-lab-controls data-lab-controls-story={props.story_id} hidden={props.story_id ~= nil} aria-label="Story controls">{props.children}</section>
+local function ControlsOutlet(props)
+  return <section class={props.class or "hydronium-lab__controls"} data-lab-controls data-lab-controls-story={props.story_id} hidden={props.story_id ~= nil} aria-label={props.label or "Story controls"}>{props.children}</section>
 end
-local function Control(props)
-  return <input {...props} data-lab-control={props.name} aria-label={props.label or props.name} />
+local function DefaultControls(props)
+  return <section class={props.class or "hydronium-lab__controls"} data-lab-controls data-lab-default-controls aria-label={props.label or "Story controls"}>{props.children}</section>
+end
+local function PlayPause(props)
+  return <button type="button" aria-label="Pause playback" {...props} data-lab-play>{props.children or <span data-lab-play-label>Pause</span>}</button>
+end
+local function FrameStep(props)
+  return <button type="button" aria-label="Advance one frame" {...props} data-lab-step>{props.children or "Step"}</button>
+end
+local function Restart(props)
+  return <button type="button" aria-label="Restart story at time zero" {...props} data-lab-restart>{props.children or "Restart"}</button>
+end
+local function FrameInterval(props)
+  return <label class={props.class}>{props.label or "Frame interval (ms)"}<input type="number" min="0.01" step="any" value="16.6666666667" {...(props.input_props or {})} data-lab-frame-interval /></label>
+end
+local function TimeDisplay(props)
+  return <output aria-label="Story time" {...props} data-lab-time>0 ms · frame 0</output>
 end
 local function Timeline(props)
   return <section class={props.class or "hydronium-lab__timeline"} data-lab-timeline aria-label="Playback">
-    <button type="button" data-lab-play aria-label="Pause playback">Pause</button>
-    <button type="button" data-lab-restart aria-label="Restart story at time zero">Restart</button>
-    <button type="button" data-lab-step aria-label="Advance one frame">Step</button>
-    <label>Frame interval (ms)<input type="number" min="0.01" step="any" value="16.6666666667" data-lab-frame-interval /></label>
-    <output data-lab-time aria-label="Story time">0 ms · frame 0</output>
+    <PlayPause /><Restart /><FrameStep /><FrameInterval /><TimeDisplay />
   </section>
 end
-return { Controls = Controls, Control = Control, Timeline = Timeline }
+-- Compatibility with the earlier draft. Prefer ordinary inputs and hooks.
+local function Control(props)
+  return <input {...props} data-lab-control={props.name} aria-label={props.label or props.name} />
+end
+local function Controls(props)
+  if props.story_id then return <ControlsOutlet {...props} /> end
+  return <DefaultControls {...props} />
+end
+return { ControlsOutlet = ControlsOutlet, DefaultControls = DefaultControls,
+  PlayPause = PlayPause, FrameStep = FrameStep, Restart = Restart,
+  FrameInterval = FrameInterval, TimeDisplay = TimeDisplay, Timeline = Timeline,
+  Controls = Controls, Control = Control }

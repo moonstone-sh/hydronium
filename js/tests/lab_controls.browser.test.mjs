@@ -8,7 +8,8 @@ import {chromium} from 'playwright';
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const html=`<!doctype html><main data-hydronium-lab>
 <div data-lab-terminal></div><output data-lab-status></output><nav data-lab-stories></nav>
-<section data-lab-controls></section>
+<section data-lab-controls data-lab-default-controls></section>
+<section data-lab-controls id="user-empty-outlet"></section>
 <section data-lab-controls data-lab-controls-story="custom" hidden><label>Custom label<input data-lab-control="label" aria-label="Custom label"></label></section>
 <button data-lab-play>Pause</button><button data-lab-step>Step</button><button data-lab-restart>Restart</button>
 <input data-lab-frame-interval type="number" aria-label="Frame interval"><output data-lab-time></output>
@@ -38,15 +39,18 @@ if(!file){res.writeHead(404).end();return;}
 res.writeHead(200,{'content-type':'text/javascript'}).end(await readFile(join(root,file)));
 });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const browser=await chromium.launch();t.after(async()=>{await browser.close();await new Promise(resolve=>server.close(resolve));});const page=await browser.newPage(),errors=[];page.on('pageerror',error=>errors.push(String(error)));
 await page.goto('http://127.0.0.1:'+server.address().port);await page.waitForFunction(()=>window.__ready);
+assert.equal(await page.locator('#user-empty-outlet').evaluate(node=>node.childElementCount),0,'an empty user outlet must not generate controls');
 await page.getByRole('textbox',{name:'label',exact:true}).fill('Edited');await page.waitForFunction(()=>window.__lab.state.getSnapshot().args.label==='Edited');
 assert.equal(await page.evaluate(()=>document.activeElement.dataset.labControl),'label');
 await page.getByRole('spinbutton',{name:'count',exact:true}).fill('4');await page.getByRole('checkbox',{name:'enabled'}).check();await page.getByRole('combobox',{name:'choice'}).selectOption({label:'Three'});
 await page.waitForFunction(()=>window.__lab.state.getSnapshot().args.choice===3);assert.deepEqual(await page.evaluate(()=>window.__lab.state.getSnapshot().args),{label:'Edited',count:4,enabled:true,choice:3});
 assert.equal(await page.evaluate(()=>window.__requests.filter(message=>message.op==='open').length),1);
 await page.getByRole('spinbutton',{name:'Frame interval'}).fill('25');await page.getByRole('spinbutton',{name:'Frame interval'}).blur();await page.waitForFunction(()=>window.__lab.state.getSnapshot().playback.intervalMs===25);
+await page.evaluate(()=>{const button=document.createElement('button');button.id='custom-play';button.dataset.labPlay='';button.innerHTML='<span>My icon</span>';document.querySelector('main').append(button);});
 await page.getByRole('button',{name:'Step',exact:true}).click();await page.waitForFunction(()=>window.__lab.state.getSnapshot().playback.nowMs===25);assert.equal(await page.locator('[data-lab-time]').textContent(),'25.00 ms · frame 1');
+assert.equal(await page.locator('#custom-play span').textContent(),'My icon','custom playback markup survives state updates');await page.locator('#custom-play').evaluate(node=>node.remove());
 await page.getByRole('button',{name:'Play playback'}).click();await page.waitForFunction(()=>window.__lab.state.getSnapshot().playback.nowMs>25);await page.getByRole('button',{name:'Pause playback'}).click();await page.waitForFunction(()=>!window.__lab.state.getSnapshot().playback.playing);const frozen=await page.evaluate(()=>window.__lab.state.getSnapshot().playback.nowMs);await page.waitForTimeout(200);assert.equal(await page.evaluate(()=>window.__lab.state.getSnapshot().playback.nowMs),frozen);
 await page.getByRole('button',{name:'Restart',exact:true}).click();await page.waitForFunction(()=>window.__lab.state.getSnapshot().playback.nowMs===0);
-await page.getByRole('button',{name:'Custom',exact:true}).click();await page.getByRole('textbox',{name:'Custom label'}).fill('Custom edit');await page.waitForFunction(()=>window.__lab.state.getSnapshot().args.label==='Custom edit');assert.equal(await page.locator('[data-lab-controls]:not([data-lab-controls-story])').isVisible(),false);
+await page.getByRole('button',{name:'Custom',exact:true}).click();await page.getByRole('textbox',{name:'Custom label'}).fill('Custom edit');await page.waitForFunction(()=>window.__lab.state.getSnapshot().args.label==='Custom edit');assert.equal(await page.locator('[data-lab-default-controls]').isVisible(),false);
 await page.evaluate(()=>window.__lab.close());assert.deepEqual(errors,[]);
 });

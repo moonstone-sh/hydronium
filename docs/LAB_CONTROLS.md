@@ -121,8 +121,8 @@ runtime, controller and terminal renderer remain library imports.
 
 Public Lua components:
 
-- `hydronium_lab.workbench`: `Workbench`/`Shell`, `Icon`, `Controls`, `Control`, `Timeline`.
-- `hydronium_lab.controls`: `Controls`, `Control`, `Timeline`.
+- `hydronium_lab.workbench`: `Workbench`/`Shell`, `Icon`, and all controls/playback exports below.
+- `hydronium_lab.controls`: `ControlsOutlet`, `DefaultControls`, `PlayPause`, `FrameStep`, `TimeDisplay`, `FrameInterval`, `Restart`, `Timeline`.
 - `hydronium_ink_lab.components`: `Document`, `Shell`, `InkControls`, `InkPreferences`.
 
 The workbench accepts `controls`, `timeline`, `renderer_controls`, `preview`,
@@ -139,5 +139,32 @@ The served `workbench.js` exports `createStoryStore` and `bindStoryControls`.
 `pause`, `advance`, `seek`, and `restart`. The store has `getSnapshot()`,
 `subscribe(callback)` (returns unsubscribe), `setArgs`, `resetArgs`, `play`,
 `pause`, `setInterval`, `advance`, `seek`, and `restart`. Subscriptions receive
-copies of confirmed state. Empty `Controls` outlets get default fields;
-populated outlets keep user markup. Browser operations are serialized.
+copies of confirmed state. `ControlsOutlet` never generates fields, even when empty.
+`DefaultControls` explicitly opts into generated fields; populated defaults keep
+user markup. The earlier draft names `Controls` and `Control` remain compatibility
+helpers, but ordinary inputs and `useStoryArgs()` are the primary user API. Browser operations are serialized.
+
+## Compose your own controls and playback
+
+Users own control widgets. Lab supplies shared args, validation and binding,
+not a mandatory input hierarchy. A hydrated DOM view can use
+`lab.useStoryArgs()` under the story provider to build any interaction. In the
+default server-rendered shell, ordinary `data-lab-control="argument"` inputs
+use the browser binder described above.
+
+`ControlsOutlet` only identifies a surface for user-authored controls.
+`DefaultControls` requests automatic fields. The standard workbench opts into
+the latter, so existing projects still work without setup.
+
+Playback components may be placed independently in a custom document:
+
+```luax
+local ui = require("hydronium_lab.controls")
+local PlayPause, FrameStep, TimeDisplay = ui.PlayPause, ui.FrameStep, ui.TimeDisplay
+local function Playback()
+  return <div><PlayPause /><FrameStep /><TimeDisplay /></div>
+end
+```
+
+`Timeline` is the default composition of these with `Restart` and
+`FrameInterval`. All use the same Lab playback state.

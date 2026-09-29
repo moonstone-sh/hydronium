@@ -349,12 +349,13 @@ end
 local DEFAULT_WORKBENCH = [=[local H = require("hydronium")
 local Default = require("hydronium_ink_lab.components").Document
 local ui = require("hydronium_lab.controls")
-local Controls, Timeline = ui.Controls, ui.Timeline
+local ControlsOutlet, DefaultControls, Timeline = ui.ControlsOutlet, ui.DefaultControls, ui.Timeline
 
--- Leave Controls empty for automatic fields, or put named inputs inside it.
+-- DefaultControls opts into generated fields. Replace it with a
+-- ControlsOutlet containing your own components or ordinary bound inputs.
 -- <input data-lab-control="label" /> updates that story argument live.
 return function(props)
-  return <Default {...props} controls={<Controls />} timeline={<Timeline />} />
+  return <Default {...props} controls={<DefaultControls />} timeline={<Timeline />} />
 end
 ]=]
 local function package_source(package_name, module_name)

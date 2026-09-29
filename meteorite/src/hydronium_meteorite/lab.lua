@@ -142,11 +142,11 @@ function M.page(c, contract)
   local story_controls = {}
   local registry, registry_error = refresh()
   if not registry then return c:text(503, tostring(registry_error)) end
-  local Controls = require("hydronium_lab.controls").Controls
+  local ControlsOutlet = require("hydronium_lab.controls").ControlsOutlet
   for _, story in ipairs(registry.stories) do
     if story.controls_view then
       local storyState = require("hydronium_lab.state").new(story.args, story.controls)
-      story_controls[#story_controls + 1] = h(Controls, { story_id = story.id },
+      story_controls[#story_controls + 1] = h(ControlsOutlet, { story_id = story.id },
         h(require("hydronium_lab.state").Context.Provider, { value = storyState }, h(story.controls_view, { args = story.args, controls = story.controls })))
     end
   end

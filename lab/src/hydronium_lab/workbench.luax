@@ -7,7 +7,7 @@
 -- rendering semantics.
 local H = require("hydronium")
 local controls = require("hydronium_lab.controls")
-local Controls, Timeline = controls.Controls, controls.Timeline
+local DefaultControls, Timeline = controls.DefaultControls, controls.Timeline
 
 local function Icon(props)
   return <span class="material-symbols-outlined" aria-hidden="true">{props.name}</span>
@@ -51,7 +51,7 @@ local function Shell(props)
           <output class={class_name("__status", legacy)} data-lab-status aria-live="polite">Connecting</output>
         </section>
         {props.timeline or <Timeline />}
-        {props.controls or <Controls />}
+        {props.controls or <DefaultControls />}
         {props.story_controls}
         <div class={class_name("__interactions", legacy)} data-lab-interactions />
       </section>
@@ -95,4 +95,6 @@ local function Shell(props)
   )
 end
 
-return { Shell = Shell, Workbench = Shell, Icon = Icon, Controls = Controls, Control = controls.Control, Timeline = Timeline }
+local exports = { Shell = Shell, Workbench = Shell, Icon = Icon }
+for name, component in pairs(controls) do exports[name] = component end
+return exports

@@ -193,8 +193,8 @@ export function createStoryStore({ send, paint = value => value }) {
   };
 }
 
-// Named inputs can appear anywhere in a custom DOM shell. Empty Controls
-// outlets receive defaults; populated outlets keep the user's markup intact.
+// Named inputs can appear anywhere in a custom DOM shell. Only explicitly
+// marked DefaultControls receive generated fields; outlets keep user markup.
 export function bindStoryControls({ root, store, onError = error => {
   const status = root.querySelector("[data-lab-status]");
   if (status) status.textContent = error.message;
@@ -213,7 +213,7 @@ export function bindStoryControls({ root, store, onError = error => {
     const nextSignature = JSON.stringify(state.controls);
     if (story !== state.story || signature !== nextSignature) {
       story = state.story; signature = nextSignature;
-      for (const outlet of root.querySelectorAll("[data-lab-controls]")) {
+      for (const outlet of root.querySelectorAll("[data-lab-default-controls]")) {
         const storyId = outlet.dataset.labControlsStory;
         if (storyId) continue;
         if (!generated.has(outlet) && outlet.childElementCount) continue;
@@ -248,7 +248,12 @@ export function bindStoryControls({ root, store, onError = error => {
       else if (field.dataset.labOptionIndex) field.value = String(optionsFor(control).findIndex(option => option.value === value));
       else if (document.activeElement !== field) field.value = value == null ? "" : String(value);
     }
-    for (const button of root.querySelectorAll("[data-lab-play]")) { button.textContent = state.playback.playing ? "Pause" : "Play"; button.setAttribute("aria-label", state.playback.playing ? "Pause playback" : "Play playback"); }
+    for (const button of root.querySelectorAll("[data-lab-play]")) {
+      const label = button.querySelector("[data-lab-play-label]");
+      if (label) label.textContent = state.playback.playing ? "Pause" : "Play";
+      else if (!button.childElementCount) button.textContent = state.playback.playing ? "Pause" : "Play";
+      button.setAttribute("aria-label", state.playback.playing ? "Pause playback" : "Play playback");
+    }
     for (const field of root.querySelectorAll("[data-lab-frame-interval]")) if (document.activeElement !== field) field.value = String(state.playback.intervalMs);
     for (const output of root.querySelectorAll("[data-lab-time]")) output.textContent = `${state.playback.nowMs.toFixed(2)} ms · frame ${state.playback.frame}`;
   });
