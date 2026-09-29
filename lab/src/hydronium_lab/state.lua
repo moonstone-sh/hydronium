@@ -5,7 +5,9 @@ local function finite(value)
   return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
 end
 function M.validate(controls, args)
+  if type(args) ~= "table" then error("hydronium_lab: args must be a named table", 2) end
   for name, value in pairs(args) do
+    if type(name) ~= "string" then error("hydronium_lab: argument names must be strings", 2) end
     local control = controls[name]
     if control then
       local kind = control.type
@@ -20,7 +22,8 @@ function M.validate(controls, args)
       if kind == "select" then
         local found = false
         for _, option in ipairs(control.options) do
-          local candidate = type(option) == "table" and option.value or option
+          local candidate = option
+          if type(option) == "table" then candidate = option.value end
           if candidate == value then found = true end
         end
         if not found then error("hydronium_lab: unknown option for control '" .. name .. "'", 2) end

@@ -35,11 +35,12 @@ function Runtime:open(id, options)
   local size = story.sizes[1]
   local nextState = lab.state.new(args, story.controls, defaults)
   if options.playing ~= nil and type(options.playing) ~= "boolean" then error("hydronium_ink_lab: playing must be boolean", 2) end
+  if options.intervalMs ~= nil and (not lab.state.finite(options.intervalMs) or options.intervalMs <= 0) then error("hydronium_ink_lab: interval must be positive and finite", 2) end
   if self.active then self.active:close() end
   self.output = {}
   self.story = story
   self.state = nextState
-  self.nowMs, self.playing, self.frameIndex, self.intervalMs = 0, options.playing ~= false, 0, 1000 / 60
+  self.nowMs, self.playing, self.frameIndex, self.intervalMs = 0, options.playing ~= false, 0, options.intervalMs or (1000 / 60)
   self:_playback()
   local function Preview()
     return function() return story.render(self.state.args()) end
@@ -105,7 +106,7 @@ function Runtime:request(request)
   if op == "restart" then
     local active = self:_active()
     return self:open(self.story.id, { args = self.state.args(), columns = active._host._cols, rows = active._host._rows,
-      color = active._host._colorCapability, colorProfile = active._host._colorProfile, playing = false })
+      color = active._host._colorCapability, colorProfile = active._host._colorProfile, playing = false, intervalMs = self.intervalMs })
   end
   local active = self:_active()
   if op == "input" then

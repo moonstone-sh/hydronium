@@ -228,12 +228,13 @@ describe("Lab live state and playback", function()
     assert.equal(frame.lab.playback.nowMs, 0)
     assert.equal(frame.lab.playback.playing, false)
     assert.equal(animation.frame(), 0)
+    assert.equal(frame.lab.playback.intervalMs, 10)
     runtime:close()
   end)
 
   it("validates edits before changing the live story and isolates sessions", function()
     local story = lab.story({ id = "validated", args = { value = 1, choice = false }, controls = {
-      value = { type = "number", min = 0, max = 2 }, choice = { type = "select", options = { false, true } },
+      value = { type = "number", min = 0, max = 2 }, choice = { type = "select", options = { { label = "No", value = false }, { label = "Yes", value = true } } },
     }, render = function(args) return hydronium.h(ink.Text, nil, tostring(args.value)) end })
     local registry = lab.registry({ story })
     local a, b = inkLab.new(registry), inkLab.new(registry)

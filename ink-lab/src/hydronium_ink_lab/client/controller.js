@@ -1,4 +1,4 @@
-import { createStoryStore, bindStoryControls } from "../../../../lab/src/hydronium_lab/client/workbench.js";
+import { createStoryStore, bindStoryControls, restoreStoryArgs } from "../../../../lab/src/hydronium_lab/client/workbench.js";
 import { createTerminalAdapter } from "../../../scripts/xterm-entry.js";
 const PALETTE_NAMES = [
   "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
@@ -736,6 +736,7 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     return paint(await request({
       op: "open", story: activeStory.id, columns: target.columns, rows: target.rows,
       color: colorSelect?.value || activeStory.color,
+      playing: storyState?.getSnapshot().playback.playing, intervalMs: storyState?.getSnapshot().playback.intervalMs,
     }));
   }
 
@@ -1024,7 +1025,7 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
       const previousColor = colorSelect?.value || activeStory.color;
       catalog = nextCatalog;
       const previousState = storyState?.getSnapshot();
-      const previousArgs = selected.id === activeStory.id ? previousState?.args : undefined;
+      const previousArgs = selected.id === activeStory.id ? restoreStoryArgs(selected, previousState?.args) : undefined;
       activeStory = selected;
       storyState?.select(selected);
       fillStories();
@@ -1035,7 +1036,7 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
       pacer.noteActivity();
       return paint(await request({
         op: "open", story: activeStory.id, columns: activeSize.columns, rows: activeSize.rows,
-        color: previousColor, args: previousArgs, playing: previousState?.playback.playing,
+        color: previousColor, args: previousArgs, playing: previousState?.playback.playing, intervalMs: previousState?.playback.intervalMs,
       }));
     },
     close: async () => {

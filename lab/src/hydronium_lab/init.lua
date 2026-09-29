@@ -103,7 +103,8 @@ local function normalizeControls(controls)
     end
     if normalized.type == "select" then
       for _, option in ipairs(normalized.options) do
-        local value = type(option) == "table" and option.value or option
+        local value = option
+        if type(option) == "table" then value = option.value end
         if type(value) ~= "string" and type(value) ~= "number" and type(value) ~= "boolean" then error("hydronium_lab: select values must be scalar", 3) end
       end
     end

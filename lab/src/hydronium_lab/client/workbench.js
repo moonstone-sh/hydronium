@@ -204,13 +204,17 @@ export function bindStoryControls({ root, store, onError = error => {
   const generated = new Set();
   const optionsFor = control => (control?.options || []).map(option => typeof option === "object" ? option : { label: String(option), value: option });
   const subscribe = store.subscribe(state => {
+    const customOutlets = [...root.querySelectorAll("[data-lab-controls-story]")];
+    const hasCustom = customOutlets.some(node => node.dataset.labControlsStory === state.story);
+    for (const outlet of root.querySelectorAll("[data-lab-controls]")) {
+      const storyId = outlet.dataset.labControlsStory;
+      outlet.hidden = storyId ? storyId !== state.story : hasCustom;
+    }
     const nextSignature = JSON.stringify(state.controls);
     if (story !== state.story || signature !== nextSignature) {
       story = state.story; signature = nextSignature;
       for (const outlet of root.querySelectorAll("[data-lab-controls]")) {
         const storyId = outlet.dataset.labControlsStory;
-        const hasCustom = [...root.querySelectorAll("[data-lab-controls-story]")].some(node => node.dataset.labControlsStory === state.story);
-        outlet.hidden = storyId ? storyId !== state.story : hasCustom;
         if (storyId) continue;
         if (!generated.has(outlet) && outlet.childElementCount) continue;
         generated.add(outlet);
@@ -279,4 +283,19 @@ export function bindStoryControls({ root, store, onError = error => {
   }
   root.addEventListener("input", edit); root.addEventListener("change", edit); root.addEventListener("click", click);
   return { destroy() { subscribe(); root.removeEventListener("input", edit); root.removeEventListener("change", edit); root.removeEventListener("click", click); } };
+}
+
+// Carry compatible edits across HMR while letting changed schemas use defaults.
+export function restoreStoryArgs(story, args = {}) {
+  const restored = {};
+  for (const [name, value] of Object.entries(args)) {
+    const control = story.controls?.[name];
+    if (!control && !(name in (story.args || {}))) continue;
+    if (control?.type === "number" && (!Number.isFinite(value) || (control.min != null && value < control.min) || (control.max != null && value > control.max))) continue;
+    if ((control?.type === "text" || control?.type === "color") && typeof value !== "string") continue;
+    if (control?.type === "boolean" && typeof value !== "boolean") continue;
+    if (control?.type === "select" && !control.options.some(option => (typeof option === "object" ? option.value : option) === value)) continue;
+    restored[name] = structuredClone(value);
+  }
+  return restored;
 }

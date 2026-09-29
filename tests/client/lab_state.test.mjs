@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createStoryStore} from '../../lab/src/hydronium_lab/client/workbench.js';
+import {createStoryStore, restoreStoryArgs} from '../../lab/src/hydronium_lab/client/workbench.js';
 test('story store shares confirmed args/playback, isolates snapshots and unsubscribes', async () => {
   const messages = []; let state = {args:{label:'A'},playback:{nowMs:0,frame:0,playing:true,intervalMs:10}};
   const store = createStoryStore({send:async message=>{
@@ -19,4 +19,9 @@ test('story store shares confirmed args/playback, isolates snapshots and unsubsc
   stop();const count=notifications;await store.play();assert.equal(notifications,count);
   assert.deepEqual(messages.map(message=>message.op),['args','playback','playback','advance','playback']);
   store.destroy();
+});
+
+test('HMR carries compatible edits and drops values invalid under the new schema',()=>{
+  const story={args:{label:'Default'},controls:{count:{type:'number',max:2},choice:{type:'select',options:[{label:'No',value:false}]}}};
+  assert.deepEqual(restoreStoryArgs(story,{label:'Edited',count:9,choice:false,removed:'old'}),{label:'Edited',choice:false});
 });
