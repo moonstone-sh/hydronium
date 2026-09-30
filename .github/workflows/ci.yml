@@ -141,6 +141,14 @@ jobs:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
           HYDRONIUM_BROWSER_GATE: node --test js/tests/consumer_scaffold.browser.test.mjs
         run: bash tests/e2e/consumer_scaffold.sh
+      - name: Packaged SSR on the default lua-wasm engine gate
+        # Exported packages only (no source overlays): the published client
+        # boots lua-wasm, hydrates, and runs DOM, forms and router bridges.
+        env:
+          MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
+          HYDRONIUM_CONSUMER_TEMPLATE: ssr
+          HYDRONIUM_BROWSER_GATE: node --test js/tests/consumer_lua_wasm.browser.test.mjs
+        run: bash tests/e2e/consumer_scaffold.sh
       - name: React island consumer gate
         # The islands scaffold with its island turned into a React 19 component
         # (react-dom hydrateRoot, built by the user's Vite + @vitejs/plugin-react).
@@ -172,6 +180,11 @@ jobs:
           # profile, and the runner's (x86_64-linux-gnu) must be added.
           (cd examples/spa_hash_demo && moon sync && moon exec -- ballad play partiture.lua)
           node --test js/tests/spa_hash_demo.browser.test.mjs
+      - name: lua-wasm engine mount and event-semantics gate
+        # Reuses the SPA build above for its framework chunk. Mounts on the
+        # default lua-wasm engine, and runs the event default-action suite on
+        # both lua-wasm and the Wasmoon fallback.
+        run: node --test js/tests/lua_wasm_mount.browser.test.mjs js/tests/lua_wasm_events.browser.test.mjs
       - name: Meteorite + Vite production and dual-HMR gates
         env:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
