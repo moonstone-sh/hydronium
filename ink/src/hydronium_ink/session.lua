@@ -426,6 +426,19 @@ function Session:colorProfile()
   return self._host._colorProfile
 end
 
+--- The complete ANSI text of every line an `ink.Static` element in this
+--- session has ever flushed to real scrollback, in order (see
+--- hydronium_ink.host.terminal's `flushStaticNodes`/`_staticHistory`) --
+--- empty string if this session has never used `ink.Static`, or is not
+--- an inline session (Static history is only ever collected in inline
+--- mode). Read-only bookkeeping, not a control: there is no way to clear
+--- or rewind it, matching Static's own append-only, write-once contract.
+--- @return string
+function Session:staticHistory()
+  self:_assertOpen("staticHistory")
+  return table.concat(self._host._staticHistory or {})
+end
+
 --- @param capability boolean|"auto" See hydronium_ink.host.terminal's
 ---   setHyperlinkCapability. Independent of setColorCapability -- see this
 ---   file's own `hyperlinks` SessionOption doc comment for why.

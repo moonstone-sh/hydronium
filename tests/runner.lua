@@ -445,6 +445,7 @@ local function main()
       "tests/host/assets_spec.lua",
       "tests/host/assets_provider_spec.lua",
       "tests/host/terminal_spec.lua",
+      "tests/host/ink_static_spec.lua",
       "tests/host/color_profile_spec.lua",
       "tests/host/terminal_background_spec.lua",
       "tests/host/keys_spec.lua",

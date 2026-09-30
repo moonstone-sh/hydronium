@@ -303,6 +303,31 @@ local function childrenArray(node)
   return list
 end
 
+--- The children of a "Static" node (see hydronium_ink/init.lua's
+--- `ink.Static` and this file's own "STATIC FLUSH PASS" section below)
+--- that have NOT yet been written to real terminal scrollback --
+--- `node._staticFlushedCount` (advanced only by flushStaticNodes, and
+--- only in inline mode) is a prefix count, never a sparse set, because
+--- Static's contract is append-only. Every consumer of a Static node's
+--- children in the LIVE tree (buildYogaTree, resolvePositions, paintNode)
+--- goes through this one function, so "already flushed, therefore
+--- invisible to the live/diffed frame forever" has exactly one
+--- definition. In non-inline hosts `_staticFlushedCount` is never
+--- advanced (flushStaticNodes is a no-op there -- see its own doc
+--- comment), so this always returns the full, ordinary child list and a
+--- Static node behaves exactly like a plain Box.
+local function unflushedStaticChildren(node)
+  local kids = childrenArray(node)
+  local flushed = node._staticFlushedCount or 0
+  if flushed <= 0 then return kids end
+  if flushed >= #kids then return {} end
+  local out = {}
+  for i = flushed + 1, #kids do
+    out[#out + 1] = kids[i]
+  end
+  return out
+end
+
 --- Detaches `child` from whatever parent it currently has (a no-op if
 --- none). Used by appendChild/insertBefore to handle a MOVE (Yoga-owning
 --- ancestors on both the old and new side each need their child list
@@ -1003,7 +1028,13 @@ local function buildYogaTree(node)
   if childListChanged then
     yg:removeAllChildren()
   end
-  local kids = childrenArray(node)
+  -- A "Static" node only ever contributes its NOT-YET-FLUSHED children to
+  -- the live tree -- see unflushedStaticChildren's own doc comment. In
+  -- inline mode this is always empty by the time buildYogaTree runs
+  -- (flushStaticNodes, called at the very top of host.paint(), drains it
+  -- completely first); in non-inline mode it is always the full list, so
+  -- a Static node behaves exactly like an ordinary Box there.
+  local kids = (node.tag == "Static") and unflushedStaticChildren(node) or childrenArray(node)
   for i = 1, #kids do
     local childYg = buildYogaTree(kids[i])
     if childListChanged then
@@ -1059,7 +1090,10 @@ resolvePositions = function(node, parentX, parentY)
   -- text/newline/text_block node's `node.children`, if any, were never
   -- given their own Yoga node and must not be recursed into here.
   if node._layoutKind == "box" then
-    local kids = childrenArray(node)
+    -- Same substitution as buildYogaTree's box branch, and for the same
+    -- reason: a flushed Static child's `_yoga` has been freed (see
+    -- flushStaticNodes), so it must never be visited here again.
+    local kids = (node.tag == "Static") and unflushedStaticChildren(node) or childrenArray(node)
     for i = 1, #kids do
       resolvePositions(kids[i], x, y)
     end
@@ -1239,7 +1273,7 @@ paintNode = function(node, frame, clip, offsetX, offsetY)
       -- Controlled offsets compose with a signal and useInput; the host does
       -- not impose a hidden keyboard policy on a scrollable view.
       local contentRight, contentBottom = layout.x - 1, layout.y - 1
-      local scrollKids = childrenArray(node)
+      local scrollKids = (node.tag == "Static") and unflushedStaticChildren(node) or childrenArray(node)
       for i = 1, #scrollKids do
         local childLayout = scrollKids[i]._layout
         if childLayout then
@@ -1262,7 +1296,7 @@ paintNode = function(node, frame, clip, offsetX, offsetY)
       node._scroll = nil
     end
 
-    local paintKids = childrenArray(node)
+    local paintKids = (node.tag == "Static") and unflushedStaticChildren(node) or childrenArray(node)
     for i = 1, #paintKids do
       paintNode(paintKids[i], frame, childClip, childOffsetX, childOffsetY)
     end
@@ -1754,6 +1788,146 @@ function M.createTerminalHost(writeFn, opts)
     return "\r" .. (height > 0 and ("\27[" .. height .. "A") or "") .. "\27[J"
   end
 
+  --- STATIC FLUSH PASS -- runs once at the very top of every host.paint()
+  --- (see the call in host.paint() below), strictly before that paint's
+  --- normal buildYogaTree/calculateLayout pass for the live/inline frame.
+  --- Walks the tree for every "Static"-tagged node (see
+  --- hydronium_ink/init.lua's `ink.Static`) and, for each one that has
+  --- grown since its last flush, lays out and paints ONLY its newly
+  --- appended children -- in a fully isolated mini Yoga tree, exactly the
+  --- same isolated-subtree trick Transform's own buildYogaTree branch
+  --- above already uses -- encodes them with the SAME color/hyperlink
+  --- encodeRun pipeline the live frame uses, and writes them directly via
+  --- writeFn. Once written this way they are ordinary, permanent terminal
+  --- scrollback: this module will never touch or repaint them again (see
+  --- unflushedStaticChildren, which every other consumer of a Static
+  --- node's children goes through).
+  ---
+  --- Only meaningful in inline mode: a full-screen host already repaints
+  --- its entire frame from scratch every time, so there is no scrollback
+  --- boundary to speak of and a Static node there just behaves like an
+  --- ordinary Box (unflushedStaticChildren returns the full list forever,
+  --- since `_staticFlushedCount` is simply never advanced) -- this
+  --- function is a deliberate no-op outside inline mode.
+  ---
+  --- Borrows directly into the REAL sibling linked list rather than
+  --- copying it (`anonymousRoot._firstChild = kids[already + 1]`) --
+  --- exactly the same trick Transform's anonymousRoot uses for the same
+  --- reason (see its own comment): a Static node's newly-appended
+  --- children are always the TAIL of that same list, so pointing an
+  --- anonymous root's `_firstChild` straight at that tail's head is a
+  --- valid, complete child list with zero mutation of any shared node's
+  --- own `_prevSibling`/`_nextSibling` (childrenArray only ever walks
+  --- FORWARD via `_nextSibling`, so the stale backward pointer into the
+  --- already-flushed prefix is simply never read).
+  local function flushStaticNodes()
+    if not host._inline then return end
+    local flushedLines = nil -- lazily built: nil means "nothing new this pass"
+
+    local function visit(node)
+      if node.type == "element" and node.tag == "Static" then
+        local kids = childrenArray(node)
+        local already = node._staticFlushedCount or 0
+        if #kids > already then
+          local anonymousRoot = {
+            id = nextNodeId(), type = "root", tag = "StaticFlushRoot",
+            props = {}, parent = nil,
+            _firstChild = kids[already + 1], _lastChild = node._lastChild,
+          }
+          local isolatedYg = buildYogaTree(anonymousRoot)
+          isolatedYg:calculateLayout(host._cols or YG_UNDEFINED, YG_UNDEFINED)
+          resolvePositions(anonymousRoot, 1, 1)
+
+          local iw = math.max(anonymousRoot._layout.w, 0)
+          local ih = math.max(anonymousRoot._layout.h, 0)
+          local tempFrame = newFrame(iw, ih)
+          paintNode(anonymousRoot, tempFrame)
+          isolatedYg:removeAllChildren()
+          isolatedYg:free()
+
+          flushedLines = flushedLines or {}
+          for y = 1, ih do
+            flushedLines[#flushedLines + 1] =
+              encodeRun(tempFrame.rows[y], 1, iw, host._colorCapability, host._hyperlinkCapability) .. "\27[0m\r\n"
+          end
+
+          -- These children are retiring for good -- nothing will ever lay
+          -- them out again (unflushedStaticChildren excludes them
+          -- permanently), so reclaim their persistent Yoga nodes now, the
+          -- same way host.removeChild does for a real unmount.
+          for i = already + 1, #kids do
+            freeYogaSubtree(kids[i])
+          end
+          node._staticFlushedCount = #kids
+        end
+      else
+        local kids = childrenArray(node)
+        for i = 1, #kids do
+          visit(kids[i])
+        end
+      end
+    end
+    visit(root)
+
+    if flushedLines then
+      -- Erase whatever was live-painted last (if anything) before
+      -- appending the new permanent lines, then force paintInline() to
+      -- redraw the (now Static-free) live region fully fresh below --
+      -- otherwise it could diff against a stale `_inlineBody` that no
+      -- longer corresponds to what is actually on screen.
+      local prefix = (host._inlineHeight or 0) > 0 and clearInline() or ""
+      writeFn(prefix .. table.concat(flushedLines))
+      host._inlineBody = nil
+      host._inlineHeight = 0
+
+      -- Also remembered independently of whatever writeFn does with the
+      -- bytes (a real terminal just receives them once, in order, and
+      -- needs nothing more) -- see host.encodeFullReplay's own doc
+      -- comment for the one consumer that does: a host observed through a
+      -- byte-accumulating writeFn (Ink Lab's runtime.lua) whose own
+      -- downstream terminal emulator gets reset from time to time and
+      -- needs a way to replay everything this session has EVER shown,
+      -- not just the bytes since its last drain.
+      host._staticHistory = host._staticHistory or {}
+      for i = 1, #flushedLines do
+        host._staticHistory[#host._staticHistory + 1] = flushedLines[i]
+      end
+    end
+  end
+
+  --- A complete, self-contained replay of everything this inline host has
+  --- ever shown: the full Static scrollback history (every line
+  --- flushStaticNodes has ever written, in order -- see
+  --- `host._staticHistory` above) followed by a plain encode (no
+  --- clearInline prefix, no cursor hide/show wrapping) of the CURRENT
+  --- live frame. Every ordinary consumer of this host (a real terminal, a
+  --- pty) only ever needs the incremental bytes host.paint() writes turn
+  --- by turn -- those assume continuity with whatever is already on
+  --- screen. This is for the one kind of consumer that does NOT have that
+  --- continuity: Ink Lab's runtime.lua accumulates written bytes and
+  --- replays them into a real xterm.js instance, but a "full frame" tick
+  --- there (resize, a color/profile switch, a story reopen, an explicit
+  --- resync -- see runtime.lua's own FULL_FRAME_OPS) resets that xterm.js
+  --- buffer first, which also discards ITS scrollback -- replaying only
+  --- the bytes captured since the previous tick would silently lose every
+  --- already-flushed Static line. Not meaningful outside inline mode (no
+  --- Static history is ever collected there -- see flushStaticNodes).
+  function host.encodeFullReplay()
+    local parts = {}
+    if host._staticHistory then
+      for i = 1, #host._staticHistory do
+        parts[#parts + 1] = host._staticHistory[i]
+      end
+    end
+    local frame = host._lastFrame
+    if frame then
+      for y = 1, frame.h do
+        parts[#parts + 1] = encodeRun(frame.rows[y], 1, frame.w, host._colorCapability, host._hyperlinkCapability) .. "\27[0m\r\n"
+      end
+    end
+    return table.concat(parts)
+  end
+
   function host.finishInline()
     if not host._inline then return end
     local frame = host._lastFrame
@@ -1825,6 +1999,28 @@ function M.createTerminalHost(writeFn, opts)
   --- separately for a test/tool that genuinely wants to force a repaint
   --- right now.
   function host.paint()
+    -- Set BEFORE flushStaticNodes() below -- its own isolated mini-layout
+    -- pass calls the exact same buildYogaTree/textStyleOf that read this
+    -- upvalue, so a flush must see the CURRENT color profile too, not
+    -- whatever the previous paint() call (or nil, on the very first paint
+    -- ever) left it as. See this upvalue's own doc comment a few lines
+    -- down for why it is a shared module local rather than a parameter
+    -- threaded through every function that reads it.
+    currentColorProfile = host._colorProfile
+
+    -- Resolved BEFORE flushStaticNodes() below, not after: `host._inline`
+    -- (in "auto" mode, re-derived here from whether anything currently
+    -- requests an `inlineViewport`) has to be this paint's FINAL answer
+    -- before the flush pass runs, or a Static node's children could get
+    -- real Yoga nodes attached as ordinary Box children on a paint where
+    -- inline was still false at flush time (flushStaticNodes no-ops
+    -- outside inline mode) and then have flushStaticNodes try to
+    -- re-parent those SAME already-attached Yoga nodes into an isolated
+    -- mini-tree on a later paint -- Yoga rejects reparenting a node
+    -- that's still another parent's child ("Child already has a owner").
+    -- Moving this above the flush keeps `host._inline` (and therefore
+    -- which children flushStaticNodes ever sees at all) consistent for
+    -- the whole rest of this call.
     local focus, controls
     local function inspect(node)
       if node.props and node.props.inlineViewport then controls = node.props end
@@ -1833,14 +2029,19 @@ function M.createTerminalHost(writeFn, opts)
     end
     inspect(root)
     if host._autoInline then host._inline = controls ~= nil end
+
+    -- Flush any newly-appended Static content to real scrollback FIRST,
+    -- so the buildYogaTree/calculateLayout pass just below already sees
+    -- every Static node with zero pending children (see
+    -- unflushedStaticChildren) -- this paint's own live frame never
+    -- includes content this same call just committed.
+    flushStaticNodes()
+
     local availW = host._cols or YG_UNDEFINED
     local availH = host._inline and YG_UNDEFINED or (host._rows or YG_UNDEFINED)
     -- Set once per paint(), read by every plain module-level function this
     -- pass touches (buildYogaTree/textStyleOf/paintNode/resolveBorderEdge
-    -- via `resolveStyleValue`/`currentColorProfile` above) -- see that
-    -- upvalue's own doc comment for why this is a shared module local
-    -- rather than a parameter threaded through all of them.
-    currentColorProfile = host._colorProfile
+    -- via `resolveStyleValue`/`currentColorProfile` above).
 
     local rootYoga = buildYogaTree(root)
     rootYoga:calculateLayout(availW, availH)

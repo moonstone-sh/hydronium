@@ -91,6 +91,59 @@
              its parent's main flex axis (a real Yoga flexGrow=1 leaf,
              see host/terminal.lua's buildYogaTree), matching real Ink's
              own Spacer exactly.
+    Static:  append-only, write-once output -- React Ink's `<Static>`
+             adapted to this module's plain-VNode-children idiom rather
+             than its render-prop signature (there is no clean way to
+             pass a per-item render FUNCTION as a child here: a bare
+             function child is already a reserved calling convention
+             everywhere in this framework -- core/element.lua's
+             `isReactiveChildValue` -- meaning "reactive text getter,
+             called with zero arguments," which a `function(item, index)`
+             render prop is not). Instead: build each item's element the
+             ordinary way (a plain Lua `for` loop over your own list,
+             same as any other dynamic child list in this codebase, e.g.
+             create/src/create/ui/checklist.lua), give each one a stable
+             `key`, and pass the resulting array as Static's children --
+             `H.h(ink.Static, {}, items)`. No props of its own are
+             required, though the same layout props Box accepts
+             (padding/flexDirection/etc) are honored identically, since
+             host/terminal.lua's Yoga style mapping treats "Static"
+             exactly like "Box" -- the only difference is behavioral, not
+             structural: a real terminal Host (host/terminal.lua) with
+             `inline` rendering renders each of Static's children EXACTLY
+             ONCE, the moment it first appears among Static's children,
+             writing it directly to the terminal's real, permanent
+             scrollback (ABOVE the live inline region) -- never as part
+             of the diffed/repainted live frame again afterwards, and
+             never re-rendered even if its own props later change (an
+             app that needs a "committed answer, corrected" line prints a
+             NEW item, exactly like this repo's own typewriter wizard
+             prototype does -- see create/src/create/ui/typewriter_app.lua).
+             Append-only is a real contract, not just a naming
+             convention: REMOVING or REORDERING a child that was already
+             flushed has no effect on the real terminal (its bytes are
+             already permanent, ordinary scrollback) and will desync this
+             element's children from what is actually on screen -- only
+             ever grow the list Static's children come from. Outside
+             `inline` rendering (a full-screen host, or a non-terminal
+             test host) Static has no special behavior at all -- it is
+             indistinguishable from a plain Box, since there is no
+             scrollback boundary for "write once, above the live region"
+             to mean anything.
+             STATED LIMITATION: a Static child using `wrap="wrap"` (or a
+             truncate mode) with NO explicit `width` will not reflow
+             correctly -- host/terminal.lua's flushStaticNodes lays out
+             and paints each newly-appended child in one isolated pass,
+             unlike host.paint()'s own live tree, which reruns
+             buildYogaTree/calculateLayout a second time once Yoga's
+             flex/stretch has resolved a wrap-mode Text's real available
+             width (see that file's "two-pass reflow" comment). Give a
+             wrapped/truncated Static child an explicit `width` (reading
+             the current terminal width yourself, e.g. via
+             `hooks.useWindowSize()`, works exactly as intended -- see
+             this repo's own typewriter wizard prototype). This is the
+             same simplification Transform's own isolated sub-render
+             below already accepts, not something new to Static.
     Transform: transform(line, index) -- renders its children in
              isolation, then calls transform once per output line
              (1-indexed -- NOT real Ink's 0-indexed convention, a
@@ -221,12 +274,18 @@ end
 ---@class HydroniumInkTransformProps
 ---@field transform fun(line: string, index: integer): string
 
+---@class HydroniumInkStaticProps : HydroniumInkBoxProps
+--- No fields of its own -- see hydronium_ink/init.lua's own "Static:" doc
+--- comment above (the array of children IS the append-only item list;
+--- give each one a stable `key`). Accepts the same layout props as Box.
+
 ---@class HydroniumInkDescriptors
 ---@field Box hydronium.Intrinsic<HydroniumInkBoxProps, "terminal"> | fun(props?: HydroniumInkBoxProps, ...: any): LuaxElement
 ---@field Text hydronium.Intrinsic<HydroniumInkTextProps, "terminal"> | fun(props?: HydroniumInkTextProps, ...: any): LuaxElement
 ---@field Newline hydronium.Intrinsic<{}, "terminal"> | fun(props?: {}, ...: any): LuaxElement
 ---@field Spacer hydronium.Intrinsic<{}, "terminal"> | fun(props?: {}, ...: any): LuaxElement
 ---@field Transform hydronium.Intrinsic<HydroniumInkTransformProps, "terminal"> | fun(props?: HydroniumInkTransformProps, ...: any): LuaxElement
+---@field Static hydronium.Intrinsic<HydroniumInkStaticProps, "terminal"> | fun(props?: HydroniumInkStaticProps, ...: any): LuaxElement
 ---@field createIntrinsic fun(tag: string): hydronium.Intrinsic<any, "terminal">
 ---@field terminal_background fun(opts?: table): hydronium_oklab_utils.Color|nil, string|nil Detects the real terminal background via OSC 11 (falling back to `COLORFGBG`, then `nil`). See hydronium_ink.terminal_background's own doc comment -- call this ONCE, at startup, before a session's normal input loop starts.
 ---@field colorProfile fun(value?: "auto"|"truecolor"|"ansi256"|"ansi16"|"none"): "truecolor"|"ansi256"|"ansi16"|"none" Plain (non-reactive, non-hook) equivalent of `hydronium_ink.hooks.useColorProfile()`, for code that runs outside a mounted component tree -- CLI startup, a plain module scanning `os.getenv` itself, a story file choosing what to show before any session exists. Same NO_COLOR/FORCE_COLOR-honoring "auto" detection (see hydronium_ink.color.profile); an explicit `value` bypasses detection entirely.
@@ -243,6 +302,7 @@ local ink = {
   -- consume the remaining space along its parent's main flex axis).
   Spacer = create_descriptor("Spacer"),
   Transform = create_descriptor("Transform"),
+  Static = create_descriptor("Static"),
   createIntrinsic = create_descriptor,
   createVirtualHost = virtual.createVirtualHost,
   terminal_background = require("hydronium_ink.terminal_background").detect,
