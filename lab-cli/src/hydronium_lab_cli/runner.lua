@@ -48,6 +48,18 @@ end
 --- a manifest. Use `dry_run` to inspect the exact command list.
 function M.initialize(opts)
   opts = opts or {}
+  if opts.renderer ~= nil and opts.renderer ~= "dom" and opts.renderer ~= "ink" and opts.renderer ~= "mixed" then return nil, "renderer must be dom, ink or mixed" end
+  local create_config = false
+  if opts.renderer and opts.renderer ~= "ink" then
+    local existing = io.open("hydronium.lab.lua", "rb")
+    if existing then
+      existing:close()
+      local chunk, err = loadfile("hydronium.lab.lua")
+      if not chunk then return nil, err end
+      local ok, config = pcall(chunk)
+      if not ok or type(config) ~= "table" or config.renderer ~= opts.renderer then return nil, "hydronium.lab.lua exists; set its renderer explicitly" end
+    else create_config = true end
+  end
   local commands = M.init_commands()
   if opts.dry_run then return { commands = commands } end
   local execute = opts.execute or os.execute
@@ -56,6 +68,11 @@ function M.initialize(opts)
     if not command_succeeded(ok, code) then
       return nil, "command failed: " .. command .. " (" .. tostring(code or ok) .. ")"
     end
+  end
+  if create_config then
+    local file, err = io.open("hydronium.lab.lua", "wb")
+    if not file then return nil, err end
+    file:write("return { renderer = " .. string.format("%q", opts.renderer) .. " }\n"); file:close()
   end
   return { commands = commands }
 end
@@ -197,7 +214,8 @@ function M.scan(config, fs)
         local ok, visit_err = visit(path .. "/" .. name, false)
         if not ok then return nil, visit_err end
       end
-    elseif mode == "file" and (path:match("%.stories%.lua$") or path:match("%.stories%.luax$")) then
+    elseif mode == "file" and (path:match("%.stories%.lua$") or path:match("%.stories%.luax$")
+        or path:match("%.stories%.md$") or path:match("%.stories%.mdx$")) then
       paths[#paths + 1] = path
     elseif is_root and mode == "link" then
       return nil, "story root must not be a symbolic link: " .. path
@@ -228,6 +246,8 @@ local function config_source(config, paths)
     .. "  project_name = " .. lua_quote(config.project_name or "hydronium-lab") .. ",\n"
     .. "  project_id = " .. lua_quote(config.project_id or config.project_name or "hydronium-lab") .. ",\n"
     .. (config.document and "  document = " .. lua_quote(config.document) .. ",\n" or "")
+    .. "  styles = { " .. table.concat((function() local out = {}; for i, path in ipairs(config.styles or {}) do out[i] = lua_quote(path) end; return out end)(), ", ") .. " },\n"
+    .. "  renderer = " .. lua_quote(config.renderer or "ink") .. ",\n"
     .. "  base_path = " .. lua_quote(config.base_path or "/__hydronium/lab") .. ",\n"
     .. "  roots = { " .. table.concat(roots, ", ") .. " },\n"
     .. (config.module_roots ~= nil and "  module_roots = { " .. table.concat(module_roots, ", ") .. " },\n" or "")
@@ -277,9 +297,11 @@ function M.plan(opts)
   opts = opts or {}
   local config, config_err = M.read_config(opts.config)
   if not config then return nil, config_err end
+  config.renderer = opts.renderer or config.renderer or "ink"
+  if config.renderer ~= "ink" and config.renderer ~= "dom" and config.renderer ~= "mixed" then return nil, "renderer must be dom, ink or mixed" end
   local paths, scan_err = M.scan(config, opts.fs)
   if not paths then return nil, scan_err end
-  if #paths == 0 then return nil, "no *.stories.lua or *.stories.luax files found under " .. table.concat(config.roots, ", ") end
+  if #paths == 0 then return nil, "no *.stories.lua, *.stories.luax, *.stories.md, or *.stories.mdx files found under " .. table.concat(config.roots, ", ") end
 
   local descriptor, host_err = host_descriptor(config, opts.adapter)
   if not descriptor then return nil, host_err end
@@ -360,7 +382,7 @@ end
 ]=]
 local function package_source(package_name, module_name)
   local root = os.getenv(package_root_env(package_name))
-  local module = module_name:gsub("%.", "/") .. ".luax"
+  local module = module_name:gsub("%.", "/") .. (module_name == "hydronium_lab.dom_document" and ".lua" or ".luax")
   local candidates = root and { root .. "/src/" .. module, root .. "/lua/" .. module, root .. "/" .. module,
     root .. "/share/lua/5.1/" .. module } or {}
   for _, path in ipairs(candidates) do
@@ -371,15 +393,20 @@ local function package_source(package_name, module_name)
 end
 function M.customize(opts)
   opts = opts or {}
-  local files = { [".lab/Workbench.luax"] = DEFAULT_WORKBENCH }
+  local config, config_err = M.read_config(opts.config)
+  if not config then return nil, config_err end
+  local dom = config.renderer == "dom" or config.renderer == "mixed"
+  local entry = dom and DEFAULT_WORKBENCH:gsub("hydronium_ink_lab.components", "hydronium_lab.dom_document") or DEFAULT_WORKBENCH
+  local files = { [".lab/Workbench.luax"] = entry }
   if opts.copy_shell then
     local read = opts.read_source or package_source
-    local document, err = read("hydronium/ink-lab", "hydronium_ink_lab.dom")
+    local document, err = read(dom and "hydronium/lab" or "hydronium/ink-lab", dom and "hydronium_lab.dom_document" or "hydronium_ink_lab.dom")
     if not document then return nil, err end
     local chrome, chrome_err = read("hydronium/lab", "hydronium_lab.workbench")
     if not chrome then return nil, chrome_err end
     files[".lab/Workbench.luax"] = document:gsub('require%("hydronium_lab.workbench"%)', 'require("LabChrome")')
       :gsub("return { Document = Document, Shell = Shell, InkControls = InkControls, InkPreferences = InkPreferences }", "return Document")
+    if dom then files[".lab/Workbench.luax"] = document:gsub('require%("hydronium_lab.workbench"%)', 'require("LabChrome")'):gsub("return M%s*$", "return M.Document") end
     files[".lab/LabChrome.luax"] = chrome
   end
   if opts.dry_run then return { files = files } end

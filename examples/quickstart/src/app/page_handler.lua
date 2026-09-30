@@ -1,3 +1,5 @@
+-- Hybrid request VMs have their own package loaders; install once at this entry.
+require("hydronium_luax").loader.install()
 local adapter = require("hydronium_router.meteorite")
 local site = require("views.Site")
 

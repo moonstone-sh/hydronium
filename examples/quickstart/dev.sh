@@ -9,7 +9,7 @@
 # takes a while). Meteorite still prints its own
 # "Meteorite dev server: http://127.0.0.1:PORT ..." line as usual.
 
-PORT=8080
+PORT="${PORT:-8080}"
 
 (
   while ! curl -sf -o /dev/null "http://127.0.0.1:$PORT/api/health" 2>/dev/null; do
@@ -17,6 +17,9 @@ PORT=8080
   done
   printf '\n  \033[32m\xe2\x9e\x9c\033[0m  Hydronium app up and running on \033[36mhttp://localhost:%s/\033[0m\n\n' "$PORT"
 ) &
+
+# Refresh Ballad's source inventory (a build may have left an older one).
+moon exec -- ballad play partiture.lua >/dev/null || exit 1
 
 exec moon exec --dev -- meteorite dev \
   --mode hybrid_dev \

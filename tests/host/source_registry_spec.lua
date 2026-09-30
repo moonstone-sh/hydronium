@@ -52,4 +52,20 @@ describe("hydronium_dom.dev.source_registry", function()
       records = { { id = "wrong", path = "src/App.lua", transform = "lua", target = "client", update = "hot", effects = "restart" } },
     }))
   end)
+  it("turns href'd watch entries into in-place stylesheet rules", function()
+    local registry = require("hydronium_dom.dev.source_registry").from_config({
+      files = {},
+      watch = { "notes.txt", { path = "public/style.css", href = "/public/style.css" } },
+    })
+    assert.same(registry.watch, { { path = "notes.txt" }, { path = "public/style.css", href = "/public/style.css" } })
+    local manifest = registry:browser_manifest()
+    assert.same(manifest.updates["public/style.css"], { action = "style", href = "/public/style.css" })
+    assert.is_nil(manifest.updates["notes.txt"])
+  end)
+
+  it("rejects a watch href that is not an absolute URL path", function()
+    assert.has_error(function()
+      require("hydronium_dom.dev.source_registry").from_config({ files = {}, watch = { { path = "a.css", href = "a.css" } } })
+    end)
+  end)
 end)

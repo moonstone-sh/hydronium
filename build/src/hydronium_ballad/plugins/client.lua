@@ -104,20 +104,8 @@ end
 --- @param source string
 --- @return string[]
 local function scan_requires(source)
-  local ids, seen, order = {}, {}, {}
-  local function add(id)
-    if id and not seen[id] then
-      seen[id] = true
-      table.insert(order, id)
-    end
-  end
-  for id in source:gmatch("require%s*%(%s*[\"']([%w_%.]+)[\"']%s*%)") do
-    add(id)
-  end
-  for id in source:gmatch("require%s*[\"']([%w_%.]+)[\"']") do
-    add(id)
-  end
-  return order
+  -- Shared with the dev framework manifest: hydronium.core.require_scan.
+  return require("hydronium.core.require_scan").literal_requires(source)
 end
 
 --- `resolve()`'s `visit()` walk below is already, by construction, real
@@ -307,7 +295,8 @@ local MOUNT_BOOTSTRAP_ENTRIES = {
 }
 
 --- @class HydroniumBalladResolveOptions
---- @field entries string[] REQUIRED. Module ids to walk from (the app's own root component, typically). `MOUNT_BOOTSTRAP_ENTRIES` above is always added on top of these, automatically.
+--- @field entries? string[] Module ids to walk from (the app's own root component, typically). `MOUNT_BOOTSTRAP_ENTRIES` above is always added on top of these, automatically. Required unless `project_entries` is set.
+--- @field project_entries? boolean Also walk from every input module the project's source topology stamped (`metadata.hydronium.module_id`, set by `topology.classify`/`luax.compile`) with an included target. Router screens and actions are named by string, so a production bundle needs every declared client/shared module, not only what the root statically requires. Framework files fed in unstamped (e.g. via `depends_on`) are still included only when reachable.
 --- @field include? string[] Which `metadata.hydronium.target` values to consider. Default `{"client","shared"}`.
 --- @field deny_getinfo? boolean Refuse (ctx.fail) any reachable module whose source uses `debug.getinfo` for self-location -- amalgamation changes chunknames, breaking that pattern. Default true.
 --- @field enforce_require_discipline? boolean Refuse (ctx.fail) any reachable module outside `REQUIRE_DISCIPLINE_ALLOWLIST`/`require_discipline_allowlist` that contains a non-literal `require()` call or reassigns `require`/`package.loaded`/`package.preload` -- see `scan_require_violations`'s doc comment for why this is exactly the precondition that makes this function's reachability walk a sound module-level tree-shake. Default true.
@@ -321,8 +310,8 @@ local MOUNT_BOOTSTRAP_ENTRIES = {
 function M.resolve(ctx, inputs, opts)
   opts = opts or {}
   local contracts = opts.host_capabilities or { require("hydronium_dom.host.contract").manifest() }
-  local app_entries = opts.entries
-  if not app_entries or #app_entries == 0 then
+  local app_entries = opts.entries or {}
+  if #app_entries == 0 and not opts.project_entries then
     ctx.fail("hydronium_ballad.plugins.client.resolve: opts.entries is required (a list of module ids to walk from)")
   end
   local entries = {}
@@ -365,6 +354,8 @@ function M.resolve(ctx, inputs, opts)
     for _, asset in ipairs(input_set.assets) do
       local norm = normalize_module_asset(asset)
       if norm and include[norm.target] then
+        local stamped = asset.metadata and asset.metadata.hydronium and asset.metadata.hydronium.module_id
+        if opts.project_entries and stamped then table.insert(entries, norm.module_id) end
         if by_id[norm.module_id] and by_id[norm.module_id].content ~= norm.content then
           ctx.warn("hydronium_ballad.plugins.client.resolve: module '" .. norm.module_id
             .. "' provided more than once with different content -- keeping the first one seen")

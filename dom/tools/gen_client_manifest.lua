@@ -50,47 +50,25 @@ local function to_relpath(source)
   return source:gsub("^core/src/", ""):gsub("^dom/src/", ""):gsub("^router/src/", "")
 end
 
-local function literal_requires(source)
-  local ids, seen = {}, {}
-  for id in source:gmatch("require%s*%(%s*['\"]([%w_.%-]+)['\"]%s*%)") do
-    if not seen[id] then
-      seen[id] = true
-      ids[#ids + 1] = id
-    end
-  end
-  return ids
-end
-
-local manifest = {}      -- module_id -> relative path (order-preserving)
-local order = {}
-local seen = {}
-
 if #arg < 1 then
     io.stderr:write("usage: lua dom/tools/gen_client_manifest.lua <entry_module_id> [...]\n")
   os.exit(1)
 end
 
-local pending = {}
-for i = 1, #arg do pending[#pending + 1] = arg[i] end
-local next_pending = 1
-while next_pending <= #pending do
-  local mod_id = pending[next_pending]
-  next_pending = next_pending + 1
-  if not seen[mod_id] then
-    seen[mod_id] = true
-    local source = source_path(mod_id)
-    if source then
-      manifest[mod_id] = to_relpath(source)
-      order[#order + 1] = mod_id
-      local f = assert(io.open(source, "r"))
-      local contents = f:read("*a")
-      f:close()
-      for _, dependency in ipairs(literal_requires(contents)) do
-        pending[#pending + 1] = dependency
-      end
-    end
-  end
-end
+-- The walk itself is shared with Ballad's client.resolve and the dev
+-- framework manifest: hydronium.core.require_scan.
+local seeds = {}
+for i = 1, #arg do seeds[#seeds + 1] = arg[i] end
+local manifest = {}
+local order = require("hydronium.core.require_scan").closure(seeds, function(mod_id)
+  local source = source_path(mod_id)
+  if not source then return nil end
+  manifest[mod_id] = to_relpath(source)
+  local f = assert(io.open(source, "r"))
+  local contents = f:read("*a")
+  f:close()
+  return contents
+end)
 
 -- Minimal, dependency-free JSON object emission (this codebase has zero
 -- non-stdlib Lua dependencies anywhere -- a real JSON library would be

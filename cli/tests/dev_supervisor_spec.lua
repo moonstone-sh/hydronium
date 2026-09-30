@@ -229,6 +229,22 @@ describe("hydronium-cli dev_supervisor -- child process", function()
     assert.truthy(command:find("& echo $!", 1, true))
   end)
 
+  it("hands the child the app's LUA_PATH without this CLI's bundled Hydronium", function()
+    local captured = {}
+    dev_supervisor.spawn_detached({ "meteorite", "dev" }, {
+      popen = fake_popen(captured, "1"),
+      lua_path = "/env/libexec/hydronium-cli/lua/?.lua;/env/libexec/hydronium-cli/src/?.lua;/env/share/lua/5.1/?.lua;;",
+    })
+    local command = captured[1]
+    assert.truthy(command:find("env -u LUA_CPATH LUA_PATH='/env/share/lua/5.1/?.lua;;'", 1, true))
+    assert.falsy(command:find("hydronium-cli", 1, true))
+  end)
+
+  it("leaves LUA_PATH unset for the child when the parent had none", function()
+    assert.is_nil(dev_supervisor.child_lua_path(nil))
+    assert.equal(dev_supervisor.child_lua_path("a/?.lua;;"), "a/?.lua;;")
+  end)
+
   it("reports an error rather than a pid when the shell prints nothing", function()
     local pid, err = dev_supervisor.spawn_detached({ "meteorite", "dev" }, {
       popen = fake_popen({}, nil),

@@ -6,6 +6,7 @@ local app = require("ui.app")
 local field = require("ui.search_field")
 local query = require("query")
 local search_bar = require("ui.search_bar")
+local inspector = require("inspector")
 
 local function request(method, path, status, duration_ms, body)
   return {
@@ -26,27 +27,26 @@ end
 -- collection of screenshots for selection and cursor positions:
 --   j/k or arrows navigate; / focuses the live filter; Escape leaves it.
 local function SyntheticDevSession()
-  local state = app.new_state({ fullscreen = true })
-  state:apply({
-    v = 1,
-    source = "meteorite",
-    kind = "startup",
-    ts = 1,
-    routes = 12,
-    ready_ms = 84,
-    url = "http://127.0.0.1:6100/",
-  })
-
-  for _, event in ipairs({
+  -- Lab calls this factory during a render. Seed the plain history first and
+  -- pass initial values to signal constructors; no signal setters run here.
+  local history = inspector.new_history()
+  history:push_all({
     request("GET", "/api/projects", 200, 18, "project list"),
     request("POST", "/api/session", 201, 43, "signed in"),
     request("GET", "/assets/app.js", 200, 6, "bundle"),
     request("POST", "/api/contact", 422, 31, "email is required"),
     request("GET", "/health", 200, 2, "ok"),
     request("GET", "/api/projects/42", 500, 107, "database timeout"),
-  }) do
-    state:record_request(event)
-  end
+  })
+  history:get(4).headers = {
+    ["content-type"] = "application/json",
+    ["x-request-id"] = "contact-422",
+    accept = "application/json",
+  }
+  history:get(4).body = '{"email":""}'
+  local state = app.new_state({fullscreen = true, history = history,
+    status = "ready", routes = 12, ready_ms = 84,
+    url = "http://127.0.0.1:6100/", selection = history:count()})
 
   return hydronium.h(app.create_app(state, { onQuit = function() end }))
 end

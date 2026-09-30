@@ -1,11 +1,11 @@
 const std = @import("std");
-const meteorite = @import(".moonstone/env/libexec/meteorite/zig/build_api.zig");
+const meteorite = @import(".moonstone/env/libexec/moonstone/meteorite/meteorite/zig/build_api.zig");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     _ = meteorite.addService(b, .{
-        .meteorite_root = ".moonstone/env/libexec/meteorite",
+        .meteorite_root = ".moonstone/env/libexec/moonstone/meteorite/meteorite",
         .lua_root = ".moonstone/env/libexec/luajit",
         .target = target,
         .optimize = optimize,

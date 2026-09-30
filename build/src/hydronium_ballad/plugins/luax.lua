@@ -75,7 +75,8 @@ function M.compile(ctx, inputs, opts)
           local compiled_vpath = asset.virtual_path:gsub("%.[%a]+$", ".lua")
           -- A topology-aware caller may stamp the logical id in metadata.
           -- Fall back to Ballad's virtual path for existing partitures.
-          local declared_id = asset.metadata and asset.metadata.hydronium and asset.metadata.hydronium.module_id
+          local stamped = asset.metadata and asset.metadata.hydronium
+          local declared_id = stamped and stamped.module_id
           local compile_opts = {
             filename = asset.source_path,
             module_id = declared_id or module_id_from_virtual_path(compiled_vpath),
@@ -127,7 +128,12 @@ function M.compile(ctx, inputs, opts)
                 kind = "lua_module",
                 origin = asset.source_path,
                 module_id = module_id,
-                target = target,
+                -- The source topology's declared target wins over the
+                -- call-wide default: a server-only document must never be
+                -- bundled for the browser just because it is .luax.
+                target = (stamped and stamped.target) or target,
+                update = stamped and stamped.update or nil,
+                effects = stamped and stamped.effects or nil,
                 sourcemap = extension == "luax" and result.map_json or nil,
                 style_ids = {},
                 asset_ids = {},
@@ -151,7 +157,8 @@ end
 
 return {
   name = "hydronium_ballad.plugins.luax",
-  version = "0.1.0",
+  -- 0.1.1: emitted modules keep the topology's stamped target/update/effects.
+  version = "0.1.1",
   methods = {
     -- cacheable=true is real and works (ballad hashes each input asset's
     -- real file content), but is a genuine footgun: the cache key

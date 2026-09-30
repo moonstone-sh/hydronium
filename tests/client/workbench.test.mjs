@@ -1,7 +1,9 @@
 import test from "node:test";
+import {patchXtermCoordinates} from "../../ink-lab/scripts/xterm-transform.mjs";
 import assert from "node:assert/strict";
 
 import {
+  snapViewportPan, rulerStep,
   GRID_DEFAULTS,
   gridPattern,
   installWorkbenchPreferences,
@@ -82,4 +84,40 @@ test("Workbench applies, persists, and independently resets grid settings", () =
 
   controller.destroy();
   assert.equal(roles["grid-width"].listeners.size, 0);
+});
+
+
+test('viewport magnets acquire, hold and release in screen pixels and allow Alt bypass',()=>{
+  const size={width:800,height:600,stageWidth:1200,stageHeight:900};
+  assert.deepEqual(snapViewportPan({x:7,y:-5},size),{x:0,y:0,guides:{x:'center',y:'center'}});
+  assert.equal(snapViewportPan({x:12,y:30},size,{x:'center'}).x,0);
+  assert.equal(snapViewportPan({x:15,y:30},size,{x:'center'}).x,15);
+  assert.equal(snapViewportPan({x:-155,y:30},size).x,-160);
+  assert.deepEqual(snapViewportPan({x:3,y:4},size,{},true),{x:3,y:4,guides:{}});
+  assert.equal(snapViewportPan({x:7,y:30},{...size,width:1600}).x,0,'center radius is independent of zoom');
+});
+test('rulers choose readable integer intervals at pixel and cell zooms',()=>{
+  assert.equal(rulerStep(1),100);assert.equal(rulerStep(.1),10);assert.equal(rulerStep(.01),1);
+  assert.equal(rulerStep(2),200);assert.equal(rulerStep(0),1);
+});
+
+
+test('xterm pointer conversion remains in cell coordinates through ancestor scale and pan',()=>{
+  const source='return function(s,t,e){let i=e.getBoundingClientRect(),r=s.getComputedStyle(e),n=parseInt(r.getPropertyValue("padding-left")),o=parseInt(r.getPropertyValue("padding-top"));return[t.clientX-i.left-n,t.clientY-i.top-o]}';
+  const coords=new Function(patchXtermCoordinates(source))();
+  for(const scale of [.5,1,1.25,2]) {
+    const element={offsetWidth:800,offsetHeight:600,getBoundingClientRect:()=>({left:173,top:91,width:800*scale,height:600*scale})};
+    const window={getComputedStyle:()=>({getPropertyValue:key=>key==='padding-left'?'4':'6'})};
+    assert.deepEqual(coords(window,{clientX:173+84*scale,clientY:91+106*scale},element),[80,100]);
+  }
+  assert.throws(()=>patchXtermCoordinates('different upstream implementation'),/requires review/);
+});
+
+
+test('snapping can use placed guides independently and obey a configurable distance',()=>{
+  const size={width:800,height:600,stageWidth:1200,stageHeight:900,guideTargets:{x:{'guide:custom:start':120}},config:{center:false,edges:false,guides:true,distance:4}};
+  assert.deepEqual(snapViewportPan({x:117,y:3},size),{x:120,y:3,guides:{x:'guide:custom:start'}});
+  assert.equal(snapViewportPan({x:114,y:3},size).x,114);
+  assert.equal(snapViewportPan({x:117,y:3},{...size,config:{...size.config,guides:false}}).x,117);
+  assert.equal(snapViewportPan({x:129,y:3},size,{x:'guide:custom:start'}).x,120,'held guide has a wider release distance');
 });

@@ -129,7 +129,10 @@ function M.inventory(ctx, inputs, opts)
   -- Hash the complete normalized declaration and record list. The revision is
   -- embedded in the artifact and is stable for an identical build closure.
   payload.revision = "b3:" .. process.b3sum_string(dkjson.encode(payload, { indent = false }))
-  local name = opts.name or ".hydronium/source-inventory.json"
+  -- Relative to the sink's `out`: sink into a dedicated directory
+  -- (hydronium_ballad.INVENTORY_DIR), since Ballad's directory sink deletes
+  -- `out` before writing.
+  local name = opts.name or "source-inventory.json"
   local lua_name = name:gsub("%.json$", ".lua")
   local metadata = { hydronium = { inventory = "source-topology", private = true, revision = payload.revision } }
   return graph.AssetSet.new({
@@ -154,6 +157,16 @@ M.node = {
   name = "hydronium_ballad.plugins.topology.classify",
   cacheable = false,
   run = M.classify,
+}
+
+-- Plugin contract for `p:use(hb.plugins.topology)`. Neither method is
+-- cacheable: both depend on hydronium.sources.lua, which is read from disk by
+-- path rather than arriving as an input asset.
+M.name = "hydronium_ballad.plugins.topology"
+M.version = "0.1.0"
+M.methods = {
+  classify = { inputs = { "asset_set" }, outputs = { "asset_set" }, cacheable = false, parallel_safe = true },
+  inventory = { inputs = { "asset_set" }, outputs = { "asset_set" }, cacheable = false, parallel_safe = true },
 }
 
 return M

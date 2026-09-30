@@ -12,12 +12,12 @@ version = "2.1.0"
 abi = "5.1"
 
 [scripts]
-build = "moon exec --dev -- meteorite build --mode release-hybrid --backend fast_http"
+build = "moon exec -- ballad play build.partiture.lua && moon exec --dev -- meteorite build --mode release-hybrid --backend fast_http --lua-root .moonstone/env/libexec/luajit"
 dev = "sh dev.sh"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.3.0"
+constraint = "^0.4.0"
 role = "tool"
 
 [[dependencies]]
@@ -27,7 +27,7 @@ role = "tool"
 
 [[dependencies]]
 name = "moonstone/meteorite"
-constraint = "path:../../../meteorite"
+constraint = "^0.3.1"
 role = "tool"
 
 [[dependencies]]
@@ -51,5 +51,11 @@ role = "runtime"
 [[dependencies]]
 name = "hydronium/router"
 constraint = "path:../../router"
+registry = "path"
+role = "runtime"
+
+[[dependencies]]
+name = "hydronium/ballad"
+constraint = "path:../../build"
 registry = "path"
 role = "runtime"

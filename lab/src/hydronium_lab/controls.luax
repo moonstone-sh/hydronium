@@ -16,6 +16,9 @@ end
 local function FrameStep(props)
   return <button type="button" aria-label="Advance one frame" {...props} data-lab-step>{content(props, "Step")}</button>
 end
+local function FrameBack(props)
+  return <button type="button" aria-label="Rewind one frame" {...props} data-lab-step-back>{content(props, "−1")}</button>
+end
 local function Restart(props)
   return <button type="button" aria-label="Restart story at time zero" {...props} data-lab-restart>{content(props, "Restart")}</button>
 end
@@ -25,9 +28,17 @@ end
 local function TimeDisplay(props)
   return <output aria-label="Story time" {...props} data-lab-time>0 ms · frame 0</output>
 end
+local function FramePosition(props)
+  return <label class={props.class}>Frame<input type="number" min="0" max="10000" step="1" value="0" data-lab-frame-position /></label>
+end
+local function TimePosition(props)
+  return <label class={props.class}>Time (ms)<input type="number" min="0" step="any" value="0" data-lab-time-position /></label>
+end
 local function Timeline(props)
   return <section class={props.class or "hydronium-lab__timeline"} data-lab-timeline aria-label="Playback">
-    <PlayPause /><Restart /><FrameStep /><FrameInterval /><TimeDisplay />
+    <div class="hydronium-lab__transport"><Restart /><FrameBack /><PlayPause /><FrameStep /></div>
+    <div class="hydronium-lab__timeline-fields"><FramePosition /><TimePosition /><FrameInterval /></div>
+    <TimeDisplay />
   </section>
 end
 -- Compatibility with the earlier draft. Prefer ordinary inputs and hooks.
@@ -39,6 +50,6 @@ local function Controls(props)
   return <DefaultControls {...props} />
 end
 return { ControlsOutlet = ControlsOutlet, DefaultControls = DefaultControls,
-  PlayPause = PlayPause, FrameStep = FrameStep, Restart = Restart,
-  FrameInterval = FrameInterval, TimeDisplay = TimeDisplay, Timeline = Timeline,
+  PlayPause = PlayPause, FrameStep = FrameStep, FrameBack = FrameBack, Restart = Restart,
+  FrameInterval = FrameInterval, FramePosition = FramePosition, TimePosition = TimePosition, TimeDisplay = TimeDisplay, Timeline = Timeline,
   Controls = Controls, Control = Control }

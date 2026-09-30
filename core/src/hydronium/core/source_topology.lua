@@ -147,4 +147,29 @@ function M.resolve(config, files)
   return records
 end
 
+--- The directories a source scan must cover: every declared root, with roots
+--- nested inside another root dropped. Discovery (the Ballad partiture and
+--- `hydronium dev --watch-sources`) scans exactly these, so views can live
+--- wherever `hydronium.sources.lua` says.
+--- @param config table
+--- @return string[]
+function M.scan_roots(config)
+  expect(type(config) == "table", "hydronium.source_topology: config must be a table")
+  local paths = {}
+  for index, root in ipairs(config.roots or {}) do
+    expect(type(root) == "table", "hydronium.source_topology: root #" .. index .. " must be a table")
+    paths[#paths + 1] = project_path(root.path, "root.path")
+  end
+  table.sort(paths)
+  local out = {}
+  for _, path in ipairs(paths) do
+    local covered = false
+    for _, kept in ipairs(out) do
+      if under(path, kept) then covered = true; break end
+    end
+    if not covered then out[#out + 1] = path end
+  end
+  return out
+end
+
 return M

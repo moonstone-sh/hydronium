@@ -96,6 +96,18 @@ end
     assert.equal(type(table.concat), "function")
   end)
 
+  it("types bare table and select tags as DOM while preserving Lua expressions", function()
+    local src = "local node = <table rows={select('#', 1, 2)}><select value={table.concat({'a', 'b'})} /></table>"
+    local virt = virtual_source.transform(src)
+    assert.equal(#src, #virt)
+    assert.truthy(virt:find("d%.t{"), "table tag should use the typed DOM descriptor")
+    assert.truthy(virt:find("d%.s{"), "select tag should use the typed DOM descriptor")
+    assert.truthy(virt:find("select%('%#', 1, 2%)"), "Lua select expression must remain Lua")
+    assert.truthy(virt:find("table%.concat"), "Lua table expression must remain Lua")
+    local chunk, err = loadstring(virt)
+    assert.is_not_nil(chunk, "Virtual Lua must parse: " .. tostring(err))
+  end)
+
   describe("Exact 1:1 Byte-Aligned Lowering for Dotted Descriptors", function()
     it("lowers opening tag <d.button  (10 bytes) to ' d.button{' (10 bytes)", function()
       local src = "<d.button id=\"ok\">Click</d.button>"

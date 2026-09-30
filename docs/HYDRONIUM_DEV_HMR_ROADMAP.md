@@ -61,6 +61,7 @@ Named, verified by reading the code and running it:
 - `docs/HYDRONIUM_BALLAD_ARCHITECTURE_PLAN.md:520` — *"HMR through the bundler — the existing HMR path works because nothing is bundled; wire `ballad.plugins.watcher` in only after M2."*
 - `docs/HYDRONIUM_CLIENT_BUNDLER_MINIFIER_PLAN.md:45` — explicitly notes `dev_reload.js:16` destroys the VM via `location.reload()` "even on HMR."
 - `docs/LUAX_BALLAD_CSS_ASSETS_PLAN.md:123` designs a dual dev/prod path via a `loader.install()` package searcher — **which does not exist**: `loader.lua` has only `M.load` and `M.invalidate`.
+  - *Update 2026-09-29:* `loader.install()` now exists (`luax/src/hydronium_luax/loader.lua`) and the `ssr` template and quickstart use it; the dev-mode routes this roadmap describes are owned by `hydronium_dom.server.meteorite.mount` — see [ECOSYSTEM_BOUNDARIES.md](ECOSYSTEM_BOUNDARIES.md).
 
 ### 4. Vite comparison, feature by feature
 

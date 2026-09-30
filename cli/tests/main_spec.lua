@@ -156,6 +156,13 @@ describe("hydronium-cli main -- --vite/--ballad parsing", function()
     assert.equal(viaDir.vite_dir, "apps/web")
   end)
 
+  it("--watch-sources implies --ballad and keeps the default partiture", function()
+    local parsed = must(main.parse_args({ "dev", "--watch-sources" }))
+    assert.truthy(parsed.watch_sources)
+    assert.truthy(parsed.ballad)
+    assert.is_nil(parsed.ballad_args)
+  end)
+
   it("--ballad-args implies --ballad", function()
     local parsed = must(main.parse_args({ "dev", "--ballad-args=partiture.lua --jobs 4" }))
     assert.truthy(parsed.ballad)

@@ -129,7 +129,9 @@ deliberately *not* inside it) now ships exactly that as an opt-in
 augmentation: one bare global per intrinsic tag (`html = d.html`,
 `div = d.div`, ...), inferred from the same `d` declared in
 `types/dom/init.d.lua` so it can't drift out of sync, with `table` and
-`select` excluded (both shadow a constantly-used Lua stdlib global).
+`select` excluded (both shadow a constantly-used Lua stdlib global). The
+LUAX virtual source handles bare `<table>` and `<select>` as typed DOM tags
+without redefining those globals inside Lua expressions.
 
 This does not touch Gate #3's guarantee for the framework itself:
 `ambient-types/` lives outside the `types/` directory the root

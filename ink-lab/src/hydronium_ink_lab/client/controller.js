@@ -1,4 +1,4 @@
-import { createStoryStore, bindStoryControls, restoreStoryArgs } from "../../../../lab/src/hydronium_lab/client/workbench.js";
+import { installCanvasGuides, createStoryStore, bindStoryControls, restoreStoryArgs } from "../../../../lab/src/hydronium_lab/client/workbench.js";
 import { createTerminalAdapter } from "../../../scripts/xterm-entry.js";
 const PALETTE_NAMES = [
   "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
@@ -307,8 +307,8 @@ export function terminalSizeGroups(story, userSizes = []) {
     ? story.sizes : [{ name: "default", columns: 80, rows: 24 }];
   return [
     { label: "Story-specific", source: "story", sizes },
-    ...(userSizes.length ? [{ label: "User-defined", source: "user", sizes: userSizes }] : []),
     { label: "Standard", source: "standard", sizes: STANDARD_TERMINAL_SIZES },
+    ...(userSizes.length ? [{ label: "User-defined", source: "user", sizes: userSizes }] : []),
   ];
 }
 
@@ -364,7 +364,7 @@ function savePreferences(key, value) {
  * `request(message)` is the only transport seam and may call an in-page Lua
  * runtime, `fetch`, a WebSocket RPC, or a Meteorite endpoint.
  */
-export async function createInkLab({ root, request, autoResize = false, workbench = {}, animationIntervalMs = 55, terminalAdapter = createTerminalAdapter }) {
+export async function createInkLab({ root, request, autoResize = false, workbench = {}, animationIntervalMs = 55, initialStoryId, terminalAdapter = createTerminalAdapter }) {
   if (typeof root === "string") root = document.querySelector(root);
   if (!root) throw new Error("hydronium/ink-lab: root was not found");
   if (typeof request !== "function") throw new Error("hydronium/ink-lab: request must be a function");
@@ -419,8 +419,12 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     else savePreferences(projectKey, preferences);
   };
   const workbenchPreferences = workbench.installWorkbenchPreferences?.({ root, preferences, persist });
+  const canvasGuides = installCanvasGuides({root,getSurface:()=>terminal,preferences,persist,getUnits:()=>{
+    const columns=Number(terminal.dataset.columns),rows=Number(terminal.dataset.rows),screen=terminal.querySelector('.xterm-screen');
+    return {width:columns,height:rows,label:"cells",pixelWidth:screen?.offsetWidth/columns,pixelHeight:screen?.offsetHeight/rows};
+  }});
   let catalog = await request({ op: "catalog" });
-  let activeStory = catalog.stories.find((story) => story.id === preferences.story) || catalog.stories[0];
+  let activeStory = catalog.stories.find((story) => story.id === (initialStoryId || preferences.story)) || catalog.stories[0];
   let activeSize = { ...terminalSizeGroups(activeStory)[0].sizes[0], source: "story" };
   let userSizes = Array.isArray(preferences.terminalSizes) ? preferences.terminalSizes.filter(size =>
     parseCellDimension(size.columns) && parseCellDimension(size.rows)) : [];
@@ -432,6 +436,15 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
   const storyState = (workbench.createStoryStore || createStoryStore)({ send: request, paint: frame => paint(frame) });
   const storyControls = storyState && (workbench.bindStoryControls || bindStoryControls)({ root, store: storyState });
   let paintedRect = null;
+  let anchoredSize = null;
+  function anchorTerminalSize(size) {
+    if (anchoredSize && (size.width !== anchoredSize.width || size.height !== anchoredSize.height)) {
+      pan = { x: pan.x + (size.width - anchoredSize.width) * zoom / 2,
+        y: pan.y + (size.height - anchoredSize.height) * zoom / 2 };
+      applyView();
+    }
+    anchoredSize = size;
+  }
   let manualResizeRect = null;
   let manualResizeUntil = 0;
   const frameModel = createFrameModel();
@@ -503,7 +516,7 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     // the next frame so ResizeObserver will not reinterpret it as a drag.
     window.requestAnimationFrame(() => {
       const rect = terminal.getBoundingClientRect();
-      paintedRect = { width: rect.width, height: rect.height };
+      paintedRect = { width: terminal.offsetWidth || rect.width, height: terminal.offsetHeight || rect.height };
     });
   }
   function applyLigatures(enabled) {
@@ -596,6 +609,8 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
   });
 
   function cellMetrics() {
+    const screen = terminal.querySelector('.xterm-screen');
+    if (screen?.offsetWidth && screen?.offsetHeight && presentation?.columns && presentation?.rows) return {width:screen.offsetWidth/presentation.columns,height:screen.offsetHeight/presentation.rows};
     const style = getComputedStyle(terminal);
     const fontSize = parseFloat(style.fontSize) || 16;
     const canvas = root.ownerDocument.createElement("canvas");
@@ -680,11 +695,14 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
       terminal.style.height = `${manualResizeRect.height}px`;
     }
     const rect = terminal.getBoundingClientRect();
-    paintedRect = { width: rect.width, height: rect.height };
+    paintedRect = { width: terminal.offsetWidth || rect.width, height: terminal.offsetHeight || rect.height };
+    anchorTerminalSize(paintedRect);
     renderDimensions(dimensions, activeSize.columns, activeSize.rows);
+    canvasGuides.update();
   }
 
   let lastPaintActivity = true;
+  let paintComplete = Promise.resolve();
 
   function resyncFrame() {
     if (closed) return;
@@ -714,7 +732,7 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     if (frame.kind === "full") lastFocusToken = undefined;
     terminal.dataset.columns = String(frame.terminal?.columns || frameModel.width);
     terminal.dataset.rows = String(frame.terminal?.rows || frameModel.height);
-    adapter.write(frame, () => { if (!closed) { afterFlush(); followFocus(frame); } })?.catch(() => { if (!closed) resyncFrame(); });
+    paintComplete = Promise.resolve(adapter.write(frame, () => { if (!closed) { afterFlush(); followFocus(frame); } })).catch(() => { if (!closed) resyncFrame(); });
     return frame;
   }
 
@@ -803,11 +821,11 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
   query(root, "preferences-close")?.addEventListener("click", () => setPreferencesOpen(false));
 
   let zoom = preferences.zoom || 1, pan = preferences.pan || { x: 0, y: 0 };
-  const applyView = () => { if (viewport) viewport.style.transform = `translate(${pan.x}px, ${pan.y}px)`; adapter.zoom?.(zoom); };
-  const setZoom = (value) => { zoom = Math.max(.5, Math.min(2.5, value)); applyView(); persist({ zoom, pan }); };
+  const applyView = () => { if (viewport) viewport.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`; canvasGuides.update(); };
+  const setZoom = (value) => { canvasGuides.clear(); zoom = Math.max(.5, Math.min(2.5, value)); applyView(); persist({ zoom, pan }); };
   query(root, "zoom-in")?.addEventListener("click", () => setZoom(zoom + .1)); query(root, "zoom-out")?.addEventListener("click", () => setZoom(zoom - .1)); query(root, "canvas-reset")?.addEventListener("click", () => { pan = { x: 0, y: 0 }; setZoom(1); }); applyView();
   storySearch?.addEventListener("input", fillStories);
-  let space = false, drag = null, panMode = false;
+  let space = false, drag = null, panMode = false, snapTimer;
   const navigationCleanup = [];
   const listen = (target, type, handler, options) => {
     target?.addEventListener(type, handler, options);
@@ -828,12 +846,13 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
   listen(window, "keyup", event => { if (event.code === "Space") space = false; });
   const endDrag = () => {
     if (!drag) return;
-    drag = null; delete stage.dataset.panning;
+    drag = null; canvasGuides.clear(); delete stage.dataset.panning;
     persist({ zoom, pan });
   };
   listen(window, "blur", () => { space = false; endDrag(); });
   listen(stage, "pointerdown", event => {
     if (drag || editing(event.target) || !(space || panMode || event.pointerType !== "mouse" || event.button === 1 || event.target === stage)) return;
+    canvasGuides.clear();
     drag = { id: event.pointerId, x: event.clientX, y: event.clientY, pan: { ...pan } };
     stage.dataset.panning = "true";
     stage.setPointerCapture(event.pointerId);
@@ -841,7 +860,7 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
   });
   listen(stage, "pointermove", event => {
     if (!drag || event.pointerId !== drag.id) return;
-    pan = { x: drag.pan.x + event.clientX - drag.x, y: drag.pan.y + event.clientY - drag.y };
+    pan = canvasGuides.snap({ x: drag.pan.x + event.clientX - drag.x, y: drag.pan.y + event.clientY - drag.y }, event.altKey);
     applyView();
   });
   for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) listen(stage, type, endDrag);
@@ -856,8 +875,11 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     if (event.ctrlKey || event.metaKey) setZoom(zoom * Math.exp(-event.deltaY * .01));
     else {
       const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? stage.clientHeight : 1;
+      canvasGuides.clear();
       pan = { x: pan.x - event.deltaX * scale, y: pan.y - event.deltaY * scale };
       applyView(); persist({ zoom, pan });
+      window.clearTimeout(snapTimer);
+      snapTimer = window.setTimeout(() => {pan = canvasGuides.snap(pan,event.altKey);applyView();persist({zoom,pan});canvasGuides.clear();},160);
     }
   }, { passive: false, capture: true });
   stage?.addEventListener("keydown", (event) => {
@@ -947,6 +969,10 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
   // begin translating real user resizes into terminal-cell dimensions.
   fillStories();
   await open();
+  const anchorObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
+    anchorTerminalSize({ width: terminal.offsetWidth, height: terminal.offsetHeight });
+  });
+  anchorObserver?.observe(terminal);
   enableAutoResize();
   let fillObserver = null;
   if (typeof ResizeObserver !== "undefined" && stage) {
@@ -1000,6 +1026,8 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
   scheduleAnimation();
   return {
     catalog,
+    flushed: () => paintComplete,
+    selectStory: async id => { const story = catalog.stories.find(story => story.id === id); if (!story) throw new Error("Unknown Ink story"); activeStory = story; fillStories(); await open(); await paintComplete; return storyState.getSnapshot(); },
     terminal,
     state: storyState,
     setArgs: args => storyState?.setArgs(args),
@@ -1007,7 +1035,10 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     play: () => storyState?.play(),
     advance: () => storyState?.advance(),
     seek: nowMs => storyState?.seek(nowMs),
+    seekFrame: frame => storyState?.seekFrame(frame),
+    seekTime: nowMs => storyState?.seekTime(nowMs),
     restart: () => storyState?.restart(),
+    setColor: async color => { if (!["ansi16", "ansi256", "truecolor"].includes(color)) throw new Error("Invalid terminal color"); if (colorSelect) colorSelect.value = color; persist({ color }); return paint(await request({ op: "color", color })); },
     resize: async (columns, rows) => { pendingResize = { columns, rows }; await runResize(); },
     input: async (input, key = {}) => { pacer.noteActivity(); return paint(await request({ op: "input", input, key })); },
     paste: async (text) => { pacer.noteActivity(); return paint(await request({ op: "paste", text })); },
@@ -1042,6 +1073,8 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
     close: async () => {
       closed = true;
       cancelScroll();
+      window.clearTimeout(snapTimer);
+      canvasGuides.destroy();
       adapter.dispose();
       storyControls?.destroy();
       storyState?.destroy();
@@ -1049,6 +1082,7 @@ export async function createInkLab({ root, request, autoResize = false, workbenc
       window.clearTimeout(fillTimer);
       window.clearTimeout(animationTimer);
       observer?.disconnect();
+      anchorObserver?.disconnect();
       fillObserver?.disconnect();
       navigationCleanup.splice(0).forEach(remove => remove());
       workbenchPreferences?.destroy();

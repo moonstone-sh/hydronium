@@ -3,7 +3,7 @@
 -- filesystem API or Meteorite.
 local M = {}
 
-local SUFFIXES = { ".stories.lua", ".stories.luax" }
+local SUFFIXES = { ".stories.lua", ".stories.luax", ".stories.md", ".stories.mdx" }
 
 local function normalize_path(path, label)
   if type(path) ~= "string" or path == "" then error(label .. " must be a non-empty path", 3) end
@@ -85,7 +85,7 @@ function M.plan(paths, opts)
           if matched then error("hydronium_lab.discovery: story matches more than one root: " .. path, 2) end
           local id_prefix, stem = prefix_for(relative, suffix)
           matched = { path = path, root = root, relative = relative, stem = stem,
-            suffix = suffix, transform = suffix == ".stories.luax" and "luax" or "lua", id_prefix = id_prefix }
+            suffix = suffix, transform = suffix:match("%.([%w]+)$"), id_prefix = id_prefix }
         end
       end
       if matched then
@@ -108,6 +108,12 @@ end
 --- Existing explicit stories/registries remain accepted unchanged.
 function M.bind(record, value)
   local lab = require("hydronium_lab")
+  if record.transform == "md" or record.transform == "mdx" then
+    if type(value) ~= "function" then error("hydronium_lab.discovery: " .. record.path .. " must export a component", 2) end
+    return lab.story({ id = record.id_prefix .. "--default", title = record.stem, renderer = "dom",
+      render = function(props) return require("hydronium").h(value, props) end,
+      source = { path = record.path } })
+  end
   if type(value) ~= "table" then error("hydronium_lab.discovery: " .. record.path .. " must return a Lab value", 2) end
   if value._kind == "hydronium.lab.story" or value._kind == "hydronium.lab.registry" then return value end
   if value._kind ~= "hydronium.lab.collection" then
@@ -127,6 +133,7 @@ function M.bind(record, value)
       end
     end
     entries[#entries + 1] = lab.story({
+      renderer = variant.renderer or value.renderer,
       id = variant.id or (record.id_prefix .. "--" .. key),
       title = variant.title or key,
       group = variant.group or value.title or record.stem,
@@ -134,6 +141,7 @@ function M.bind(record, value)
       args = args,
       controls = merge(value.controls, variant.controls),
       controls_view = variant.controls_view or value.controls_view,
+      viewports = variant.viewports or value.viewports,
       sizes = variant.sizes or value.sizes,
       color = variant.color or value.color,
       colorProfile = variant.colorProfile or value.colorProfile,
@@ -161,6 +169,7 @@ function M.registry(records, load)
           .. tostring(prior.source and prior.source.path or "explicit registry") .. "' and '"
           .. tostring(story.source and story.source.path or record.path) .. "'", 2)
       end
+      story.source = story.source or { path = record.path }
       ids[folded], entries[#entries + 1] = story, story
     end
   end

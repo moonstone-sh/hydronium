@@ -210,6 +210,9 @@ function M.manifest(ctx, inputs, opts)
     assets = assets_map,
     styles = styles_info,
     modules = modules,
+    -- Bundled client chunks (`client.bundle`), in emission order: a host
+    -- boots the browser VM with these instead of per-module fetches.
+    chunks = #chunks > 0 and chunks or nil,
   }
 
   out:add(ctx.graph:add_asset({

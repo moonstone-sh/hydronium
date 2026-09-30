@@ -1,5 +1,8 @@
 # `hydronium-ballad`: overall architecture and sequencing
 
+> Ownership and pipeline order as currently implemented, and the open gaps,
+> are summarized in [ECOSYSTEM_BOUNDARIES.md](ECOSYSTEM_BOUNDARIES.md).
+
 **Scope:** package boundary, end-state deliverable definition, plugin/AssetSet contracts (the interface the Lua-minifier/bundle-splitter plan and the luax/CSS/assets plan must both honor), milestone sequencing, risks.
 **Method:** written to this workspace's own standard (`/Users/extrordinaire/Workbench/user/CLAUDE.md`, "Trust issue in `docs/`"). Every claim below is either backed by a command actually run read-only in this working tree, or is explicitly labeled **[UNVERIFIED]**. The same rule was applied to ballad's own docs and README, not just hydronium's.
 **Investigated:** 2026-09-08, against the live, uncommitted-at-the-time hydronium working tree (the ink work has since been committed, see `d093376`).

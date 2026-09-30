@@ -666,6 +666,13 @@ render_node = function(node, write_fn, parent_scope, raw_text_mode)
       render_children(children, function(chunk) table.insert(buffer, chunk) end, parent_scope, true)
       local content = table.concat(buffer, "")
       write_fn(html.escape_style_content(content))
+    elseif (tag == "title" or tag == "textarea") and not child_raw then
+      -- Escapable raw text: the parser does not recognize comments here, so a
+      -- text-boundary marker would show up literally ("Hello, <!--hy:t-->Ada").
+      -- Children are still escaped, so the marker cannot occur in user text.
+      local buffer = {}
+      render_children(children, function(chunk) table.insert(buffer, chunk) end, parent_scope, false)
+      write_fn((table.concat(buffer, ""):gsub("<!%-%-hy:t%-%->", "")))
     else
       render_children(children, write_fn, parent_scope, child_raw)
     end

@@ -23,6 +23,7 @@ return ballad.partiture(function(p)
 			"src/main.lua",
 			"src/dual-dev.mjs",
 			"src/query.lua",
+			"src/source_watch.lua",
 			"src/ui/app.lua",
 			"src/ui/build_view.lua",
 			"src/ui/inspector_view.lua",

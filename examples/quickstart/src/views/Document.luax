@@ -43,13 +43,20 @@ local function Document(props)
             Object.entries(sourceManifest.modules).map(([id, record]) => [id, record.effects]),
           );
 
+          // Release builds with a Ballad bundle boot from its hashed chunk;
+          // development (and unbundled builds) load modules one by one.
+          const bundled = Array.isArray(sourceManifest.chunks) && sourceManifest.chunks.length > 0;
           const { lua, remount } = await mount({
-            hydroniumBaseUrl: "/hydronium-src",
-            manifestUrl: "/__hydronium/client_manifest.json",
+            ...(bundled
+              ? { chunkUrls: sourceManifest.chunks }
+              : {
+                  hydroniumBaseUrl: "/hydronium-src",
+                  manifestUrl: "/__hydronium/client_manifest.json",
+                  appModuleUrl: appModule.url,
+                  moduleUrls,
+                  moduleEffects,
+                }),
             appModuleId: sourceManifest.entry,
-            appModuleUrl: appModule.url,
-            moduleUrls,
-            moduleEffects,
             container: "#app",
             props: { title: "Hydronium + Meteorite", initial: 0 },
             hydrate: true,
@@ -62,13 +69,11 @@ local function Document(props)
             },
           });
 
-          installHmr({
+          // Release builds serve no HMR stream and say so in the manifest.
+          if (sourceManifest.hmr !== false) installHmr({
             lua,
             remount,
-            updates: {
-              ...sourceManifest.updates,
-              "public/style.css": { action: "style", href: "/public/style.css" },
-            },
+            updates: sourceManifest.updates,
           });
         ]]}</script>
       </body>

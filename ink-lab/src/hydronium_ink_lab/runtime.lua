@@ -11,7 +11,7 @@ Runtime.__index = Runtime
 -- profile) or that a client uses to force a resync (`snapshot`). Every other
 -- op -- `step`, `input`, `bytes`, `paste`, `interaction` -- is encoded as a
 -- delta against the previous frame this session sent.
-local FULL_FRAME_OPS = { open = true, resize = true, colorProfile = true, color = true, snapshot = true }
+local FULL_FRAME_OPS = { open = true, resize = true, colorProfile = true, color = true, snapshot = true, seekFrame = true, seekTime = true }
 
 function M.new(registry)
   if type(registry) ~= "table" or registry._kind ~= "hydronium.lab.registry" then
@@ -98,15 +98,19 @@ function Runtime:_active()
   return self.active
 end
 
+function Runtime:_reopen_paused()
+  local active = self:_active()
+  return self:open(self.story.id, { args = self.state.args(), columns = active._host._cols, rows = active._host._rows,
+    color = active._host._colorCapability, colorProfile = active._host._colorProfile, playing = false, intervalMs = self.intervalMs })
+end
+
 function Runtime:request(request)
   if type(request) ~= "table" then error("hydronium_ink_lab.runtime: request must be a table", 2) end
   local op = request.op
   if op == "catalog" then return self:catalog() end
   if op == "open" then return self:open(request.story, request) end
   if op == "restart" then
-    local active = self:_active()
-    return self:open(self.story.id, { args = self.state.args(), columns = active._host._cols, rows = active._host._rows,
-      color = active._host._colorCapability, colorProfile = active._host._colorProfile, playing = false, intervalMs = self.intervalMs })
+    return self:_reopen_paused()
   end
   local active = self:_active()
   if op == "input" then
@@ -154,6 +158,21 @@ function Runtime:request(request)
     if not lab.state.finite(request.nowMs) or request.nowMs < self.nowMs then error("hydronium_ink_lab: seek only advances; restart to inspect earlier frames", 2) end
     self.playing = false
     self:_advance(request.nowMs)
+  elseif op == "seekFrame" then
+    local target = request.frame
+    if not lab.state.finite(target) or target % 1 ~= 0 or target < 0 or target > 10000 then
+      error("hydronium_ink_lab: frame must be an integer between 0 and 10000", 2)
+    end
+    if target < self.frameIndex then self:_reopen_paused(); active = self:_active() end
+    self.playing = false
+    while self.frameIndex < target do self:_advance(self.nowMs + self.intervalMs) end
+    self:_playback()
+  elseif op == "seekTime" then
+    local target = request.nowMs
+    if not lab.state.finite(target) or target < 0 then error("hydronium_ink_lab: time must be finite and non-negative", 2) end
+    if target < self.nowMs then self:_reopen_paused(); active = self:_active() end
+    self.playing = false
+    if target > self.nowMs then self:_advance(target) else self:_playback() end
   elseif op == "advance" then
     self.playing = false
     self:_advance(self.nowMs + self.intervalMs)

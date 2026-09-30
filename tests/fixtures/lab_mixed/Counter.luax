@@ -1,0 +1,7 @@
+local H = require("hydronium")
+return function(props, scope)
+  local count, setCount = H.createSignal(0)
+  return function(current)
+    return <button id="counter" onClick={function() setCount(count() + 1) end}>{current.label .. ":" .. count()}</button>
+  end
+end

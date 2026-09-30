@@ -6,6 +6,7 @@ The Hydronium developer CLI.
 hydronium dev [--verbose] [--show-ips] [--show-hmr] [--fullscreen]
               [--meteorite-args "<flags>"] [--vite]
               [--vite-dir <directory>] [--vite-args "<flags>"]
+              [--ballad [--ballad-args "<flags>"]] [--watch-sources]
 ```
 
 `dev` spawns `meteorite dev` as a child process, tails the structured
@@ -57,6 +58,8 @@ because it supplies those project-specific flags.
 | `--vite` | Coordinate Vite and Meteorite in one development command. |
 | `--vite-dir <directory>` | Select the consuming project directory for Vite. |
 | `--vite-args "<flags>"` | Pass arguments to the local Vite runner. |
+| `--ballad`, `--ballad-args "<flags>"` | Run `ballad play partiture.lua` (or the given arguments) once before the dev servers start. |
+| `--watch-sources` | Implies `--ballad`, then re-runs it whenever a `.lua`/`.luax` file appears or disappears under a root declared in `hydronium.sources.lua`, keeping Ballad's source inventory (`.hydronium/ballad/`) current. Re-run output goes to `.hydronium/ballad.out`. |
 | `--fullscreen` | Start in the fullscreen request-debug view below (`f` toggles it either way at runtime). |
 | `--meteorite-args "<flags>"` | Arguments for the spawned `meteorite dev`, e.g. `"--mode hybrid_dev --backend fast_http"`. Required in practice — `meteorite dev` has no defaults of its own. |
 
@@ -84,12 +87,16 @@ the 3-row display ring the status view shows:
 | `f` | Toggle the fullscreen view. |
 | `j` / `k`, `↓` / `↑` | Move the selected request. |
 | `pgdn` / `pgup`, space | Page through the list. |
+| `Enter` | Toggle between the request list and its fields. |
+| `j` / `k`, `↓` / `↑` in details | Move between method, path, headers, and body. |
+| `h` / `l`, `←` / `→` in details | Jump between request, headers, and body sections. |
+| `c` / `C` in details | Copy the raw field value / labeled field with OSC 52. |
+| `y` in details | Copy the complete current section, including all headers or the full body. |
 | `g` / `G` | Jump to the oldest / newest request. |
-| `esc` | Leave the fullscreen view (quits from the status view). |
+| `esc` | Return from details to the request list; then leave fullscreen (quits from the status view). |
 | `q`, `ctrl-c` | Quit. |
 
-**Headers and bodies are not captured yet, and this view says so instead of
-pretending otherwise.** Meteorite's dev-event emitter
+**Headers and bodies are not captured yet by Meteorite, and this view says so.** Meteorite's dev-event emitter
 (`zig/server/dev_events.zig`) writes method, path, status, duration and
 remote address per request — no headers, no body. The detail pane renders
 whatever the event actually carries and names the gap when a field is

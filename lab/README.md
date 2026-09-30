@@ -30,3 +30,7 @@ playback components can be composed independently. Story authors may supply
 
 These APIs are unreleased. Keep renderer-specific behavior in adapters rather
 than making story discovery depend on Ink or Meteorite.
+
+## DOM and mixed renderer Lab
+
+Use `hydronium-lab init --renderer dom` or `--renderer mixed` for browser stories. Declare `renderer = "dom"` or `"ink"` on collections and stories to share one catalog. Controls update live args; each renderer runs in an isolated preview. DOM uses browser time; Ink retains virtual playback. See [the DOM and mixed Lab guide](../docs/LAB_DOM.md).

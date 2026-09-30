@@ -87,8 +87,8 @@ path = "cli"
 # see cli/moonstone.toml's own, longer comment on this same pair of entries
 # for why two entries (not one) and how that was verified.
 #
-# Ballad 0.3.13 exposes the ordinary-node progress events and cooperative
-# checkpoints consumed by hydronium build. Keep both roles: the workspace
+# Ballad 0.4 (same line as every member) keeps the ordinary-node progress
+# events and cooperative checkpoints (0.3.13+) consumed by hydronium build. Keep both roles: the workspace
 # packages itself with Ballad and the build-runner specs require it in-process.
 #
 # The lab-cli/meteorite tools and the lab/ink-lab/meteorite/router dev
@@ -101,7 +101,7 @@ role = "tool"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.3.13"
+constraint = "^0.4.0"
 role = "tool"
 
 [[dependencies]]
@@ -131,5 +131,5 @@ role = "dev"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.3.13"
+constraint = "^0.4.0"
 role = "runtime"

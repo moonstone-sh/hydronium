@@ -128,3 +128,22 @@ Compose PlayPause, FrameStep, TimeDisplay, FrameInterval and Restart from
 hydronium_lab.controls, or use Timeline for the default composition.
 See [the controls guide](https://github.com/moonstone-sh/hydronium/blob/feat/lab-controls-playback/docs/LAB_CONTROLS.md)
 for transport operations and the observable browser store.
+
+## DOM and mixed renderer Lab
+
+Use `hydronium-lab init --renderer dom` or `--renderer mixed` for browser stories. Declare `renderer = "dom"` or `"ink"` on collections and stories to share one catalog. Controls update live args; each renderer runs in an isolated preview. DOM uses browser time; Ink retains virtual playback. See [the DOM and mixed Lab guide](https://github.com/moonstone-sh/hydronium/blob/main/docs/LAB_DOM.md).
+
+```sh
+moon add --tool hydronium/lab-cli
+moon exec -- hydronium-lab init --renderer mixed
+moon run lab
+```
+
+```lua
+local lab = require("hydronium_lab")
+return lab.collection({ renderer = "dom", component = require("Button"),
+  args = { label = "Hello" }, controls = { label = { type = "text" } },
+  stories = { default = {} } })
+```
+
+Keep native Ink imports in Ink story modules. Add compiled CSS with `styles = { "public/app.css" }` in `hydronium.lab.lua`; run its compiler in watch mode separately.

@@ -7,11 +7,13 @@ local tree = {
   ["src/components"] = "directory",
   ["src/components/Input.stories.luax"] = "file",
   ["src/Status.stories.lua"] = "file",
+  ["src/Guide.stories.md"] = "file",
+  ["src/Interactive.stories.mdx"] = "file",
   ["src/not-a-story.lua"] = "file",
   ["src/outside"] = "link",
 }
 local children = {
-  src = { "not-a-story.lua", "outside", "components", "Status.stories.lua" },
+  src = { "not-a-story.lua", "outside", "components", "Status.stories.lua", "Guide.stories.md", "Interactive.stories.mdx" },
   ["src/components"] = { "Input.stories.luax" },
 }
 local fs = {
@@ -20,9 +22,11 @@ local fs = {
 }
 
 local paths = assert(runner.scan({ roots = { "src" } }, fs))
-assert(#paths == 2)
-assert(paths[1] == "src/Status.stories.lua")
-assert(paths[2] == "src/components/Input.stories.luax")
+assert(#paths == 4)
+assert(paths[1] == "src/Guide.stories.md")
+assert(paths[2] == "src/Interactive.stories.mdx")
+assert(paths[3] == "src/Status.stories.lua")
+assert(paths[4] == "src/components/Input.stories.luax")
 
 package.preload["test_lab_host"] = function()
   return { plan = function(input)

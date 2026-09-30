@@ -201,10 +201,10 @@ test("Ink Lab's animation pacer holds a steady cadence while animating and backs
 
 test("dimension presets distinguish story, saved user and standard sizes", () => {
   const groups = terminalSizeGroups({ sizes: [{ name: "default", columns: 84, rows: 4 }] }, [{ name: "90×32", columns: 90, rows: 32 }]);
-  assert.deepEqual(groups.map(group => group.label), ["Story-specific", "User-defined", "Standard"]);
+  assert.deepEqual(groups.map(group => group.label), ["Story-specific", "Standard", "User-defined"]);
   assert.equal(groups[0].sizes[0].rows, 4);
-  assert.equal(groups[1].sizes[0].columns, 90);
-  assert.ok(groups[2].sizes.some(size => size.columns === 80 && size.rows === 24));
+  assert.equal(groups[2].sizes[0].columns, 90);
+  assert.ok(groups[1].sizes.some(size => size.columns === 80 && size.rows === 24));
   assert.deepEqual(terminalSizeGroups({})[0].sizes[0], { name: "default", columns: 80, rows: 24 });
   assert.equal(terminalSizeGroups({}).length, 2, "empty user sizes should not create an empty dropdown group");
   assert.ok(Object.isFrozen(STANDARD_TERMINAL_SIZES));
@@ -239,6 +239,7 @@ class InteractiveNode extends Node {
   focus() { this.ownerDocument.activeElement = this; }
   select() {}
   blur() { this.ownerDocument.activeElement = null; this.parent?.fire('focusout', { target: this }); }
+  remove() { if(this.parent)this.parent.children=this.parent.children.filter(node=>node!==this); }
   setPointerCapture() {}
   getBoundingClientRect() { return { width: 640, height: 400, right: 640, bottom: 400 }; }
 }
@@ -261,7 +262,7 @@ test('live dimension controls preserve drafts, commit Enter and blur, and save u
     await dimensions.fire('focusout', { target: rows });
     assert.equal(roles.get('terminal').dataset.rows, '32');
     assert.deepEqual(saved.terminalSizes[0], { name: '91×32', columns: 91, rows: 32 });
-    assert.deepEqual(roles.get('size').children.filter(node => node.tag === 'optgroup').map(node => node.label), ['Story-specific', 'User-defined', 'Standard']);
+    assert.deepEqual(roles.get('size').children.filter(node => node.tag === 'optgroup').map(node => node.label), ['Story-specific', 'Standard', 'User-defined']);
     const resizeCount = requests.filter(message => message.op === 'resize').length;
     rows.value = '000';
     await dimensions.fire('keydown', { target: rows, key: 'Enter' });
@@ -282,20 +283,24 @@ test('canvas navigation pans touch descendants, handles cancellation, and preser
     assert.equal(viewport.style.transform, initial, 'ordinary terminal mouse drags remain text selection');
     await stage.fire('pointerdown', { target: leaf, pointerType: 'touch', pointerId: 2, button: 0, clientX: 100, clientY: 100 });
     await stage.fire('pointermove', { pointerId: 2, clientX: 140, clientY: 150 });
-    assert.equal(viewport.style.transform, 'translate(40px, 50px)');
+    assert.equal(viewport.style.transform, 'translate(40px, 50px) scale(1)');
     await stage.fire('pointercancel');
     assert.equal(stage.dataset.panning, undefined);
     await stage.fire('pointermove', { pointerId: 2, clientX: 250, clientY: 250 });
-    assert.equal(viewport.style.transform, 'translate(40px, 50px)');
+    assert.equal(viewport.style.transform, 'translate(40px, 50px) scale(1)');
     await roles.get('pan-toggle').fire('click');
     await stage.fire('pointerdown', { target: leaf, pointerType: 'mouse', pointerId: 3, button: 0, clientX: 100, clientY: 100 });
     await stage.fire('pointermove', { pointerId: 3, clientX: 110, clientY: 120 });
     await stage.fire('pointerup');
-    assert.equal(viewport.style.transform, 'translate(50px, 70px)');
+    assert.equal(viewport.style.transform, 'translate(50px, 70px) scale(1)');
     await stage.fire('wheel', { deltaX: 10, deltaY: 20, deltaMode: 0 });
-    assert.equal(viewport.style.transform, 'translate(40px, 50px)');
+    assert.equal(viewport.style.transform, 'translate(40px, 50px) scale(1)');
     await stage.fire('wheel', { ctrlKey: true, deltaY: -10 });
     assert.ok(harness.saved.zoom > 1.1);
+    assert.equal(viewport.style.transform, `translate(40px, 50px) scale(${harness.saved.zoom})`);
+    assert.equal(roles.get('terminal').dataset.columns,'84','zoom preserves logical columns');
+    assert.equal(roles.get('terminal').dataset.rows,'4','zoom preserves logical rows');
+    assert.equal(harness.requests.filter(message=>message.op==='resize').length,0,'zoom does not resize the terminal');
   } finally { await harness.close(); }
 });
 
@@ -304,7 +309,7 @@ async function inkHarness(options = {}) {
   const document = { activeElement: null, hidden: false };
   document.createElement = tag => {
     const node = new InteractiveNode(document, tag);
-    if (tag === 'canvas') node.getContext = () => ({ measureText: () => ({ width: 8 }) });
+    if (tag === 'canvas') node.getContext = () => ({measureText:()=>({width:8}),setTransform(){},clearRect(){},setLineDash(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},fillRect(){},fillText(){},save(){},translate(){},rotate(){},restore(){}});
     return node;
   };
   document.createDocumentFragment = () => new InteractiveNode(document, 'fragment', true);
@@ -313,6 +318,7 @@ async function inkHarness(options = {}) {
   document.removeEventListener = docEvents.removeEventListener.bind(docEvents);
   const window = new InteractiveNode(document);
   window.requestAnimationFrame = callback => callback();
+  window.cancelAnimationFrame = () => {}; document.defaultView = window;
   window.setTimeout = () => 1; window.clearTimeout = () => {};
   window.getSelection = () => ({ isCollapsed: true, removeAllRanges() {} });
   globalThis.window = window; globalThis.document = document;

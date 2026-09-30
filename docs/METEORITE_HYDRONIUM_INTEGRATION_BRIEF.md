@@ -1,5 +1,13 @@
 # Meteorite ↔ Hydronium Integration Brief (Ground Truth)
 
+> **Current state (2026-09-29):** the application-facing integration is
+> `hydronium_dom.server.meteorite` (`render`, `mount`, `dev_watch`) plus
+> `hydronium_router.meteorite`; Meteorite itself still has no Hydronium
+> references, by design. See [ECOSYSTEM_BOUNDARIES.md](ECOSYSTEM_BOUNDARIES.md).
+> The sections below are the 2026-09-06/07 audit record and are kept for
+> history; file paths in them predate the workspace split (`src/hydronium/...`
+> is now `core/src/hydronium/...`, `dom/src/hydronium_dom/...`).
+
 **Status: this document replaces a prior version that described an
 architecture — an embedded-in-Zig-host "Model A In-Process Hybrid" with
 "0.2–0.5 ms" latency and "zero IPC serialization" — that does not exist

@@ -209,9 +209,25 @@ end
 -- Child process
 -- ---------------------------------------------------------------------
 
+--- The child's LUA_PATH: the inherited one minus this CLI's own bundled
+--- modules. The `hydronium` launcher prepends `libexec/hydronium-cli/lua`,
+--- which vendors a copy of Hydronium itself; left in place, the app's
+--- Meteorite graph would load the CLI's framework copy instead of the
+--- version the app declares in moonstone.toml.
+--- @param lua_path string|nil
+--- @return string|nil
+function M.child_lua_path(lua_path)
+  if lua_path == nil then return nil end
+  local kept = {}
+  for entry in (lua_path .. ";"):gmatch("([^;]*);") do
+    if not entry:find("/libexec/hydronium-cli/", 1, true) then kept[#kept + 1] = entry end
+  end
+  return table.concat(kept, ";")
+end
+
 --- Starts `argv` in the background and returns its pid.
 --- @param argv string[] Program plus arguments, unquoted.
---- @param opts? { output_path?: string, popen?: function }
+--- @param opts? { output_path?: string, popen?: function, lua_path?: string }
 --- @return integer|nil pid, string|nil err
 function M.spawn_detached(argv, opts)
   opts = opts or {}
@@ -234,10 +250,14 @@ function M.spawn_detached(argv, opts)
   -- dev.lua runs under plain Lua, not LuaJIT) at a native (.so/.dylib)
   -- module built for the wrong ABI, which fails or -- worse -- misloads
   -- rather than falling back to a pure-Lua alternative.
+  -- LUA_PATH is kept, minus this CLI's own bundled entries (see
+  -- M.child_lua_path): the app must see its own Hydronium, not ours.
   -- The shell running this line is a direct child of the Hydronium CLI, so
   -- its $PPID is the CLI process that owns this detached session. Clingy's
   -- generated supervisor validates and monitors the inherited override.
-  local line = 'CLINGY_OWNER_PID="$PPID" env -u LUA_CPATH ' .. table.concat(quoted, " ")
+  local lua_path = M.child_lua_path(opts.lua_path or os.getenv("LUA_PATH"))
+  local lua_path_assignment = lua_path and ("LUA_PATH=" .. M.shell_quote(lua_path) .. " ") or ""
+  local line = 'CLINGY_OWNER_PID="$PPID" env -u LUA_CPATH ' .. lua_path_assignment .. table.concat(quoted, " ")
 
   if opts.output_path then
     line = line .. " >> " .. M.shell_quote(opts.output_path) .. " 2>&1"

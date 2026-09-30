@@ -26,11 +26,14 @@ moon run dev
 ```
 
 Open `http://localhost:8080/`, click the counter a few times, then edit
-`views/Counter.luax`. The next interaction uses the new code without resetting
-the counter. `views/App.luax` and CSS update in place; only the stable
-`views/Document.luax` bootstrap boundary reloads the page. The
+`src/views/Counter.luax`. The next interaction uses the new code without
+resetting the counter. `src/views/App.luax` also updates in place; only the
+stable `src/views/Document.luax` bootstrap boundary reloads the page. The
 [quickstart README](examples/quickstart/README.md) explains the example and
 its development workflow.
+
+How Hydronium, Meteorite, Ballad and Vite divide the work -- and what is still
+open -- is in [docs/ECOSYSTEM_BOUNDARIES.md](docs/ECOSYSTEM_BOUNDARIES.md).
 
 For a terminal host, see [Ink](ink/REGISTRY_README.md). To create a fresh
 project, use the generator while working in this checkout:
@@ -122,6 +125,43 @@ local form = H.useForm(contact)
 -- form.props: method, action, enctype, onSubmit
 -- form:pending(), form:error("name"), form:data(), form:reset()
 ```
+
+### Meteorite routes
+
+Meteorite owns HTTP; a Hydronium app's `src/main.lua` is an ordinary Meteorite
+app with three kinds of routes:
+
+```lua
+local meteorite = require("meteorite")
+local hydronium = require("hydronium_dom.server.meteorite")
+local router = require("hydronium_router.meteorite")
+
+local app = meteorite.app({ name = "app", port = 8080, dev_watch = hydronium.dev_watch() })
+
+hydronium.mount(app)          -- framework routes: browser runtime, dev modules, HMR stream
+router.mount(app, site, {     -- one GET per page, plus form actions
+  handler = meteorite.lua("app.page_handler", { arg_mode = "lazy_context" }),
+  action_handler = meteorite.lua("app.action_handler", { arg_mode = "lazy_context" }),
+})
+app:get("/hello/:name", { summary = "Greeting" },  -- your own routes
+  meteorite.lua("app.hello", { arg_mode = "lazy_context" }))
+```
+
+A route handler can render any component on the server:
+
+```lua
+-- src/app/hello.lua
+require("hydronium_luax").loader.install()
+local dom = require("hydronium_dom.server.meteorite")
+local Greeting = require("features.greeting.Greeting") -- src/features/greeting/Greeting.luax
+
+return function(c)
+  return dom.render(c, Greeting, { props = { name = c:param("name") } })
+end
+```
+
+See the [DOM package guide](dom/REGISTRY_README.md#meteorite-ssr) for the
+routes `mount` declares and its options.
 
 The generated SSR app composes browser history, abortable loader GETs, and
 form transport through `mount({ luaGlobals = ... })`. `r.http.get` uses a named
@@ -266,3 +306,7 @@ latest published packages does not yet provide these APIs.
 Hydronium is early software. The package layout and APIs are being proven by
 the examples in this repository, especially Meteorite SSR and Ink. Expect
 breaking changes before the first stable release.
+
+## DOM and mixed renderer Lab
+
+Use `hydronium-lab init --renderer dom` or `--renderer mixed` for browser stories. Declare `renderer = "dom"` or `"ink"` on collections and stories to share one catalog. Controls update live args; each renderer runs in an isolated preview. DOM uses browser time; Ink retains virtual playback. See [the DOM and mixed Lab guide](docs/LAB_DOM.md).

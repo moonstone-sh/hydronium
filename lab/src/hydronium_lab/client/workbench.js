@@ -188,6 +188,8 @@ export function createStoryStore({ send, paint = value => value }) {
     setInterval: intervalMs => operation({ op: "playback", intervalMs }),
     advance: () => operation({ op: "advance" }),
     seek: nowMs => operation({ op: "seek", nowMs }),
+    seekFrame: frame => operation({ op: "seekFrame", frame }),
+    seekTime: nowMs => operation({ op: "seekTime", nowMs }),
     restart: () => operation({ op: "restart" }),
     destroy() { listeners.clear(); },
   };
@@ -255,6 +257,9 @@ export function bindStoryControls({ root, store, onError = error => {
       button.setAttribute("aria-label", state.playback.playing ? "Pause playback" : "Play playback");
     }
     for (const field of root.querySelectorAll("[data-lab-frame-interval]")) if (document.activeElement !== field) field.value = String(state.playback.intervalMs);
+    for (const field of root.querySelectorAll("[data-lab-frame-position]")) if (document.activeElement !== field) field.value = String(state.playback.frame);
+    for (const field of root.querySelectorAll("[data-lab-time-position]")) if (document.activeElement !== field) field.value = String(Number(state.playback.nowMs.toFixed(2)));
+    for (const button of root.querySelectorAll("[data-lab-step-back]")) button.disabled = state.playback.frame === 0;
     for (const output of root.querySelectorAll("[data-lab-time]")) output.textContent = `${state.playback.nowMs.toFixed(2)} ms · frame ${state.playback.frame}`;
   });
   const run = promise => promise.catch(onError);
@@ -262,6 +267,14 @@ export function bindStoryControls({ root, store, onError = error => {
     const field = event.target;
     if (field.matches?.("[data-lab-frame-interval]")) {
       if (event.type === "change" && Number(field.value) > 0) run(store.setInterval(Number(field.value)));
+      return;
+    }
+    if (field.matches?.("[data-lab-frame-position]")) {
+      if (event.type === "change" && field.value !== "" && field.checkValidity()) run(store.seekFrame(Number(field.value)));
+      return;
+    }
+    if (field.matches?.("[data-lab-time-position]")) {
+      if (event.type === "change" && field.value !== "" && field.checkValidity()) run(store.seekTime(Number(field.value)));
       return;
     }
     if (!field.matches?.("[data-lab-control]")) return;
@@ -279,10 +292,11 @@ export function bindStoryControls({ root, store, onError = error => {
     run(store.setArgs({ [field.dataset.labControl]: value }));
   }
   function click(event) {
-    const button = event.target.closest?.("[data-lab-play], [data-lab-step], [data-lab-reset-args], [data-lab-restart]");
+    const button = event.target?.closest?.("[data-lab-play], [data-lab-step], [data-lab-step-back], [data-lab-reset-args], [data-lab-restart]");
     if (!button || !root.contains(button)) return;
     if (button.hasAttribute("data-lab-play")) run(store.getSnapshot().playback.playing ? store.pause() : store.play());
     else if (button.hasAttribute("data-lab-step")) run(store.advance());
+    else if (button.hasAttribute("data-lab-step-back")) run(store.seekFrame(Math.max(0, store.getSnapshot().playback.frame - 1)));
     else if (button.hasAttribute("data-lab-restart")) run(store.restart());
     else run(store.resetArgs());
   }
@@ -303,4 +317,141 @@ export function restoreStoryArgs(story, args = {}) {
     restored[name] = structuredClone(value);
   }
   return restored;
+}
+
+// Magnets use screen pixels, with hysteresis to avoid jitter at any zoom.
+export function snapViewportPan(pan, {width,height,stageWidth,stageHeight,guideTargets={},config={}}, previous={}, bypass=false) {
+  if(bypass)return {...pan,guides:{}};
+  const guides={}, result={...pan,guides};
+  for(const [axis,size,stage] of [['x',width,stageWidth],['y',height,stageHeight]]) {
+    const targets={}; if(config.center!==false)targets.center=0; if(config.edges!==false){targets.start=40+size/2-stage/2;targets.end=stage/2-40-size/2;} if(config.guides!==false)Object.assign(targets,guideTargets[axis]); if(!Object.keys(targets).length)continue; const held=previous[axis],distance=Number.isFinite(config.distance)?Math.max(1,Math.min(32,config.distance)):8;
+    const choice=held&&Math.abs(pan[axis]-targets[held])<=distance+6?held:Object.keys(targets).sort((a,b)=>Math.abs(pan[axis]-targets[a])-Math.abs(pan[axis]-targets[b]))[0];
+    if(Math.abs(pan[axis]-targets[choice])<=(choice===held?distance+6:distance)){result[axis]=targets[choice];guides[axis]=choice;}
+  }
+  return result;
+}
+export function rulerStep(unitsPerPixel) {
+  const desired=64*unitsPerPixel;
+  if(!(desired>0)||!Number.isFinite(desired))return 1;
+  const power=10**Math.floor(Math.log10(desired));
+  return Math.max(1,[1,2,5,10].find(n=>n*power>=desired)*power);
+}
+export function installCanvasGuides({root,getSurface,getUnits,preferences={},persist=()=>{}}) {
+  const stage=root.querySelector('[data-lab-stage]');
+  if(!stage)return {update(){},snap:pan=>pan,clear(){},destroy(){}};
+  const doc=root.ownerDocument, canvas=doc.createElement('canvas');
+  canvas.className='hydronium-lab__rulers';canvas.dataset.labRulers='';canvas.setAttribute('aria-hidden','true');stage.append(canvas);
+  const ctx=canvas.getContext('2d'), abort=new AbortController();
+  const layer=doc.createElement('div');layer.className='hydronium-lab__guide-layer';layer.dataset.labGuideLayer='';stage.append(layer);
+  const hit=doc.createElement('div');hit.className='hydronium-lab__ruler-hit';hit.dataset.labRulerHit='';hit.setAttribute('aria-label','Drag rulers to create guides');stage.append(hit);
+  let placed=Array.isArray(preferences.canvasGuides)?preferences.canvasGuides.filter(g=>g&&['x','y'].includes(g.axis)&&Number.isFinite(g.value)&&typeof g.id==='string').map(g=>({...g,color:/^#[0-9a-f]{6}$/i.test(g.color)?g.color:'#45d6ba'})):[];
+  let selectedGuide, gesture, sequence=0;
+  const guideButtons=new Map();
+  const unitPixels=new Map();
+  let rulerOrigin=['story','top-left','center'].includes(preferences.rulerOrigin)?preferences.rulerOrigin:'story';
+  const config={center:preferences.snapCenter!==false,edges:preferences.snapEdges!==false,guides:preferences.snapGuides!==false,distance:Number.isFinite(preferences.snapDistance)?preferences.snapDistance:8};
+  let guideColor=/^#[0-9a-f]{6}$/i.test(preferences.guideColor)?preferences.guideColor:'#45d6ba';
+  const saveGuides=()=>persist({canvasGuides:placed.map(g=>({...g}))});
+  const geometry=()=>{const surface=getSurface(),rect=surface?.getBoundingClientRect(),box=stage.getBoundingClientRect(),units=getUnits?.();if(!rect||!units)return null;
+    const world=root.querySelector('[data-lab-viewport]'),worldRect=world?.getBoundingClientRect(),zoom=world?.offsetWidth?worldRect.width/world.offsetWidth:1;
+    if(!unitPixels.has(units.label)&&Number.isFinite(units.pixelWidth)&&units.pixelWidth>0&&Number.isFinite(units.pixelHeight)&&units.pixelHeight>0)
+      unitPixels.set(units.label,{x:units.pixelWidth,y:units.pixelHeight});
+    const fixed=unitPixels.get(units.label)||{x:units.label==='px'?1:surface.offsetWidth/units.width,y:units.label==='px'?1:surface.offsetHeight/units.height};
+    const w=stage.clientWidth,h=stage.clientHeight,panX=worldRect?worldRect.left+worldRect.width/2-box.left-w/2:0,panY=worldRect?worldRect.top+worldRect.height/2-box.top-h/2:0;
+    return {rect,box,w,h,rx:fixed.x*zoom,ry:fixed.y*zoom,originX:rulerOrigin==='story'?rect.left-box.left:(rulerOrigin==='center'?w/2:24)+panX,originY:rulerOrigin==='story'?rect.top-box.top:(rulerOrigin==='center'?h/2:24)+panY,units:units.label};};
+  for(const [name,key] of [['snap-center','center'],['snap-edges','edges'],['snap-guides','guides'],['snap-distance','distance']]){
+    const input=root.querySelector(`[data-lab-${name}]`);if(!input)continue;if(key==='distance')input.value=config[key];else input.checked=config[key];
+    input.addEventListener('change',()=>{config[key]=key==='distance'?Math.max(1,Math.min(32,Number(input.value)||8)):input.checked;input.value=key==='distance'?config[key]:input.value;persist({[{center:'snapCenter',edges:'snapEdges',guides:'snapGuides',distance:'snapDistance'}[key]]:config[key]});locks={};update();},{signal:abort.signal});
+  }
+  const colorInput=root.querySelector('[data-lab-guide-color]');
+  if(colorInput){colorInput.value=guideColor;colorInput.addEventListener('input',()=>{guideColor=colorInput.value;const current=placed.find(g=>g.id===selectedGuide);if(current){current.color=guideColor;saveGuides();}persist({guideColor});update();},{signal:abort.signal});}
+  root.querySelector('[data-lab-clear-guides]')?.addEventListener('click',()=>{placed=[];selectedGuide=null;saveGuides();update();},{signal:abort.signal});
+  function position(g,geo){return (g.axis==='x'?geo.originX:geo.originY)+g.value*(g.axis==='x'?geo.rx:geo.ry);}
+  function renderGuides(geo){
+    hit.hidden=!enabled;
+    const visible=placed.filter(g=>(g.units||'px')===geo.units);
+    for(const [id,button] of guideButtons)if(!visible.some(g=>g.id===id)){button.remove();guideButtons.delete(id);}
+    for(const g of visible){let button=guideButtons.get(g.id);if(!button){button=doc.createElement('button');guideButtons.set(g.id,button);layer.append(button);}button.type='button';button.className=`hydronium-lab__guide hydronium-lab__guide--${g.axis}`;button.dataset.labGuide=g.id;button.setAttribute('aria-label',`${g.axis==='x'?'Vertical':'Horizontal'} guide`);button.style.setProperty('--guide-color',g.color);button.style[g.axis==='x'?'left':'top']=`${position(g,geo)}px`;button.setAttribute('aria-pressed',String(selectedGuide===g.id));}
+  }
+  function stop(event){event.preventDefault();event.stopImmediatePropagation?.();}
+  stage.addEventListener('pointerdown',event=>{
+    const button=event.target?.closest?.('[data-lab-guide]');const isRuler=event.target===hit;
+    if(!button&&!isRuler)return;
+    const geo=geometry();if(!geo)return;stop(event);const id=button?.dataset.labGuide;
+    if(id&&(event.altKey||event.ctrlKey||event.metaKey)){placed=placed.filter(g=>g.id!==id);saveGuides();update();return;}
+    const before=placed.map(g=>({...g}));let ids;
+    if(id){ids=[id];button.focus?.();selectedGuide=id;const g=placed.find(g=>g.id===id);if(colorInput)colorInput.value=g.color;}
+    else {const x=event.clientX-geo.box.left,y=event.clientY-geo.box.top;const axes=x<24&&y<24?['x','y']:y<24?['y']:['x'];ids=axes.map(axis=>{const id=`guide-${Date.now()}-${sequence++}`;placed.push({id,axis,value:0,color:guideColor,units:geo.units});return id;});selectedGuide=ids[0];}
+    const offsets={};if(id){const g=placed.find(g=>g.id===id);offsets[id]=(g.axis==='x'?event.clientX-geo.box.left:event.clientY-geo.box.top)-position(g,geo);}
+    gesture={pointer:event.pointerId,ids,before,geo,offsets};stage.setPointerCapture(event.pointerId);if(!id)moveGuide(event);update();
+  },{capture:true,signal:abort.signal});
+  function moveGuide(event){if(!gesture||event.pointerId!==gesture.pointer)return;stop(event);const geo=geometry();if(!geo)return;for(const id of gesture.ids){const g=placed.find(g=>g.id===id);if(!g)continue;const offset=g.axis==='x'?event.clientX-geo.box.left-geo.originX:event.clientY-geo.box.top-geo.originY;g.value=(offset-(gesture.offsets[id]||0))/(g.axis==='x'?geo.rx:geo.ry);}update();}
+  stage.addEventListener('pointermove',moveGuide,{capture:true,signal:abort.signal});
+  function finishGuide(event){if(!gesture||event.pointerId!==gesture.pointer)return;stop(event);const geo=geometry(),x=event.clientX-geo.box.left,y=event.clientY-geo.box.top;
+    if(event.type==='pointercancel')placed=gesture.before;else if(x<24&&y<24||x<0||y<0||x>geo.w||y>geo.h)placed=placed.filter(g=>!gesture.ids.includes(g.id));
+    gesture=null;selectedGuide=placed.some(g=>g.id===selectedGuide)?selectedGuide:null;saveGuides();update();
+  }
+  for(const type of ['pointerup','pointercancel'])stage.addEventListener(type,finishGuide,{capture:true,signal:abort.signal});
+  stage.addEventListener('keydown',event=>{if(event.target?.dataset?.labGuide&&['Delete','Backspace'].includes(event.key)){stop(event);placed=placed.filter(g=>g.id!==event.target.dataset.labGuide);saveGuides();update();}},{signal:abort.signal});
+  doc.defaultView.addEventListener?.('blur',()=>{if(gesture){placed=gesture.before;gesture=null;saveGuides();}locks={};update();},{signal:abort.signal});
+  root.addEventListener('input',update,{signal:abort.signal});root.addEventListener('change',update,{signal:abort.signal});
+  let pending,locks={},alive=true,enabled=preferences.rulers!==false,magnetic=preferences.snapping!==false;
+  const originInput=root.querySelector('[data-lab-ruler-origin]');if(originInput){originInput.value=rulerOrigin;originInput.addEventListener('change',()=>{rulerOrigin=['story','top-left','center'].includes(originInput.value)?originInput.value:'story';persist({rulerOrigin});update();},{signal:abort.signal});}
+  let hints=preferences.showHints!==false;root.dataset.hintsVisible=String(hints);
+  for(const [name,initial] of [['rulers',enabled],['snapping',magnetic]]) {
+    const input=root.querySelector(`[data-lab-${name}-enabled]`);if(!input)continue;input.checked=initial;
+    input.addEventListener('change',()=>{if(name==='rulers')enabled=input.checked;else {magnetic=input.checked;locks={};}persist({[name]:input.checked});update();},{signal:abort.signal});
+  }
+  const hintInput=root.querySelector('[data-lab-hints-enabled]');if(hintInput){hintInput.checked=hints;
+    hintInput.addEventListener('change',()=>{hints=hintInput.checked;root.dataset.hintsVisible=String(hints);persist({showHints:hints});},{signal:abort.signal});}
+  function toggleRulers(){enabled=!enabled;const input=root.querySelector('[data-lab-rulers-enabled]');if(input)input.checked=enabled;persist({rulers:enabled});update();}
+  function toggleHints(){hints=!hints;if(hintInput)hintInput.checked=hints;root.dataset.hintsVisible=String(hints);persist({showHints:hints});}
+  doc.defaultView.addEventListener?.('keydown',event=>{
+    if(event.repeat||event.ctrlKey||event.metaKey||event.altKey||event.target?.closest?.('input,textarea,select,[contenteditable]'))return;
+    const key=event.key?.toLowerCase();if(key==='r'){event.preventDefault();toggleRulers();}
+    else if(key==='h'){event.preventDefault();toggleHints();}
+  },{signal:abort.signal});
+  function draw() {
+    pending=null;if(!alive||!ctx)return;
+    const box=stage.getBoundingClientRect(),rect=getSurface()?.getBoundingClientRect(),w=stage.clientWidth,h=stage.clientHeight,dpr=doc.defaultView.devicePixelRatio||1;
+    canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+    if(!rect?.width||!rect?.height)return;
+    const left=rect.left-box.left,top=rect.top-box.top,units=getUnits?.()||{width:getSurface().offsetWidth,height:getSurface().offsetHeight,label:'px'};
+    canvas.dataset.units=units.label;
+    const geo=geometry();if(geo)renderGuides(geo);
+    const grid=root.querySelector('[data-lab-grid]');
+    if(grid&&geo){const gridRect=grid.getBoundingClientRect(),world=root.querySelector('[data-lab-viewport]'),worldRect=world?.getBoundingClientRect(),zoom=world?.offsetWidth?worldRect.width/world.offsetWidth:1;
+      grid.style.backgroundPosition=`${(box.left+geo.originX-gridRect.left)/zoom}px ${(box.top+geo.originY-gridRect.top)/zoom}px`;}
+    canvas.dataset.snapActive=String(Object.keys(locks).length>0);ctx.strokeStyle='#8eaaff';ctx.setLineDash([4,4]);
+    for(const [axis,alignment] of Object.entries(locks)) {
+      const origin=axis==='x'?left:top,extent=axis==='x'?rect.width:rect.height,anchor=alignment.split(':').at(-1),position=origin+(anchor==='center'?extent/2:anchor==='end'?extent:0);
+      ctx.beginPath();if(axis==='x'){ctx.moveTo(position,24);ctx.lineTo(position,h);}else {ctx.moveTo(24,position);ctx.lineTo(w,position);}ctx.stroke();
+    }
+    ctx.setLineDash([]);if(!enabled)return;
+    ctx.fillStyle='#121a2df2';ctx.fillRect(0,0,w,24);ctx.fillRect(0,0,24,h);ctx.font='10px ui-monospace, monospace';
+    // Story origin follows its top-left; explicit canvas origins follow pan.
+    // Cell spacing is calibrated once, independently of the resizable box.
+    const rulerX=geo.originX,rulerY=geo.originY;
+    for(const [axis,origin,extent,count,length] of [['x',rulerX,rect.width,units.width,w],['y',rulerY,rect.height,units.height,h]]) {
+      if(!(count>0))continue;
+      const ratio=axis==='x'?geo.rx:geo.ry,step=rulerStep(1/ratio),minor=step>=5?step/5:step;
+      const previewOrigin=axis==='x'?left:top;
+      ctx.fillStyle='#263b60';const startEdge=Math.max(24,previewOrigin),range=Math.max(0,Math.min(length,previewOrigin+extent)-startEdge);
+      if(axis==='x')ctx.fillRect(startEdge,20,range,4);else ctx.fillRect(20,startEdge,4,range);
+      const start=Math.ceil((24-origin)/ratio/minor),finish=Math.floor((length-origin)/ratio/minor);
+      for(let n=start;n<=finish&&n<start+1000;n++) {
+        const value=n*minor,pixel=Math.round(origin+value*ratio)+.5,major=Math.abs(value/step-Math.round(value/step))<.001;
+        ctx.strokeStyle=major?'#91a2c1':'#475875';ctx.beginPath();if(axis==='x'){ctx.moveTo(pixel,major?15:20);ctx.lineTo(pixel,24);}else {ctx.moveTo(major?15:20,pixel);ctx.lineTo(24,pixel);}ctx.stroke();
+        if(major){ctx.fillStyle='#b6c3db';const text=String(Math.round(value));if(axis==='x')ctx.fillText(text,pixel+3,11);else {ctx.save();ctx.translate(11,pixel-3);ctx.rotate(-Math.PI/2);ctx.fillText(text,0,0);ctx.restore();}}
+      }
+    }
+    ctx.fillStyle='#19243b';ctx.fillRect(0,0,24,24);ctx.fillStyle='#b6c3db';ctx.font='9px ui-monospace, monospace';ctx.fillText(units.label==='cells'?'cell':'px',2,15);
+  }
+  function update(){if(alive&&pending==null)pending=doc.defaultView.requestAnimationFrame(draw);}
+  const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(update);observer?.observe(stage);const surface=getSurface();if(surface)observer?.observe(surface);update();
+  return {update,toggleRulers,toggleHints,resetUnitScale(){unitPixels.clear();update();},clear(){locks={};update();},snap(pan,bypass=false){const rect=getSurface()?.getBoundingClientRect();if(!rect)return pan;
+    const geo=geometry(),guideTargets={x:{},y:{}};
+    if(geo)for(const g of placed.filter(g=>(g.units||'px')===geo.units)){const size=g.axis==='x'?rect.width:rect.height,target=position(g,geo)-(g.axis==='x'?geo.w:geo.h)/2;for(const [anchor,offset] of [['start',-size/2],['center',0],['end',size/2]])guideTargets[g.axis][`guide:${g.id}:${anchor}`]=target-offset;}
+    const result=snapViewportPan(pan,{width:rect.width,height:rect.height,stageWidth:stage.clientWidth,stageHeight:stage.clientHeight,guideTargets,config},locks,bypass||!magnetic);locks=result.guides;update();return {x:result.x,y:result.y};
+  },destroy(){alive=false;abort.abort();observer?.disconnect();if(pending!=null)doc.defaultView.cancelAnimationFrame(pending);canvas.remove();layer.remove();hit.remove();}};
 }

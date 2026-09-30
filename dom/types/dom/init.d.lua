@@ -67,6 +67,7 @@
 ---@field img hydronium.Intrinsic<HTMLImageProps, HTMLImageElement> | fun(props?: HTMLImageProps, ...: any): LuaxElement
 ---@field textarea hydronium.Intrinsic<HTMLTextAreaProps, HTMLTextAreaElement> | fun(props?: HTMLTextAreaProps, ...: any): LuaxElement
 ---@field select hydronium.Intrinsic<HTMLSelectProps, HTMLSelectElement> | fun(props?: HTMLSelectProps, ...: any): LuaxElement
+---@field s hydronium.Intrinsic<HTMLSelectProps, HTMLSelectElement> | fun(props?: HTMLSelectProps, ...: any): LuaxElement Virtual LuaLS alias for bare <select>
 ---@field option hydronium.Intrinsic<HTMLOptionProps, HTMLOptionElement> | fun(props?: HTMLOptionProps, ...: any): LuaxElement
 ---@field label hydronium.Intrinsic<HTMLLabelProps, HTMLLabelElement> | fun(props?: HTMLLabelProps, ...: any): LuaxElement
 ---@field ul hydronium.Intrinsic<HTMLUListProps, HTMLUListElement> | fun(props?: HTMLUListProps, ...: any): LuaxElement
@@ -78,6 +79,7 @@
 ---@field aside hydronium.Intrinsic<HTMLAsideProps, HTMLElement> | fun(props?: HTMLAsideProps, ...: any): LuaxElement
 ---@field article hydronium.Intrinsic<HTMLArticleProps, HTMLElement> | fun(props?: HTMLArticleProps, ...: any): LuaxElement
 ---@field table hydronium.Intrinsic<HTMLTableProps, HTMLTableElement> | fun(props?: HTMLTableProps, ...: any): LuaxElement
+---@field t hydronium.Intrinsic<HTMLTableProps, HTMLTableElement> | fun(props?: HTMLTableProps, ...: any): LuaxElement Virtual LuaLS alias for bare <table>
 ---@field thead hydronium.Intrinsic<HTMLTableSectionProps, HTMLTableSectionElement> | fun(props?: HTMLTableSectionProps, ...: any): LuaxElement
 ---@field tbody hydronium.Intrinsic<HTMLTableSectionProps, HTMLTableSectionElement> | fun(props?: HTMLTableSectionProps, ...: any): LuaxElement
 ---@field tfoot hydronium.Intrinsic<HTMLTableSectionProps, HTMLTableSectionElement> | fun(props?: HTMLTableSectionProps, ...: any): LuaxElement

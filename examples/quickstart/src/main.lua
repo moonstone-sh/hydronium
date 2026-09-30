@@ -1,16 +1,35 @@
--- Server entrypoint
+-- Server entrypoint.
+--
+-- Meteorite owns HTTP: every route below is an ordinary Meteorite
+-- declaration. Hydronium contributes three things to it:
+--
+--   1. `hydronium.mount(app)` -- the framework's own routes (browser runtime,
+--      framework source, dev module server, HMR stream). Nothing to copy.
+--   2. `router.mount(app, site, ...)` -- one GET per addressable page in
+--      views/Site.lua, rendered by app/page_handler.lua, plus its form actions.
+--   3. Plain route handlers -- any Meteorite route can render a Hydronium
+--      component (see /hello/:name and app/hello.lua).
+--
+-- Handlers live in their own modules (`meteorite.lua("app.x")`) because
+-- Meteorite's hybrid build loads each handler standalone per request; an
+-- inline `function(c) ... end` must not capture locals from this file.
 local meteorite = require("meteorite")
+local hydronium = require("hydronium_dom.server.meteorite")
+local router = require("hydronium_router.meteorite")
+require("hydronium_luax").loader.install()
 
 local app = meteorite.app({
 	name = "hydronium-quickstart",
-	host = "0.0.0.0",
-	port = 8080,
-	dev_watch = {
-		graph = { "src", "zig", "public", "build.zig", "moonstone.toml" },
-		passive = { "src/views/App.luax", "src/views/Counter.luax", "src/views/Home.luax", "src/views/About.luax" },
-		exclude = { "src/views/App.luax", "src/views/Counter.luax", "src/views/Home.luax", "src/views/About.luax" },
-	},
+	host = "127.0.0.1",
+	port = tonumber(os.getenv("PORT")) or 8080,
+	-- Hot UI modules declared in hydronium.sources.lua are passive: the browser
+	-- swaps them in place, so editing one must not restart the server.
+	dev_watch = hydronium.dev_watch(),
 })
+
+-- Before meteorite.site: Meteorite matches routes in declaration order, and in
+-- development mount serves the watched stylesheet from disk at its own URL.
+hydronium.mount(app)
 
 meteorite.site(app, {
 	root = ".",
@@ -19,243 +38,22 @@ meteorite.site(app, {
 	},
 })
 
--- The compiled client bootstrap (mount.js, dom_bridge.js, hmr.js,
--- dev_reload.js) lives in the sibling hydronium checkout, served directly
--- from its real source -- dev/example serving, same as the /hydronium-src
--- and /__hydronium/client routes below, not a production asset pipeline
--- (see hydronium/docs/BUNDLING.md).
---
--- Declared here as a plain app:get rather than as one more `assets` entry
--- in m.site() above -- which is where it used to live, and where it looks
--- like it belongs -- for one concrete reason: m.site()'s asset spec has no
--- way to pass per-route `memory`, and this particular directory now
--- contains hydronium's self-hosted copy of wasmoon, whose glue.wasm is
--- 271,581 bytes.
---
--- Meteorite serves a dev `m.dir` file by reading it whole into the
--- PER-REQUEST ARENA, which the default/hybrid_dev profile sizes at 256kb
--- (262,144 bytes). The wasm binary overshoots that by ~9kb, so the request
--- died with a bare `OutOfMemory` -> HTTP 500 (visible only in
--- .meteorite/dev/server.log; the browser just saw a failed fetch and the
--- Lua VM never booted). Note this is NOT the 1mb max_response_bytes cap --
--- raising that would have changed nothing.
---
--- 1mb of arena leaves real headroom for wasmoon to grow across versions
--- without this failing again in the same confusing way. Dev-only cost.
--- VENDOR SPLIT, declared BEFORE the general /js/bootstrap route below --
--- that order is load-bearing, not cosmetic. Meteorite's router is a
--- first-match-wins linear scan in DECLARATION order (zig/server/route_dispatch.zig's
--- `inline for (routes)`); there is no longest-prefix or specificity rule.
--- Both this route and the one below match /js/bootstrap/vendor/..., so
--- whichever is declared first wins. Moving this below the other silently
--- reverts the caching fix rather than erroring.
---
--- Why it needs its own route at all: `m.dir`'s cache lifetime is
--- PER-ROUTE, and this one directory holds two things with opposite
--- caching needs -- hydronium's own client JS (mount.js, hmr.js,
--- dom_bridge.js), edited constantly during development, and the
--- vendored, version-pinned wasmoon build under vendor/ (glue.wasm +
--- index.js = ~423KB of the ~462KB total), which changes only when
--- somebody deliberately re-vendors a new wasmoon release.
---
--- Before this split every one of those files was served
--- `cache-control: no-cache` (Meteorite's `m.dir` default, see
--- src/core/handler_factories.lua), which does NOT mean "don't cache" --
--- it means "revalidate before every reuse". Measured with Playwright
--- against this running server: a repeat visit made a conditional round
--- trip for all six files (transferSize 300 bytes each, 304 Not
--- Modified) before the Lua VM could start. Cheap over localhost,
--- six serial RTTs on a real network.
---
--- NOT `immutable`, deliberately. `opts.immutable` would emit
--- `public, max-age=31536000, immutable` -- a year-long, unconditional,
--- un-revalidatable promise on a URL with NO content hash in it, so
--- re-vendoring wasmoon would strand every already-warm client on the
--- old binary with no way for the server to correct them. Real content
--- hashing (hydronium_ballad.plugins.assets' b3sum scheme) is what makes
--- `immutable` safe, and it does not apply here: that plugin rewrites
--- Ballad build-graph AssetSets, while these URLs are resolved at runtime
--- by mount.js against its own `import.meta.url` and by hand-written
--- <script type="module"> tags in views/Document.luax. Hashing them means a
--- real asset pipeline rewriting those references -- the separate,
--- still-open bundler work (hydronium/docs/BUNDLING.md).
---
--- A bounded lifetime needs none of that and cannot strand anyone:
--- Meteorite already emits a real content-derived b3 ETag per file and
--- honours If-None-Match with a 304, so once the day expires the client
--- revalidates and self-heals automatically. 24h of zero round trips for
--- a repeat visitor, 24h worst-case staleness -- instead of a year.
-app:get("/js/bootstrap/vendor/:path*", {
-	memory = { request_arena = "1mb" },
-}, meteorite.dir("../../dom/src/hydronium_dom/client/vendor", {
-	param = "path",
-	cache = "public, max-age=86400, must-revalidate",
-}))
-
--- Hydronium's own client JS. Stays revalidate-every-time (`no-cache`),
--- and that is the right answer rather than an oversight: these files are
--- edited during development, and a stale mount.js/hmr.js served out of
--- a browser cache is a genuinely confusing failure. Stated explicitly
--- rather than left to the factory default so it reads as a decision.
--- They are also small (~35KB combined) -- the caching win was never here.
-app:get("/js/bootstrap/:path*", {
-	memory = { request_arena = "1mb" },
-}, meteorite.dir("../../dom/src/hydronium_dom/client", {
-	param = "path",
-	cache = "no-cache",
-}))
-
-app:get("/js/router/history.js", meteorite.file("../../router/client/history.js", {
-	cache = "no-cache",
-}))
-
-app:get("/js/router/http.js", meteorite.file("../../router/client/http.js", {
-	cache = "no-cache",
-}))
-
--- Serves hydronium's own runtime source for hydronium.client.mount to
--- fetch over HTTP, exactly as hydronium/examples/meteorite_ssr does --
--- restricted to `.lua`/`.json` under the two real member source roots,
--- no `..` traversal.
-app:get("/hydronium-src/:path*", function(c)
-	local rel = c:param("path") or ""
-	if rel:find("%.%.") or not (rel:match("%.lua$") or rel:match("%.json$")) then
-		return c:text(400, "invalid path")
-	end
-	local source_root
-	if rel:match("^hydronium/") then
-		source_root = "../../core/src/"
-	elseif rel:match("^hydronium_dom/") then
-		source_root = "../../dom/src/"
-	elseif rel:match("^hydronium_router/") then
-		source_root = "../../router/src/"
-	else
-		return c:text(404, "not found")
-	end
-	local f = io.open(source_root .. rel, "r")
-	if not f then
-		return c:text(404, "not found")
-	end
-	local content = f:read("*a")
-	f:close()
-	return c:text(200, content)
-end)
-
--- The manifest hydronium.client.mount fetches to know which framework
--- files to load -- a plain JSON file this template ships, not generated
--- per-request (see hydronium/dom/tools/gen_client_manifest.lua for how
--- it was produced; regenerate it the same way if you add new client-side
--- requires that change the transitive module graph).
-app:get("/__hydronium/client_manifest.json", function(c)
-	local f = assert(io.open("client_manifest.json", "r"))
-	local content = f:read("*a")
-	f:close()
-	return c:text(200, content)
-end)
-
--- Prefer Ballad's generated private authority when a build produced one;
--- the checked-in declaration keeps source-only development self-contained.
-local function dev_registry()
-	local source_registry = require("hydronium_dom.dev.source_registry")
-	local inventory_path = ".hydronium/source-inventory.lua"
-	local inventory = io.open(inventory_path, "r")
-	if inventory then
-		inventory:close()
-		return source_registry.load_inventory(inventory_path)
-	end
-	return source_registry.load("hydronium.sources.lua")
-end
-
--- Public metadata for the project's own browser modules. Unlike the
--- framework manifest above, it is derived from the project topology and
--- contains no source paths or arbitrary filesystem lookup capability.
-app:get("/__hydronium/dev/manifest.json", function(c)
-	local registry = dev_registry()
-	return c:json(registry:browser_manifest())
-end)
-
--- Serves ONE of this project's own view modules, by require() id, as
--- compiled Lua source. `views.Counter` -> `views/Counter.luax`, compiled
--- on demand by hydronium_luax's serve-time loader (content-cached, no
--- build step) and returned as text -- never executed here, because it is
--- the browser's Lua VM that runs it, not the server's.
---
--- Both the first load and every hot update go through this one route:
--- views/Document.luax passes these URLs to mount(), and
--- hydronium_dom/client/hmr.js re-fetches the same URL on each change. One
--- source of truth, so the two can never drift apart.
---
--- The registry is the sole authority for ID -> source mapping. A request can
--- only name a declared client/shared record; it never becomes a path lookup.
-app:get("/__hydronium/dev/module/:id", function(c)
-	local id = c:param("id") or ""
-	local registry = dev_registry()
-	local record = registry:module(id)
-	if not record or (record.target ~= "client" and record.target ~= "shared") then return c:text(404, "module not found") end
-
-	-- A hot batch names the whole watch fingerprint it observed. Read the
-	-- module between two checks of that revision; if any watched file moves,
-	-- reject rather than handing the browser a mixed source set.
-	local watch = require("hydronium_dom.dev.watch")
-	local source, revision, reason, err = watch.read_snapshot(registry:watch_files({ "public/style.css" }), c:query("revision"), function()
-		if record.transform == "luax" then
-			local ok, code = pcall(require("hydronium_luax").loader.source, record.path)
-			if not ok then error("compile failed for " .. id .. ": " .. tostring(code), 0) end
-			return code
-		end
-		local f = assert(io.open(record.path, "r"), "not found")
-		local content = f:read("*a")
-		f:close()
-		return content
-	end)
-	if reason == "stale" then
-		return c:text(409, "HMR source snapshot is stale", { headers = {
-			["X-Hydronium-Revision"] = revision or "",
-			["Cache-Control"] = "no-store",
-		} })
-	elseif reason == "read_failed" then
-		return c:text(500, "-- hydronium dev: " .. tostring(err), { headers = { ["Cache-Control"] = "no-store" } })
-	end
-	return c:text(200, source, { headers = {
-		["X-Hydronium-Revision"] = revision,
-		["Cache-Control"] = "no-store",
-	} })
-end)
-
-local pages = require("views.Site")
-local router_adapter = require("hydronium_router.meteorite")
-router_adapter.mount(app, pages, {
+local site = require("views.Site")
+router.mount(app, site, {
 	handler = meteorite.lua("app.page_handler", { arg_mode = "lazy_context" }),
 	action_handler = meteorite.lua("app.action_handler", { arg_mode = "lazy_context" }),
 })
 
-app:get("/api/health", function(c)
+-- A plain Meteorite route rendering a Hydronium component: no router, no
+-- browser VM. The component lives in src/features/, not src/views/.
+app:get("/hello/:name", {
+	summary = "Server-rendered greeting",
+},meteorite.lua("app.hello", { arg_mode = "lazy_context" }))
+
+app:get("/api/health", { summary = "Health check" }, function(c)
 	return c:json({ status = "ok", timestamp = os.time() })
 end)
 
--- Dev update endpoint: the browser's hmr.js (served above) connects here
--- and is told exactly which file moved. views/App.luax and
--- views/Counter.luax are hot Lua modules, views/Document.luax is an
--- explicit page-reload boundary, and style.css is replaced in place. See
--- hydronium_dom.dev.watch's own
--- doc comment for why this route must stay written inline here rather
--- than behind a one-line library call (Meteorite's hybrid build can only
--- lift an inline handler it can see the literal source of).
---
--- Keep this list in step with the `updates` map in views/Document.luax: this
--- side decides what is watched, that side decides what a watched file
--- means to the running VM.
---
--- These files sit at the PROJECT ROOT, not under src/, and that is
--- load-bearing: `meteorite dev` watches src/ and rebuilds and restarts
--- the server when anything there changes, which would tear down the very
--- page HMR is trying to preserve.
-app:get("/__hydronium/watch", function(c)
-	local watch = require("hydronium_dom.dev.watch")
-	local registry = dev_registry()
-	watch.serve_sse(c, registry:watch_files({ "public/style.css" }))
-end)
-
-router_adapter.validate_final(app, pages)
+router.validate_final(app, site)
 
 return app

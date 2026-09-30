@@ -7,6 +7,7 @@ local runner = require("hydronium_lab_cli.runner")
 
 local function common_options(run)
   return {
+    c.option({ key = "renderer", aliases = { "--renderer" }, value = { schema = v.string() }, complete = c.values({ "ink", "dom", "mixed" }) }),
     c.option({ key = "host", aliases = { "--host" }, value = { schema = v.string() } }),
     c.option({ key = "port", aliases = { "--port" }, value = { schema = v.integer() } }),
     c.option({ key = "config", aliases = { "--config" }, value = { schema = v.string() }, complete = c.file() }),
@@ -34,7 +35,7 @@ app = c.create({
       local port = ctx.args.port or 6100
       if port < 1 or port > 65535 then ctx:fail("--port must be from 1 to 65535", 1); return end
       local result, err = runner.run({ host = ctx.args.host or "127.0.0.1", port = port, config = ctx.args.config,
-        adapter = ctx.args.adapter, no_open = ctx.args.no_open or ctx.args.ci, dry_run = ctx.args.dry_run })
+        renderer = ctx.args.renderer, adapter = ctx.args.adapter, no_open = ctx.args.no_open or ctx.args.ci, dry_run = ctx.args.dry_run })
       if not result then ctx:fail(tostring(err), 1); return end
       if ctx.args.dry_run then
         io.stdout:write(string.format("adapter: %s\nurl: %s\ncommand: %s\nstories: %d\n",
@@ -54,11 +55,12 @@ app = c.create({
       end),
     }, { description = "Create an optional editable Lab entry; --copy-shell copies default markup" }),
     init = c.node({
+      c.option({ key = "renderer", aliases = { "--renderer" }, value = { schema = v.string() }, complete = c.values({ "ink", "dom", "mixed" }) }),
       c.flag({ key = "dry_run", aliases = { "--dry-run" } }),
       c.run(function(ctx)
         if ctx.args.help then io.stdout:write(app:help() .. "\n"); return 0 end
         if ctx.args.version then io.stdout:write("hydronium-lab 0.1.0\n"); return 0 end
-        local result, err = runner.initialize({ dry_run = ctx.args.dry_run })
+        local result, err = runner.initialize({ renderer = ctx.args.renderer, dry_run = ctx.args.dry_run })
         if not result then ctx:fail(err, 1); return end
         if ctx.args.dry_run then
           for _, command in ipairs(result.commands) do
@@ -66,7 +68,7 @@ app = c.create({
           end
           return 0
         end
-        io.stdout:write("Hydronium Lab is ready. Create a *.stories.lua or *.stories.luax file, then run `moon run lab`.\n")
+        io.stdout:write("Hydronium Lab is ready. Create a *.stories.lua, *.stories.luax, *.stories.md, or *.stories.mdx file, then run `moon run lab`.\n")
         return 0
       end),
     }, { description = "Add Lab development and host dependencies to a project" }),

@@ -1,6 +1,6 @@
 # Hydronium Lab CLI
 
-`hydronium-lab` discovers `*.stories.lua` and `*.stories.luax` files, then
+`hydronium-lab` discovers `*.stories.lua`, `*.stories.luax`, `*.stories.md`, and `*.stories.mdx` files, then
 hands a deterministic launch plan to an explicit host adapter.
 
 ```sh
@@ -58,3 +58,7 @@ Stories can provide their own DOM controls without replacing the shell.
 See [controls and playback](../docs/LAB_CONTROLS.md) for hooks, passive outlets,
 opt-in generated fields and virtual time. Customization and these APIs are
 unreleased development features.
+
+## DOM and mixed renderer Lab
+
+Use `hydronium-lab init --renderer dom` or `--renderer mixed` for browser stories. Declare `renderer = "dom"` or `"ink"` on collections and stories to share one catalog. Controls update live args; each renderer runs in an isolated preview. DOM uses browser time; Ink retains virtual playback. See [the DOM and mixed Lab guide](../docs/LAB_DOM.md).

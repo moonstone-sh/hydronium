@@ -4,3 +4,4 @@ dist/
 zig-out/
 .meteorite/
 *.log
+.hydronium/

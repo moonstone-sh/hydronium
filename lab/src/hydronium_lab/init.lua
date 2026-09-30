@@ -79,6 +79,22 @@ local function json_value(value, seen, where)
   return out
 end
 
+local function normalizeViewports(viewports)
+  if viewports == nil then return nil end
+  if type(viewports) ~= "table" then error("hydronium_lab: viewports must be an array", 3) end
+  local out = {}
+  for index, viewport in ipairs(viewports) do
+    if type(viewport) ~= "table" then error("hydronium_lab: invalid viewport", 3) end
+    local width, height = viewport.width, viewport.height or 600
+    for _, value in ipairs({ width, height }) do
+      if type(value) ~= "number" or value < 1 or value > 8192 or value % 1 ~= 0 then error("hydronium_lab: viewport dimensions must be integers from 1 to 8192", 3) end
+    end
+    if width == nil then error("hydronium_lab: viewport width is required", 3) end
+    out[index] = { name = tostring(viewport.name or (width .. "×" .. height)), width = width, height = height }
+  end
+  return out
+end
+
 local function normalizeControls(controls)
   if controls == nil then return {} end
   if type(controls) ~= "table" then error("hydronium_lab: controls must be a table", 3) end
@@ -135,6 +151,7 @@ end
 function M.story(spec)
   if type(spec) ~= "table" then error("hydronium_lab.story: expected a table", 2) end
   checkId(spec.id, "hydronium_lab.story")
+  if spec.renderer ~= nil and spec.renderer ~= "dom" and spec.renderer ~= "ink" then error("hydronium_lab: renderer must be dom or ink", 2) end
   if type(spec.render) ~= "function" then error("hydronium_lab.story: render must be a function", 2) end
   if spec.controls_view ~= nil and type(spec.controls_view) ~= "function" then error("hydronium_lab.story: controls_view must be a DOM component", 2) end
   local color = spec.color or "truecolor"
@@ -155,7 +172,7 @@ function M.story(spec)
   end
   return {
     _kind = "hydronium.lab.story",
-    id = spec.id,
+    id = spec.id, renderer = spec.renderer,
     title = spec.title or spec.id,
     render = spec.render,
     args = copy(spec.args or {}),
@@ -164,6 +181,7 @@ function M.story(spec)
     group = spec.group,
     description = spec.description,
     source = spec.source and copy(spec.source) or nil,
+    viewports = normalizeViewports(spec.viewports),
     sizes = normalizeSizes(spec.sizes),
     color = color,
     colorProfile = colorProfile,
@@ -179,6 +197,7 @@ function M.collection(spec)
   if type(spec.stories) ~= "table" or next(spec.stories) == nil then
     error("hydronium_lab.collection: stories must be a non-empty table", 2)
   end
+  if spec.renderer ~= nil and spec.renderer ~= "dom" and spec.renderer ~= "ink" then error("hydronium_lab: renderer must be dom or ink", 2) end
   if spec.component == nil and spec.render == nil then
     error("hydronium_lab.collection: component or render is required", 2)
   end
@@ -192,13 +211,14 @@ function M.collection(spec)
     stories[key] = copy(value)
   end
   return {
-    _kind = "hydronium.lab.collection",
+    _kind = "hydronium.lab.collection", renderer = spec.renderer,
     title = spec.title,
     component = spec.component,
     render = spec.render,
     args = json_value(spec.args or {}, {}, "hydronium_lab.collection: args"),
     controls = normalizeControls(spec.controls),
     controls_view = spec.controls_view,
+    viewports = normalizeViewports(spec.viewports),
     sizes = spec.sizes and normalizeSizes(spec.sizes) or nil,
     color = spec.color,
     colorProfile = normalizeColorProfile(spec.colorProfile, "hydronium_lab.collection"),
@@ -232,7 +252,7 @@ function M.registry(entries)
         local interactions = {}
         for i, interaction in ipairs(story.interactions) do interactions[i] = interaction.name end
         result[index] = {
-          id = story.id, title = story.title, args = copy(story.args), sizes = copy(story.sizes),
+          id = story.id, title = story.title, renderer = story.renderer, viewports = copy(story.viewports), args = copy(story.args), sizes = copy(story.sizes),
           color = story.color, colorProfile = story.colorProfile,
           interactions = interactions, controls = copy(story.controls or {}),
           group = story.group, description = story.description, source = copy(story.source),

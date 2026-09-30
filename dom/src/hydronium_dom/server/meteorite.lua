@@ -266,4 +266,228 @@ function meteorite_adapter.stream_handler(component_or_vnode, default_opts)
   end
 end
 
+-- ---------------------------------------------------------------------
+-- App mounting
+--
+-- Meteorite owns the HTTP surface; a Hydronium app still needs a handful of
+-- framework routes of its own (client runtime, framework source, dev module
+-- server, HMR stream). `mount` declares those so an application's main.lua
+-- only contains its own routes. Lua handlers are `m.lua` file handlers that
+-- point into this installed package (hydronium_dom/server/meteorite_routes/),
+-- never inline closures, so Meteorite's hybrid lifting has nothing to reject.
+-- ---------------------------------------------------------------------
+
+local function dirname(path)
+  return path:match("^(.*)/[^/]+$") or "."
+end
+
+local function is_file(path)
+  local f = io.open(path, "r")
+  if not f then return false end
+  f:close()
+  return true
+end
+
+--- Resolve the on-disk directory of a module namespace through package.path.
+local function module_dir(namespace)
+  local init = package.searchpath(namespace, package.path)
+  return init and dirname(init) or nil
+end
+
+--- A published package ships browser assets inside its module directory
+--- (`hydronium_router/client/`); a workspace path dependency keeps them at the
+--- package root (`router/client/`). Probe both instead of hardcoding either.
+local function asset_dir(candidates, probe)
+  for _, dir in ipairs(candidates) do
+    if dir and is_file(dir .. "/" .. probe) then return dir end
+  end
+  return nil
+end
+
+local function route_file(name)
+  local path = package.searchpath("hydronium_dom.server.meteorite_routes." .. name, package.path)
+  if not path then
+    error("hydronium_dom.server.meteorite.mount: cannot locate route module `" .. name .. "` on package.path", 3)
+  end
+  return path
+end
+
+--- True when Meteorite is compiling a release build (release-hybrid,
+--- release-static). Meteorite sets METEORITE_BUILD_MODE before main.lua runs.
+--- @return boolean
+function meteorite_adapter.is_release_build()
+  return tostring(rawget(_G, "METEORITE_BUILD_MODE") or ""):match("^release") ~= nil
+end
+
+--- Declare Hydronium's framework routes on a Meteorite app.
+---
+---   GET /js/bootstrap/vendor/:path*         vendored wasmoon (1-day cache)
+---   GET /js/bootstrap/:path*                mount.js, hmr.js, dom_bridge.js, ...
+---   GET /js/router/{history,http}.js        when hydronium_router is installed
+---   GET /hydronium-src/:path*               framework Lua for the browser VM
+---   GET /__hydronium/client_manifest.json   framework modules, from the require graph
+---   GET /__hydronium/dev/manifest.json      project module metadata   (dev)
+---   GET /__hydronium/dev/module/:id         compiled project module   (dev)
+---   GET /__hydronium/watch                  HMR change stream (SSE)   (not in release builds)
+---   GET /__hydronium/client/:path*          Ballad browser bundle     (release builds, when built)
+---
+--- @param app table Meteorite app
+--- @param opts? { meteorite?: table, dev?: boolean, hmr?: boolean, router?: boolean, client_manifest?: string|false }
+---   `hmr` defaults to false in release builds: no watch stream, and the module
+---   manifest reports `hmr: false` so the page skips installHmr.
+---   `client_manifest`: a path serves that static file instead; `false` omits the route.
+--- @return table[] declared routes
+function meteorite_adapter.mount(app, opts)
+  opts = opts or {}
+  if type(app) ~= "table" or type(app.get) ~= "function" then
+    error("hydronium_dom.server.meteorite.mount(app, opts) requires a Meteorite app", 2)
+  end
+  local m = opts.meteorite or require("meteorite")
+  local mounted = {}
+  local function get(path, options, handler)
+    mounted[#mounted + 1] = app:get(path, options, handler)
+  end
+  local function lua(name)
+    return m.lua("hydronium_dom.server.meteorite_routes." .. name, { path = route_file(name), arg_mode = "lazy_context" })
+  end
+
+  -- Prefer the package's libexec tree: Meteorite refuses to bake a static
+  -- directory containing symlinks, and share/lua may be materialized as links
+  -- into the Moonstone store.
+  local dom_dir = module_dir("hydronium_dom")
+  -- Namespaced mounts first (Moonstone 0.5.9+), then the flat aliases older
+  -- Moonstone versions create.
+  local client_dir = asset_dir({
+    ".moonstone/env/libexec/hydronium/dom/hydronium_dom/client",
+    ".moonstone/env/libexec/hydronium/dom/src/hydronium_dom/client",
+    ".moonstone/env/libexec/dom/hydronium_dom/client",
+    ".moonstone/env/libexec/dom/src/hydronium_dom/client",
+    dom_dir and (dom_dir .. "/client"),
+  }, "mount.js")
+  if not client_dir then
+    error("hydronium_dom.server.meteorite.mount: cannot locate hydronium_dom/client/mount.js", 2)
+  end
+
+  -- Declared vendor-first: Meteorite matches in declaration order, and both
+  -- patterns match /js/bootstrap/vendor/... . glue.wasm (~270KB) is read into
+  -- the request arena, so both need 1mb rather than the 256kb default. The
+  -- vendored build is version-pinned (bounded cache, content ETag); the
+  -- runtime JS changes during development (revalidate every time).
+  get("/js/bootstrap/vendor/:path*", {
+    id = "hydronium_client_vendor",
+    summary = "Hydronium: vendored wasmoon runtime",
+    memory = { request_arena = "1mb" },
+  }, m.dir(client_dir .. "/vendor", { param = "path", cache = "public, max-age=86400, must-revalidate" }))
+  get("/js/bootstrap/:path*", {
+    id = "hydronium_client_runtime",
+    summary = "Hydronium: browser client runtime",
+    memory = { request_arena = "1mb" },
+  }, m.dir(client_dir, { param = "path", cache = "no-cache" }))
+
+  if opts.router ~= false then
+    local router_dir = module_dir("hydronium_router")
+    local router_client = router_dir and asset_dir({
+      ".moonstone/env/libexec/hydronium/router/hydronium_router/client",
+      ".moonstone/env/libexec/hydronium/router/client",
+      ".moonstone/env/libexec/router/hydronium_router/client",
+      ".moonstone/env/libexec/router/client",
+      router_dir .. "/client",
+      dirname(dirname(router_dir)) .. "/client",
+    }, "history.js")
+    if router_client then
+      get("/js/router/history.js", { id = "hydronium_router_history", summary = "Hydronium Router: browser history" },
+        m.file(router_client .. "/history.js", { cache = "no-cache" }))
+      get("/js/router/http.js", { id = "hydronium_router_http", summary = "Hydronium Router: browser fetch bridge" },
+        m.file(router_client .. "/http.js", { cache = "no-cache" }))
+    elseif opts.router == true then
+      error("hydronium_dom.server.meteorite.mount: router = true but hydronium_router/client/history.js was not found", 2)
+    end
+  end
+
+  get("/hydronium-src/:path*", { id = "hydronium_framework_source", summary = "Hydronium: framework Lua for the browser VM" },
+    lua("framework_source"))
+
+  -- Derived from the project's real require graph by default; a path pins a
+  -- static file instead, and `false` omits the route.
+  local client_manifest = opts.client_manifest
+  if type(client_manifest) == "string" then
+    get("/__hydronium/client_manifest.json", { id = "hydronium_client_manifest", summary = "Hydronium: framework module manifest" },
+      m.file(client_manifest, { cache = "no-cache", content_type = "application/json" }))
+  elseif client_manifest ~= false then
+    get("/__hydronium/client_manifest.json", { id = "hydronium_client_manifest", summary = "Hydronium: framework module manifest" },
+      lua("client_manifest"))
+  end
+
+  -- Module delivery stays in release builds (pages still load app modules
+  -- unbundled); only the HMR stream is development-only. Meteorite sets
+  -- METEORITE_BUILD_MODE before evaluating main.lua.
+  local hmr = opts.hmr
+  if hmr == nil then hmr = not meteorite_adapter.is_release_build() end
+  if opts.dev ~= false then
+    get("/__hydronium/dev/manifest.json", { id = "hydronium_dev_manifest", summary = "Hydronium: project module manifest" },
+      lua(hmr and "dev_manifest" or "release_manifest"))
+    get("/__hydronium/dev/module/:id", { id = "hydronium_dev_module", summary = "Hydronium: compiled project module" },
+      lua("dev_module"))
+    if not hmr then
+      -- Release: serve the content-hashed Ballad bundle when it was built
+      -- first (`ballad play build.partiture.lua`); pages then boot from it.
+      local routes = require("hydronium_dom.server.meteorite_routes")
+      if routes.client_chunks() then
+        get(routes.CLIENT_URL .. "/:path*", { id = "hydronium_client_bundle", summary = "Hydronium: production browser bundle" },
+          m.dir(routes.CLIENT_DIR, { param = "path", immutable = true }))
+      end
+    end
+    if hmr then
+      get("/__hydronium/watch", { id = "hydronium_dev_watch", summary = "Hydronium dev: HMR change stream" },
+        lua("watch"))
+      -- Watched stylesheets (`{ path, href }` in hydronium.sources.lua) are
+      -- served from disk at their own URL, ahead of the app's static routes
+      -- (Meteorite matches in declaration order: call mount before
+      -- meteorite.site).
+      for index, entry in ipairs(meteorite_adapter.dev_files()) do
+        get(entry.href, { id = "hydronium_dev_file_" .. index, summary = "Hydronium dev: " .. entry.path .. " from disk" },
+          lua("dev_file"))
+      end
+    end
+  end
+  return mounted
+end
+
+--- Watched files served from disk in development: `{ path, href }` entries
+--- of hydronium.sources.lua's `watch` list.
+--- @return { path: string, href: string }[]
+function meteorite_adapter.dev_files()
+  local ok, registry = pcall(require("hydronium_dom.server.meteorite_routes").registry)
+  local files = {}
+  if not ok then return files end
+  for _, entry in ipairs(registry.watch) do
+    if entry.href then files[#files + 1] = entry end
+  end
+  return files
+end
+
+--- A `dev_watch` table for `meteorite.app({ dev_watch = ... })`. Hot client
+--- modules are passive (the browser swaps them; the server must not restart)
+--- wherever they live, so views are not tied to a particular directory.
+--- @param opts? { graph?: string[] } extra graph inputs appended to the defaults
+--- @return table
+function meteorite_adapter.dev_watch(opts)
+  opts = opts or {}
+  local routes = require("hydronium_dom.server.meteorite_routes")
+  local graph = { "src", "zig", "public", "build.zig", "moonstone.toml", routes.PROJECT_SOURCES, routes.DISCOVERED_SOURCES }
+  for _, path in ipairs(opts.graph or {}) do graph[#graph + 1] = path end
+  local hot = {}
+  local ok, registry = pcall(routes.registry)
+  if ok then
+    for _, record in ipairs(registry.records) do
+      if record.update == "hot" then hot[#hot + 1] = record.path end
+    end
+    -- Stylesheets mount serves from disk need no rebuild either. Plain
+    -- (href-less) `watch` files stay graph inputs: Meteorite bakes
+    -- m.dir/m.site content, so those do need the rebuild to be served.
+  end
+  for _, entry in ipairs(meteorite_adapter.dev_files()) do hot[#hot + 1] = entry.path end
+  return { graph = graph, passive = hot, exclude = hot }
+end
+
 return meteorite_adapter

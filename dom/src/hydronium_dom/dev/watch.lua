@@ -7,17 +7,14 @@
   logic below is verbatim what that example proved out, just generalized
   to take its file list as a parameter.
 
-  IMPORTANT -- this does NOT register the route for you. Meteorite's
-  hybrid build mode lifts each inline `app:get(path, function(c) ... end)`
-  handler by extracting ITS OWN source text and reloading it standalone
-  per request; it cannot see a route registered indirectly through a
-  library call like `watch.mount(app, ...)` would need to be, only a
-  literal inline handler written in the file Meteorite is compiling. A
-  `require(...)` call made FROM INSIDE that inline handler's own body is
-  fine (module-cache-backed, not a captured upvalue) -- only a captured
-  outer local fails the build. So: write the inline `app:get(...)` route
-  yourself, and call `watch.serve_sse(c, files, opts)` from inside it --
-  see this module's own `serve_sse` doc comment for the one-line example.
+  Applications do not declare this route themselves:
+  `hydronium_dom.server.meteorite.mount(app)` registers /__hydronium/watch
+  as a Meteorite `m.lua` file handler
+  (hydronium_dom/server/meteorite_routes/watch.lua) that calls
+  `serve_sse` with the source registry's watch list. Meteorite's hybrid
+  build rejects inline handlers that capture outer locals, but a file
+  handler is loaded standalone by path, so a library can own it. Call
+  `serve_sse(c, files, opts)` directly only for a custom watch endpoint.
 
   `stream_begin`/`stream_write`/`stream_end` are referenced as bare
   globals, not `c` methods -- matching the exact convention the original

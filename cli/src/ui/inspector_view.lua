@@ -179,7 +179,7 @@ function M.create_view(state)
         -- src/inspector.lua's note on why (the host's incremental diff
         -- positions runs by frame column, and it paints one cell per BYTE).
         hydronium.h(ink.Text, { dimColor = true },
-          "/ filter | f/esc exit | j/k scroll | g/G ends | q quit ")
+          "Enter details | j/k fields | h/l section | c copy | y section ")
       )
 
       children[#children + 1] = hydronium.h(ink.Text, { dimColor = true, bold = true },
@@ -208,13 +208,19 @@ function M.create_view(state)
       children[#children + 1] = hydronium.h(ink.Newline)
       children[#children + 1] = rule(columns)
 
-      local detail = inspector.detail_lines(count > 0 and history:get(selection) or nil, { columns = columns })
-      for index, line in ipairs(detail) do
+      local fields = inspector.detail_entries(count > 0 and history:get(selection) or nil)
+      local detail_focus = state.detail() and inspector.clamp_selection(state.detail_index(), #fields) or 0
+      local detail_height = math.max(3, rows - height - 7)
+      local detail_first, detail_last = inspector.window(#fields, detail_focus > 0 and detail_focus or 1, detail_height)
+      for index = detail_first, detail_last do
+        local entry = fields[index]
+        local focused = index == detail_focus
         children[#children + 1] = hydronium.h(ink.Text, {
           key = "detail-" .. index,
-          dimColor = line.dim or false,
-          color = line.color,
-        }, " " .. string.rep(" ", line.indent or 0) .. line.text)
+          bold = focused,
+          color = focused and "cyan" or nil,
+          dimColor = not focused and entry.copy == nil,
+        }, (focused and "> " or "  ") .. inspector.truncate(entry.display, columns - 4))
       end
 
       -- EXPLICIT WIDTH, for two reasons. (1) It pins the frame to the real

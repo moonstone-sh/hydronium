@@ -3,6 +3,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 export function createTerminalAdapter(container, onData) {
   const terminal = new Terminal({ cols: 80, rows: 24, scrollback: 10000, fontSize: 14, lineHeight: 1.2, allowProposedApi: true, convertEol: false, theme: {background:'#111318',foreground:'#e5e7eb'} });
   terminal.loadAddon(new Unicode11Addon()); terminal.unicode.activeVersion = '11';
+  container.style.fontSize = "14px"; container.style.lineHeight = "1.2";
   terminal.open(container);
   const input = terminal.onData(onData);
   let ligatures, chain = Promise.resolve();
@@ -17,7 +18,6 @@ export function createTerminalAdapter(container, onData) {
       return chain;
     },
     font(value) { terminal.options.fontFamily = value; container.style.fontFamily = value; },
-    zoom(value) { terminal.options.fontSize = 14 * value; container.style.fontSize = `${14 * value}px`; container.style.lineHeight = "1.2"; },
     ligatures(enabled) {
       if (enabled && ligatures === undefined) {
         const patterns = ['===', '!==', '=>', '->', '<-', '==', '!=', '<=', '>=', '::'];

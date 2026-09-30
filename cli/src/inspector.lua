@@ -475,6 +475,69 @@ function M.detail_lines(event, opts)
   return out
 end
 
+--- Navigable, copyable fields of the selected request. Values stay raw for
+--- OSC 52; display text is clipped by the view for the terminal width.
+function M.detail_entries(event)
+  if not event then return {{section = "request", label = "Request", display = "no requests captured yet"}} end
+  local detail = event_model.request_detail(event)
+  local entries = {}
+  local function add(section, label, value, display)
+    entries[#entries + 1] = {section = section, label = label, copy = value,
+      display = display or (label .. ": " .. tostring(value or "not captured"))}
+  end
+  add("request", "Method", detail.method)
+  add("request", "Path", detail.path)
+  add("request", "Status", detail.status and tostring(detail.status) or nil)
+  add("request", "Duration", detail.duration_ms and tostring(detail.duration_ms) .. "ms" or nil)
+  add("request", "Remote", detail.remote_addr)
+  if detail.has_headers then
+    local lines = {}
+    for _, header in ipairs(detail.headers) do lines[#lines + 1] = header.name .. ": " .. header.value end
+    add("headers", "Headers", table.concat(lines, "\n"),
+      #lines > 0 and ("Headers (" .. #lines .. ")") or "Headers: captured, none present")
+    for _, header in ipairs(detail.headers) do add("headers", header.name, header.value) end
+  else
+    add("headers", "Headers", nil, "Headers: not captured by Meteorite")
+  end
+  if detail.has_body then
+    local preview = detail.body and detail.body:gsub("[\r\n]", " ") or "content not included"
+    add("body", "Body", detail.body, "Body (" .. tostring(detail.body_bytes or 0) .. " bytes): " .. preview)
+  else
+    add("body", "Body", nil, "Body: not captured by Meteorite")
+  end
+  return entries
+end
+
+function M.section_jump(entries, current, delta)
+  if #entries == 0 then return 0 end
+  current = M.clamp_selection(current, #entries)
+  local section = entries[current].section
+  for i = current + delta, delta > 0 and #entries or 1, delta do
+    if entries[i].section ~= section then
+      if delta > 0 then return i end
+      while i > 1 and entries[i - 1].section == entries[i].section do i = i - 1 end
+      return i
+    end
+  end
+  return current
+end
+
+function M.section_copy(entries, section)
+  for _, entry in ipairs(entries) do
+    if entry.section == section then
+      if section == "headers" or section == "body" then return entry.copy end
+      break
+    end
+  end
+  if section == "request" then
+    local lines = {}
+    for _, entry in ipairs(entries) do
+      if entry.section == "request" and entry.copy then lines[#lines + 1] = entry.label .. ": " .. entry.copy end
+    end
+    return table.concat(lines, "\n")
+  end
+end
+
 --- A read-only History-shaped view over the subset of `history` matching
 --- `predicate`.
 ---

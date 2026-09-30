@@ -22,6 +22,28 @@ local function load_config(path)
   return config
 end
 
+--- Normalize the optional top-level `watch` list: non-module files the HMR
+--- stream also reports. A string is watched only; `{ path, href }` is a
+--- stylesheet the browser swaps in place at `href` (and that
+--- hydronium.mount serves from disk during development).
+--- @return { path: string, href?: string }[]
+function M.watch_entries(config)
+  local entries = {}
+  for index, entry in ipairs(config.watch or {}) do
+    if type(entry) == "string" then
+      entries[#entries + 1] = { path = entry }
+    elseif type(entry) == "table" and type(entry.path) == "string" then
+      if entry.href ~= nil and (type(entry.href) ~= "string" or entry.href:sub(1, 1) ~= "/") then
+        error("hydronium_dom.dev.source_registry: watch #" .. index .. " href must be an absolute URL path", 3)
+      end
+      entries[#entries + 1] = { path = entry.path, href = entry.href }
+    else
+      error("hydronium_dom.dev.source_registry: watch #" .. index .. " must be a path or { path, href }", 3)
+    end
+  end
+  return entries
+end
+
 local function make(config, config_path)
   if type(config.files) ~= "table" then
     error("hydronium_dom.dev.source_registry: config.files must be an explicit project-relative file list", 3)
@@ -30,7 +52,8 @@ local function make(config, config_path)
   local by_id = {}
   for _, record in ipairs(records) do by_id[record.id] = record end
 
-  local registry = { config = config, config_path = config_path, records = records, by_id = by_id, revision = config.revision }
+  local registry = { config = config, config_path = config_path, records = records, by_id = by_id, revision = config.revision,
+    watch = M.watch_entries(config) }
 
   function registry:module(id)
     return self.by_id[id]
@@ -68,6 +91,9 @@ local function make(config, config_path)
       end
     end
     if self.config_path then updates[self.config_path] = { action = "reload" } end
+    for _, entry in ipairs(self.watch) do
+      if entry.href then updates[entry.path] = { action = "style", href = entry.href } end
+    end
     return { version = 1, revision = self.revision, entry = self.config.entry, modules = modules, updates = updates }
   end
 
@@ -100,6 +126,43 @@ function M.load_inventory(path)
   local registry = make(resolved.config, nil)
   registry.inventory_path = path
   return registry
+end
+
+--- The project's source authority, first match wins:
+---   1. `.hydronium/ballad/source-inventory.lua` -- Ballad discovery
+---      (`hydronium_ballad.source_inventory`, kept current by
+---      `hydronium dev --watch-sources`).
+---   2. `.hydronium/sources.lua` -- written by the Vite discovery script that
+---      apps generated before Ballad owned discovery still carry.
+---   3. `hydronium.sources.lua` -- a hand-written, explicit `files` list.
+--- Shared by the Meteorite dev routes and Lab, so a module id resolves the
+--- same way everywhere.
+M.BALLAD_INVENTORY = ".hydronium/ballad/source-inventory.lua"
+M.DISCOVERED_SOURCES = ".hydronium/sources.lua"
+M.PROJECT_SOURCES = "hydronium.sources.lua"
+
+local function exists(path)
+  local f = io.open(path, "r")
+  if not f then return false end
+  f:close()
+  return true
+end
+
+--- @param root? string project directory prefix (default: current directory)
+--- @return table registry
+function M.load_project(root)
+  local prefix = root and (root:gsub("/+$", "") .. "/") or ""
+  if exists(prefix .. M.BALLAD_INVENTORY) then return M.load_inventory(prefix .. M.BALLAD_INVENTORY) end
+  if exists(prefix .. M.DISCOVERED_SOURCES) then return M.load(prefix .. M.DISCOVERED_SOURCES) end
+  return M.load(prefix .. M.PROJECT_SOURCES)
+end
+
+--- Like load_project, but nil (never an error) when the project declares no
+--- source topology or it cannot be loaded -- for optional consumers like Lab.
+--- @return table|nil
+function M.try_load_project(root)
+  local ok, registry = pcall(M.load_project, root)
+  return ok and registry or nil
 end
 
 return M

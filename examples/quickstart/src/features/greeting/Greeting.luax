@@ -1,0 +1,27 @@
+-- Rendered by a plain Meteorite route (src/app/hello.lua). Components are
+-- ordinary modules: they can live anywhere on the Lua path, not only views/.
+local H = require("hydronium")
+local d = require("hydronium_dom").d
+
+local function Greeting(props)
+  return (
+    <d.html lang="en">
+      <d.head>
+        <d.meta charset="utf-8" />
+        <d.title>Hello, {props.name}</d.title>
+        <d.link rel="stylesheet" href="/public/style.css" />
+      </d.head>
+      <d.body>
+        <d.main class="container">
+          <d.h1>Hello, {props.name}!</d.h1>
+          <d.p>
+            This page is a plain Meteorite route whose handler renders a
+            Hydronium component. <d.a href="/">Back to the app</d.a>
+          </d.p>
+        </d.main>
+      </d.body>
+    </d.html>
+  )
+end
+
+return Greeting

@@ -91,27 +91,103 @@ Meteorite route with `hydronium_dom.server.meteorite`.
 
 ## Meteorite SSR
 
-Require the adapter inside an inline route handler. Meteorite's compiled
-hybrid mode reloads that handler independently, so it cannot capture a module
-required at the file's top level.
+Meteorite owns HTTP; Hydronium renders. Any Meteorite route can return a
+server-rendered component. Put the handler in its own module and reference it
+with `meteorite.lua(...)`: Meteorite's compiled hybrid mode loads each handler
+standalone, so a handler must not capture locals from `main.lua`.
 
 ```lua
-app:get("/", function(c)
-  local meteorite = require("hydronium_dom.server.meteorite")
-  local App = require("views.App")
-
-  return meteorite.render(c, App, {
-    status = 200,
-    props = { title = "Hello" },
-  })
-end)
+-- src/main.lua
+app:get("/hello/:name", { summary = "Greeting" },
+  meteorite.lua("app.hello", { arg_mode = "lazy_context" }))
 ```
 
-`meteorite.render` accepts a component or vnode. It makes route params, query
-data, headers, request state, and the Meteorite context available through
-`meteorite.RequestContext`. For streaming responses, create a sink with
-`meteorite.make_stream_sink()` and call `meteorite.render_stream()` from the
-same inline handler.
+```lua
+-- src/app/hello.lua
+require("hydronium_luax").loader.install() -- lets require() find .luax
+local dom = require("hydronium_dom.server.meteorite")
+local Greeting = require("features.greeting.Greeting")
+
+return function(c)
+  return dom.render(c, Greeting, { props = { name = c:param("name") } })
+end
+```
+
+An inline handler works too, as long as it does its own `require` calls inside
+the function body.
+
+`render` accepts a component or vnode. It makes route params, query data,
+headers, request state, and the Meteorite context available through
+`RequestContext`. For streaming responses, create a sink with
+`make_stream_sink()` and call `render_stream()` from the same handler.
+
+### Framework routes: `mount` and `dev_watch`
+
+A browser Lua VM needs a few framework routes: the client runtime, framework
+source, the framework module manifest, the dev module server and the HMR
+stream. Declare them with one call instead of writing them into your app:
+
+```lua
+local meteorite = require("meteorite")
+local hydronium = require("hydronium_dom.server.meteorite")
+
+local app = meteorite.app({
+  name = "my-app",
+  port = 8080,
+  dev_watch = hydronium.dev_watch(), -- hot UI modules never restart the server
+})
+hydronium.mount(app) -- before meteorite.site: routes match in declaration order
+```
+
+| Route | Purpose |
+| --- | --- |
+| `GET /js/bootstrap/:path*`, `/js/bootstrap/vendor/:path*` | `mount.js`, `hmr.js`, vendored wasmoon |
+| `GET /js/router/{history,http}.js` | Router browser bridges, when `hydronium/router` is installed |
+| `GET /hydronium-src/:path*` | Framework Lua for the browser VM (allowlisted namespaces only) |
+| `GET /__hydronium/client_manifest.json` | Framework modules, derived from your client modules' real `require` graph |
+| `GET /__hydronium/dev/manifest.json` | Your client modules, their update policies, and whether HMR is on |
+| `GET /__hydronium/dev/module/:id` | One declared module, `.luax` compiled on demand |
+| `GET /__hydronium/watch` | HMR change stream (SSE); development builds only |
+| `GET <href>` per watched stylesheet | The file from disk; development builds only |
+| `GET /__hydronium/client/:path*` | The Ballad production bundle (immutable); release builds, when one was built |
+
+In a Meteorite release build (`release-hybrid`, `release-static`), `mount`
+leaves out the HMR stream and the from-disk stylesheet routes, and the module
+manifest reports `hmr: false`. The page should skip `installHmr` then:
+`if (manifest.hmr !== false) installHmr(...)`.
+
+If a release build ran `hydronium_ballad.client_bundle(p)` first (the `ssr`
+template's `build.partiture.lua`), the manifest also lists `chunks`: one
+content-hashed chunk holding every declared client/shared module plus the
+framework modules they reach. Boot with `mount({ chunkUrls: manifest.chunks,
+appModuleId: manifest.entry, ... })` to load the app in one request. Without a
+bundle, release pages load modules one by one.
+
+Options: `hmr = true|false` overrides that build-mode default, `dev = false`
+omits the module manifest, module and HMR routes, `router = false` omits the
+router bridges, `client_manifest = "file.json"` serves a fixed manifest instead
+and `false` omits it. Every route has a stable id and summary. The Lua routes
+are `m.lua` file handlers inside this package, so Meteorite's handler lifting
+has nothing to reject.
+
+Sources come from the first file that exists:
+
+1. `.hydronium/ballad/source-inventory.lua`, written by Ballad. Add a
+   `partiture.lua` that calls `require("hydronium_ballad").source_inventory(p)`,
+   and run `hydronium dev --watch-sources`, which re-runs it when files are added
+   or removed.
+2. `.hydronium/sources.lua`, written by the Vite discovery script in apps
+   generated before Ballad owned discovery.
+3. `hydronium.sources.lua` with an explicit `files` list.
+
+A top-level `watch` list in `hydronium.sources.lua` adds non-module files to
+the HMR stream. A plain path is only reported. A `{ path, href }` entry is a
+stylesheet the browser swaps in place; in development `mount` serves it from
+disk at `href` and `dev_watch()` keeps it from restarting the server:
+
+```lua
+watch = { { path = "public/style.css", href = "/public/style.css" } },
+```
 
 ## Browser mount and HMR
 

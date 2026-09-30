@@ -28,3 +28,7 @@ project `document` or `.lab/Workbench.luax`; controls use the same story
 schema and args as the Ink preview. Keep these routes in the development graph.
 [Lab controls](../docs/LAB_CONTROLS.md) describes the unreleased customization
 and playback APIs, including the SSR-versus-hydrated control boundary.
+
+## DOM and mixed renderer Lab
+
+Use `hydronium-lab init --renderer dom` or `--renderer mixed` for browser stories. Declare `renderer = "dom"` or `"ink"` on collections and stories to share one catalog. Controls update live args; each renderer runs in an isolated preview. DOM uses browser time; Ink retains virtual playback. See [the DOM and mixed Lab guide](../docs/LAB_DOM.md).

@@ -164,4 +164,156 @@ describe("Meteorite Integration Adapter", function()
     local full_html = table.concat(chunks, "")
     assert.truthy(full_html:find("<article><h1>Streamed Header</h1><p>Target: StreamingPage</p></article>"))
   end)
+  it("does not emit text-boundary markers inside <title> or <textarea>, and still escapes", function()
+    local res = meteorite.render({}, h("html", nil, {
+      h("title", nil, { "Hello, ", "<Ada>" }),
+      h("textarea", nil, { "a", "b" }),
+      h("p", nil, { "x", "y" }),
+    }))
+    assert.truthy(res.body:find("<title>Hello, &lt;Ada&gt;</title>", 1, true))
+    assert.truthy(res.body:find("<textarea>ab</textarea>", 1, true))
+    assert.truthy(res.body:find("<p>x<!--hy:t-->y</p>", 1, true))
+  end)
+
+  describe("mount", function()
+    local function fake()
+      local app = { routes = {} }
+      function app:get(path, options, handler)
+        local route = { path = path, options = options, handler = handler }
+        self.routes[#self.routes + 1] = route
+        return route
+      end
+      local m = {
+        dir = function(root, opts) return { kind = "dir", root = root, opts = opts } end,
+        file = function(path, opts) return { kind = "file", path = path, opts = opts } end,
+        lua = function(ref, opts) return { kind = "lua", module = ref, path = opts.path, arg_mode = opts.arg_mode } end,
+      }
+      return app, m
+    end
+    local function by_path(app)
+      local out = {}
+      for _, route in ipairs(app.routes) do out[route.path] = route end
+      return out
+    end
+
+    it("declares framework routes as documented file handlers, vendor before runtime", function()
+      local app, m = fake()
+      meteorite.mount(app, { meteorite = m, client_manifest = false })
+      local routes = by_path(app)
+      assert.equal(app.routes[1].path, "/js/bootstrap/vendor/:path*")
+      assert.equal(app.routes[2].path, "/js/bootstrap/:path*")
+      assert.equal(routes["/js/bootstrap/:path*"].options.memory.request_arena, "1mb")
+      assert.truthy(routes["/js/router/history.js"])
+      assert.is_nil(routes["/__hydronium/client_manifest.json"])
+      for _, path in ipairs({ "/hydronium-src/:path*", "/__hydronium/dev/manifest.json",
+        "/__hydronium/dev/module/:id", "/__hydronium/watch" }) do
+        local handler = routes[path].handler
+        assert.equal(handler.kind, "lua")
+        assert.equal(handler.arg_mode, "lazy_context")
+        local chunk = loadfile(handler.path)
+        assert.truthy(chunk)
+        assert.equal(type(chunk()), "function")
+      end
+      for _, route in ipairs(app.routes) do
+        assert.truthy(route.options.id and route.options.summary)
+      end
+    end)
+
+    it("omits dev routes with dev = false and the router assets with router = false", function()
+      local app, m = fake()
+      meteorite.mount(app, { meteorite = m, dev = false, router = false, client_manifest = false })
+      local routes = by_path(app)
+      assert.is_nil(routes["/__hydronium/watch"])
+      assert.is_nil(routes["/js/router/history.js"])
+      assert.truthy(routes["/hydronium-src/:path*"])
+    end)
+
+    it("derives the client manifest by default and pins a static file on request", function()
+      local app, m = fake()
+      meteorite.mount(app, { meteorite = m })
+      assert.equal(by_path(app)["/__hydronium/client_manifest.json"].handler.kind, "lua")
+      app, m = fake()
+      meteorite.mount(app, { meteorite = m, client_manifest = "manifest.json" })
+      assert.equal(by_path(app)["/__hydronium/client_manifest.json"].handler.path, "manifest.json")
+    end)
+
+    it("keeps module delivery but drops the HMR stream in a release build", function()
+      local previous = rawget(_G, "METEORITE_BUILD_MODE")
+      _G.METEORITE_BUILD_MODE = "release-hybrid"
+      local ok, err = pcall(function()
+        assert.truthy(meteorite.is_release_build())
+        local app, m = fake()
+        meteorite.mount(app, { meteorite = m })
+        local routes = by_path(app)
+        assert.is_nil(routes["/__hydronium/watch"])
+        assert.truthy(routes["/__hydronium/dev/module/:id"])
+        assert.truthy(routes["/__hydronium/dev/manifest.json"].handler.path:find("release_manifest.lua", 1, true))
+      end)
+      _G.METEORITE_BUILD_MODE = previous
+      assert.truthy(ok, err)
+    end)
+
+    it("serves the HMR stream in a development build", function()
+      local previous = rawget(_G, "METEORITE_BUILD_MODE")
+      _G.METEORITE_BUILD_MODE = "hybrid_dev"
+      local app, m = fake()
+      meteorite.mount(app, { meteorite = m })
+      _G.METEORITE_BUILD_MODE = previous
+      local routes = by_path(app)
+      assert.truthy(routes["/__hydronium/watch"])
+      assert.truthy(routes["/__hydronium/dev/manifest.json"].handler.path:find("dev_manifest.lua", 1, true))
+    end)
+
+    it("serves href'd watch stylesheets from disk in development, ahead of static routes", function()
+      local routes = require("hydronium_dom.server.meteorite_routes")
+      local original = routes.registry
+      routes.registry = function()
+        return require("hydronium_dom.dev.source_registry").from_config({
+          files = {}, watch = { "notes.txt", { path = "public/style.css", href = "/public/style.css" } },
+        })
+      end
+      local previous = rawget(_G, "METEORITE_BUILD_MODE")
+      local ok, err = pcall(function()
+        _G.METEORITE_BUILD_MODE = "hybrid_dev"
+        local app, m = fake()
+        meteorite.mount(app, { meteorite = m })
+        local route = by_path(app)["/public/style.css"]
+        assert.truthy(route and route.handler.path:find("dev_file.lua", 1, true))
+        assert.same(meteorite.dev_watch().passive, { "public/style.css" })
+
+        _G.METEORITE_BUILD_MODE = "release-hybrid"
+        app, m = fake()
+        meteorite.mount(app, { meteorite = m })
+        assert.is_nil(by_path(app)["/public/style.css"])
+      end)
+      _G.METEORITE_BUILD_MODE = previous
+      routes.registry = original
+      assert.truthy(ok, err)
+    end)
+
+    it("serves the Ballad bundle in a release build and advertises its chunks", function()
+      local routes = require("hydronium_dom.server.meteorite_routes")
+      local original = routes.client_chunks
+      routes.client_chunks = function() return { "/__hydronium/client/runtime-abc.lua" } end
+      local previous = rawget(_G, "METEORITE_BUILD_MODE")
+      local ok, err = pcall(function()
+        _G.METEORITE_BUILD_MODE = "release-hybrid"
+        local app, m = fake()
+        meteorite.mount(app, { meteorite = m })
+        local route = by_path(app)["/__hydronium/client/:path*"]
+        assert.truthy(route and route.handler.kind == "dir" and route.handler.opts.immutable)
+        _G.METEORITE_BUILD_MODE = "hybrid_dev"
+        app, m = fake()
+        meteorite.mount(app, { meteorite = m })
+        assert.is_nil(by_path(app)["/__hydronium/client/:path*"], "development never boots from a (possibly stale) bundle")
+      end)
+      _G.METEORITE_BUILD_MODE = previous
+      routes.client_chunks = original
+      assert.truthy(ok, err)
+    end)
+
+    it("rejects something that is not a Meteorite app", function()
+      assert.has_error(function() meteorite.mount({}, {}) end)
+    end)
+  end)
 end)

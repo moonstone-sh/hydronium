@@ -22,7 +22,7 @@ role = "tool"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.3.13"
+constraint = "^0.4.0"
 role = "tool"
 
 [[dependencies]]

@@ -21,7 +21,9 @@ jobs:
           # profile, which this multi-profile workspace requires; v0.5.6+
           # installs `collect.assets` (the packages' types/ trees), which the
           # consumer scaffold gate asserts.
-          ref: v0.5.7
+          # v0.5.9+ mounts libexec namespaced (libexec/<scope>/<name>/), which the
+          # scaffolds' build.zig and the DOM asset probes resolve first.
+          ref: v0.5.9
           path: .ci/moonstone
       - uses: actions/checkout@v4
         with:
@@ -151,6 +153,10 @@ jobs:
         env:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
         run: bash tests/e2e/data_primitives_consumer.sh
+      - name: Packaged DOM and mixed Lab browser gate
+        env:
+          MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
+        run: bash tests/e2e/lab_mixed_consumer.sh
       - name: Static SPA browser gate
         run: |
           # Examples are not orbit members, so nothing above syncs them. Not

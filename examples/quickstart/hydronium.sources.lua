@@ -6,6 +6,10 @@ return {
     "src/views/App.luax", "src/views/Counter.luax", "src/views/Home.luax", "src/views/About.luax",
     "src/views/Site.lua", "src/views/Actions.lua", "src/views/Document.luax",
   },
+  -- Non-module files the HMR stream also reports. With an `href`, the browser
+  -- swaps the stylesheet in place and hydronium.mount serves it from disk in
+  -- development, so a CSS edit neither reloads the page nor rebuilds the server.
+  watch = { { path = "public/style.css", href = "/public/style.css" } },
   roots = {
     { path = "src/views", namespace = "views", target = "client", update = "hot", effects = "safe",
       transforms = { lua = "lua", luax = "luax" } },

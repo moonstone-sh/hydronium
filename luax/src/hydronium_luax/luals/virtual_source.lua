@@ -343,6 +343,14 @@ function virtual_source.transform(source, filename, options)
         if opening.name.type == "Identifier" then
           tag_str = opening.name.name
           is_intrinsic = env:is_intrinsic(tag_str)
+          -- These names are Lua stdlib globals. Use short, typed DOM
+          -- descriptor aliases in the virtual document so the replacement
+          -- still fits the original tag's byte span without moving any Lua
+          -- expression or diagnostic position.
+          if is_intrinsic and (env.name == "universal" or env.name == "dom") then
+            if tag_str == "table" then tag_str = "d.t"
+            elseif tag_str == "select" then tag_str = "d.s" end
+          end
         elseif opening.name.type == "JSXMemberExpression" then
           local function get_name(m)
             if m.type == "Identifier" then return m.name end

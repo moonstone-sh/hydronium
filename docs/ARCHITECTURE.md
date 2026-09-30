@@ -112,3 +112,4 @@ The reconciler mediates between declarative VNodes and physical host instances:
 1. **Reactivity does not touch the Host directly**: Signals notify the Scheduler and Components; only the Reconciler communicates with the Host.
 2. **Components do not mutate siblings**: State is localized via Signals or lifted via hierarchical Contexts.
 3. **Cleanups never crash unmounting**: Scope disposal captures all exceptions and continues teardown across the subtree.
+4. **Package and tool boundaries** (Ballad, Meteorite, Vite, Lab, and the adapters between them) are specified in [ECOSYSTEM_BOUNDARIES.md](ECOSYSTEM_BOUNDARIES.md).

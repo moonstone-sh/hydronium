@@ -36,9 +36,10 @@
   stdlib global used constantly in ordinary Lua code
   (`table.insert`/`table.concat`, `select(...)`) -- typing the rare bare
   `<table>`/`<select>` tag is not worth breaking diagnostics on every
-  other line of a project that opts into this file. Author those two
-  via the lexical `<d.table>`/`<d.select>` form instead, which needs no
-  ambient global and has no such collision.
+  other line of a project that opts into this file. LUAX's virtual-source
+  projection resolves those two bare tags through typed DOM aliases without
+  shadowing Lua's `table` and `select` in expression blocks. Explicit
+  `<d.table>`/`<d.select>` remains available too.
 
   This file depends on `d` (declared in types/dom/init.d.lua) already
   being in scope -- a project that includes this directory in

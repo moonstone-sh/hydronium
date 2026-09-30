@@ -118,6 +118,13 @@
                  Whitespace-split words replacing "partiture.lua" after
                  `ballad play`, e.g. --ballad-args "partiture.lua --jobs 4".
                  Implies --ballad.
+    --watch-sources
+                 Keep Ballad's source inventory current: after the initial
+                 --ballad run, re-run the same `ballad play` (output to
+                 .hydronium/ballad.out) whenever a .lua/.luax file is added
+                 or removed under a root declared in hydronium.sources.lua,
+                 or that file changes. Polled from the UI tick; no extra
+                 process. Implies --ballad.
 
   ENVIRONMENT ESCAPE HATCHES (development/verification only, deliberately
   not flags -- the flag grammar above is the whole public surface):
@@ -172,7 +179,7 @@ local json = require("hydronium_router.history.state")
 
 local M = {}
 
-M.VERSION = "0.4.1"
+M.VERSION = "0.4.2"
 
 M.USAGE = table.concat({
   "hydronium " .. M.VERSION,
@@ -181,7 +188,7 @@ M.USAGE = table.concat({
   "  hydronium dev [--verbose] [--show-ips] [--fullscreen]",
   "                [--meteorite-args \"<flags>\"]",
   "                [--vite [--vite-args \"<flags>\"] [--vite-dir <path>]]",
-  "                [--ballad [--ballad-args \"<flags>\"]]",
+  "                [--ballad [--ballad-args \"<flags>\"]] [--watch-sources]",
   "  hydronium build [--file <path>] [--plain | --ndjson] [--no-verify]",
   "                  [--vite [--vite-args \"<flags>\"] [--vite-dir <path>]]",
   "",
@@ -211,6 +218,11 @@ M.USAGE = table.concat({
   "  --ballad-args \"<flags>\"",
   "                 Arguments for that one-shot `ballad play` (implies",
   "                 --ballad).",
+  "  --watch-sources",
+  "                 Re-run that `ballad play` whenever a .lua/.luax file",
+  "                 appears or disappears under a root declared in",
+  "                 hydronium.sources.lua (implies --ballad). Keeps Ballad's",
+  "                 source inventory current for the dev host.",
   "  -h, --help     Print this help.",
   "  -v, --version  Print the version.",
   "",
@@ -313,6 +325,7 @@ function M.parse_args(argv)
     vite_dir = nil,
     ballad = false,
     ballad_args = nil,
+    watch_sources = false,
   }
   local index = 2
   while index <= #argv do
@@ -361,6 +374,9 @@ function M.parse_args(argv)
     elseif token:sub(1, 11) == "--vite-dir=" then
       parsed.vite_dir = token:sub(12)
     elseif token == "--ballad" then
+      parsed.ballad = true
+    elseif token == "--watch-sources" then
+      parsed.watch_sources = true
       parsed.ballad = true
     elseif token == "--ballad-args" then
       local value = argv[index + 1]
@@ -652,6 +668,19 @@ function M.dev(parsed)
     end
   end
 
+  -- Re-runs happen while the UI owns the terminal, so their output goes to
+  -- a file rather than over the rendered frame.
+  local sources
+  if parsed.watch_sources then
+    sources = require("source_watch").new({
+      run = function()
+        dev_supervisor.ensure_dir(".hydronium", os.execute)
+        return dev_supervisor.exec_ok(os.execute, ballad_cmd .. " >> .hydronium/ballad.out 2>&1")
+      end,
+    })
+    sources:prime()
+  end
+
   -- `--vite` spawns ONE child either way: a small Node wrapper
   -- (cli/src/dual-dev.mjs) that runs `runDualDevServer` over
   -- Meteorite + Vite together, so everything below this point -- liveness
@@ -722,6 +751,7 @@ function M.dev(parsed)
     spawned = should_spawn,
     vite = parsed.vite,
     ballad = parsed.ballad,
+    watch_sources = parsed.watch_sources,
   }))
 
   local ctx = {
@@ -763,6 +793,21 @@ function M.dev(parsed)
       drain(ctx)
 
       local now = dev_log.now_ms()
+      local rerun = sources and sources:poll(now)
+      if rerun then
+        if rerun.ok then
+          state.set_note("sources changed; Ballad inventory updated")
+        else
+          local event = dev_log.cli_event("build_error", {
+            stage = "sources",
+            detail = "`" .. ballad_cmd .. "` failed; see .hydronium/ballad.out",
+          })
+          log:append(event)
+          buffer:push(event)
+          state:apply(event)
+          state.set_entries(buffer:snapshot())
+        end
+      end
       if now - last_probe_at < M.LIVENESS_INTERVAL_MS then
         return
       end

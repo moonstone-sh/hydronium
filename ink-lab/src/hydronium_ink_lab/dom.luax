@@ -63,7 +63,7 @@ local function Shell(props)
     metrics={<span class="hydronium-lab__dimensions hydronium-ink-lab__dimensions" data-lab-dimensions aria-live="polite" />}
     preview={props.preview or <div class="hydronium-lab__terminal hydronium-ink-lab__terminal" data-lab-terminal role="application" tabindex="0" aria-label="Interactive terminal preview" />}
     preferences={props.preferences or <InkPreferences />}
-    shortcut_legend={<span>Drag canvas / touch · trackpad pan · <kbd>Space</kbd> drag preview · <kbd>C</kbd> center · <kbd>F</kbd> fullscreen · <kbd>Ctrl</kbd> <kbd>+</kbd>/<kbd>−</kbd> zoom</span>}
+    shortcut_legend={<span>Drag canvas / touch · trackpad pan · <kbd>Space</kbd> drag preview · <kbd>C</kbd> center · <kbd>R</kbd> rulers · <kbd>H</kbd> hints · <kbd>F</kbd> fullscreen · <kbd>Ctrl</kbd> <kbd>+</kbd>/<kbd>−</kbd> zoom</span>}
     canvas_label="Terminal canvas. Drag or touch pans; trackpad scroll pans; Space drag pans over the preview; C centers; F toggles fullscreen; Control plus or minus zooms."
   />
 end

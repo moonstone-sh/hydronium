@@ -99,9 +99,9 @@ M.State = State
 --- @return table
 function M.new_state(opts)
   opts = opts or {}
-  local get_status, set_status = hydronium.signal("starting") -- "starting" | "ready" | "down"
-  local get_routes, set_routes = hydronium.signal(nil)
-  local get_ready_ms, set_ready_ms = hydronium.signal(nil)
+  local get_status, set_status = hydronium.signal(opts.status or "starting") -- "starting" | "ready" | "down"
+  local get_routes, set_routes = hydronium.signal(opts.routes)
+  local get_ready_ms, set_ready_ms = hydronium.signal(opts.ready_ms)
   local get_url, set_url = hydronium.signal(opts.url or M.DEFAULT_URL)
   local get_entries, set_entries = hydronium.signal({})
   local get_note, set_note = hydronium.signal(nil)
@@ -116,7 +116,9 @@ function M.new_state(opts)
   local get_search_focused, set_search_focused = hydronium.signal(false)
   local get_fullscreen, set_fullscreen = hydronium.signal(opts.fullscreen and true or false)
   local get_revision, set_revision = hydronium.signal(0)
-  local get_selection, set_selection = hydronium.signal(0)
+  local get_selection, set_selection = hydronium.signal(opts.selection or 0)
+  local get_detail, set_detail = hydronium.signal(false)
+  local get_detail_index, set_detail_index = hydronium.signal(1)
 
   local state = setmetatable({
     status = get_status, set_status = set_status,
@@ -132,6 +134,8 @@ function M.new_state(opts)
     fullscreen = get_fullscreen, set_fullscreen = set_fullscreen,
     requests_revision = get_revision, set_requests_revision = set_revision,
     selection = get_selection, set_selection = set_selection,
+    detail = get_detail, set_detail = set_detail,
+    detail_index = get_detail_index, set_detail_index = set_detail_index,
     history = opts.history or inspector.new_history(),
     show_ips = opts.show_ips and true or false,
     -- Last terminal height the fullscreen view actually painted with.
@@ -255,6 +259,7 @@ function M.create_app(state, opts)
     -- OSC 52 write, for the filter bar's copy binding. Set up here at the
     -- component's one-time setup call, like every other hook in this file.
     local focus_manager = hooks.useFocusManager()
+    local clipboard = hooks.useClipboard()
 
     -- The REACTIVE window-size getter, not a snapshot of its value the way
     -- `hooks.useWindowSize()` would hand back. The key handler below runs
@@ -301,6 +306,7 @@ function M.create_app(state, opts)
       -- responding once a filter shrank the list.
       local _, count = inspector_view.visible_history(state)
       state.set_selection(inspector.move_selection(state.selection(), delta, count))
+      state.set_detail_index(1)
     end
 
     hooks.useInput(function(input, key)
@@ -329,6 +335,10 @@ function M.create_app(state, opts)
         return set_fullscreen(not state.fullscreen())
       end
       if key.escape then
+        if state.fullscreen() and state.detail() then
+          state.set_detail(false)
+          return
+        end
         if state.fullscreen() then
           return set_fullscreen(false)
         end
@@ -339,6 +349,31 @@ function M.create_app(state, opts)
         return
       end
 
+      local history, count = inspector_view.visible_history(state)
+      local selected = count > 0 and history:get(inspector.clamp_selection(state.selection(), count)) or nil
+      local fields = inspector.detail_entries(selected)
+      if key["return"] then
+        if state.detail() then state.set_detail(false)
+        else state.set_detail(true); state.set_detail_index(1) end
+        return
+      end
+      if state.detail() then
+        local current = inspector.clamp_selection(state.detail_index(), #fields)
+        if input == "j" or key.downArrow then
+          state.set_detail_index(inspector.move_selection(current, 1, #fields))
+        elseif input == "k" or key.upArrow then
+          state.set_detail_index(inspector.move_selection(current, -1, #fields))
+        elseif input == "]" or input == "[" or key.rightArrow or key.leftArrow or input == "h" or input == "l" then
+          state.set_detail_index(inspector.section_jump(fields, current, (input == "]" or input == "l" or key.rightArrow) and 1 or -1))
+        elseif input == "c" or input == "C" or input == "y" then
+          local field = fields[current]
+          local value = input == "y" and inspector.section_copy(fields, field.section)
+            or input == "C" and field.copy and (field.label .. ": " .. field.copy)
+            or field.copy
+          if value then clipboard.write(value) end
+        end
+        return
+      end
       if input == "j" or key.downArrow then
         move(1)
       elseif input == "k" or key.upArrow then

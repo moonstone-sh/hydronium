@@ -1,6 +1,6 @@
 local discovery = require("hydronium_lab").discovery
 local lab_host = require("hydronium_lab").host
-local ink_lab = require("hydronium_ink_lab")
+
 
 local M = {}
 local state = { config = nil, registry = nil, service = nil, fingerprint = nil, generation = 0, error = nil, request_id = nil,
@@ -47,20 +47,39 @@ end
 -- the existing package path: the host, not Lab, remains the authority for
 -- which project roots are importable.
 local function install_luax_searcher()
+  _G.H = require("hydronium")
+  _G.__luax = require("hydronium_luax.runtime")
   if package._hydronium_luax_searcher then return end
   local searchers = package.searchers or package.loaders
   if not searchers then return end
-  table.insert(searchers, 2, function(module_name)
+  -- Preserve Lua compatibility shims; compile LuaX only after Lua lookup fails.
+  table.insert(searchers, 3, function(module_name)
+    -- Namespaced ids declared in the project's source topology
+    -- (hydronium.sources.lua / Ballad inventory) resolve like the app's dev host.
+    local topology = require("hydronium_dom.dev.source_registry").try_load_project()
+    local record = topology and topology:module(module_name)
+    if record then
+      if record.path:match("%.luax$") or record.path:match("%.mdx?$") then
+        return function()
+          return require("hydronium_luax.loader").load(record.path, { module_id = module_name })
+        end
+      end
+      local chunk, err = loadfile(record.path)
+      if not chunk then error(err, 0) end
+      return chunk
+    end
     local mapped = module_name:gsub("%.", "/")
     for template in package.path:gmatch("[^;]+") do
       local lua_path = template:gsub("%?", mapped)
-      local luax_path = lua_path:gsub("%.lua$", ".luax")
-      if luax_path ~= lua_path then
-        local file = io.open(luax_path, "rb")
-        if file then
-          file:close()
-          return function()
-            return require("hydronium_luax.loader").load(luax_path, { module_id = module_name })
+      if lua_path:match("%.lua$") then
+        for _, extension in ipairs({ ".luax", ".md", ".mdx" }) do
+          local candidate = lua_path:gsub("%.lua$", extension)
+          local file = io.open(candidate, "rb")
+          if file then
+            file:close()
+            return function()
+              return require("hydronium_luax.loader").load(candidate, { module_id = module_name })
+            end
           end
         end
       end
@@ -71,7 +90,8 @@ local function install_luax_searcher()
 end
 
 local function load_story(record)
-  if record.transform == "luax" then
+  install_luax_searcher()
+  if record.transform == "luax" or record.transform == "md" or record.transform == "mdx" then
     _G.H = require("hydronium")
     _G.__luax = require("hydronium_luax.runtime")
     install_luax_searcher()
@@ -85,6 +105,7 @@ end
 local function rebuild(config, revision)
   local records = discovery.plan(config.paths, { roots = config.roots or { "src" } })
   local registry = discovery.registry(records, load_story)
+  for _, story in ipairs(registry.stories) do story.renderer = story.renderer or (config.renderer == "dom" and "dom" or "ink") end
   state.generation = state.generation + 1
   if state.service then state.service:invalidate(tostring(state.generation), registry) end
   state.registry, state.fingerprint, state.error = registry, revision, nil
@@ -106,7 +127,7 @@ local function service(c)
   if not registry then return nil, err end
   if not state.service then
     state.request_id = c:request_id()
-    state.service = ink_lab.service.new(registry, {
+    state.service = require("hydronium_ink_lab").service.new(registry, {
       generation = tostring(state.generation),
       id = function()
         local value = tostring(state.request_id or "")
@@ -138,10 +159,18 @@ function M.page(c, contract)
   })
   local h = require("hydronium").h
   install_luax_searcher()
-  local Document = config.document and require(config.document) or require("hydronium_ink_lab.dom")
+  local Document
   local story_controls = {}
   local registry, registry_error = refresh()
   if not registry then return c:text(503, tostring(registry_error)) end
+  local has_dom = config.renderer == "dom" or config.renderer == "mixed"
+  for _, story in ipairs(registry.stories) do if story.renderer == "dom" then has_dom = true end end
+  if has_dom then
+    Document = config.document and require(config.document) or require("hydronium_lab.dom_document").Document
+    contract.assets.client = (contract.base_path == "/" and "" or contract.base_path) .. "/assets/dom-lab.js"
+  else
+    Document = config.document and require(config.document) or require("hydronium_ink_lab.dom")
+  end
   local ControlsOutlet = require("hydronium_lab.controls").ControlsOutlet
   for _, story in ipairs(registry.stories) do
     if story.controls_view then
@@ -160,7 +189,7 @@ function M.page(c, contract)
     client_url = contract.assets.client,
   }), { doctype = true })
   return c:bytes(200, "text/html; charset=utf-8", body, { headers = { ["Cache-Control"] = "no-store", ["X-Content-Type-Options"] = "nosniff",
-    ["Referrer-Policy"] = "no-referrer", ["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self'" } })
+    ["Referrer-Policy"] = "no-referrer", ["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'" } })
 end
 
 function M.redirect(c)
@@ -195,10 +224,20 @@ function M.mount(app, opts)
   app:get(page_path, function(c) return require("hydronium_meteorite.lab").page(c) end)
   app:get(prefix .. "/assets/lab.css", function(c) return require("hydronium_meteorite.lab").asset(c, "lab.css") end)
   app:get(prefix .. "/assets/workbench.css", function(c) return require("hydronium_meteorite.lab").asset(c, "workbench.css") end)
+  app:get(prefix .. "/assets/preview-settings.js", function(c) return require("hydronium_meteorite.lab").asset(c, "preview-settings.js") end)
   app:get(prefix .. "/assets/workbench.js", function(c) return require("hydronium_meteorite.lab").asset(c, "workbench.js") end)
   app:get(prefix .. "/assets/ink.css", function(c) return require("hydronium_meteorite.lab").asset(c, "ink.css") end)
   app:get(prefix .. "/assets/virtual_terminal.js", function(c) return require("hydronium_meteorite.lab").asset(c, "virtual_terminal.js") end)
   app:get(prefix .. "/assets/meteorite.js", function(c) return require("hydronium_meteorite.lab").asset(c, "meteorite.js") end)
+  app:get(prefix .. "/dom/styles/:index", function(c) return require("hydronium_meteorite.lab").dom_style(c) end)
+  app:get(prefix .. "/dom/modules", function(c) return require("hydronium_meteorite.lab").dom_modules(c) end)
+  app:get(prefix .. "/dom/bundle", function(c) return require("hydronium_meteorite.lab").dom_bundle(c) end)
+  app:get(prefix .. "/dom/preview", function(c) return require("hydronium_meteorite.lab").dom_preview(c) end)
+  app:get(prefix .. "/ink/preview", function(c) return require("hydronium_meteorite.lab").ink_preview(c) end)
+  app:get(prefix .. "/assets/dom-lab.js", function(c) return require("hydronium_meteorite.lab").asset(c, "dom-lab.js") end)
+  app:get(prefix .. "/assets/dom-preview.js", function(c) return require("hydronium_meteorite.lab").asset(c, "dom-preview.js") end)
+  app:get(prefix .. "/assets/ink-preview.js", function(c) return require("hydronium_meteorite.lab").asset(c, "ink-preview.js") end)
+  app:get(prefix .. "/assets/dom-client/:path*", function(c) return require("hydronium_meteorite.lab").dom_asset(c) end)
   app:get(prefix .. "/catalog", function(c) return require("hydronium_meteorite.lab").catalog(c) end)
   app:post(prefix .. "/sessions", { memory = memory }, function(c) return require("hydronium_meteorite.lab").create_session(c) end)
   app:post(prefix .. "/sessions/:id/operations", { memory = memory }, function(c) return require("hydronium_meteorite.lab").operation(c) end)
@@ -227,8 +266,8 @@ local function package_client_path(name)
   local module_path = search_module("hydronium_meteorite.lab")
   local module_root = module_path and module_path:match("^(.*)/hydronium_meteorite/lab%.lua$")
   if not module_root then error("cannot locate hydronium/meteorite package assets", 0) end
-  if name == "meteorite.js" then
-    return module_root .. "/hydronium_meteorite/client/meteorite.js", "text/javascript; charset=utf-8"
+  if name == "meteorite.js" or name == "dom-lab.js" or name == "dom-preview.js" or name == "ink-preview.js" then
+    return module_root .. "/hydronium_meteorite/client/" .. name, "text/javascript; charset=utf-8"
   end
   local ink_root = search_module("hydronium_ink_lab")
   if name == "virtual_terminal.js" and ink_root then
@@ -241,8 +280,8 @@ local function package_client_path(name)
   if name == "workbench.css" and lab_root then
     return lab_root:gsub("/init%.lua$", "/client/workbench.css"), "text/css; charset=utf-8"
   end
-  if name == "workbench.js" and lab_root then
-    return lab_root:gsub("/init%.lua$", "/client/workbench.js"), "text/javascript; charset=utf-8"
+  if (name == "workbench.js" or name == "preview-settings.js") and lab_root then
+    return lab_root:gsub("/init%.lua$", "/client/" .. name), "text/javascript; charset=utf-8"
   end
   if name == "lab.css" and ink_root and lab_root then
     -- The stable renderer stylesheet URL is a host-built bundle. Lab supplies
@@ -295,6 +334,11 @@ function M.operation(c)
   local current, compile_err = service(c)
   if not current then return c:json(500, { ok = false, outcome = "compile_error", message = compile_err }) end
   if compile_err then return c:json(409, { ok = false, outcome = "compile_error", message = compile_err }) end
+  local requested = body.request
+  if requested and requested.op == "open" then
+    local story = state.registry and state.registry.get(requested.story)
+    if story and story.renderer == "dom" then return c:json(400, { ok = false, outcome = "invalid_renderer", message = "DOM stories require a browser preview" }) end
+  end
   return c:json(current:operate(c:param("id"), body, #(c:body() or "")))
 end
 
@@ -303,6 +347,85 @@ function M.close_session(c)
   local current = service(c)
   if not current then return c:json({ ok = true, outcome = "closed", existed = false }) end
   return c:json(current:close(c:param("id")))
+end
+
+-- The DOM client runtime is whatever hydronium_dom ships in client/: a JS
+-- file at its root, or the vendored wasmoon build. Checked structurally
+-- rather than against a hand-kept list, which went stale whenever the
+-- runtime gained a file.
+local function dom_client_file(name)
+  if type(name) ~= "string" or name:find("..", 1, true) then return false end
+  return name:match("^[%w_%-]+%.js$") ~= nil
+    or name:match("^vendor/wasmoon/[%w_%-%.]+%.js$") ~= nil
+    or name == "vendor/wasmoon/glue.wasm"
+end
+M.dom_client_file = dom_client_file
+function M.dom_asset(c)
+  if not same_origin(c) then return c:text(403, "forbidden") end
+  local name = c:param("path")
+  if not dom_client_file(name) then return c:text(404, "not found") end
+  local module = package.searchpath("hydronium_dom", package.path)
+  if not module then return c:text(503, "DOM package unavailable") end
+  local path = module:gsub("/init%.lua$", "/client/") .. name
+  local ok, bytes = pcall(read, path)
+  if not ok then return c:text(404, "asset unavailable") end
+  return c:bytes(200, name:match("%.wasm$") and "application/wasm" or "text/javascript; charset=utf-8", bytes)
+end
+local function dom_sources()
+  local registry, err = refresh()
+  if not registry then error(err, 0) end
+  return require("hydronium_meteorite.dom_lab").sources(load_config(), registry)
+end
+function M.dom_modules(c)
+  if not same_origin(c) then return c:text(403, "forbidden") end
+  local ok, sources, project = pcall(dom_sources)
+  if not ok then return c:json(500, { ok = false, message = tostring(sources) }) end
+  local modules = {}
+  for id in pairs(project) do modules[id] = sources[id] end
+  return c:json({ ok = true, modules = modules, styles_revision = fingerprint(load_config().styles or {}) })
+end
+function M.dom_bundle(c)
+  if not same_origin(c) then return c:text(403, "forbidden") end
+  local ok, sources = pcall(dom_sources)
+  if not ok then return c:text(500, tostring(sources)) end
+  return c:bytes(200, "text/plain; charset=utf-8", require("hydronium_meteorite.dom_lab").bundle(sources), { headers = { ["Cache-Control"] = "no-store" } })
+end
+function M.dom_style(c)
+  if not same_origin(c) then return c:text(403, "forbidden") end
+  local index = tonumber(c:param("index"))
+  local path = index and index % 1 == 0 and (load_config().styles or {})[index]
+  if not path then return c:text(404, "not found") end
+  path = lab_host.normalize_asset_path(path, "style")
+  return c:bytes(200, "text/css; charset=utf-8", read(path), { headers = { ["Cache-Control"] = "no-store" } })
+end
+function M.dom_preview(c)
+  if not same_origin(c) then return c:text(403, "forbidden") end
+  local H = require("hydronium")
+  local contract = state.contract or lab_host.contract({ base_path = load_config().base_path })
+  local base = contract.base_path == "/" and "" or contract.base_path
+  local styles = {}
+  for index in ipairs(load_config().styles or {}) do styles[#styles + 1] = H.h("link", { rel = "stylesheet", href = base .. "/dom/styles/" .. index }) end
+  local html = require("hydronium_dom.server").renderToString(H.h("html", nil,
+    H.h("head", nil, H.h("meta", { charset = "utf-8" }), H.h("meta", { name = "viewport", content = "width=device-width,initial-scale=1" }), H.h(H.Fragment, nil, styles)),
+    H.h("body", { ["data-lab-base-path"] = base }, H.h("div", { id = "preview" }), H.h("script", { type = "module", src = base .. "/assets/dom-preview.js" }))))
+  return c:bytes(200, "text/html; charset=utf-8", "<!doctype html>" .. html, { headers = { ["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self'" } })
+end
+function M.ink_preview(c)
+  install_luax_searcher()
+  if not same_origin(c) then return c:text(403, "forbidden") end
+  local config = load_config()
+  local contract = lab_host.contract({ base_path = config.base_path, client_asset = "assets/ink-preview.js", renderer_stylesheet_asset = "assets/ink.css" })
+  local H = require("hydronium")
+  local assets = contract.assets
+  local html = require("hydronium_dom.server").renderToString(H.h("html", { lang = "en" },
+    H.h("head", {}, H.h("meta", { charset = "utf-8" }),
+      H.h("link", { rel = "stylesheet", href = assets.renderer_stylesheet }),
+      H.h("style", {}, "html,body{margin:0;padding:0;background:transparent;overflow:hidden} [data-lab-terminal]{margin:0;padding:0;width:max-content;transform:none}")),
+    H.h("body", {}, H.h("main", { ["data-hydronium-ink-lab"] = "", ["data-lab-base-path"] = config.base_path,
+      ["data-lab-project"] = (config.project_id or "lab") .. ":ink-preview" },
+      H.h("div", { ["data-lab-terminal"] = "", tabindex = "0", role = "application", ["aria-label"] = "Interactive terminal preview" })),
+      H.h("script", { type = "module", src = assets.client }))))
+  return c:bytes(200, "text/html; charset=utf-8", "<!doctype html>" .. html)
 end
 
 function M.reset_for_test()

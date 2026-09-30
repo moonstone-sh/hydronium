@@ -3,6 +3,14 @@ local compiler = require("hydronium_luax.compiler")
 local sourcemap = require("hydronium_luax.compiler.sourcemap")
 
 describe("LUAX Compiler & Lowering", function()
+  it("emits bare table/select tags as DOM intrinsics while preserving Lua inside braces", function()
+    local src = "return <table><select value={table.concat({'a', 'b'})}>{select('#', 1, 2)}</select></table>"
+    local res = compiler.compile(src, { runtime = "hydronium" })
+    assert.truthy(res.code:find('H%.h%("table"'))
+    assert.truthy(res.code:find('H%.h%("select"'))
+    assert.truthy(res.code:find("table%.concat"))
+    assert.truthy(res.code:find("select%('%#', 1, 2%)"))
+  end)
   it("compiles intrinsic tags and attributes to __luax.element", function()
     local src = "local el = <div id=\"main\" className=\"container\">hello</div>"
     local res = compiler.compile(src)

@@ -225,7 +225,6 @@ body {
   place-items: center;
   isolation: isolate;
   transform-origin: center;
-  will-change: transform;
 }
 
 .hydronium-lab__viewport > :not(.hydronium-lab__world-grid) {
@@ -555,12 +554,64 @@ body {
   }
 }
 
-.hydronium-lab__controls, .hydronium-lab__timeline { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:10px 14px; border-top:1px solid var(--hy-lab-line); }
-.hydronium-lab__controls:empty { display:none; }
-.hydronium-lab__timeline label { display:flex; align-items:center; gap:8px; }
-.hydronium-lab__timeline input { width:100px; }
-.hydronium-lab__timeline output { font-variant-numeric:tabular-nums; color:var(--hy-lab-muted); }
+.hydronium-lab__guide-layer { position:absolute; inset:0; z-index:4; pointer-events:none; }
+.hydronium-lab__guide { position:absolute!important; min-width:0!important; min-height:0!important; padding:0!important; border:0!important; border-radius:0!important; background:transparent!important; pointer-events:auto; }
+.hydronium-lab__guide--x { top:24px; bottom:0; width:17px; transform:translateX(-8px); cursor:col-resize; }
+.hydronium-lab__guide--y { left:24px; right:0; height:17px; transform:translateY(-8px); cursor:row-resize; }
+.hydronium-lab__guide::after { content:""; position:absolute; background:var(--guide-color); opacity:.75; }
+.hydronium-lab__guide--x::after { top:0; bottom:0; left:8px; width:1px; }
+.hydronium-lab__guide--y::after { top:8px; left:0; right:0; height:1px; }
+.hydronium-lab__guide[aria-pressed="true"]::after { opacity:1; box-shadow:0 0 3px var(--guide-color); }
+.hydronium-lab__ruler-hit { position:absolute; inset:0; z-index:5; clip-path:polygon(0 0,100% 0,100% 24px,24px 24px,24px 100%,0 100%); cursor:crosshair; touch-action:none; }
+.hydronium-lab__ruler-hit[hidden] { display:none; }
 
-.hydronium-lab__controls[hidden] { display:none; }
-.hydronium-lab__controls { max-height:30vh; overflow:auto; flex-shrink:0; }
-.hydronium-lab__timeline { flex-shrink:0; }
+/* Renderer menus stay compact while the shared canvas owns preview geometry. */
+.hydronium-lab__canvas-toolbar { gap:12px; flex-wrap:wrap; }
+.hydronium-lab__canvas-toolbar > [data-lab-active-story] { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+.hydronium-lab__canvas-hud { flex-wrap:wrap; gap:8px; }
+.hydronium-lab__renderer-controls { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.hydronium-lab__renderer-controls select { min-width:0; max-width:240px; }
+.hydronium-lab__toolbar-menu { position:relative; }
+.hydronium-lab__toolbar-menu summary { min-height:34px; padding:6px 10px; border:1px solid var(--hy-lab-line); border-radius:8px; background:var(--hy-lab-panel-raised); cursor:pointer; white-space:nowrap; }
+.hydronium-lab__toolbar-panel { position:absolute; top:calc(100% + 8px); right:0; z-index:40; width:260px; max-width:80vw; display:grid; gap:12px; padding:16px; border:1px solid var(--hy-lab-line); border-radius:12px; background:var(--hy-lab-panel); box-shadow:0 12px 32px #0008; }
+.hydronium-lab__toolbar-panel label { display:grid; gap:5px; }
+.hydronium-lab__toolbar-panel input,.hydronium-lab__toolbar-panel select { width:100%; min-width:0; }
+.hydronium-lab__toolbar-icon { display:grid; place-items:center; width:34px; min-width:34px; padding:0!important; }
+.hydronium-lab__rulers { position:absolute; inset:0; width:100%; height:100%; z-index:3; pointer-events:none; }
+
+.hydronium-lab__ink-toolbar { display:inline-flex; align-items:center; gap:8px; white-space:nowrap; }
+.hydronium-lab__ink-toolbar select { min-width:0; max-width:210px; }
+.hydronium-lab__ink-toolbar [data-lab-ink-color] { width:124px; }
+
+.hydronium-lab__hint { z-index:6; left:40px; bottom:10px; max-width:calc(100% - 80px); padding:4px 7px; border-radius:6px; background:rgb(11 16 32 / 78%); }
+.hydronium-lab[data-hints-visible="false"] .hydronium-lab__hint { display:none; }
+.hydronium-lab__sidebar { display:flex; flex-direction:column; }
+.hydronium-lab__sidebar > header,.hydronium-lab__sidebar > input { flex:none; }
+.hydronium-lab__sidebar > nav { flex:1; min-height:90px; overflow:auto; }
+.hydronium-lab__story-inspector { flex:none; min-height:0; max-height:min(48vh,460px); overflow:auto; margin:12px -14px -14px; padding:12px 14px 18px; border-top:1px solid var(--hy-lab-line); }
+.hydronium-lab__story-inspector h2 { margin:0 0 12px; font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--hy-lab-muted); }
+.hydronium-lab__story-inspector [data-lab-controls] { display:grid; gap:9px; }
+.hydronium-lab__story-inspector [data-lab-controls] > label { display:grid; gap:4px; min-width:0; }
+.hydronium-lab__story-inspector :is(input,select) { width:100%; min-width:0; }
+.hydronium-lab__story-inspector [data-lab-timeline] { display:grid; gap:10px; margin-top:14px; padding-top:14px; border-top:1px solid var(--hy-lab-line); }
+.hydronium-lab__transport { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+.hydronium-lab__transport button { min-width:0; padding:0 5px; }
+.hydronium-lab__transport [data-lab-play] { border-color:var(--hy-lab-accent); }
+.hydronium-lab__timeline-fields { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.hydronium-lab__timeline-fields label { display:grid; gap:4px; min-width:0; font-size:12px; color:var(--hy-lab-muted); }
+.hydronium-lab__timeline-fields input { min-width:0; padding-inline:6px; }
+.hydronium-lab__story-inspector [data-lab-time] { color:var(--hy-lab-muted); font-size:12px; font-variant-numeric:tabular-nums; }
+.hydronium-lab__story-inspector .hydronium-lab__interactions { padding:10px 0 0; border:0; }
+
+.hydronium-lab__guide:hover,.hydronium-lab__guide:focus-visible { background:color-mix(in srgb,var(--guide-color) 14%,transparent)!important; outline:1px solid var(--guide-color); }
+
+/* Keep the canvas toolbar to one deliberate row while there is room. */
+@media (min-width: 1150px) {
+  .hydronium-lab__canvas-toolbar { flex-wrap:nowrap; }
+  .hydronium-lab__canvas-toolbar > [data-lab-active-story] { flex:1 1 8rem; }
+  .hydronium-lab__canvas-hud { flex:0 1 auto; flex-wrap:nowrap; }
+  .hydronium-lab__renderer-controls { flex-wrap:nowrap; }
+  .hydronium-lab [data-lab-dom-tools] { display:flex; align-items:center; gap:8px; white-space:nowrap; }
+  .hydronium-lab [data-lab-viewport-preset] { width:220px; max-width:22vw; }
+  .hydronium-lab__canvas-actions { margin-left:4px; }
+}
