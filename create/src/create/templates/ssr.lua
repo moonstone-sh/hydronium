@@ -170,7 +170,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/luax"
-constraint = "^0.2.2"
+constraint = "^0.2.3"
 role = "runtime"
 
 [[dependencies]]
@@ -186,7 +186,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/router"
-constraint = "^0.2.1"
+constraint = "^0.2.2"
 role = "runtime"
 ]=], project_name)
 
