@@ -141,6 +141,14 @@ jobs:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
           HYDRONIUM_BROWSER_GATE: node --test js/tests/consumer_scaffold.browser.test.mjs
         run: bash tests/e2e/consumer_scaffold.sh
+      - name: React island consumer gate
+        # The islands scaffold with its island turned into a React 19 component
+        # (react-dom hydrateRoot, built by the user's Vite + @vitejs/plugin-react).
+        env:
+          MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
+          HYDRONIUM_CONSUMER_PREPARE: bash ${{ github.workspace }}/tests/e2e/react_island_prepare.sh
+          HYDRONIUM_BROWSER_GATE: node --test js/tests/react_island.browser.test.mjs
+        run: bash tests/e2e/consumer_scaffold.sh
       - name: Packaged SSR + Tailwind hydration and HMR gate
         env:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon

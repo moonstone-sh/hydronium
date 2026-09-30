@@ -197,6 +197,12 @@ mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$tool_project"
     fail "consumer manifest or lock retained a path dependency"
   fi
 
+  # Optional, gate-specific edits a user would make next (e.g. turning the
+  # island into a React component): runs in the app, before its JS build.
+  if [[ -n "${HYDRONIUM_CONSUMER_PREPARE:-}" ]]; then
+    HYDRONIUM_ROOT="$root" bash -c "$HYDRONIUM_CONSUMER_PREPARE" || fail "prepare step failed: $HYDRONIUM_CONSUMER_PREPARE"
+  fi
+
   # Vite templates build their stylesheet with the project's own JS toolchain
   # (the next steps hydronium-create prints); run it as a user would, before
   # the server build.
