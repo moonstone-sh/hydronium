@@ -84,9 +84,29 @@ end
 function Runtime:_emit(force_full)
   local raw = snapshot.from_session(self.active)
   local encoded = frame.encode(self.frame_stream, raw, force_full)
-  encoded.ansi = table.concat(self.output or {})
-  self.output = {}
   local host = self.active._host
+  -- A "full frame" tick (resize, a color/profile switch, a story reopen,
+  -- an explicit resync -- see FULL_FRAME_OPS above) makes the CLIENT's
+  -- xterm.js instance reset its own buffer before replaying `encoded.ansi`
+  -- (see ink-lab/scripts/xterm-entry.js's `write()`), which also discards
+  -- its scrollback. Replaying only `self.output` (bytes written since the
+  -- PREVIOUS tick) would silently lose every already-flushed `ink.Static`
+  -- line in that case -- host.encodeFullReplay() rebuilds one
+  -- self-contained stream (full Static history + the current live frame)
+  -- instead, so a reset-then-replay client ends up showing exactly what a
+  -- real terminal would. Every other (delta) tick keeps using the plain
+  -- accumulated bytes, exactly as before Static existed -- no reset
+  -- happens there, so there is nothing to lose. Only inline hosts ever
+  -- collect Static history at all (see flushStaticNodes), and only when
+  -- something has actually been flushed -- everything else (a story that
+  -- never uses `ink.Static`, a non-inline story) is byte-for-byte
+  -- unchanged from before this existed.
+  if force_full and host._inline and host._staticHistory and #host._staticHistory > 0 then
+    encoded.ansi = host.encodeFullReplay()
+  else
+    encoded.ansi = table.concat(self.output or {})
+  end
+  self.output = {}
   encoded.terminal = { columns = host._cols, rows = host._rows, inline = host._inline, scrollable = raw.height > math.max(host._rows - 2, 1) }
   encoded.focus = host._scrollFocus or false
   encoded.lab = { args = lab.copy(self.state.args()), playback = lab.copy(self.state.playback()) }
