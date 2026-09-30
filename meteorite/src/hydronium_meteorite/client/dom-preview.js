@@ -35,7 +35,16 @@ try {
   moduleEffects["hydronium_lab.dom_entry"] = "safe";
   moduleEffects["hydronium_lab.dom_preview"] = "safe";
   const handle = await mount({ moduleEffects, chunkUrls: [base + "/dom/bundle"], appModuleId: "hydronium_lab.dom_entry", container: "#preview", props: { story }, hmr: true });
-  const invoke = (method, message) => handle.lua.doString(`return require("hydronium_lab.dom_preview").${method}(${message === undefined ? "" : literal(message)})`);
+  // One Lua call at a time: overlapping async doString calls into the same
+  // wasm VM corrupt its state (seen as `require` failing with "attempt to
+  // index a nil value"). xpcall keeps the original Lua stack: a bare doString
+  // error only shows the require wrapper that rethrew it.
+  let invokeTail = Promise.resolve();
+  const invoke = (method, message) => {
+    const call = invokeTail.then(() => handle.lua.doString(`local ok, result = xpcall(function() return require("hydronium_lab.dom_preview").${method}(${message === undefined ? "" : literal(message)}) end, debug.traceback) if not ok then error(result, 0) end return result`));
+    invokeTail = call.catch(() => {});
+    return call;
+  };
   installVisionFilters();
   window.hydroniumLabPreview = {
     async configure(settings) {
@@ -56,6 +65,13 @@ try {
       await invoke("refresh");
     },
   };
-  window.addEventListener("pagehide", () => { handle.lua.doString('if __hydronium_tree then __hydronium_reconciler:unmount(__hydronium_tree) end'); handle.lua.global.close(); }, { once: true });
+  // Close the VM only after the unmount's queued work has run: closing it in
+  // the same task left those callbacks touching freed wasm memory
+  // ("memory access out of bounds") in a retired preview.
+  window.addEventListener("pagehide", () => {
+    Promise.resolve(handle.lua.doString('if __hydronium_tree then __hydronium_reconciler:unmount(__hydronium_tree) end'))
+      .catch(() => {})
+      .finally(() => setTimeout(() => { try { handle.lua.global.close(); } catch {} }, 0));
+  }, { once: true });
   parent.postMessage({ type: "hydronium-lab-preview-ready" }, location.origin);
 } catch (error) { parent.postMessage({ type: "hydronium-lab-preview-ready", error: error.message }, location.origin); }

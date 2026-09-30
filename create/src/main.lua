@@ -70,7 +70,7 @@ end
 local app
 app = c.create({
   name = "hydronium-create",
-  version = "0.5.2",
+  version = "0.5.4",
   description = "Scaffold and initialize new Hydronium reactive Lua projects",
 
   root = c.node({
@@ -110,7 +110,7 @@ app = c.create({
 
     c.run(function(ctx)
       if ctx.args.version then
-        ctx:log("info", "hydronium-create v0.5.2")
+        ctx:log("info", "hydronium-create v0.5.4")
         return 0
       end
 

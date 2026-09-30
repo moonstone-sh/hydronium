@@ -5,6 +5,17 @@ local H, lab = require("hydronium"), require("hydronium_lab")
 package.path = "meteorite/src/?.lua;meteorite/src/?/init.lua;" .. package.path
 
 describe("DOM and mixed Lab", function()
+  it("binds a Markdown story from a record that only carries its path", function()
+    -- The browser DOM Lab builds records without `transform`; an .mdx story
+    -- must still bind as a DOM story instead of "must return a Lab value".
+    local component = function() return H.h("p", nil, "doc") end
+    local story = lab.discovery.bind({ path = "src/Guide.stories.mdx", id_prefix = "guide", stem = "Guide" }, component)
+    assert.equal(story.id, "guide--default")
+    assert.equal(story.renderer, "dom")
+    story = lab.discovery.bind({ path = "src/Guide.stories.md", id_prefix = "g", stem = "Guide", transform = "" }, component)
+    assert.equal(story.id, "g--default")
+  end)
+
   it("validates renderer metadata and preserves collection and variant choices", function()
     local record = { path = "src/Mixed.stories.lua", id_prefix = "mixed", stem = "Mixed" }
     local collection = lab.collection({ renderer = "dom", viewports = { { name = "Card", width = 480, height = 640 } }, component = function() end, stories = { dom = {}, terminal = { renderer = "ink" } } })

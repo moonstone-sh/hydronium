@@ -12,7 +12,7 @@ local oklab = require("hydronium_oklab_utils")
 
 local M = {}
 
-local VERSION = "0.5.3"
+local VERSION = "0.5.4"
 
 -- Two subgroups: "Vite-based" frameworks always get the real Vite build
 -- (create.vite -- package.json + vite.config.js, see that module's own

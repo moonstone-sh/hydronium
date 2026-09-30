@@ -8,7 +8,17 @@ scratch=$(mktemp -d "${TMPDIR:-/tmp}/hydronium-mixed-lab.XXXXXX")
 registry="$scratch/registry"
 app="$scratch/app"
 server_pid=""
-cleanup() { if [[ -n "$server_pid" ]]; then kill "$server_pid" 2>/dev/null || true; sleep 1; kill -9 "$server_pid" 2>/dev/null || true; fi; rm -rf "$scratch"; }
+# Meteorite dev daemonizes its supervisor and server, so killing the subshell
+# alone leaked them (still listening on the Lab port for the next run). Stop
+# everything started from this run's scratch directory. Match its unique
+# random name, not the full path: macOS's TMPDIR ends in "/", so "$scratch"
+# holds a "//" that the processes' own (normalized) paths do not.
+cleanup() {
+  local tag; tag=$(basename "$scratch")
+  if [[ -n "$server_pid" ]]; then kill "$server_pid" 2>/dev/null || true; fi
+  pkill -f "$tag" 2>/dev/null || true; sleep 1; pkill -9 -f "$tag" 2>/dev/null || true
+  rm -rf "$scratch"
+}
 trap cleanup EXIT
 fail() { echo "data primitives consumer gate: $*" >&2; exit 1; }
 [[ -x "$moon" ]] || fail "MOON_BIN is not executable: $moon"
@@ -33,7 +43,9 @@ export XDG_DATA_HOME="$scratch/data"
 export XDG_CONFIG_HOME="$scratch/config"
 mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME"
 "$moon" init "$app" --name mixed-lab-consumer --kind script --interpreter luajit@2.1 --no-sync --no-git
-cp -R "$root/tests/fixtures/lab_mixed" "$app/src"
+# `moon init` already made src/: copy the fixture's contents into it, not the
+# directory itself (that nests it at src/lab_mixed and breaks every require).
+cp -R "$root/tests/fixtures/lab_mixed/." "$app/src/"
 cat > "$app/hydronium.lab.lua" <<'CONFIG'
 return { renderer = "mixed", roots = { "src" }, base_path = "/lab" }
 CONFIG
@@ -44,7 +56,8 @@ CONFIG
   "$moon" add --dev --no-sync hydronium-mixed-lab:hydronium/lab hydronium-mixed-lab:hydronium/ink-lab hydronium-mixed-lab:hydronium/meteorite
   "$moon" sync
   "$moon" sync --locked
-  if rg -nF "$root" .moonstone moonstone.lock; then fail "consumer references source checkout"; fi
+  # grep, not rg: CI runners do not ship ripgrep (a missing rg silently skipped this check).
+  if grep -rnF "$root" .moonstone moonstone.lock; then fail "consumer references source checkout"; fi
   "$moon" exec --dev -- hydronium-lab dev --port 6196 > "$scratch/server.log" 2>&1 &
   echo $! > "$scratch/server.pid"
   wait

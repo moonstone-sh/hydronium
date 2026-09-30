@@ -68,7 +68,7 @@ local function Shell(props)
         </span></header>
         <input type="search" data-lab-story-search aria-label="Search stories" placeholder="Search stories" autocomplete="off" />
         <nav data-lab-stories aria-label="Story catalog" />
-        <section class={class_name("__story-inspector", legacy)} aria-label="Selected story tools">
+        <section class={class_name("__story-inspector", legacy)} data-lab-story-inspector aria-label="Selected story tools">
           <h2>Selected story</h2>
           {props.controls or <DefaultControls />}
           {props.story_controls}

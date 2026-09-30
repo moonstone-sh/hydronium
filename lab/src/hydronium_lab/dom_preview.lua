@@ -49,7 +49,10 @@ function M.App(props)
     else setActive({ story = story, state = current.state, epoch = current.epoch }) end
     return snapshot()
   end
-  H.onCleanup(function() controller = nil end)
+  -- A hot update remounts App: the new instance installs its controller before
+  -- the old one's cleanup runs, so only clear the controller if it is still ours.
+  local mine = controller
+  H.onCleanup(function() if controller == mine then controller = nil end end)
   local function Story(props)
     return function(current) return current.story.render(current.state.args()) end
   end
@@ -63,7 +66,10 @@ function M.request(message)
   if not controller then error("Hydronium DOM Lab: preview is not mounted", 0) end
   return controller.request(message)
 end
-function M.refresh() return controller.refresh() end
+function M.refresh()
+  if not controller then error("Hydronium DOM Lab: preview is not mounted", 0) end
+  return controller.refresh()
+end
 function M.useEnvironment()
   local state = H.useContext(lab.state.Context)
   if not state or not state.environment then error("DOM Lab environment requires a DOM preview", 2) end

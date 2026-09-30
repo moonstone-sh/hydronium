@@ -53,14 +53,26 @@ export async function createDomLab({ root, fetchCatalog, previewUrl, loadModules
       previous.parentNode.append(candidate);
       try {
         await new Promise((resolve, reject) => {
-          const cleanup = () => { window.removeEventListener("message", ready); clearTimeout(timer); };
+          // The Lab server restarts when story sources change; a preview
+          // requested during that window loads an error page instead of a
+          // preview and never reports ready. Reload only in that case (a slow
+          // but real preview is left alone), within the overall limit.
+          let attempt = 0, retry;
+          const load = () => { const url = new URL(previewUrl(story), location.href); if (attempt) url.searchParams.set("attempt", String(attempt)); attempt += 1; candidate.src = url.pathname + url.search; };
+          const loaded = () => {
+            let preview = false;
+            try { preview = !!candidate.contentDocument?.querySelector("[data-lab-base-path]"); } catch {}
+            if (!preview) { clearTimeout(retry); retry = setTimeout(load, 500); }
+          };
+          candidate.addEventListener("load", loaded);
+          const cleanup = () => { window.removeEventListener("message", ready); candidate.removeEventListener("load", loaded); clearTimeout(timer); clearTimeout(retry); };
           const ready = event => {
             if (event.source !== candidate.contentWindow || event.origin !== location.origin || event.data?.type !== "hydronium-lab-preview-ready") return;
             cleanup(); event.data.error ? reject(new Error(event.data.error)) : resolve();
           };
           const timer = setTimeout(() => { cleanup(); reject(new Error("Preview did not become ready")); }, 30000);
           window.addEventListener("message", ready);
-          candidate.src = previewUrl(story);
+          load();
         });
         frame = candidate;
         retired = previous;
@@ -112,6 +124,8 @@ export async function createDomLab({ root, fetchCatalog, previewUrl, loadModules
     const current = next.catalog.stories.find(story => story.id === selected.id);
     if (!current || current.renderer !== selected.renderer) await select(current || next.catalog.stories[0]);
     else { const snapshot = store.getSnapshot(); selected = current; store.select(current); store.accept({ lab: snapshot }); navigate(); }
+    // A poll that failed while the server restarted recovers on its own.
+    if (status.textContent.startsWith("Update failed")) status.textContent = "Connected";
   }
   const timer = setInterval(() => { updateTail = updateTail.then(refresh).catch(report); }, pollMs);
   return { state: store, select, refresh, destroy() { stopped = true; clearInterval(timer); canvas.destroy(); rendererControls.destroy(); binding.destroy(); store.destroy(); preferenceBinding?.destroy(); root.removeEventListener("click", click); search.removeEventListener("input", navigate); frame.src = "about:blank"; } };

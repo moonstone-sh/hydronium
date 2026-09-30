@@ -32,7 +32,7 @@ function M.sources(config, registry)
     local id = "hydronium_lab.story_" .. index
     -- Normalize collections inside the module so a component re-export cannot
     -- steal the original component module's HMR family identity.
-    sources[id] = string.format("return require('hydronium_lab.discovery').bind({path=%q,id_prefix=%q,stem=%q},(function()\n%s\nend)())", record.path, record.id_prefix, record.stem, compile(record.path, id))
+    sources[id] = string.format("return require('hydronium_lab.discovery').bind({path=%q,id_prefix=%q,stem=%q,transform=%q},(function()\n%s\nend)())", record.path, record.id_prefix, record.stem, record.transform or "", compile(record.path, id))
     project[id] = true
     entries[#entries + 1] = string.format("(require(%q))", id)
   end

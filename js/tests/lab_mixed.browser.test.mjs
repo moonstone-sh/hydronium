@@ -35,10 +35,14 @@ test('packaged mixed catalog mounts DOM and Ink, updates args and preserves DOM 
   assert.equal(await world.locator('[data-lab-grid]').count(),1,'grid and preview share the transformed world');
   await page.getByRole('button',{name:'Center canvas',exact:true}).click();
   const stage=await page.locator('[data-lab-stage]').boundingBox();
+  // Alt bypasses snapping: at this window size a 60px pan lands within the
+  // snap distance of the canvas-edge target, which would (correctly) pull it.
+  await page.keyboard.down('Alt');
   await page.mouse.move(stage.x+60,stage.y+60);
   await page.mouse.down();
   await page.mouse.move(stage.x+120,stage.y+100);
   await page.mouse.up();
+  await page.keyboard.up('Alt');
   assert.match(await world.evaluate(el=>el.style.transform),/translate\(60px, 40px\)/,'panning moves the shared world');
   await page.getByRole('button',{name:'Center canvas',exact:true}).click();
   await page.getByRole('combobox',{name:'Viewport preset',exact:true}).selectOption({label:'Mobile · 390×844'});
@@ -59,9 +63,13 @@ test('packaged mixed catalog mounts DOM and Ink, updates args and preserves DOM 
   await page.waitForFunction(()=>document.querySelector('[data-lab-dom-preview]').contentDocument.querySelector('#counter')?.textContent==='Alternate:0');
   assert.equal(await originalFrame.evaluate(frame => frame === document.querySelector('[data-lab-dom-preview]')),true,'same-renderer selection retains the iframe');
   await page.getByRole('button',{name:'Terminal · ink',exact:true}).click();
-  await page.waitForFunction(()=>document.querySelector('iframe').contentWindow.hydroniumLabPreview);
+  // Wait for the Ink preview itself (its page marker; polling the outgoing
+  // DOM preview's async snapshot() here would flood its Lua VM).
+  await page.waitForFunction(()=>document.querySelector('iframe')?.contentDocument?.querySelector('[data-hydronium-ink-lab]')&&document.querySelector('iframe').contentWindow.hydroniumLabPreview);
+  // ...and for the selection to finish (controls bound to the new story).
+  await page.waitForFunction(()=>document.querySelector('[data-lab-active-story]')?.textContent==='Terminal'&&document.querySelector('[data-lab-status]')?.textContent==='Connected');
   await page.getByRole('textbox',{name:'label',exact:true}).fill('Terminal edit');
-  await page.waitForFunction(()=>document.querySelector('iframe').contentWindow.hydroniumLabPreview.snapshot().lab.args.label==='Terminal edit');
+  await page.waitForFunction(()=>document.querySelector('iframe').contentWindow.hydroniumLabPreview?.snapshot()?.lab?.args?.label==='Terminal edit');
   await page.waitForFunction(()=>document.querySelector('[data-lab-rulers]')?.dataset.units==='cells');
   assert.equal(await page.getByRole('combobox',{name:'Terminal color capability'}).isVisible(),true);
   await page.getByRole('combobox',{name:'Terminal color capability'}).selectOption('ansi16');
@@ -93,8 +101,9 @@ test('rulers, editable guides, snapping, colors and removal survive a packaged L
   assert.equal(await page.locator('[data-lab-guide]').count(),2);
   const vertical=page.locator('.hydronium-lab__guide--x'),horizontal=page.locator('.hydronium-lab__guide--y');
   assert.ok(Math.abs(parseFloat(await vertical.evaluate(el=>el.style.left))-gx)<1);
-  await page.mouse.move(box.x+60,box.y+60);await page.mouse.down();
-  await page.mouse.move(box.x+34,box.y+60);await page.mouse.up();
+  // Start the pan clear of the vertical guide's 17px grab area (it sits at gx).
+  await page.mouse.move(box.x+44,box.y+60);await page.mouse.down();
+  await page.mouse.move(box.x+18,box.y+60);await page.mouse.up();
   const pan=await world.evaluate(el=>el.style.transform);
   assert.match(pan,/translate\(-30px, 0px\)/,'viewport edge snaps to the placed guide');
   await page.waitForFunction(()=>document.querySelector('[data-lab-rulers]').dataset.snapActive==='false');

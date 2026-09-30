@@ -374,11 +374,14 @@ export function installCanvasGuides({root,getSurface,getUnits,preferences={},per
     for(const g of visible){let button=guideButtons.get(g.id);if(!button){button=doc.createElement('button');guideButtons.set(g.id,button);layer.append(button);}button.type='button';button.className=`hydronium-lab__guide hydronium-lab__guide--${g.axis}`;button.dataset.labGuide=g.id;button.setAttribute('aria-label',`${g.axis==='x'?'Vertical':'Horizontal'} guide`);button.style.setProperty('--guide-color',g.color);button.style[g.axis==='x'?'left':'top']=`${position(g,geo)}px`;button.setAttribute('aria-pressed',String(selectedGuide===g.id));}
   }
   function stop(event){event.preventDefault();event.stopImmediatePropagation?.();}
+  // Removal is visible at once: the next frame's redraw would otherwise leave
+  // a deleted guide's button in the DOM (and clickable) for one more frame.
+  function dropGuideButtons(){for(const [id,button] of guideButtons)if(!placed.some(g=>g.id===id)){button.remove();guideButtons.delete(id);}}
   stage.addEventListener('pointerdown',event=>{
     const button=event.target?.closest?.('[data-lab-guide]');const isRuler=event.target===hit;
     if(!button&&!isRuler)return;
     const geo=geometry();if(!geo)return;stop(event);const id=button?.dataset.labGuide;
-    if(id&&(event.altKey||event.ctrlKey||event.metaKey)){placed=placed.filter(g=>g.id!==id);saveGuides();update();return;}
+    if(id&&(event.altKey||event.ctrlKey||event.metaKey)){placed=placed.filter(g=>g.id!==id);dropGuideButtons();saveGuides();update();return;}
     const before=placed.map(g=>({...g}));let ids;
     if(id){ids=[id];button.focus?.();selectedGuide=id;const g=placed.find(g=>g.id===id);if(colorInput)colorInput.value=g.color;}
     else {const x=event.clientX-geo.box.left,y=event.clientY-geo.box.top;const axes=x<24&&y<24?['x','y']:y<24?['y']:['x'];ids=axes.map(axis=>{const id=`guide-${Date.now()}-${sequence++}`;placed.push({id,axis,value:0,color:guideColor,units:geo.units});return id;});selectedGuide=ids[0];}
@@ -389,10 +392,10 @@ export function installCanvasGuides({root,getSurface,getUnits,preferences={},per
   stage.addEventListener('pointermove',moveGuide,{capture:true,signal:abort.signal});
   function finishGuide(event){if(!gesture||event.pointerId!==gesture.pointer)return;stop(event);const geo=geometry(),x=event.clientX-geo.box.left,y=event.clientY-geo.box.top;
     if(event.type==='pointercancel')placed=gesture.before;else if(x<24&&y<24||x<0||y<0||x>geo.w||y>geo.h)placed=placed.filter(g=>!gesture.ids.includes(g.id));
-    gesture=null;selectedGuide=placed.some(g=>g.id===selectedGuide)?selectedGuide:null;saveGuides();update();
+    gesture=null;selectedGuide=placed.some(g=>g.id===selectedGuide)?selectedGuide:null;dropGuideButtons();saveGuides();update();
   }
   for(const type of ['pointerup','pointercancel'])stage.addEventListener(type,finishGuide,{capture:true,signal:abort.signal});
-  stage.addEventListener('keydown',event=>{if(event.target?.dataset?.labGuide&&['Delete','Backspace'].includes(event.key)){stop(event);placed=placed.filter(g=>g.id!==event.target.dataset.labGuide);saveGuides();update();}},{signal:abort.signal});
+  stage.addEventListener('keydown',event=>{if(event.target?.dataset?.labGuide&&['Delete','Backspace'].includes(event.key)){stop(event);placed=placed.filter(g=>g.id!==event.target.dataset.labGuide);dropGuideButtons();saveGuides();update();}},{signal:abort.signal});
   doc.defaultView.addEventListener?.('blur',()=>{if(gesture){placed=gesture.before;gesture=null;saveGuides();}locks={};update();},{signal:abort.signal});
   root.addEventListener('input',update,{signal:abort.signal});root.addEventListener('change',update,{signal:abort.signal});
   let pending,locks={},alive=true,enabled=preferences.rulers!==false,magnetic=preferences.snapping!==false;
