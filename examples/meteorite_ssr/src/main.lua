@@ -70,15 +70,10 @@ meteorite.site(app, {
 -- assets above ONLY because it needs a per-route `memory` override, which
 -- m.site()'s asset spec cannot pass through.
 --
--- That directory now also contains hydronium's self-hosted copy of wasmoon
--- (dom/src/hydronium_dom/client/vendor/wasmoon/), replacing what used to be
--- two cross-origin CDN fetches on every page load. Its glue.wasm is 271,581
--- bytes, and Meteorite serves a dev `m.dir` file by reading it whole into
--- the PER-REQUEST ARENA -- 256kb (262,144 bytes) on the default profile.
--- The binary overshoots that by ~9kb, so without this override the request
--- fails with a bare `OutOfMemory` -> HTTP 500 that is visible only in the
--- dev server log, while the browser just sees the Lua VM never boot. (This
--- is the request arena, not the 1mb max_response_bytes cap.)
+-- That directory contains Hydronium's self-hosted, version-pinned Bridge
+-- API 2 Lua 5.4.9 engine. Meteorite reads each `m.dir` file into the
+-- per-request arena (256kb by default), so the override must accommodate
+-- the WASM artifact. (This is the request arena, not max_response_bytes.)
 -- VENDOR SPLIT, declared BEFORE the general /js/bootstrap route below.
 -- That order is load-bearing: Meteorite's router is a first-match-wins
 -- linear scan in DECLARATION order (zig/server/route_dispatch.zig's
@@ -88,11 +83,9 @@ meteorite.site(app, {
 -- silent-shadowing hazard route 9 below documents for m.site().
 --
 -- `m.dir`'s cache lifetime is PER-ROUTE, and this one directory holds
--- two things with opposite caching needs: hydronium's own client JS
--- (mount.js, hmr.js, dom_bridge.js), edited constantly during
--- development, and the vendored, version-pinned wasmoon build under
--- vendor/ (glue.wasm + index.js = ~423KB of the ~462KB total), which
--- changes only when somebody deliberately re-vendors a wasmoon release.
+-- the runtime client JS, edited constantly during development, and the
+-- vendored, version-pinned Lua engine under vendor/, which changes only
+-- when somebody deliberately replaces that engine build.
 --
 -- Every file here used to be served `cache-control: no-cache` (m.dir's
 -- default, src/core/handler_factories.lua), which does not mean "don't
@@ -103,7 +96,7 @@ meteorite.site(app, {
 -- serial RTTs on a real network.
 --
 -- NOT `immutable`, deliberately: that emits a year-long unconditional
--- promise on a URL with no content hash in it, so re-vendoring wasmoon
+-- promise on a URL with no content hash in it, so re-vendoring the engine
 -- would strand every warm client on the old binary with no way to
 -- correct them. Real content hashing (hydronium_ballad.plugins.assets'
 -- b3sum scheme) is what makes `immutable` safe, and it does not reach

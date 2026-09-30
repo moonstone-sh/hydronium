@@ -45,17 +45,11 @@ local styles = require("hydronium_dom.css").sheet("app.css")
 -- fallback ("/logo.svg"), which in a static SPA is a 404 and nothing else.
 local assets = require("hydronium_dom.assets")
 
--- A plain `<button>`, not an `<a href>` -- deliberately: dom_bridge.js's
--- set_listener documents that "wasmoon cannot safely marshal a browser
--- Event as a Lua callback argument" (onClick fires with NO arguments
--- unless a payload factory is registered for that event name, which
--- "click" has none of), so there is nothing here to call
--- event:preventDefault() on. A real `<a href="#/...">` would need that
--- (its own default action would ALSO change location.hash, racing the
--- router's own history.push), which is exactly the failure mode a plain
--- button with no default navigation action sidesteps entirely -- the
--- same proven pattern examples/meteorite_ssr/hydrate_demo/app.lua
--- already uses for its own onClick.
+-- A plain `<button>`, not an `<a href>`: the bridge deliberately does not
+-- pass raw browser Event objects into Lua callbacks. A real anchor would
+-- change location.hash itself, racing the router's own history.push;
+-- this button has no competing default navigation action. See also the
+-- same pattern in examples/meteorite_ssr/hydrate_demo/app.lua.
 local function nav_button(id, label, navigate, to)
   return d.button({
     id = id,

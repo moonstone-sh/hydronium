@@ -24,7 +24,7 @@
   follow -- there is exactly one implementation and both callers use it.
 
   `hydronium_dom.host.dom` is deliberately dependency-free so it can be
-  loaded inside a browser Lua VM (wasmoon) without dragging the SSR
+  loaded inside a browser Lua VM without dragging the SSR
   serializer's HTML tables along, which is why this normalization lives
   here rather than in `server/html.lua`. This module requires nothing.
 

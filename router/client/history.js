@@ -53,9 +53,12 @@ export function createHistoryBridge(win = window) {
       return serializedState(win.history.state);
     },
     on_popstate(fn) {
-      const handler = () => fn();
+      const handler = () => {
+        const result = typeof fn === "function" ? fn() : fn.call([]);
+        result?.catch?.((error) => console.error("[hydronium-router] popstate callback failed:", error));
+      };
       win.addEventListener("popstate", handler);
-      return () => win.removeEventListener("popstate", handler);
+      return () => { win.removeEventListener("popstate", handler); fn?.release?.(); };
     },
   };
 }

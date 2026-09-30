@@ -26,6 +26,14 @@ export const RUNTIME_FILES = [
   "overlay.js",
   // Source Map v3 reader backing the overlay's resolveFrame hook.
   "sourcemap.js",
+  // Hydronium's default Bridge API 2 Lua 5.4.9 browser runtime. Generated
+  // artifacts are committed alongside the client so Moonstone users do not
+  // need a separate compiler install at package time.
+  "vendor/lua-wasm/5.4.9/engine.js",
+  "vendor/lua-wasm/5.4.9/engine.wasm",
+  "vendor/lua-wasm/5.4.9/task-runtime.mjs",
+  "vendor/lua-wasm/5.4.9/engine.json",
+  "vendor/lua-wasm/5.4.9/LICENSE-Lua.html",
 ];
 
 // The hand-authored ESM wrapper around wasmoon's UMD bundle. Committed

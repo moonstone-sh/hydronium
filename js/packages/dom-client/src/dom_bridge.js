@@ -13,8 +13,8 @@
 
   Usage: `createDomBridge()` returns a plain object whose keys are
   exactly the bridge function names `hydronium.host.dom.createDomHost`
-  expects (`create_element`, `create_text`, ...) -- pass it straight to
-  wasmoon:
+  expects (`create_element`, `create_text`, ...). `mount()` installs
+  these through the selected Lua engine provider:
 
     const bridge = createDomBridge();
     for (const [name, fn] of Object.entries(bridge)) {
@@ -25,13 +25,8 @@
     // then, in Lua: require("hydronium.host.dom").createDomHost()
     //   (no-arg form reads the __dom_* globals just set above)
 
-  or, since `hydronium.host.dom.createDomHost` also accepts an explicit
-  bridge table directly (no globals involved), pass `bridge` itself into
-  Lua as a table if your embedding supports marshalling a JS object into
-  a Lua table with callable function values (wasmoon does, via
-  `lua.global.set` per-key as shown above -- there is no single-call
-  "set a whole nested table of functions" in wasmoon's API, hence the
-  per-key loop).
+  For legacy embeddings, `hydronium.host.dom.createDomHost` still accepts
+  an explicit bridge table or the `__dom_*` globals.
 */
 
 /** @returns {Record<string, Function>} the 15 required bridge functions, plus the 1 optional one (hydration_mismatch) */
@@ -74,18 +69,26 @@ export function createDomBridge() {
   return {
     observe_virtual_item(el, axis, onMeasure) {
       const horizontal = axis === "horizontal";
-      const report = () => onMeasure(horizontal ? el.getBoundingClientRect().width : el.getBoundingClientRect().height);
+      const report = () => {
+        const value = horizontal ? el.getBoundingClientRect().width : el.getBoundingClientRect().height;
+        const result = typeof onMeasure === "function" ? onMeasure(value) : onMeasure.call([value]);
+        result?.catch?.((error) => console.error("[hydronium] virtual item callback failed:", error));
+      };
       const observer = typeof ResizeObserver === "function" ? new ResizeObserver(report) : null;
       observer?.observe(el); report();
-      return () => observer?.disconnect();
+      return () => { observer?.disconnect(); onMeasure?.release?.(); };
     },
     observe_virtual_container(el, axis, onViewport, onOffset) {
       const horizontal = axis === "horizontal";
-      const sync = () => { onViewport(horizontal ? el.clientWidth : el.clientHeight); onOffset(horizontal ? el.scrollLeft : el.scrollTop); };
+      const invoke = (callback, value) => {
+        const result = typeof callback === "function" ? callback(value) : callback.call([value]);
+        result?.catch?.((error) => console.error("[hydronium] virtual container callback failed:", error));
+      };
+      const sync = () => { invoke(onViewport, horizontal ? el.clientWidth : el.clientHeight); invoke(onOffset, horizontal ? el.scrollLeft : el.scrollTop); };
       el.addEventListener("scroll", sync, { passive: true });
       const observer = typeof ResizeObserver === "function" ? new ResizeObserver(sync) : null;
       observer?.observe(el); sync();
-      return () => { el.removeEventListener("scroll", sync); observer?.disconnect(); };
+      return () => { el.removeEventListener("scroll", sync); observer?.disconnect(); onViewport?.release?.(); onOffset?.release?.(); };
     },
     scroll_virtual_container(el, axis, offset) { el[axis === "horizontal" ? "scrollLeft" : "scrollTop"] = offset; },
     create_element(tag) {
@@ -155,15 +158,16 @@ export function createDomBridge() {
       let m = listenerMap.get(el);
       if (!m) { m = new Map(); listenerMap.set(el, m); }
       const prev = m.get(eventName);
-      if (prev) el.removeEventListener(domEventName, prev);
-      // Wasmoon cannot safely marshal a browser Event as a Lua callback
-      // argument. Callbacks stay argument-free unless an event adapter has
-      // captured a transport-safe value such as a string.
+      if (prev) { el.removeEventListener(domEventName, prev); prev.luaCallback?.release?.(); }
+      // Browser Event objects are not passed directly as Lua callback
+      // arguments. Callbacks stay argument-free unless an event adapter has
+      // captured a transport-safe payload such as a string.
       const handler = (event) => {
         if (eventName === "navigate" && !shouldHandleNavigation(event)) return;
-        // Lua callbacks cross an async Wasmoon boundary, after the browser's
-        // cancellation window. Controlled submit and router-navigation
-        // events must therefore be cancelled before invoking Lua.
+        // Lua callbacks cross an asynchronous engine boundary, after the
+        // browser's cancellation window. Controlled submit and
+        // router-navigation events must therefore be cancelled before
+        // invoking Lua.
         if (eventName === "submit" || eventName === "navigate") {
           event.preventDefault();
         }
@@ -178,10 +182,12 @@ export function createDomBridge() {
           // returns. Snapshot the event while currentTarget is still live.
           const payloadFactory = globalThis[EVENT_PAYLOADS]?.get?.(eventName);
           const payload = payloadFactory?.(event);
-          const result = payload === undefined ? fn() : fn(payload);
-          // Wasmoon callbacks are promise-backed even when the Lua function
-          // itself is synchronous. Keep the event current until Lua has
-          // finished calling any bridge atoms such as form_values().
+          const result = typeof fn === "function"
+            ? (payload === undefined ? fn() : fn(payload))
+            : fn.call(payload === undefined ? [] : [payload]);
+          // Engine callbacks may be promise-backed even when the Lua
+          // function itself is synchronous. Keep the event current until Lua
+          // has finished calling bridge atoms such as form_values().
           if (result && typeof result.then === "function") {
             result.finally(clear);
           } else {
@@ -192,6 +198,7 @@ export function createDomBridge() {
           throw error;
         }
       };
+      handler.luaCallback = fn;
       m.set(eventName, handler);
       el.addEventListener(domEventName, handler);
     },
@@ -204,15 +211,15 @@ export function createDomBridge() {
       const prev = m.get(eventName);
       if (prev) {
         el.removeEventListener(eventName === "navigate" ? "click" : eventName, prev);
+        prev.luaCallback?.release?.();
         m.delete(eventName);
       }
     },
     // Hydration helpers. IMPORTANT (found the hard way, verified live via
     // Playwright, documented in docs/HMR_DOM_HOST.md Part IV): these
-    // return `undefined`, never `null`, for "no such node" -- wasmoon's
-    // JS<->Lua value marshalling mishandles a bare `null` return from a
-    // bridged function in a way `undefined` does not (a real bug hit
-    // while building the original proof this module was extracted from).
+    // return `undefined`, never `null`, for "no such node" -- this also
+    // preserves compatibility with the original Wasmoon embedding, whose
+    // JS<->Lua marshalling mishandled a bare `null` return.
     first_child(node) {
       return node.firstChild || undefined;
     },

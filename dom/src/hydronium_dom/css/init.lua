@@ -52,7 +52,16 @@ local function scope_hash(str)
   for i = 1, #str do
     hash = (hash * 33 + str:byte(i)) % 4294967296
   end
-  return string.format("%08x", hash)
+  -- Some WASM Lua builds use signed 32-bit lua_Integer. Reinterpret the
+  -- upper half of the unsigned 32-bit hash as a signed value before `%x`;
+  -- both spellings produce the same eight hex digits. LuaJIT has no
+  -- math.maxinteger, so its established numeric conversion remains intact.
+  if math.maxinteger and hash > math.maxinteger then hash = hash - 4294967296 end
+  -- PUC Lua 5.4's `%x` needs an integer, while LuaJIT 5.1 represents all
+  -- numbers as doubles. Convert explicitly when the runtime supports it;
+  -- otherwise floor preserves the integer-valued LuaJIT number.
+  local integer = math.tointeger and math.tointeger(hash) or math.floor(hash)
+  return string.format("%08x", integer)
 end
 
 --- @param css_path string Project-relative path to the .css file, e.g. "src/views/Header.css".

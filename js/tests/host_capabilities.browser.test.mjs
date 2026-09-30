@@ -42,14 +42,14 @@ assert(not pcall(hosts.require, "dom", 2))
 assert(not pcall(hosts.install, "dom", 1, {}))
 `;
 const pageHtml=`<!doctype html><div id="a"></div><div id="b"></div><script type="module">
-import {LuaFactory} from '/vendor/wasmoon/wasmoon.esm.js';
+import {defaultBrowserEngineProvider} from '/engine_provider.js';
 import {createDomBridge} from '/dom_bridge.js';
 import {installHostCapability} from '/host_capabilities.js';
 const sources=${JSON.stringify(sources)};
 const fixture=${JSON.stringify(fixture)};
 window.__engines=[];
 for(const id of ['a','b']) {
- const lua=await new LuaFactory('/vendor/wasmoon/glue.wasm').createEngine();
+ const lua=await defaultBrowserEngineProvider.create();
  for(const [name,source]of Object.entries(sources)) {
   lua.global.set('__preload_id',name);lua.global.set('__preload_src',source);
   await lua.doString('package.preload[__preload_id] = assert(load(__preload_src, "@" .. __preload_id))');
@@ -65,14 +65,14 @@ window.__replace=()=>window.__engines[0].doString('require("capability.fixture")
 window.__remove=()=>window.__engines[0].doString('require("capability.fixture").remove()');
 window.__ready=true;
 </script>`;
-test('real Wasmoon VMs resolve isolated DOM capabilities and replace/remove listeners without globals',async t=>{
+test('default Bridge API 2 Lua VMs resolve isolated DOM capabilities and replace/remove listeners',async t=>{
  const server=createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost').pathname;
   if(url==='/'){res.writeHead(200,{'content-type':'text/html'}).end(pageHtml);return;}
   try{
    if(url.includes('..'))throw new Error('invalid path');
    const body=await readFile(join(root,'js/packages/dom-client/src',url.slice(1)));
-   res.writeHead(200,{'content-type':extname(url)==='.js'?'text/javascript':extname(url)==='.wasm'?'application/wasm':'application/octet-stream'}).end(body);
+   res.writeHead(200,{'content-type':['.js','.mjs'].includes(extname(url))?'text/javascript':extname(url)==='.wasm'?'application/wasm':'application/octet-stream'}).end(body);
   }catch{res.writeHead(404).end();}
  });
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));

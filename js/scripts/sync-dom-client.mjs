@@ -18,8 +18,8 @@
 //     files to import, whether or not a bundler is in the picture -- see
 //     dom-client's package description).
 //
-//  2. packages/dom-client/src/ (the 9 runtime files + the vendor/wasmoon/
-//     directory, now fully populated) is copied verbatim into
+//  2. packages/dom-client/src/ (the client runtime, vendored Bridge API 2
+//     engine, and vendor/wasmoon/ fallback directory) is copied into
 //     dom/src/hydronium_dom/client/, which is what Meteorite's
 //     `meteorite.dir(...)` calls in examples/*/src/main.lua and
 //     create/src/create/templates/*.lua actually serve. Those call sites

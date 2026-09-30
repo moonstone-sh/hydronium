@@ -46,15 +46,22 @@ export function createFormGlobals(options = {}) {
   if (typeof request !== "function") throw new Error("hydronium.forms: request is unavailable");
   if (typeof FormDataImpl !== "function") throw new Error("hydronium.forms: FormData is unavailable");
 
-  // DOM Events are not safe Wasmoon values and `currentTarget` is only live
-  // during dispatch. The DOM bridge reads this registry before invoking Lua,
-  // so the Lua callback receives an immutable literal instead of a dead Event.
+  // Raw DOM Events do not cross the Lua boundary, and `currentTarget` is only
+  // live during dispatch. The DOM bridge reads this registry before invoking
+  // Lua, so the callback receives an immutable literal instead of a dead Event.
   const payloads = globalThis[EVENT_PAYLOADS] ??= new Map();
   payloads.set("submit", (event) => {
     const form = event?.currentTarget ?? event?.target;
     if (!form) throw new Error("hydronium.forms: submit event has no form target");
     return toLuaLiteral(valuesFromForm(form, FormDataImpl));
   });
+
+  const notifyLua = (callback, ...args) => {
+    const result = typeof callback === "function" ? callback(...args) : callback.call(args);
+    Promise.resolve(result)
+      .catch((error) => console.error("[hydronium] form callback failed:", error))
+      .finally(() => callback?.release?.());
+  };
 
   return {
     __hydronium_form_prevent_default(event) {
@@ -85,10 +92,10 @@ export function createFormGlobals(options = {}) {
           : { ok: false, status: decoded.status, errors: { _form: [decoded.body || "Request failed"] } };
         const location = response.headers?.get?.("location");
         if (location && outcome.redirect == null) outcome.redirect = location;
-        done(decoded.status, toLuaLiteral(outcome));
+        notifyLua(done, decoded.status, toLuaLiteral(outcome));
       }).catch((error) => {
-        if (error?.name === "AbortError") return;
-        done(0, toLuaLiteral({ ok: false, status: 0, errors: { _form: [String(error)] } }));
+        if (error?.name === "AbortError") { done?.release?.(); return; }
+        notifyLua(done, 0, toLuaLiteral({ ok: false, status: 0, errors: { _form: [String(error)] } }));
       });
       return pending.abort;
     },

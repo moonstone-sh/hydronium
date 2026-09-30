@@ -77,8 +77,8 @@
   for the identical reason.
 
   BROWSER/SPA: `configure()`/`configure_table()` are SERVER-SIDE entry
-  points (`configure()` calls `loadfile`; there is no filesystem inside
-  wasmoon). A client-side (SPA) app hands over an already-loaded table via
+  points (`configure()` calls `loadfile`; browser Lua engines have no
+  project filesystem). A client-side (SPA) app hands over an already-loaded table via
   `configure_table`, exactly as before.
 --]]
 
