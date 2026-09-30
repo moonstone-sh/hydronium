@@ -39,8 +39,8 @@ export async function createTaskEngine({moduleFactory,moduleOptions={},bindings=
   if(!module.HEAPU8) throw new Error("task engine is missing HEAPU8");
   const state=module._hydronium_lua_create(); if(!state) throw new Error("Lua task state creation failed");
   const hostBindings=new Map(Object.entries(bindings)),hostOperations=new Map(),activeRuns=new Set(),functionHandles=new Set(),hostReferences=new Map(),hostReferenceIds=new WeakMap();
-  let nextHostOperation=1,nextHostReference=1,nextHostFunction=1,activeContext,tail=Promise.resolve(),closed=false,engine;
-  const enqueue=(op)=>{const next=tail.then(op,op);tail=next.then(()=>undefined,()=>undefined);return next;};
+  let nextHostOperation=1,nextHostReference=1,nextHostFunction=1,activeContext,tail=Promise.resolve(),closed=false,engine,queued=0;
+  const enqueue=(op)=>{queued++;const next=tail.then(op,op);tail=next.then(()=>{queued--;},()=>{queued--;});return next;};
   const decode=(pointer,length)=>pointer?new TextDecoder().decode(module.HEAPU8.subarray(pointer,pointer+length)):"";
 
   class LuaFunctionHandle {
@@ -97,9 +97,9 @@ export async function createTaskEngine({moduleFactory,moduleOptions={},bindings=
   }
   const hostFunction=module.addFunction((thread,namePointer,nameLength,firstIndex,argumentCount)=>{
     const id=nextHostOperation++,name=module.UTF8ToString(namePointer,nameLength),binding=hostBindings.get(name),context=activeContext;
-    let args;try{args=Array.from({length:argumentCount},(_,offset)=>readStackValue(thread,firstIndex+offset));}catch(error){const promise=Promise.reject(error);promise.catch(()=>{});hostOperations.set(id,promise);return id;}
-    const promise=Promise.resolve().then(()=>{if(!binding)throw new Error(`unknown host operation: ${name}`);if(!context)throw new Error("host operation started outside a scheduled Lua resume");if(context.signal.aborted)throw cancelled(context.signal);return binding(args,{signal:context.signal,owner:context.owner,generation:context.generation});});
-    promise.catch(()=>{});hostOperations.set(id,promise);return id;
+    let args;try{args=Array.from({length:argumentCount},(_,offset)=>readStackValue(thread,firstIndex+offset));}catch(error){hostOperations.set(id,{run:()=>{throw error;}});return id;}
+    // Recorded, not started: the scheduler runs it after this Lua slice returns (never inside the Lua stack).
+    hostOperations.set(id,{run:()=>{if(!binding)throw new Error(`unknown host operation: ${name}`);if(!context)throw new Error("host operation started outside a scheduled Lua resume");if(context.signal.aborted)throw cancelled(context.signal);return binding(args,{signal:context.signal,owner:context.owner,generation:context.generation});}});return id;
   },"iiiiii");
   const hostRefRetainFunction=module.addFunction((id)=>retainHostReference(id),"vi");
   const hostRefReleaseFunction=module.addFunction((id)=>releaseHostReference(id),"vi");
@@ -107,16 +107,28 @@ export async function createTaskEngine({moduleFactory,moduleOptions={},bindings=
   module._hydronium_task_set_host_start(hostFunction);
   module._hydronium_task_set_host_ref_callbacks(hostRefRetainFunction,hostRefReleaseFunction);
   module._hydronium_task_set_host_function_release(hostFunctionReleaseFunction);
-  async function waitForHost(id,signal){const operation=hostOperations.get(id);if(!operation)throw new Error(`Lua yielded unknown host operation ${id}`);let rejectCancellation;const cancellation=new Promise((_,reject)=>{rejectCancellation=reject;});const onAbort=()=>rejectCancellation(cancelled(signal));if(signal.aborted)onAbort();else signal.addEventListener("abort",onAbort,{once:true});try{return await Promise.race([operation,cancellation]);}finally{signal.removeEventListener("abort",onAbort);hostOperations.delete(id);}}
+  function raceCancellation(promise,signal){let rejectCancellation;const cancellation=new Promise((_,reject)=>{rejectCancellation=reject;});const onAbort=()=>rejectCancellation(cancelled(signal));if(signal.aborted)onAbort();else signal.addEventListener("abort",onAbort,{once:true});return Promise.race([promise,cancellation]).finally(()=>signal.removeEventListener("abort",onAbort));}
+  function takeHostOperation(id){const operation=hostOperations.get(id);if(!operation)throw new Error(`Lua yielded unknown host operation ${id}`);hostOperations.delete(id);return operation;}
+  async function waitForHost(id,signal){const operation=takeHostOperation(id);const promise=Promise.resolve().then(operation.run);promise.catch(()=>{});return raceCancellation(promise,signal);}
 
   async function driveTask(create,initialArgs,{signal:externalSignal,deadlineMs,owner,generation}={}){
     if(closed)throw new Error("Lua task engine is closed");
     const controller=new AbortController(),forward=()=>controller.abort(externalSignal.reason);if(externalSignal?.aborted)forward();else externalSignal?.addEventListener("abort",forward,{once:true});
     let timer;if(deadlineMs!=null){if(!Number.isFinite(deadlineMs)||deadlineMs<0)throw new TypeError("deadlineMs must be non-negative");timer=setTimeout(()=>controller.abort(`Lua task deadline exceeded after ${deadlineMs} ms`),deadlineMs);}
-    const context={controller,signal:controller.signal,owner,generation};activeRuns.add(context);let task;
-    try{task=await enqueue(create);if(!task)throw new Error("Lua task creation failed");let resume,first=true;
-      while(true){if(controller.signal.aborted)throw cancelled(controller.signal);const outcome=await enqueue(()=>{activeContext=context;try{let count=0;if(first){for(const value of initialArgs)pushValue(task,value);count=initialArgs.length;first=false;}else if(resume){module._hydronium_task_prepare_resume(task);module._hydronium_task_push_boolean(task,resume.ok?1:0);pushValue(task,resume.value);count=2;}const status=module._hydronium_task_resume(task,count);if(status===DONE)return{status,value:readValue(task)};if(status===YIELDED)return{status,id:module._hydronium_task_yield_id(task)};return{status,error:readValue(task)};}finally{activeContext=undefined;}});
-        if(outcome.status===DONE)return outcome.value;if(outcome.status!==YIELDED)throw new Error(String(outcome.error??"Lua task failed"));try{resume={ok:true,value:await waitForHost(outcome.id,controller.signal)};}catch(error){if(controller.signal.aborted)throw cancelled(controller.signal);resume={ok:false,value:error?.message??String(error)};}}
+    const context={controller,signal:controller.signal,owner,generation};activeRuns.add(context);let task,resume,first=true;
+    const slice=()=>{activeContext=context;try{let count=0;if(first){for(const value of initialArgs)pushValue(task,value);count=initialArgs.length;first=false;}else if(resume){module._hydronium_task_prepare_resume(task);module._hydronium_task_push_boolean(task,resume.ok?1:0);pushValue(task,resume.value);count=2;}const status=module._hydronium_task_resume(task,count);if(status===DONE)return{status,value:readValue(task)};if(status===YIELDED)return{status,id:module._hydronium_task_yield_id(task)};return{status,error:readValue(task)};}finally{activeContext=undefined;}};
+    // Synchronous entry: with no Lua slice queued or running, the first slice -- and every host call that
+    // returns a plain value -- runs in the caller's own stack (e.g. inside a DOM listener), so a Lua
+    // preventDefault() lands before even a synthetic dispatchEvent() returns. The first host call that
+    // returns a promise (or a busy engine) switches the task to the queued, asynchronous path.
+    let synchronous=queued===0&&activeContext===undefined;
+    try{task=synchronous?create():await enqueue(create);if(!task)throw new Error("Lua task creation failed");
+      while(true){if(controller.signal.aborted)throw cancelled(controller.signal);const outcome=synchronous?slice():await enqueue(slice);
+        if(outcome.status===DONE)return outcome.value;if(outcome.status!==YIELDED)throw new Error(String(outcome.error??"Lua task failed"));
+        if(synchronous){let value;try{value=takeHostOperation(outcome.id).run();}catch(error){resume={ok:false,value:error?.message??String(error)};continue;}
+          if(!(value&&typeof value.then==="function")){resume={ok:true,value};continue;}
+          synchronous=false;try{resume={ok:true,value:await raceCancellation(value,controller.signal)};}catch(error){if(controller.signal.aborted)throw cancelled(controller.signal);resume={ok:false,value:error?.message??String(error)};}continue;}
+        try{resume={ok:true,value:await waitForHost(outcome.id,controller.signal)};}catch(error){if(controller.signal.aborted)throw cancelled(controller.signal);resume={ok:false,value:error?.message??String(error)};}}
     }finally{if(task)await enqueue(()=>module._hydronium_task_release(task));if(timer)clearTimeout(timer);externalSignal?.removeEventListener("abort",forward);activeRuns.delete(context);}
   }
   function withCString(value,callback){
