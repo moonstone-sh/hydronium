@@ -321,7 +321,7 @@ end
 
 --- Declare Hydronium's framework routes on a Meteorite app.
 ---
----   GET /js/bootstrap/vendor/:path*         vendored wasmoon (1-day cache)
+---   GET /js/bootstrap/vendor/:path*         vendored Lua WASM engine (1-day cache)
 ---   GET /js/bootstrap/:path*                mount.js, hmr.js, dom_bridge.js, ...
 ---   GET /js/router/{history,http}.js        when hydronium_router is installed
 ---   GET /hydronium-src/:path*               framework Lua for the browser VM
@@ -369,13 +369,13 @@ function meteorite_adapter.mount(app, opts)
   end
 
   -- Declared vendor-first: Meteorite matches in declaration order, and both
-  -- patterns match /js/bootstrap/vendor/... . glue.wasm (~270KB) is read into
+  -- patterns match /js/bootstrap/vendor/... . engine.wasm is read into
   -- the request arena, so both need 1mb rather than the 256kb default. The
   -- vendored build is version-pinned (bounded cache, content ETag); the
   -- runtime JS changes during development (revalidate every time).
   get("/js/bootstrap/vendor/:path*", {
     id = "hydronium_client_vendor",
-    summary = "Hydronium: vendored wasmoon runtime",
+    summary = "Hydronium: vendored Lua WASM runtime",
     memory = { request_arena = "1mb" },
   }, m.dir(client_dir .. "/vendor", { param = "path", cache = "public, max-age=86400, must-revalidate" }))
   get("/js/bootstrap/:path*", {

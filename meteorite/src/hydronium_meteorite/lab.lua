@@ -358,6 +358,16 @@ local function dom_client_file(name)
   return name:match("^[%w_%-]+%.js$") ~= nil
     or name:match("^vendor/wasmoon/[%w_%-%.]+%.js$") ~= nil
     or name == "vendor/wasmoon/glue.wasm"
+    or name == "vendor/lua-wasm/5.4.9/engine.js"
+    or name == "vendor/lua-wasm/5.4.9/engine.wasm"
+    or name == "vendor/lua-wasm/5.4.9/task-runtime.mjs"
+    or name == "vendor/lua-wasm/5.4.9/engine.json"
+    or name == "vendor/lua-wasm/5.4.9/LICENSE-Lua.html"
+    or name == "vendor/lua-wasm/5.4.9/engine.js"
+    or name == "vendor/lua-wasm/5.4.9/engine.wasm"
+    or name == "vendor/lua-wasm/5.4.9/task-runtime.mjs"
+    or name == "vendor/lua-wasm/5.4.9/engine.json"
+    or name == "vendor/lua-wasm/5.4.9/LICENSE-Lua.html"
 end
 M.dom_client_file = dom_client_file
 function M.dom_asset(c)

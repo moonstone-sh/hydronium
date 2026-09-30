@@ -4,7 +4,7 @@
 
   Before this module, every real proof of the DOM host
   (examples/meteorite_ssr/hmr_demo/dom_host_proof.html and its
-  predecessors) hand-assembled, inline, per page: the wasmoon boot, the
+  predecessors) hand-assembled, inline, per page: the Lua WASM boot, the
   `__dom_*` bridge (now `./dom_bridge.js`), and a module-loading step
   driven by a hand-pasted JSON blob of every required module's full
   source text typed directly into the page. That was a real, correct
@@ -77,6 +77,9 @@ import { createDomBridge } from "./dom_bridge.js";
 import { installHostCapability } from "./host_capabilities.js";
 import {
   defaultBrowserEngineProvider,
+  DEFAULT_LUA_ENGINE_URL,
+  DEFAULT_LUA_TASK_RUNTIME_URL,
+  DEFAULT_LUA_WASM_URL,
   DEFAULT_WASMOON_URL,
   DEFAULT_WASMOON_WASM_URL,
 } from "./engine_provider.js";
@@ -97,13 +100,10 @@ import { whenPriority, PRIORITIES } from "./priority.js";
   when a boot feels slow -- "was it the network, the wasm, or the Lua?" --
   because those three have completely different fixes:
 
-    engine:import   dynamic import() of the wasmoon ESM wrapper, which is
-                    what pulls in its ~152KB index.js.
-    engine:create   new LuaFactory(...).createEngine(), which fetches
-                    glue.wasm and runs WebAssembly.instantiateStreaming on
-                    it. Network AND compile, together -- separating those
-                    two needs a wrapper around WebAssembly itself, which is
-                    a profiling harness's job, not this module's.
+    engine:import   dynamic import() of the vendored Lua module and task
+                    scheduler.
+    engine:create   task engine creation, including fetching and compiling
+                    the self-hosted WebAssembly binary.
     sources         every Lua source fetch: the manifest, all framework
                     modules it lists, and the app's own module.
     preload         load() over all of that source -- the pure PARSE cost,
@@ -147,41 +147,20 @@ function measure(name, startMark, endMark) {
 }
 
 /*
-  Wasmoon is SELF-HOSTED, served from ./vendor/wasmoon/ next to this file,
-  rather than fetched from a public CDN. Both URLs are resolved against
-  `import.meta.url` -- this module's own real location -- and NOT against
-  the page, so they keep working no matter what base path an app mounts
-  the client bootstrap directory at (examples/quickstart serves it at
-  /js/bootstrap/, examples/meteorite_ssr at /client/; neither has to say
-  anything about wasmoon).
-
-  Why this was worth doing, measured rather than assumed: the previous
-  default pulled the ESM wrapper from cdn.jsdelivr.net (~118ms) and then
-  -- because a browser-side `new LuaFactory()` with no explicit URI
-  hardcodes `https://unpkg.com/wasmoon@<version>/dist/glue.wasm` inside
-  wasmoon itself -- the 265KB binary from unpkg.com (~154ms). Two
-  blocking round trips to two DIFFERENT third-party origins (two DNS
-  lookups, two TLS handshakes) before this module had even started
-  fetching the framework's own Lua sources.
-
-  DEFAULT_WASMOON_WASM_URL is passed to `new LuaFactory(...)` explicitly.
-  That is the documented, supported override ("You can pass the wasm
-  location as the first argument, useful if you are using wasmoon on a
-  web environment and want to host the file by yourself" -- wasmoon's
-  README) and the ONLY way to redirect that second fetch: wasmoon always
-  installs its own emscripten `locateFile` hook, so the binary's location
-  comes from this argument or from wasmoon's hardcoded unpkg fallback,
-  never from where index.js happens to sit on disk.
+  The default Lua module, scheduler, and WebAssembly binary are self-hosted
+  under ./vendor/lua-wasm/5.4.9/ and resolved from this module's URL. This
+  keeps the default boot path on the same origin as the Hydronium client.
 */
 /**
  * Boots the selected Lua VM. Kept as its own function so mount() can start it as a
  * promise and let it run CONCURRENTLY with the HTTP fetches of the Lua
  * sources -- see mount()'s own comment at the Promise.all.
  */
-async function createLuaEngine(engineProvider, { wasmoonUrl, wasmoonWasmUrl }) {
-  // The legacy provider marks import and WebAssembly creation separately;
-  // another provider may emit the same optional phases for comparable traces.
+async function createLuaEngine(engineProvider, { luaEngineUrl, luaTaskRuntimeUrl, luaWasmUrl, wasmoonUrl, wasmoonWasmUrl }) {
   return engineProvider.create({
+    luaEngineUrl,
+    luaTaskRuntimeUrl,
+    luaWasmUrl,
     wasmoonUrl,
     wasmoonWasmUrl,
     onPhase: (phase) => mark(`engine:${phase}`),
@@ -260,14 +239,8 @@ async function fetchUnbundledSources({ hydroniumBaseUrl, manifestUrl, appModuleU
 
 /**
  * Serializes a plain JSON-like JS value into real Lua table-constructor
- * SOURCE TEXT (evaluated Lua-side through the compatibility compiler), rather than passing it
- * to wasmoon's own JS<->Lua value marshalling directly. Found the hard
- * way, verified live: `lua.global.set("props", { initial: 10 })` does
- * NOT reliably deep-marshal into a plain Lua table wasmoon.doString code
- * can index with `props.initial` -- the real, working pattern this
- * whole codebase already uses everywhere else for passing structured
- * data across the JS/Lua boundary is a source string evaluated with
- * source compilation, not the automatic object marshaller.
+ * source text. This keeps structured values portable across engine
+ * providers and avoids relying on provider-specific object marshalling.
  */
 function toLuaLiteral(value) {
   if (value === null || value === undefined) return "nil";
@@ -308,7 +281,7 @@ function toLuaLiteral(value) {
  *   `hydronium_dom.assets.configure_table` before the app module is
  *   required -- so `assets.url("logo.svg")` returns the real content-hashed
  *   URL client-side. Needed because `assets.configure()` reads a FILE and
- *   wasmoon has no filesystem. Omit it and `assets.url()` keeps its
+ *   browser Lua engines have no project filesystem. Omit it and `assets.url()` keeps its
  *   documented dev fallback (the raw, unhashed path), which in a static SPA
  *   means a 404 with no SSR fallback behind it. Requires that something in
  *   the bundle actually requires `hydronium_dom.assets`; if nothing does,
@@ -331,9 +304,12 @@ function toLuaLiteral(value) {
  *   the Lua VM before the app module is required. This is the composition
  *   seam for host extensions such as hydronium-router's `__router_*`
  *   history bridge; mount does not need to know each extension by name.
- * @param {{ id?: string, create: (options?: { wasmoonUrl?: string, wasmoonWasmUrl?: string, onPhase?: (phase: string) => void }) => Promise<any> }} [options.engineProvider]
- *   Browser Lua engine provider. Defaults to the vendored Wasmoon PUC Lua
- *   5.4 provider; callers may supply a compatible future vendor explicitly.
+ * @param {{ id?: string, create: (options?: { luaEngineUrl?: string, luaTaskRuntimeUrl?: string, luaWasmUrl?: string, wasmoonUrl?: string, wasmoonWasmUrl?: string, onPhase?: (phase: string) => void }) => Promise<any> }} [options.engineProvider]
+ *   Browser Lua engine provider. Defaults to Hydronium's vendored Bridge API 2
+ *   PUC Lua 5.4.9 provider; Wasmoon remains available as an explicit fallback.
+ * @param {string} [options.luaEngineUrl] Override the Bridge API 2 Lua module URL.
+ * @param {string} [options.luaTaskRuntimeUrl] Override the Bridge API 2 task runtime URL.
+ * @param {string} [options.luaWasmUrl] Override the Bridge API 2 WebAssembly binary URL.
  * @param {string} [options.wasmoonUrl] Legacy Wasmoon-provider import URL override.
  *   Defaults to the copy vendored next to this file
  *   (`./vendor/wasmoon/wasmoon.esm.js`, resolved against `import.meta.url`).
@@ -651,6 +627,9 @@ export async function boot(options) {
     luaGlobals = {},
     placeholder,
     engineProvider = defaultBrowserEngineProvider,
+    luaEngineUrl = DEFAULT_LUA_ENGINE_URL,
+    luaTaskRuntimeUrl = DEFAULT_LUA_TASK_RUNTIME_URL,
+    luaWasmUrl = DEFAULT_LUA_WASM_URL,
     wasmoonUrl = DEFAULT_WASMOON_URL,
     wasmoonWasmUrl = DEFAULT_WASMOON_WASM_URL,
   } = options;
@@ -692,8 +671,8 @@ export async function boot(options) {
     // Booting the Lua VM and fetching the Lua SOURCES are independent, and
     // are started together here rather than one after the other.
     //
-    // They used to be strictly sequential -- import(wasmoon) ->
-    // createEngine() -> and only THEN the first fetch() -- which cost a
+    // They used to be strictly sequential -- import the engine ->
+    // instantiate it -> and only THEN the first fetch() -- which cost a
     // real, measured ~270ms of dead time on every page load: nothing about
     // issuing an HTTP request for a .lua file needs a Lua VM to exist, yet
     // every one of them waited behind the wasm download and instantiation.
@@ -708,7 +687,7 @@ export async function boot(options) {
     // rejection -- the first error is thrown and the other stays observed.
     mark("sources:start");
     const [lua, sources, assetManifestSrc] = await Promise.all([
-      createLuaEngine(engineProvider, { wasmoonUrl, wasmoonWasmUrl }),
+      createLuaEngine(engineProvider, { luaEngineUrl, luaTaskRuntimeUrl, luaWasmUrl, wasmoonUrl, wasmoonWasmUrl }),
       (bundled
         ? fetchChunkSources(chunkUrls)
         : fetchUnbundledSources({ hydroniumBaseUrl, manifestUrl, appModuleUrl, moduleUrls })

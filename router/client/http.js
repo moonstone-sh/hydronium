@@ -11,6 +11,12 @@ export function createHttpGlobals(options = {}) {
     };
   });
   if (typeof request !== "function") throw new Error("hydronium-router: request is unavailable");
+  const notifyLua = (callback, value) => {
+    const result = typeof callback === "function" ? callback(value) : callback.call([value]);
+    Promise.resolve(result)
+      .catch((error) => console.error("[hydronium-router] HTTP callback failed:", error))
+      .finally(() => callback?.release?.());
+  };
 
   return {
     __router_http_get(path, done) {
@@ -28,12 +34,12 @@ export function createHttpGlobals(options = {}) {
           ? await response.json()
           : await response.text();
         if (!pending.signal.aborted) {
-          done(JSON.stringify({ status: response.status, headers: { "content-type": contentType }, body }));
-        }
+          notifyLua(done, JSON.stringify({ status: response.status, headers: { "content-type": contentType }, body }));
+        } else done?.release?.();
       }).catch((error) => {
         if (!pending.signal.aborted) {
-          done(JSON.stringify({ status: 0, error: String(error) }));
-        }
+          notifyLua(done, JSON.stringify({ status: 0, error: String(error) }));
+        } else done?.release?.();
       });
       return pending.abort;
     },

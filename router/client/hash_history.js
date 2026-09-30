@@ -59,9 +59,12 @@ export function createHashHistoryBridge(win = window) {
       win.history.go(delta);
     },
     on_change(fn) {
-      const handler = () => fn();
+      const handler = () => {
+        const result = typeof fn === "function" ? fn() : fn.call([]);
+        result?.catch?.((error) => console.error("[hydronium-router] hashchange callback failed:", error));
+      };
       win.addEventListener("hashchange", handler);
-      return () => win.removeEventListener("hashchange", handler);
+      return () => { win.removeEventListener("hashchange", handler); fn?.release?.(); };
     },
   };
 }
