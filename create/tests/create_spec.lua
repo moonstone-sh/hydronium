@@ -508,6 +508,7 @@ test("luals.configure uses alter to update .luarc.json with Hydronium LuaX plugi
   assert(content:find("libexec/luax/types", 1, true), "missing packaged LUAX types in .luarc.json")
   assert(content:find("libexec/dom/types", 1, true), "missing packaged DOM types in .luarc.json")
   assert(content:find("%*%.luax"), "missing *.luax association in .luarc.json")
+  assert(content:find("%*%.mdx"), "missing *.mdx association in .luarc.json")
 
   -- Idempotency check: running again should succeed without redundant duplicates
   local res2, err2 = luals.configure(tmp_dir, {

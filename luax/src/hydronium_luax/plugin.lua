@@ -130,7 +130,11 @@ M.compute_diff = compute_diff
 
 -- LuaLS Hook: OnSetText
 function M.OnSetText(uri, text)
-  if not uri or not uri:match("%.luax$") then
+  if not uri then return nil end
+  if uri:match("%.mdx?$") then
+    return require("hydronium_luax.luals.mdx").project(text, uri)
+  end
+  if not uri:match("%.luax$") then
     return nil
   end
 
@@ -147,8 +151,16 @@ end
 -- LuaLS Hook: ResolveRequire
 function M.ResolveRequire(uri, name)
   if not name or type(name) ~= "string" then return nil end
+  -- Every dialect `require` can load (.luax, .md, .mdx), in loader order.
+  for _, extension in ipairs(require("hydronium_luax.dialects").EXTENSIONS) do
+    local found = M.resolve_with_extension(uri, name, extension)
+    if found then return found end
+  end
+  return nil
+end
 
-  local rel_path = name:gsub("%.", "/") .. ".luax"
+function M.resolve_with_extension(uri, name, extension)
+  local rel_path = name:gsub("%.", "/") .. extension
 
   -- Check relative to uri
   if uri then

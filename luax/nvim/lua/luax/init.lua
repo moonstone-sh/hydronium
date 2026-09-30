@@ -855,11 +855,29 @@ function M.setup(opts)
     end
   end
 
+  -- Markdown component modules. Neovim has no built-in `.mdx` filetype; add
+  -- one only if nothing (an MDX plugin, the user) already claims it, so
+  -- lua_ls can attach to `mdx` buffers (see hydronium_luax.luals.mdx).
+  if not vim.filetype.match({ filename = "document.mdx" }) then
+    vim.filetype.add({ extension = { mdx = "mdx" } })
+  end
+
   -- Register tree-sitter filetype mapping if treesitter is active
   if opts.treesitter and vim.treesitter then
     if vim.treesitter.language and vim.treesitter.language.register then
       pcall(vim.treesitter.language.register, "luax", "luax")
+      -- MDX is Markdown with Lua in it: the markdown parser already injects
+      -- Lua into ```lua fences. Only when no dedicated mdx parser exists.
+      local has_mdx_parser = pcall(vim.treesitter.language.add, "mdx")
+      if not has_mdx_parser then
+        pcall(vim.treesitter.language.register, "markdown", "mdx")
+      end
     end
+    vim.api.nvim_create_autocmd("FileType", {
+      pattern = "mdx",
+      group = vim.api.nvim_create_augroup("LuaxMdx", { clear = true }),
+      callback = function(args) pcall(vim.treesitter.start, args.buf) end,
+    })
   end
 
   if opts.autotag then

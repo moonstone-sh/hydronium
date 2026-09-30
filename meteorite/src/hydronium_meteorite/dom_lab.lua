@@ -13,10 +13,9 @@ local function requires(source)
 end
 local function compile(path, id)
   local source = read(path)
-  if path:match("%.luax$") then
-    source = require("hydronium_luax").compile(source, { filename = path, development = true }).code
-  elseif path:match("%.mdx?$") then
-    source = require("hydronium_luax").compile_markdown(source, { filename = path, development = true }).code
+  local dialects = require("hydronium_luax.dialects")
+  if dialects.compiles(path) then
+    source = dialects.compile(source, { filename = path, development = true }).code
   end
   local chunk, err = (loadstring or load)(source, "@" .. id)
   if not chunk then error(err, 0) end

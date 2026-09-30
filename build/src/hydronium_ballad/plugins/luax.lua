@@ -15,6 +15,7 @@
 
 local graph = require("ballad.graph")
 local luax = require("hydronium_luax")
+local dialects = require("hydronium_luax.dialects")
 
 local M = {}
 
@@ -66,7 +67,7 @@ function M.compile(ctx, inputs, opts)
   for _, input_set in ipairs(inputs or {}) do
     for _, asset in ipairs(input_set.assets) do
       local extension = asset.virtual_path and asset.virtual_path:match("%.([%a]+)$")
-      if extension == "luax" or extension == "md" or extension == "mdx" then
+      if dialects.compiles(extension) then
         if not asset.source_path then
           ctx.fail("hydronium_ballad.plugins.luax.compile: asset '" .. tostring(asset.virtual_path)
             .. "' has no source_path (only real files can be compiled, not already-generated assets)")
@@ -83,8 +84,7 @@ function M.compile(ctx, inputs, opts)
             runtime = opts.runtime or "hydronium",
             development = opts.development == true,
           }
-          local compiler = extension == "luax" and luax.compile or luax.compile_markdown
-          local ok, result = pcall(compiler, source, compile_opts)
+          local ok, result = pcall(dialects.compile, source, compile_opts)
           if not ok then
             ctx.fail("hydronium_ballad.plugins.luax.compile: failed to compile " .. asset.source_path
               .. ": " .. tostring(result))
@@ -134,7 +134,8 @@ function M.compile(ctx, inputs, opts)
                 target = (stamped and stamped.target) or target,
                 update = stamped and stamped.update or nil,
                 effects = stamped and stamped.effects or nil,
-                sourcemap = extension == "luax" and result.map_json or nil,
+                -- Markdown maps point at the .md lines (see hydronium_luax.markdown).
+                sourcemap = result.map_json,
                 style_ids = {},
                 asset_ids = {},
                 diagnostics = { bare_tags_without_alias = bare },
@@ -158,7 +159,9 @@ end
 return {
   name = "hydronium_ballad.plugins.luax",
   -- 0.1.1: emitted modules keep the topology's stamped target/update/effects.
-  version = "0.1.1",
+  -- 0.1.2: Markdown compiles through hydronium_luax.dialects (AST parser,
+  --        line-aligned source maps).
+  version = "0.1.2",
   methods = {
     -- cacheable=true is real and works (ballad hashes each input asset's
     -- real file content), but is a genuine footgun: the cache key

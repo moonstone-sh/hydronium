@@ -20,6 +20,7 @@ local sourcemap = require("hydronium_luax.compiler.sourcemap")
 local luals = require("hydronium_luax.luals")
 local loader = require("hydronium_luax.loader")
 local markdown = require("hydronium_luax.markdown")
+local dialects = require("hydronium_luax.dialects")
 
 local Luax = {
   _VERSION = "0.1.0",
@@ -58,6 +59,10 @@ local Luax = {
   load_luax = loader.load,
   markdown = markdown,
   compile_markdown = markdown.compile,
+  -- Which files LUAX compiles (.luax, .md, .mdx) and one entry point that
+  -- picks the compiler from `options.filename`.
+  dialects = dialects,
+  compile_file = dialects.compile,
 }
 
 return Luax

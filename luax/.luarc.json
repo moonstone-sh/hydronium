@@ -10,7 +10,8 @@
     "useGitIgnore": false
   },
   "files.associations": {
-    "*.luax": "lua"
+    "*.luax": "lua",
+    "*.mdx": "lua"
   },
   "plugin": {
     "enable": true,

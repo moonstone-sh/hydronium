@@ -33,7 +33,14 @@ local compute_diff = plugin_mod.compute_diff
 --- @param text string The raw document text
 --- @return table? diff Table containing { text = virtual_code } or nil
 function plugin.OnSetText(uri, text)
-  if not uri or not uri:match("%.luax$") then
+  if not uri then return nil end
+  -- Markdown component modules: prose blanked, setup/`{expr}`/components kept
+  -- as positioned Lua (hydronium_luax.luals.mdx). `.md` only reaches here if
+  -- the workspace associates it with Lua; it then types as a component.
+  if uri:match("%.mdx?$") then
+    return require("hydronium_luax.luals.mdx").project(text, uri)
+  end
+  if not uri:match("%.luax$") then
     return nil
   end
 

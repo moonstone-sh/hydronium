@@ -108,7 +108,7 @@ end
 --- Existing explicit stories/registries remain accepted unchanged.
 function M.bind(record, value)
   local lab = require("hydronium_lab")
-  if record.transform == "md" or record.transform == "mdx" then
+  if require("hydronium_luax.dialects").of(record.transform) == "markdown" then
     if type(value) ~= "function" then error("hydronium_lab.discovery: " .. record.path .. " must export a component", 2) end
     return lab.story({ id = record.id_prefix .. "--default", title = record.stem, renderer = "dom",
       render = function(props) return require("hydronium").h(value, props) end,
