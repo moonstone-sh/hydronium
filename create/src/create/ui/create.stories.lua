@@ -3,6 +3,7 @@ local H = require("hydronium")
 local hooks = require("hydronium_ink.hooks")
 local ink = require("hydronium_ink")
 local wizard = require("create.ui.wizard_app")
+local typewriter = require("create.ui.typewriter_app")
 local fizzing = require("create.ui.fizzing")
 local bubbles = require("create.ui.bubbles")
 
@@ -30,6 +31,16 @@ local function render_wizard(args, preview)
     }
   end
   return H.h(wizard.create_wizard_app(opts))
+end
+-- The typewriter prototype (create.ui.typewriter_app) -- see that file's
+-- own header comment. Same deterministic pm_mod fixture as render_wizard,
+-- same dry_run/no-network guarantee.
+local function render_typewriter(args)
+  local opts = {dry_run = true, initial_package_manager_id = "bun"}
+  for k, v in pairs(args or {}) do opts[k] = v end
+  opts.dry_run = true
+  opts.pm_mod = {detect = function() return opts.no_managers and {} or {"bun", "npm", "pnpm"} end}
+  return H.h(typewriter.create_typewriter_app(opts))
 end
 -- The wizard's header band on its own: the reaction centered on the title
 -- row exactly as wizard_app lays it out, bubbles fizzing from the moment
@@ -98,6 +109,20 @@ local stories = {
   ["fizzing-peptide"] = fizz_story("Fizzing · widest (peptide carboxyl group)", {reaction = 8, at = "settled"}),
   ["fizzing-ascii"] = fizz_story("Fizzing · ASCII", {ascii = true}),
   ["fizzing-reduced-motion"] = fizz_story("Fizzing · reduced motion", {reduced_motion = true}),
+  -- Typewriter prototype (create.ui.typewriter_app, opt-in behind
+  -- `hydronium-create --wizard --typewriter`, see main.lua and that
+  -- file's own header comment) -- one question at a time, committed
+  -- answers frozen into real scrollback via the new `ink.Static`
+  -- primitive. `render` is set per-story (render_typewriter), not the
+  -- collection default, so the existing wizard stories above are
+  -- completely unaffected.
+  ["typewriter-flow"] = {title = "Typewriter · one question at a time", args = {name = "", reduced_motion = true},
+    description = "Enter commits and freezes a line; Shift-Tab re-asks the previous one as a new 'changed' line; ? opens hints (u checks for updates).",
+    render = render_typewriter},
+  ["typewriter-narrow"] = {title = "Typewriter · narrow terminal", args = {name = "acid-app", reduced_motion = true},
+    sizes = {{name = "narrow", columns = 40, rows = 20}}, render = render_typewriter},
+  ["typewriter-no-color"] = {title = "Typewriter · NO_COLOR", args = {name = "acid-app", reduced_motion = true},
+    colorProfile = "none", render = render_typewriter},
 }
 return lab.collection({title = "Create/Wizard", renderer = "ink", sizes = sizes,
   render = function(args) return render_wizard(args) end, stories = stories})

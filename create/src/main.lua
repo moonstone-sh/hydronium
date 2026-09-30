@@ -92,6 +92,15 @@ app = c.create({
     c.option({ key = "router", aliases = { "--router" }, value = { schema = v.string() }, complete = c.values({ "hydronium", "meteorite" }) }),
     c.flag({ key = "yes", aliases = { "-y", "--yes" } }),
     c.flag({ key = "wizard", aliases = { "--wizard" } }),
+    -- Hidden, opt-in prototype: the SAME interactive wizard backend
+    -- through a one-question-at-a-time "typewriter" front-end instead of
+    -- wizard_app.lua's full-pane stepped one (create.ui.typewriter_app --
+    -- see that file's own header comment). Only ever consulted alongside
+    -- `--wizard`/the ambient auto-wizard trigger below; on its own it
+    -- does nothing, since it is not itself a way to request the wizard.
+    -- Excluded from --help/completion (`hidden = true`) -- this is for
+    -- judging the feel of the new flow, not a supported CLI surface yet.
+    c.flag({ key = "typewriter", aliases = { "--typewriter" }, hidden = true }),
     -- Mirrors the interactive wizard's own "install dependencies now"/
     -- "git init" toggles (create.ui.wizard_app) as flags for the
     -- non-interactive path -- see the post-scaffold block in `run` below,
@@ -154,15 +163,9 @@ app = c.create({
           -- (see hydronium/cli's own src/main.lua's `M.dev` for the same
           -- `require("hydronium_ink.render")` pattern this now matches).
           local ink_render = require("hydronium_ink.render")
-          local wizard_app = require("create.ui.wizard_app")
 
           local captured_result, captured_err
-          -- Queried once, before the session starts reading input (see
-          -- hydronium_ink.terminal_background): the wizard tints its focus
-          -- bar toward the real background, light or dark.
-          local bg_ok, terminal_background = pcall(require("hydronium_ink").terminal_background)
-          local element = hydronium.h(wizard_app.create_wizard_app({
-            terminal_background = bg_ok and terminal_background or nil,
+          local common_opts = {
             directory = ctx.args.directory,
             force = ctx.args.force,
             dry_run = ctx.args.dry_run,
@@ -173,7 +176,44 @@ app = c.create({
             check_updates = true,
             auto_exit = true,
             onDone = function(res, err) captured_result, captured_err = res, err end,
-          }))
+          }
+          local element
+          if ctx.args.typewriter then
+            -- Hidden prototype (create.ui.typewriter_app) -- see that
+            -- file's own header comment and this flag's own declaration
+            -- above. No `terminal_background` tinting: that only feeds
+            -- wizard_app.lua's full-width focus bar, which this one-line-
+            -- at-a-time flow has no equivalent of.
+            local typewriter_app = require("create.ui.typewriter_app")
+            element = hydronium.h(typewriter_app.create_typewriter_app(common_opts))
+          else
+            -- THE Ink component (create.ui.wizard_app) -- the exact same
+            -- one `install-flow` exercises in Ink Lab (see
+            -- create/src/create/ui/create.stories.lua and that module's own
+            -- header comment: one component, two hosts, never two
+            -- implementations). `hydronium_ink.render` blocks until the
+            -- component calls `useApp().exit()` (the wizard's own "result"
+            -- step, on any key) or Ctrl-C -- both leave `captured_result`
+            -- nil if the wizard never reached (or aborted before) that step.
+            local wizard_app = require("create.ui.wizard_app")
+            -- Queried once, before the session starts reading input (see
+            -- hydronium_ink.terminal_background): the wizard tints its focus
+            -- bar toward the real background, light or dark.
+            local bg_ok, terminal_background = pcall(require("hydronium_ink").terminal_background)
+            common_opts.terminal_background = bg_ok and terminal_background or nil
+            element = hydronium.h(wizard_app.create_wizard_app(common_opts))
+          end
+          -- `render` lives in the hydronium_ink.render submodule, not
+          -- re-exported from hydronium_ink's own init.lua (see that
+          -- package's init.lua: it only exports Box/Text/Newline/etc,
+          -- terminal_background, colorProfile/byProfile/adaptive -- never
+          -- `render` itself). `ink.render(element)` here was a real bug
+          -- that made `--wizard` (and the ambient auto-wizard) crash
+          -- outright the moment either actually ran, with `attempt to
+          -- call field 'render' (a nil value)` -- caught only by
+          -- launching this CLI under a genuine pty and pressing keys
+          -- (see hydronium/cli's own src/main.lua's `M.dev` for the same
+          -- `require("hydronium_ink.render")` pattern this now matches).
           ink_render.render(element, { inline = true })
 
           if not captured_result then

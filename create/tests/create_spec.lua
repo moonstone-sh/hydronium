@@ -1673,6 +1673,113 @@ test("the project name is validated as you type", function()
   s:close()
 end)
 
+--------------------------------------------------------------------------------
+-- create.ui.typewriter_app -- the hidden `--wizard --typewriter` prototype.
+-- Reuses wizard_app.lua's own real backend (create.init/create.wizard_tasks),
+-- so these tests are about the LINEAR commit flow itself: a committed step
+-- becomes permanent `ink.Static` scrollback (verified via Session:
+-- staticHistory(), which -- unlike `sess:frame()`/wizard_text -- is the
+-- one place already-flushed content is still readable at all, by design;
+-- see hydronium_ink.host.terminal's own "STATIC FLUSH PASS" section), and
+-- exactly one live line (`sess:frame()`) remains below it.
+--------------------------------------------------------------------------------
+
+local function strip_ansi(s)
+  return (s:gsub("\27%[[%d;?]*[A-Za-z]", ""))
+end
+
+local function typewriter_session(opts, dimensions)
+  local H = require("hydronium")
+  opts = opts or {}
+  if opts.name == nil then opts.name = "" end
+  opts.dry_run = true
+  if opts.reduced_motion == nil then opts.reduced_motion = true end
+  opts.pm_mod = opts.pm_mod or {detect = function() return {"bun"} end}
+  return require("hydronium_ink.session").create(H.h(require("create.ui.typewriter_app").create_typewriter_app(opts)),
+    dimensions or {columns = 80, rows = 24, inline = true, writeFn = function() end})
+end
+
+--- Everything this session has EVER shown, committed history first: the
+--- one transcript a real terminal's scrollback would actually contain.
+local function typewriter_transcript(sess)
+  return strip_ansi(sess:staticHistory()) .. "\n" .. wizard_text(sess)
+end
+
+test("typewriter: Enter commits a step into permanent history, leaving exactly one live line below it", function()
+  local s = typewriter_session({ name = "" })
+  s:write("acid")
+  assert(wizard_text(s):find("acid", 1, true), "typing shows up on the live line before committing")
+  assert(not strip_ansi(s:staticHistory()):find("acid", 1, true), "nothing commits before Enter")
+  s:write("\r")
+  local transcript = typewriter_transcript(s)
+  assert(transcript:find("Project name", 1, true) and transcript:find("acid", 1, true),
+    "the committed name must be readable from history")
+  assert(wizard_text(s):find("Directory", 1, true), "the NEXT step is now the one live line")
+  assert(not wizard_text(s):find("Project name", 1, true),
+    "a committed step must not still be part of the live/diffed frame")
+  s:close()
+end)
+
+test("typewriter: Shift-Tab re-asks the previous answer and commits a NEW 'changed' line without touching the original", function()
+  local s = typewriter_session({ name = "" })
+  s:write("acid\r") -- commit name
+  s:dispatch({ type = "key", input = "", key = { tab = true, shift = true } })
+  assert(wizard_text(s):find("Editing a previous answer", 1, true), "re-asking must say so on the live line")
+  assert(wizard_text(s):find("acid", 1, true), "the correction starts PRE-FILLED with the current value, not blank")
+  s:write("2\r") -- "acid" -> "acid2", commit the correction
+  local transcript = typewriter_transcript(s)
+  local original_line, changed_line
+  for line in transcript:gmatch("[^\n]+") do
+    if line:find("Project name", 1, true) and line:find("acid2", 1, true) == nil then original_line = line end
+    if line:find("changed", 1, true) then changed_line = line end
+  end
+  assert(original_line and original_line:find("\226\156\147", 1, true), "the ORIGINAL committed line is untouched (still a plain checkmark, still 'acid')")
+  assert(changed_line and changed_line:find("acid2", 1, true) and changed_line:find("\226\134\186", 1, true),
+    "a NEW line, marked changed, carries the corrected value")
+  assert(wizard_text(s):find("Directory", 1, true), "correcting a past step resumes forward progress exactly where it was")
+  s:close()
+end)
+
+test("typewriter: reaches a compact receipt once every applicable step has committed", function()
+  -- "minimal" skips router/tailwind/package_manager entirely (see
+  -- wizard_data.TAILWIND_SUPPORTED/VITE_SUPPORTED/ROUTED), so the whole
+  -- flow is: name, directory, framework, interpreter, install_deps, git_init.
+  local s = typewriter_session({ name = "acid" })
+  s:write("\r") -- directory
+  s:write("\r") -- framework: cycle to "minimal"
+  for _ = 1, 10 do
+    if wizard_text(s):find("Minimal", 1, true) then break end
+    s:dispatch({ type = "key", input = "", key = { downArrow = true } })
+  end
+  assert(wizard_text(s):find("Minimal", 1, true), "test setup: must actually reach the Minimal option")
+  s:write("\r") -- commit framework=minimal
+  s:write("\r") -- interpreter (default LuaJIT)
+  s:write("\r") -- install_deps (default on)
+  s:write("\r") -- git_init (default on) -> submits
+  for _ = 1, 20 do
+    if wizard_text(s):find("Created", 1, true) then break end
+    s:step(50)
+  end
+  local text = wizard_text(s)
+  assert(text:find("Created acid", 1, true), "the receipt must name the project")
+  assert(text:find("Next steps", 1, true), "the receipt must show next steps")
+  local transcript = typewriter_transcript(s)
+  assert(transcript:find("Framework", 1, true) and transcript:find("Minimal", 1, true),
+    "every committed answer must still be in history above the receipt")
+  s:close()
+end)
+
+test("typewriter: Ctrl-C cancels without ever calling onDone", function()
+  local done_called = false
+  local s = typewriter_session({ name = "acid", onDone = function() done_called = true end })
+  s:write("\r\r") -- commit name, directory
+  assert(not s:status().exited)
+  s:dispatch({ type = "key", input = "c", key = { ctrl = true } })
+  assert(s:status().exited, "Ctrl-C must exit the session")
+  assert(not done_called, "cancelling must never invoke onDone -- no result, no error")
+  s:close()
+end)
+
 test("all new stories have valid catalog args and receipt fixtures cannot install anything", function()
   local c=dofile("./src/create/ui/create.stories.lua")
   local count=0
