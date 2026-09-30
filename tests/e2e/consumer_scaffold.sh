@@ -24,6 +24,9 @@ template=${HYDRONIUM_CONSUMER_TEMPLATE:-islands}
 app="$scratch/$template-app"
 server_pid=""
 port=${HYDRONIUM_CONSUMER_PORT:-8080}
+# Templates that read PORT (ssr) bake it into the graph at build time and read
+# it at run time; islands patches its literal below.
+export PORT="$port"
 url="http://127.0.0.1:$port"
 
 cleanup() {
