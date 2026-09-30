@@ -95,16 +95,44 @@ export async function createTaskEngine({moduleFactory,moduleOptions={},bindings=
       try{module._hydronium_task_push_host_ref(task,reference._idFor(engine));}finally{reference.release();}
     }else throw new TypeError(`unsupported JavaScript value: ${typeof value}`);
   }
+  function pushStateValue(state,value){
+    if(value==null)module._hydronium_state_push_nil(state);else if(typeof value==="boolean")module._hydronium_state_push_boolean(state,value?1:0);else if(typeof value==="number")module._hydronium_state_push_number(state,value);
+    else if(typeof value==="string")encode(module,value,(p,n)=>module._hydronium_state_push_string(state,p,n));
+    else if(value instanceof LuaFunctionHandle)module._hydronium_state_push_function_ref(state,value._referenceFor(engine));
+    else if(value instanceof HostReference)module._hydronium_state_push_host_ref(state,value._idFor(engine));
+    else if(typeof value==="function")encode(module,operationFor(value),(p)=>module._hydronium_state_push_host_function(state,module.UTF8ToString(p)));
+    else if(typeof value==="object"){
+      const reference=makeHostReference(value);
+      try{module._hydronium_state_push_host_ref(state,reference._idFor(engine));}finally{reference.release();}
+    }else throw new TypeError(`unsupported JavaScript value: ${typeof value}`);
+  }
   const hostFunction=module.addFunction((thread,namePointer,nameLength,firstIndex,argumentCount)=>{
     const id=nextHostOperation++,name=module.UTF8ToString(namePointer,nameLength),binding=hostBindings.get(name),context=activeContext;
     let args;try{args=Array.from({length:argumentCount},(_,offset)=>readStackValue(thread,firstIndex+offset));}catch(error){hostOperations.set(id,{run:()=>{throw error;}});return id;}
-    // Recorded, not started: the scheduler runs it after this Lua slice returns (never inside the Lua stack).
-    hostOperations.set(id,{run:()=>{if(!binding)throw new Error(`unknown host operation: ${name}`);if(!context)throw new Error("host operation started outside a scheduled Lua resume");if(context.signal.aborted)throw cancelled(context.signal);return binding(args,{signal:context.signal,owner:context.owner,generation:context.generation});}});return id;
+    // hydronium_task.start() begins the operation now (on a microtask, never
+    // inside the Lua stack) so several started operations overlap; await
+    // only collects the result. Plain host calls take the direct path above.
+    const promise=Promise.resolve().then(()=>{if(!binding)throw new Error(`unknown host operation: ${name}`);if(!context)throw new Error("host operation started outside a scheduled Lua resume");if(context.signal.aborted)throw cancelled(context.signal);return binding(args,{signal:context.signal,owner:context.owner,generation:context.generation});});
+    promise.catch(()=>{});hostOperations.set(id,{run:()=>promise});return id;
+  },"iiiiii");
+  // Direct host calls: run the binding now, inside the Lua call, and answer
+  // plain values on the Lua stack. A promise becomes a pending operation the
+  // coroutine yields on; a thrown error becomes a Lua error. JS exceptions
+  // never cross the WebAssembly frames.
+  const hostInvoke=module.addFunction((thread,namePointer,nameLength,firstIndex,argumentCount)=>{
+    const name=module.UTF8ToString(namePointer,nameLength),binding=hostBindings.get(name),context=activeContext;let value;
+    try{const args=Array.from({length:argumentCount},(_,offset)=>readStackValue(thread,firstIndex+offset));
+      if(!binding)throw new Error(`unknown host operation: ${name}`);if(!context)throw new Error("host operation started outside a scheduled Lua resume");if(context.signal.aborted)throw cancelled(context.signal);
+      value=binding(args,{signal:context.signal,owner:context.owner,generation:context.generation});
+    }catch(error){pushStateValue(thread,String(error?.message??error));return -1;}
+    if(value&&typeof value.then==="function"){value.catch?.(()=>{});const id=nextHostOperation++;hostOperations.set(id,{run:()=>value});return -(id+1);}
+    try{pushStateValue(thread,value);return 1;}catch(error){pushStateValue(thread,String(error?.message??error));return -1;}
   },"iiiiii");
   const hostRefRetainFunction=module.addFunction((id)=>retainHostReference(id),"vi");
   const hostRefReleaseFunction=module.addFunction((id)=>releaseHostReference(id),"vi");
   const hostFunctionReleaseFunction=module.addFunction((pointer,length)=>hostBindings.delete(decode(pointer,length)),"vii");
   module._hydronium_task_set_host_start(hostFunction);
+  module._hydronium_task_set_host_invoke(hostInvoke);
   module._hydronium_task_set_host_ref_callbacks(hostRefRetainFunction,hostRefReleaseFunction);
   module._hydronium_task_set_host_function_release(hostFunctionReleaseFunction);
   function raceCancellation(promise,signal){let rejectCancellation;const cancellation=new Promise((_,reject)=>{rejectCancellation=reject;});const onAbort=()=>rejectCancellation(cancelled(signal));if(signal.aborted)onAbort();else signal.addEventListener("abort",onAbort,{once:true});return Promise.race([promise,cancellation]).finally(()=>signal.removeEventListener("abort",onAbort));}
