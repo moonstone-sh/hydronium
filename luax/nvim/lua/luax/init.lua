@@ -868,8 +868,9 @@ function M.setup(opts)
       pcall(vim.treesitter.language.register, "luax", "luax")
       -- MDX is Markdown with Lua in it: the markdown parser already injects
       -- Lua into ```lua fences. Only when no dedicated mdx parser exists.
-      local has_mdx_parser = pcall(vim.treesitter.language.add, "mdx")
-      if not has_mdx_parser then
+      -- language.add returns nil (it does not throw) when no parser exists.
+      local ok, added = pcall(vim.treesitter.language.add, "mdx")
+      if not (ok and added) then
         pcall(vim.treesitter.language.register, "markdown", "mdx")
       end
     end
