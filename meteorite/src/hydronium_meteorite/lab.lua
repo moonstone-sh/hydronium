@@ -59,7 +59,7 @@ local function install_luax_searcher()
     local topology = require("hydronium_dom.dev.source_registry").try_load_project()
     local record = topology and topology:module(module_name)
     if record then
-      if record.path:match("%.luax$") or record.path:match("%.mdx?$") then
+      if require("hydronium_luax.dialects").compiles(record.path) then
         return function()
           return require("hydronium_luax.loader").load(record.path, { module_id = module_name })
         end
@@ -72,7 +72,7 @@ local function install_luax_searcher()
     for template in package.path:gmatch("[^;]+") do
       local lua_path = template:gsub("%?", mapped)
       if lua_path:match("%.lua$") then
-        for _, extension in ipairs({ ".luax", ".md", ".mdx" }) do
+        for _, extension in ipairs(require("hydronium_luax.dialects").EXTENSIONS) do
           local candidate = lua_path:gsub("%.lua$", extension)
           local file = io.open(candidate, "rb")
           if file then
@@ -91,7 +91,7 @@ end
 
 local function load_story(record)
   install_luax_searcher()
-  if record.transform == "luax" or record.transform == "md" or record.transform == "mdx" then
+  if require("hydronium_luax.dialects").compiles(record.transform) then
     _G.H = require("hydronium")
     _G.__luax = require("hydronium_luax.runtime")
     install_luax_searcher()

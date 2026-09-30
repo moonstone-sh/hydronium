@@ -18,7 +18,7 @@ return function(c)
   -- a concurrent edit yields 409, never a mixed multi-module HMR batch.
   local watch = require("hydronium_dom.dev.watch")
   local source, revision, reason, err = watch.read_snapshot(routes.watch_files(registry), c:query("revision"), function()
-    if record.transform == "luax" or record.transform == "md" or record.transform == "mdx" then
+    if require("hydronium_luax.dialects").compiles(record.transform) then
       local ok, code = pcall(require("hydronium_luax").loader.source, record.path)
       if not ok then error("compile failed for " .. id .. ": " .. tostring(code), 0) end
       return code

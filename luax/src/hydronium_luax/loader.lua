@@ -28,7 +28,7 @@
 -- `hydronium_luax` package (which requires this loader) -- avoids a
 -- require cycle.
 local compiler = require("hydronium_luax.compiler")
-local markdown = require("hydronium_luax.markdown")
+local dialects = require("hydronium_luax.dialects")
 
 local M = {}
 
@@ -110,7 +110,7 @@ function M.load(path, options)
   opts.filename = opts.filename or path
   opts.runtime = opts.runtime or "hydronium"
 
-  local compiled = path:match("%.mdx?$") and markdown.compile(source, opts) or compiler.compile(source, opts)
+  local compiled = dialects.of(path) == "markdown" and dialects.compile(source, opts) or compiler.compile(source, opts)
   report_missing_scope(path, compiled, opts.quiet)
 
   local load_fn = loadstring or load
@@ -159,7 +159,7 @@ function M.source(path, options)
   opts.filename = opts.filename or path
   opts.runtime = opts.runtime or "hydronium"
 
-  local compiled = path:match("%.mdx?$") and markdown.compile(source, opts) or compiler.compile(source, opts)
+  local compiled = dialects.of(path) == "markdown" and dialects.compile(source, opts) or compiler.compile(source, opts)
   report_missing_scope(path, compiled, opts.quiet)
   source_cache[path] = { source = source, code = compiled.code, compiled = compiled }
   return compiled.code, compiled
@@ -194,7 +194,7 @@ function M.install()
     local tried = {}
     for pattern in package.path:gmatch("[^;]+") do
       if pattern:match("%.lua$") then
-        for _, extension in ipairs({ ".luax", ".md", ".mdx" }) do
+        for _, extension in ipairs(dialects.EXTENSIONS) do
           local path = pattern:gsub("%.lua$", extension):gsub("%?", relative)
           local file = io.open(path, "r")
           if file then

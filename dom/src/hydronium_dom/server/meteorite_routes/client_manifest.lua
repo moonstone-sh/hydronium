@@ -8,7 +8,7 @@ return function(c)
   for _, record in ipairs(registry.records) do
     if record.target == "client" or record.target == "shared" then
       local ok, source = pcall(function()
-        if record.transform == "luax" or record.transform == "md" or record.transform == "mdx" then
+        if require("hydronium_luax.dialects").compiles(record.transform) then
           return require("hydronium_luax").loader.source(record.path)
         end
         local f = assert(io.open(record.path, "r"))

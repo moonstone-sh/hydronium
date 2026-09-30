@@ -158,6 +158,9 @@ function luals.configure(target_dir, opts)
     local files = doc:at("files"):ensure_object()
     local associations = files:at("associations"):ensure_object()
     associations:at("*.luax"):set("lua")
+    -- MDX setup code, `{expr}` and components are checked through the same
+    -- plugin (hydronium_luax.luals.mdx projects the document to Lua).
+    associations:at("*.mdx"):set("lua")
   end
 
   local commit_res, commit_err = doc:commit()
