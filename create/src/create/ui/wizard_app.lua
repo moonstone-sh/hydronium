@@ -9,53 +9,25 @@ local fizzing = require("create.ui.fizzing")
 local bubbles = require("create.ui.bubbles")
 local checklist_ui = require("create.ui.checklist")
 local oklab = require("hydronium_oklab_utils")
+local wizard_data = require("create.ui.wizard_data")
 
 local M = {}
 
-local VERSION = "0.5.4"
+local VERSION = wizard_data.VERSION
 
--- Two subgroups: "Vite-based" frameworks always get the real Vite build
--- (create.vite -- package.json + vite.config.js, see that module's own
--- header comment) and CAN additionally turn Tailwind on as a purely
--- additive layer on top of it (create.tailwind); "No Vite" ones never get
--- either -- ink/love are LuaJIT-only terminal/game hosts with no browser
--- surface at all, and minimal is a bare embeddable component.
-local FRAMEWORKS = {
-  { id = "ssr", label = "SSR", description = "Full-stack Meteorite app with browser Lua navigation", recommended = true, subgroup = "Vite-based" },
-  { id = "spa", label = "SPA", description = "Client-only Ballad bundle, no server rendering", subgroup = "Vite-based" },
-  { id = "islands", label = "Islands", description = "Server-rendered shell with JavaScript islands", subgroup = "Vite-based" },
-  { id = "minimal", label = "Minimal", description = "One-shot component for scripts or embedding", subgroup = "No Vite" },
-  { id = "ink", label = "Ink", description = "Interactive terminal UI, LuaJIT only", subgroup = "No Vite" },
-  { id = "love", label = "LÖVE", description = "Game loop with topology-backed HMR, LuaJIT only", subgroup = "No Vite" },
-}
-local ROUTED = { spa = true, islands = true }
--- Package manager: enabled for any Vite-based framework, independent of
--- Tailwind (see create/init.lua's own "Package manager: tied to VITE"
--- comment) -- Tailwind's own availability shares the exact same template
--- set, so one table serves both, kept as two names for readability at each
--- call site below.
-local VITE_SUPPORTED = { ssr = true, spa = true, islands = true }
-local TAILWIND_SUPPORTED = VITE_SUPPORTED
--- Mirrors template_specs[id].interpreters in create/src/create/init.lua:
--- ink/love are the only two templates that reject anything but LuaJIT.
-local INTERPRETER_LOCKED = { ink = true, love = true }
-
-local ROUTERS = {
-  { id = "hydronium", label = "Hydronium Router", description = "Typed routes and client-side navigation", recommended = true },
-  { id = "meteorite", label = "Meteorite only", description = "One server-declared route, no router manifest" },
-}
-
--- Display order per the design spec's own "npm/pnpm/bun" -- independent of
--- create.pm's internal PREFERENCE order (pnpm/bun/npm) for auto-selecting
--- which one to actually run, which is a different concern.
-local PACKAGE_MANAGERS = { "npm", "pnpm", "bun" }
-
-local INTERPRETERS = {
-  { id = "luajit@2.1", label = "LuaJIT 2.1", description = "FFI-based interpreter every template defaults to", recommended = true },
-  { id = "lua@5.4", label = "Lua 5.4", description = "Reference PUC-Rio interpreter" },
-}
-
-local MULTI_OPTION_FIELDS = { framework = true, router = true, package_manager = true, interpreter = true }
+-- The step catalog, validation, and small pure helpers below are shared
+-- with create.ui.typewriter_app (a one-question-at-a-time prototype flow
+-- over the exact same scaffold/task backend) -- see wizard_data.lua's own
+-- header comment. Local aliases keep every call site below unchanged.
+local FRAMEWORKS = wizard_data.FRAMEWORKS
+local ROUTED = wizard_data.ROUTED
+local VITE_SUPPORTED = wizard_data.VITE_SUPPORTED
+local TAILWIND_SUPPORTED = wizard_data.TAILWIND_SUPPORTED
+local INTERPRETER_LOCKED = wizard_data.INTERPRETER_LOCKED
+local ROUTERS = wizard_data.ROUTERS
+local PACKAGE_MANAGERS = wizard_data.PACKAGE_MANAGERS
+local INTERPRETERS = wizard_data.INTERPRETERS
+local MULTI_OPTION_FIELDS = wizard_data.MULTI_OPTION_FIELDS
 
 --- The flat, ordered list every navigation key actually walks -- one entry
 --- per radio OPTION (not one per field), plus one entry each for the two
@@ -84,21 +56,8 @@ do
 end
 local GROUP_TITLES = { "Project", "App", "Flavour", "Features", "Tooling", "Review" }
 
---- Finds `id` in a list of `{id=...}` entries (FRAMEWORKS/ROUTERS/
---- INTERPRETERS), or a plain string list (PACKAGE_MANAGERS).
-local function index_of_id(list, id, fallback)
-  if id == nil then return fallback end
-  for i, entry in ipairs(list) do
-    if (type(entry) == "table" and entry.id == id) or entry == id then return i end
-  end
-  return fallback
-end
-
-local function shallow_copy(list)
-  local out = {}
-  for i, v in ipairs(list) do out[i] = v end
-  return out
-end
+local index_of_id = wizard_data.index_of_id
+local shallow_copy = wizard_data.shallow_copy
 
 -- Accent from the header's pH palette (its alkaline blue stop), lifted for
 -- text legibility. The focus bar tints the REAL terminal background toward
@@ -117,23 +76,9 @@ local function focus_colors(terminal_bg)
   }
 end
 
--- Project names become directory and package names: letters, digits, dot,
--- dash and underscore, starting with a letter or digit.
-local function name_problem(value)
-  if value == "" then return "Project name cannot be empty" end
-  if not value:match("^[%w][%w._-]*$") then return "Use letters, digits, . _ - (start with a letter or digit)" end
-  return nil
-end
+local name_problem = wizard_data.name_problem
 M.name_problem = name_problem
-
-local function clip(value, columns)
-  value = tostring(value or "")
-  local chars = {}
-  for ch in value:gmatch("[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = ch end
-  if #chars <= columns then return value end
-  if columns < 2 then return "…" end
-  return table.concat(chars, "", 1, columns - 1) .. "…"
-end
+local clip = wizard_data.clip
 
 function M.create_wizard_app(opts)
   opts = opts or {}

@@ -34,6 +34,7 @@ return ballad.partiture(function(p)
 			"src/create/ui/fizzing.lua",
 			"src/create/ui/logo.lua",
 			"src/create/ui/wizard_app.lua",
+			"src/create/ui/wizard_data.lua",
 			"src/create/wizard.lua",
 			"src/create/wizard_tasks.lua",
 			"src/create/writer.lua",
