@@ -521,7 +521,8 @@ function M.create_wizard_app(opts)
         return
       end
       if key.pageUp or key.pageDown then
-        setScrollDelta((key.pageUp and -1 or 1) * math.max(terminal_rows - 4, 1))
+        -- A wheel/Lab scroll names its rows; a Page key moves a page.
+        setScrollDelta((key.pageUp and -1 or 1) * (key.scrollRows or math.max(terminal_rows - 4, 1)))
         setScrollRevision(scroll_revision() + 1); return
       end
       -- Shortcuts open review; they never bypass explicit acceptance.
