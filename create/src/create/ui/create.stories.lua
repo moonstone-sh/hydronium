@@ -1,231 +1,103 @@
 local lab = require("hydronium_lab")
-local hydronium = require("hydronium")
+local H = require("hydronium")
+local hooks = require("hydronium_ink.hooks")
 local ink = require("hydronium_ink")
-local wizard_app = require("create.ui.wizard_app")
-local logo = require("create.ui.logo")
-local checklist_ui = require("create.ui.checklist")
+local wizard = require("create.ui.wizard_app")
+local fizzing = require("create.ui.fizzing")
+local bubbles = require("create.ui.bubbles")
 
--- A story render factory runs before the Ink provider mounts. Hooks must
--- live inside a component so the isolated header gets the session's clock.
-local function AnimatedDiorama()
-  local hooks = require("hydronium_ink.hooks")
-  local animation = hooks.useAnimation({ interval = 100, isActive = true })
-  local bubbles = require("create.ui.bubbles")
+local sizes = {
+  {name = "wide", columns = 100, rows = 30},
+  {name = "standard", columns = 80, rows = 24},
+  {name = "compact", columns = 48, rows = 20},
+  {name = "short", columns = 40, rows = 12},
+}
+-- Host capabilities are deterministic fixtures, never functions in catalog args.
+local function render_wizard(args, preview)
+  local opts = {dry_run = true, initial_package_manager_id = "bun"}
+  for k, v in pairs(args or {}) do opts[k] = v end
+  opts.dry_run = true
+  opts.pm_mod = {detect = function() return opts.no_managers and {} or {"bun", "npm", "pnpm"} end}
+  if preview then
+    opts.preview_phase = preview == "installing" and "tasks" or "done"
+    opts.preview_result = {target_dir = "./acid-app", package_manager = "bun", vite = true, next_script = "dev", dry_run = true}
+    opts.preview_tasks = {
+      {id = "write", label = "Write project files", status = "done"},
+      {id = "sync", label = "moon sync", status = "done"},
+      {id = "js_install", label = "bun install", status = preview == "installing" and "running" or preview == "failed" and "error" or "done",
+        error = preview == "failed" and "Could not reach the package registry. Retry bun install in ./acid-app." or nil},
+      {id = "git", label = "Initialize Git", status = preview == "installing" and "pending" or "done"},
+    }
+  end
+  return H.h(wizard.create_wizard_app(opts))
+end
+-- The wizard's header band on its own: the reaction centered on the title
+-- row exactly as wizard_app lays it out, bubbles fizzing from the moment
+-- H₃O⁺ lights up. `at` pins a phase of the reaction's own timeline instead
+-- of animating: reveal, lit (H₃O⁺ lighting up), burst, settled.
+local function phase_time(index, ascii, at)
+  local timeline = fizzing.timeline(index, ascii)
+  if at == "reveal" then return math.floor(#fizzing.cells(index, ascii) / 2) * fizzing.CHAR_MS end
+  if at == "lit" then return timeline.lit_at + fizzing.FLASH_MS end
+  if at == "burst" then return timeline.lit_at + 1500 end
+  if at == "settled" then return fizzing.final_time(index, ascii) + 4000 end
+  return nil
+end
+local function Fizzing(props)
+  local animation = hooks.useAnimation({interval = 33, isActive = not props.reduced_motion})
   return function()
+    local index = tonumber(props.reaction) or 7
+    local time = phase_time(index, props.ascii, props.at)
+    if time == nil then time = props.reduced_motion and fizzing.final_time(index, props.ascii) or animation.time() end
     local columns = hooks.useWindowSize().columns
-    return bubbles.render_diorama({ time = animation.time(), columns = columns },
-      logo.render({ columns = columns, version = "0.5.2", frame = animation.frame(),
-        update_status = { state = "current" } }))
+    local compact = columns < fizzing.width(props.ascii)
+    local row = H.h(ink.Box, {flexDirection = "row", width = columns, justifyContent = "center"},
+      fizzing.render({index = index, time = time, ascii = props.ascii, compact = compact}))
+    return bubbles.render_diorama({columns = columns, time = time, still = props.reduced_motion,
+      start = fizzing.timeline(index, props.ascii).lit_at, burst_ms = fizzing.BURST_MS}, row)
   end
 end
-
--- The wizard is the product surface. The shared `render` below mounts the
--- real, stateful create.ui.wizard_app -- the exact same component
--- `hydronium-create`'s real TTY path mounts (see create/src/main.lua): one
--- component, two hosts, never two implementations. Every story below
--- either drives that one component into a particular, otherwise-reachable
--- state via wizard_app's `initial_*` Lab-story opts (see that file's own
--- header comment on why those opts exist and why nothing else ever passes
--- them), or renders one of its pure presentational pieces
--- (create.ui.logo/checklist) in isolation.
---
--- Ink Lab now consumes native ANSI and follows explicit field focus.
--- Tall story presets show the complete form. Standard terminal presets use
--- the same native inline viewport as the CLI: PageUp/PageDown browse it,
--- and field navigation brings the active control back into view.
-return lab.collection({
-  title = "Create/Wizard",
-  render = function(args)
-    return hydronium.h(wizard_app.create_wizard_app(args))
-  end,
-  sizes = {
-    { name = "default", columns = 84, rows = 130 },
-    { name = "narrow", columns = 40, rows = 130 },
-  },
-  stories = {
-    -- The canonical, non-interactive snapshot: every default, name empty.
-    wizard = { args = {} },
-
-    -- The full wizard, live and keyboard-driven -- the same interactive
-    -- form `hydronium-create` mounts for real, ending in a real (under
-    -- dry_run, side-effect-free) checklist and result. Nothing is ever
-    -- written to disk and no process is ever spawned from here --
-    -- create.ui.wizard_app defaults `dry_run` to true whenever it isn't
-    -- explicitly told otherwise. Try: type a project name, arrow through
-    -- Stack/Styling/Tooling (↑/↓ move fields, ←/→ pick within one,
-    -- digits 1-4 jump sections), then Ctrl+Enter (or Ctrl+S) to create.
-    ["install-flow"] = {
-      title = "Install flow (interactive, dry-run)",
-      description = "The real wizard, live: walk every section with ↑↓/←→/space/digits, "
-        .. "then Ctrl+Enter (or Ctrl+S) to run the real checklist under dry_run -- nothing "
-        .. "is ever written to disk and no package manager or git is ever actually invoked "
-        .. "from here.",
-      args = { dry_run = true },
-    },
-
-    -- One story per section, each landed on that section's first field so
-    -- its marker renders "◆" (active, bright) while the other three show
-    -- "◇" (inactive, dimmed) -- see wizard_app.lua's own `active_group`
-    -- rendering and ui/field.lua's `group_dim` threading.
-    ["section-project-active"] = {
-      title = "Section: Project (active)",
-      description = "The Project group focused -- its own marker is \"\226\151\134\", the other three are dimmed \"\226\151\135\".",
-      args = { initial_active_id = "name", name = "my-hydronium-app" },
-    },
-    ["section-stack-active"] = {
-      title = "Section: Stack (active)",
-      description = "The Stack group focused: framework and router radios, every alternative visible.",
-      args = { initial_active_id = "framework", name = "my-hydronium-app" },
-    },
-    ["section-styling-active"] = {
-      title = "Section: Styling (active)",
-      description = "The Styling group focused: the Tailwind CSS v4 toggle.",
-      args = { initial_active_id = "tailwind", name = "my-hydronium-app" },
-    },
-    ["section-tooling-active"] = {
-      title = "Section: Tooling (active)",
-      description = "The Tooling group focused: package manager, interpreter, and the install/git toggles.",
-      args = { initial_active_id = "package_manager", name = "my-hydronium-app", initial_tailwind = true },
-    },
-
-    -- Package manager is tied to Vite (any ssr/spa/islands framework), not
-    -- to Tailwind -- see create/init.lua's own "Package manager: tied to
-    -- VITE" comment. `pm_mod` lets this story force the "nothing on PATH"
-    -- state deterministically, regardless of what's actually installed on
-    -- whatever machine renders this story: every package manager option
-    -- shows its own "not found on PATH" per-option reason, PLUS one
-    -- field-level NOTE (not a disabled reason -- the field stays live,
-    -- Vite-based frameworks always get their files) explaining that
-    -- scaffolding still works without one.
-    ["section-tooling-no-package-manager"] = {
-      title = "Section: Tooling (no package manager detected)",
-      description = "The Tooling group with npm/pnpm/bun all forced 'not found on PATH' -- every option shows its own "
-        .. "reason, plus one field-level note that files are still created and Tailwind still works; submitting is unaffected.",
-      args = {
-        initial_active_id = "package_manager", name = "my-hydronium-app",
-        pm_mod = { detect = function() return {} end },
-      },
-    },
-
-    -- Landed on the final rail node with every other field already
-    -- decided: this is what the form's OWN scrollback looks like once
-    -- you've moved on from a field -- every alternative you did NOT pick
-    -- renders struck through and dim (see ui/field.lua's own header
-    -- comment for exactly when that kicks in), while your actual picks
-    -- stay bright and legible. This is the story that makes "the final
-    -- scrolled-back form shows the picked path clearly" checkable at a
-    -- glance.
-    ["strikethrough-final"] = {
-      title = "Final state (struck-through alternatives)",
-      description = "Landed on the \226\151\134 Create node with real choices made throughout -- every "
-        .. "alternative NOT picked (SPA's siblings, Meteorite-only's sibling, npm's siblings, "
-        .. "Lua 5.4's sibling) renders struck through and dim; the picks stay bright.",
-      args = {
-        name = "acid-app", initial_active_id = "submit",
-        initial_framework_id = "spa", initial_router_id = "meteorite",
-        initial_tailwind = true, initial_package_manager_id = "npm",
-        initial_interpreter_id = "lua@5.4", initial_install_deps = true, initial_git_init = false,
-      },
-    },
-
-    -- Narrow terminal degrade: below 48 columns the header falls back to
-    -- wordmark-only (see ui/logo.lua's own three responsive tiers).
-    narrow = {
-      title = "Narrow terminal (wordmark-only header)",
-      description = "Below 40 columns H3O+, the bubble field, and the update-status indicator all "
-        .. "disappear entirely; only the plain \"hydronium \194\183 create vX.Y.Z\" wordmark remains, "
-        .. "and the footer's key hints shrink to their compact form.",
-      args = { name = "my-app" },
-      sizes = { { name = "narrow", columns = 36, rows = 130 } },
-    },
-
-    -- The '?' cheat sheet: a landed, non-text-field-focused state with
-    -- `initial_cheat = true` so the full keybinding panel renders below
-    -- the sticky one-line footer without needing a live keypress.
-    ["cheat-sheet"] = {
-      title = "Cheat sheet ('?' expanded)",
-      description = "The full keybinding panel '?' toggles, shown open below the sticky one-line footer.",
-      args = { initial_active_id = "framework", initial_cheat = true, name = "my-app" },
-    },
-
-    -- Post-submit checklist, with a deliberately mixed mock task list
-    -- (done / running / pending / error) so every glyph checklist.lua
-    -- draws is visible in one frame -- this is NOT wizard_app (a live
-    -- checklist only ever shows one "running" task at a time), it is
-    -- ui/checklist.lua's own pure `render(tasks, frame)` fed a fixture,
-    -- exactly the kind of isolated-piece story create.ui.select_list/
-    -- toggle/name_input/summary used to be before this file's redesign
-    -- (see git history) -- those modules are gone now that every field
-    -- shape lives in ui/field.lua instead, but the "snapshot one
-    -- presentational piece with fixed props" idea they modeled is exactly
-    -- what this story (and header-sweep/header-static below) still does.
-    ["checklist-mock"] = {
-      title = "Post-submit checklist (mock tasks)",
-      description = "ui/checklist.lua in isolation with a fixed, mixed task list -- done, running, "
-        .. "pending, and a failed step with its error -- so every glyph is visible in one frame.",
-      render = function()
-        return checklist_ui.render({
-          { id = "write", label = "Write project files", status = "done" },
-          { id = "sync", label = "moon sync", status = "done" },
-          { id = "js_install", label = "npm install", status = "running" },
-          { id = "git", label = "git init", status = "pending" },
-        }, 3)
-      end,
-      sizes = { { name = "default", columns = 60, rows = 12 } },
-    },
-    ["checklist-mock-error"] = {
-      title = "Post-submit checklist (a failed step)",
-      description = "The same checklist with a step that failed -- its error and a retry hint print beneath it.",
-      render = function()
-        return checklist_ui.render({
-          { id = "write", label = "Write project files", status = "done" },
-          { id = "sync", label = "moon sync", status = "error", error = "moon sync failed: exit code 1" },
-        }, 0)
-      end,
-      sizes = { { name = "default", columns = 60, rows = 10 } },
-    },
-
-    -- The inline H3O+ header on its own, with and without the one-time
-    -- startup gradient sweep -- ui/logo.lua is pure, so these need no
-    -- session state at all, just two different `sweep` values.
-    ["header-sweep"] = {
-      title = "Header: mid-sweep",
-      description = "The one-time pH-scale gradient sweep partway across the inline H3O+ (skippable by any key -- see wizard_app.lua).",
-      render = function() return logo.render({ columns = 84, version = "0.5.2", sweep = 0.35, update_status = { available = false } }) end,
-      sizes = { { name = "default", columns = 84, rows = 3 } },
-    },
-    ["header-static"] = {
-      title = "Header: settled gradient, up to date",
-      description = "The header after the startup sweep has finished (or was skipped) -- a static pH-scale gradient across H3O+, and the green \"Up to date\" status.",
-      render = function() return logo.render({ columns = 84, version = "0.5.2", update_status = { available = false } }) end,
-      sizes = { { name = "default", columns = 84, rows = 3 } },
-    },
-    ["header-update-available"] = {
-      title = "Header: update available",
-      description = "Yellow \"!\" badge. Resize through the breakpoints: full label at >=80 columns, version only at 64-79, badge only below.",
-      render = function() return logo.render({ columns = 84, version = "0.5.2", update_status = { state = "available", latest = "0.6.0" } }) end,
-      sizes = { { name = "wide", columns = 84, rows = 3 }, { name = "medium", columns = 70, rows = 3 }, { name = "compact", columns = 50, rows = 3 } },
-    },
-    ["header-status-breakpoints"] = {
-      title = "Header: update status at every breakpoint",
-      description = "checking (blue spinner) / available (! on yellow) / up to date (✓ on green), each at 84, 70 and 50 columns. Unknown renders nothing.",
-      render = function()
-        local rows = {}
-        for _, state in ipairs({ { state = "checking" }, { state = "available", latest = "0.6.0" }, { state = "current", latest = "0.5.2" } }) do
-          for _, columns in ipairs({ 84, 70, 50 }) do
-            rows[#rows + 1] = hydronium.h(ink.Box, { key = state.state .. columns, width = columns },
-              logo.render({ columns = columns, version = "0.5.2", frame = 3, update_status = state }))
-          end
-        end
-        return hydronium.h(ink.Box, { flexDirection = "column" }, rows)
-      end,
-      sizes = { { name = "default", columns = 84, rows = 10 } },
-    },
-    ["header-bubbles"] = {
-      title = "Header: bubble diorama",
-      description = "The 4-row diorama (two open rows, title, one open row; bubbles born below the window) animated live: whole bubbles (o) and dissipating ones (* ° `) at three depths -- far ones single braille dots climbing within each cell (⠄ ⠂ ⠁) behind the title, near ones vivid and in front of it.",
-      render = function() return hydronium.h(AnimatedDiorama) end,
-      sizes = { { name = "default", columns = 84, rows = 4 } },
-    },
-  },
-})
+local fizz_sizes = {{name = "wide", columns = 100, rows = 4}, {name = "standard", columns = 80, rows = 4}, {name = "compact", columns = 48, rows = 4}}
+local reaction_options = {}
+for i, r in ipairs(fizzing.REACTIONS) do reaction_options[i] = {label = r.u_acid or r.acid, value = i} end
+local function fizz_story(title, args)
+  args = args or {}
+  if args.reaction == nil then args.reaction = 7 end
+  return {title = title, args = args, sizes = fizz_sizes,
+    controls = {ascii = {type = "boolean", label = "ASCII chemistry"},
+      reaction = {type = "select", label = "Reaction", options = reaction_options}},
+    render = function(values) return H.h(Fizzing, values) end}
+end
+local stories = {
+  wizard = {title = "01 · Project", args = {name = ""}},
+  ["install-flow"] = {title = "Full setup · interactive dry run", args = {},
+    description = "Arrows focus, Space selects, Continue advances, Esc goes back. Review then Create project. All installation steps are simulated."},
+  ["section-project-active"] = {title = "01 · Project with directory", args = {name = "acid-app", directory = "./apps/acid-app"}},
+  ["section-stack-active"] = {title = "02 · App", args = {name = "acid-app", initial_active_id = "framework"}},
+  ["app-router"] = {title = "03 · Flavour (SPA routing)", args = {name = "acid-app", initial_framework_id = "spa", initial_active_id = "router"}},
+  ["app-terminal"] = {title = "02 · Ink skips browser features", args = {name = "acid-app", initial_framework_id = "ink", initial_active_id = "framework"}},
+  ["section-styling-active"] = {title = "Features · Tailwind", args = {name = "acid-app", initial_tailwind = true, initial_active_id = "tailwind"}},
+  ["section-tooling-active"] = {title = "Tooling · Bun and Lua", args = {name = "acid-app", initial_active_id = "package_manager"}},
+  ["section-tooling-no-package-manager"] = {title = "Tooling · Missing package managers", args = {name = "acid-app", no_managers = true, initial_active_id = "package_manager"}},
+  ["review"] = {title = "Review and accept", args = {name = "acid-app", initial_tailwind = true, initial_active_id = "submit"}},
+  ["installing"] = {title = "Installation · progress", args = {name = "acid-app", initial_tailwind = true}, render = function(args) return render_wizard(args, "installing") end},
+  ["receipt"] = {title = "Installation · receipt", args = {name = "acid-app", initial_tailwind = true}, render = function(args) return render_wizard(args, "receipt") end},
+  ["receipt-failed"] = {title = "Installation · failure and retry", args = {name = "acid-app"}, render = function(args) return render_wizard(args, "failed") end},
+  narrow = {title = "Breakpoint · compact", args = {name = "acid-app", initial_active_id = "framework"}, sizes = {{name = "compact", columns = 48, rows = 20}}},
+  short = {title = "Breakpoint · short", args = {name = "acid-app", initial_active_id = "package_manager"}, sizes = {{name = "short", columns = 40, rows = 12}}},
+  ["update-checking"] = {title = "Header · checking for updates", args = {name = "acid-app", update_status = {state = "checking"}}},
+  ["update-current"] = {title = "Header · up to date", args = {name = "acid-app", update_status = {state = "current"}}},
+  ["update-available"] = {title = "Header · update available", args = {name = "acid-app", update_status = {state = "available", latest = "0.6.0"}}},
+  ["reduced-motion"] = {title = "Accessibility · reduced motion", args = {name = "acid-app", reduced_motion = true}},
+  ["header-bubbles"] = fizz_story("Fizzing · live reveal and fizz"),
+  ["fizzing-reveal"] = fizz_story("Fizzing · character reveal", {at = "reveal"}),
+  ["fizzing-lit"] = fizz_story("Fizzing · H₃O⁺ lights up", {at = "lit"}),
+  ["fizzing-burst"] = fizz_story("Fizzing · burst", {at = "burst"}),
+  ["fizzing-settled"] = fizz_story("Fizzing · settled (idle fizz)", {at = "settled"}),
+  ["fizzing-hcl"] = fizz_story("Fizzing · shortest (HCl)", {reaction = 2, at = "settled"}),
+  ["fizzing-peptide"] = fizz_story("Fizzing · widest (peptide carboxyl group)", {reaction = 8, at = "settled"}),
+  ["fizzing-ascii"] = fizz_story("Fizzing · ASCII", {ascii = true}),
+  ["fizzing-reduced-motion"] = fizz_story("Fizzing · reduced motion", {reduced_motion = true}),
+}
+return lab.collection({title = "Create/Wizard", renderer = "ink", sizes = sizes,
+  render = function(args) return render_wizard(args) end, stories = stories})

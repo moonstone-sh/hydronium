@@ -497,4 +497,9 @@ function create.scaffold(opts, ctx)
   }
 end
 
+
+--- Exposed for the wizard's live "directory is not empty" hint, which must
+--- agree with the guard `scaffold` applies.
+create.is_directory_empty = is_directory_empty
+
 return create

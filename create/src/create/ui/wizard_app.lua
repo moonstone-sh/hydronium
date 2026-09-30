@@ -1,95 +1,18 @@
---[[
-  hydronium_create.ui.wizard_app -- the persistent, always-visible Ink form
-  used by both `hydronium-create`'s real TTY path (src/main.lua) and the
-  Lab "install-flow" story (create.stories.lua). One component, two hosts.
-
-  DESIGN, from the 20-question interview this implements faithfully:
-    - scrollable inline form, never the alternate screen -- focus reveals
-      the active choice; PgUp/PgDn inspect without changing it. The whole
-      frozen form is printed into scrollback on completion. No
-      separate "review" step: what you see while filling it in IS the
-      final record of what will be created.
-    - a left RAIL ("|") joins the four groups (Project/Stack/Styling/
-      Tooling); each group's own line gets "◆" while it holds the
-      currently active field, "◇" otherwise, and inactive groups render
-      dimmed. A blank rail line pads the start and end of every group's
-      content (see ui/field.lua's own header for the "option/description/
-      blank" rhythm inside a group).
-    - a final rail node closes the form: "◆ ▐ Create <name> ▌ ↵".
-    - every alternative is always visible; radios (◉/◇) are single-choice,
-      toggles (▣/□) are yes/no. A recommended option gets " ★". An
-      alternative that is NOT the current pick renders struck through+dim
-      UNLESS its field is the one currently focused (see ui/field.lua).
-      The framework radio list also has two SUBGROUPS ("Vite-based":
-      SSR/SPA/Islands, which can turn on Tailwind's Vite side-build; "No
-      Vite": Minimal/Ink/LÖVE, which never can) -- see ui/field.lua's
-      subgroup-header support.
-    - navigation is STOP-based, not field-based: every individual radio
-      OPTION (not just its owning field) is its own addressable stop, in
-      the same visual order they're stacked on screen. ↑/↓ (and, for a
-      radio field, ←/→ too -- see below) walk that flat list one stop at
-      a time: while the cursor is already inside a multi-option field it
-      moves among THAT field's own options (matching their vertical
-      stacking -- picking sideways through a vertically drawn list read
-      as backwards, which is why ←/→ mirror ↑/↓ here rather than doing
-      something unrelated), and once you walk off either end it rolls
-      into the ADJACENT field, landing on whatever that field's own
-      CURRENT selection already is (never resetting it to that field's
-      first option just because you passed through). Space still flips a
-      toggle; ←/→ do too, for the same reason a physical switch reads as
-      a left/right (or on/off) gesture rather than an up/down one.
-      Tab/Shift+Tab are the COARSE alternative: they always land on the
-      next/previous FIELD's current selection, skipping over every option
-      in between in one hop. Digits 1-4 jump to a section's current stop
-      (only when the focused field isn't free-text, so a name/directory
-      containing a digit still types normally -- see `is_text_field`
-      below). Enter submits from the final rail node or otherwise just
-      advances, like Tab. Ctrl+Enter submits from anywhere a real
-      terminal can tell Ctrl+Enter apart from plain Enter (a
-      Kitty-protocol CSI u sequence -- see hydronium_ink's keys.lua), and
-      Ctrl+S is the documented, always-distinguishable fallback (shown in
-      the footer) for terminals that can't.
-    - the H3O+ header, gradient, and rising bubbles are ui/logo.lua and
-      ui/bubbles.lua (both pure `render(props)`, easy to snapshot in
-      isolation -- see create.stories.lua).
-    - after submit the form FREEZES (it just stops responding to
-      picking/typing -- every value stays on screen exactly as chosen) and
-      a live checklist (ui/checklist.lua, driven by create.wizard_tasks)
-      appears below it, with a "Protonating <name>..." status pun while it
-      runs, followed by next steps and a closing gradient rule.
-
-  Collection stays in create.init.scaffold; this file's only side effects
-  are the real (or, under dry_run, no-op) tasks create.wizard_tasks runs
-  after a successful scaffold -- see that module's own header for exactly
-  what "real" means here and its one stated limitation (task progress is
-  only as granular as this synchronous event loop allows -- there is no
-  coroutine-based process execution in this codebase yet, so a slow task
-  can render as a silent pause rather than a smoothly animating spinner;
-  the pause itself is honest, not faked).
-
-  Why there is no separate "use LUAX?" toggle: LUAX is entirely a
-  CONSEQUENCE of the framework choice, never an independent axis --
-  create/src/create/init.lua's own `template_specs[id].tooling.luax` is
-  true for ssr/islands/ink (they generate `.luax` views/UI) and false for
-  spa/minimal/love (plain `.lua`, no LUAX compile step at all). Exposing
-  it as a second, independently-toggleable control would let someone pick
-  a combination create.scaffold has no wiring for. Each framework option's
-  own description already says what it generates; that is the only place
-  this needs to be visible.
---]]
-
+-- Stepped inline setup shared by the CLI and Lab. Focus never changes a
+-- selection; only explicit activation does. Review is the sole write boundary.
 local hydronium = require("hydronium")
 local ink = require("hydronium_ink")
 local hooks = require("hydronium_ink.hooks")
 local signals = require("hydronium.signals")
-local field = require("create.ui.field")
 local logo = require("create.ui.logo")
+local fizzing = require("create.ui.fizzing")
 local bubbles = require("create.ui.bubbles")
 local checklist_ui = require("create.ui.checklist")
+local oklab = require("hydronium_oklab_utils")
 
 local M = {}
 
-local VERSION = "0.5.2"
+local VERSION = "0.5.3"
 
 -- Two subgroups: "Vite-based" frameworks always get the real Vite build
 -- (create.vite -- package.json + vite.config.js, see that module's own
@@ -137,9 +60,7 @@ local MULTI_OPTION_FIELDS = { framework = true, router = true, package_manager =
 --- The flat, ordered list every navigation key actually walks -- one entry
 --- per radio OPTION (not one per field), plus one entry each for the two
 --- text fields, the three toggles, and the final submit node. `group`
---- indexes GROUP_TITLES (1-based); "submit" has no group of its own -- it
---- is the final rail node. See this file's own header comment for why
---- navigation is stop-based rather than field-based.
+--- indexes GROUP_TITLES (1-based). Continue/Back are shared page actions.
 local STOPS = {}
 do
   local function add(field_name, group, option_id)
@@ -148,15 +69,20 @@ do
   add("name", 1)
   add("directory", 1)
   for _, f in ipairs(FRAMEWORKS) do add("framework", 2, f.id) end
-  for _, r in ipairs(ROUTERS) do add("router", 2, r.id) end
-  add("tailwind", 3)
-  for _, name_candidate in ipairs(PACKAGE_MANAGERS) do add("package_manager", 4, name_candidate) end
-  for _, it in ipairs(INTERPRETERS) do add("interpreter", 4, it.id) end
-  add("install_deps", 4)
-  add("git_init", 4)
-  add("submit", 5)
+  for _, r in ipairs(ROUTERS) do add("router", 3, r.id) end
+  add("tailwind", 4)
+  for _, name_candidate in ipairs(PACKAGE_MANAGERS) do add("package_manager", 5, name_candidate) end
+  for _, it in ipairs(INTERPRETERS) do add("interpreter", 5, it.id) end
+  add("install_deps", 5)
+  add("git_init", 5)
+  -- Review rows: Enter jumps to that step, and applying a change there
+  -- returns here (see `returning` in create_wizard_app).
+  for group = 1, 5 do add("edit", 6, group) end
+  add("submit", 6)
+  add("continue", 0)
+  add("back", 0)
 end
-local GROUP_TITLES = { "Project", "Stack", "Styling", "Tooling" }
+local GROUP_TITLES = { "Project", "App", "Flavour", "Features", "Tooling", "Review" }
 
 --- Finds `id` in a list of `{id=...}` entries (FRAMEWORKS/ROUTERS/
 --- INTERPRETERS), or a plain string list (PACKAGE_MANAGERS).
@@ -174,11 +100,39 @@ local function shallow_copy(list)
   return out
 end
 
+-- Accent from the header's pH palette (its alkaline blue stop), lifted for
+-- text legibility. The focus bar tints the REAL terminal background toward
+-- it (hydronium_ink.terminal_background, detected once by the CLI) so it
+-- stays subtle on light and dark themes alike; with no detected background
+-- (Lab, piped, ansi16/none) the row keeps only its accent edge marker.
+local ACCENT_OKLCH = oklab.oklch(0.72, 0.13, 250)
+local ACCENT = ink.byProfile({ truecolor = ACCENT_OKLCH, ansi256 = ACCENT_OKLCH, ansi16 = "brightBlue" })
+local function focus_colors(terminal_bg)
+  if not terminal_bg then return { color = ACCENT } end
+  local bar = oklab.ensure_contrast(oklab.mix(terminal_bg, oklab.oklch(0.60, 0.15, 250), 0.16), terminal_bg, 10)
+  local text = oklab.ensure_contrast(ACCENT_OKLCH, bar, 60)
+  return {
+    color = ink.byProfile({ truecolor = text, ansi256 = text, ansi16 = "brightBlue" }),
+    backgroundColor = ink.byProfile({ truecolor = bar, ansi256 = bar }),
+  }
+end
+
+-- Project names become directory and package names: letters, digits, dot,
+-- dash and underscore, starting with a letter or digit.
+local function name_problem(value)
+  if value == "" then return "Project name cannot be empty" end
+  if not value:match("^[%w][%w._-]*$") then return "Use letters, digits, . _ - (start with a letter or digit)" end
+  return nil
+end
+M.name_problem = name_problem
+
 local function clip(value, columns)
   value = tostring(value or "")
-  if #value <= columns then return value end
+  local chars = {}
+  for ch in value:gmatch("[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = ch end
+  if #chars <= columns then return value end
   if columns < 2 then return "…" end
-  return value:sub(1, columns - 1) .. "…"
+  return table.concat(chars, "", 1, columns - 1) .. "…"
 end
 
 function M.create_wizard_app(opts)
@@ -212,6 +166,22 @@ function M.create_wizard_app(opts)
   end
   local dry_run = opts.dry_run
   if dry_run == nil then dry_run = true end -- Lab is always side-effect free.
+
+  -- One reaction per run (`opts.reaction` pins it for stories and tests).
+  local ascii = opts.ascii
+  local reaction = opts.reaction or fizzing.pick(opts.seed)
+  local reaction_timeline = fizzing.timeline(reaction, ascii)
+  local focus_style = focus_colors(opts.terminal_background)
+  local reduced_motion = opts.reduced_motion == true or os.getenv("HYDRONIUM_REDUCED_MOTION") == "1"
+  -- Live "directory is not empty" hint, cached per path (it forks `ls`).
+  -- Dry runs never write, so they never warn.
+  local emptiness = {}
+  local function directory_warning(dir)
+    if dry_run or not create_mod.is_directory_empty then return nil end
+    if emptiness[dir] == nil then emptiness[dir] = create_mod.is_directory_empty(dir) end
+    if emptiness[dir] then return nil end
+    return dir .. " is not empty: creating here needs --force"
+  end
 
   return function()
     local exit = hooks.useApp().exit
@@ -251,10 +221,17 @@ function M.create_wizard_app(opts)
       if detected(name_candidate) then default_pm_index = i break end
     end
     local pm_index, setPmIndex = signals.createSignal(index_of_id(PACKAGE_MANAGERS, opts.initial_package_manager_id, default_pm_index))
-    local interpreter_index, setInterpreterIndex = signals.createSignal(index_of_id(INTERPRETERS, opts.initial_interpreter_id, 1))
+    local interpreter_index, setInterpreterIndex = signals.createSignal(INTERPRETER_LOCKED[FRAMEWORKS[framework_index()].id] and 1 or index_of_id(INTERPRETERS, opts.initial_interpreter_id, 1))
     local install_deps, setInstallDeps = signals.createSignal(opts.initial_install_deps ~= false)
     local git_init, setGitInit = signals.createSignal(opts.initial_git_init ~= false)
-    local cheat, setCheat = signals.createSignal(opts.initial_cheat == true)
+    local notice, setNotice = signals.createSignal(nil)
+    local initial_page = 1
+    for _, stop in ipairs(STOPS) do
+      if stop.field == opts.initial_active_id then initial_page = stop.group; break end
+    end
+    if initial_page == 3 and not ROUTED[FRAMEWORKS[framework_index()].id] then initial_page = 4 end
+    if initial_page == 4 and not TAILWIND_SUPPORTED[FRAMEWORKS[framework_index()].id] then initial_page = 5 end
+    local page, setPage = signals.createSignal(initial_page)
     local scroll_revision, setScrollRevision = signals.createSignal(0)
     local scroll_delta, setScrollDelta = signals.createSignal(0)
 
@@ -268,79 +245,44 @@ function M.create_wizard_app(opts)
       for i, s in ipairs(STOPS) do if s.field == field_name then return i end end
       return 1
     end
-    local active, writeActive = signals.createSignal(opts.initial_active_id and first_stop_of_field(opts.initial_active_id) or 1)
+    local initial_active = opts.initial_active_id and first_stop_of_field(opts.initial_active_id) or 1
+    local initial_options = {framework = FRAMEWORKS[framework_index()].id, router = ROUTERS[router_index()].id,
+      package_manager = PACKAGE_MANAGERS[pm_index()], interpreter = INTERPRETERS[interpreter_index()].id}
+    for i, stop in ipairs(STOPS) do
+      if stop.field == opts.initial_active_id and stop.option_id == initial_options[stop.field] then initial_active = i; break end
+    end
+    local active, writeActive = signals.createSignal(initial_active)
     local focus_revision, setFocusRevision = signals.createSignal(0)
     local function setActive(index)
       writeActive(index)
       setFocusRevision(focus_revision() + 1)
     end
 
-    local phase, setPhase = signals.createSignal("form") -- "form" | "tasks" | "done"
-    local tasks, setTasks = signals.createSignal({})
-    local scaffold_result, setScaffoldResult = signals.createSignal(nil)
+    local preview = dry_run and opts.preview_phase ~= nil
+    local phase, setPhase = signals.createSignal(preview and opts.preview_phase or "form") -- "form" | "tasks" | "done"
+    local tasks, setTasks = signals.createSignal(preview and opts.preview_tasks or {})
+    local scaffold_result, setScaffoldResult = signals.createSignal(preview and opts.preview_result or nil)
     local scaffold_error, setScaffoldError = signals.createSignal(nil)
 
-    -- One-time startup gradient sweep across the header (skippable by any
-    -- key). Independent of the bubble ticker below -- the sweep is a short,
-    -- one-shot cue; bubbles keep animating for as long as the form is open.
-    -- A real signal, not a plain Lua local: `setSweeping(false)` on any
-    -- keypress must be an actual signal write so the render closure (which
-    -- reads `sweeping()` reactively) repaints IMMEDIATELY, in the same
-    -- dispatch -- not only whenever the next bubble/task tick happens to
-    -- land. A mutated plain local would sit unseen until some OTHER signal
-    -- changed, since Session:dispatch never force-renders independent of
-    -- what a component's own reactive reads actually depend on.
-    local sweeping, setSweeping = signals.createSignal(opts.intro == true)
-    local SWEEP_MS = 700
-    -- Header animation time as last rendered (a plain value, written by the
-    -- Header component's render): lets the key handler tell whether the
-    -- sweep is still showing without subscribing anything to the ticker.
-    local header_time_ms = 0
-    -- Task checklist spinner + one-task-per-tick pacing (see this file's
-    -- own header comment for the stated limitation on how granular that
-    -- pacing actually is without a coroutine-based process runner).
     local task_anim = hooks.useAnimation({ interval = 120, isActive = true })
 
     local function framework_id() return FRAMEWORKS[framework_index()].id end
 
     --- Whether a given STOP can currently be landed on / selected.
     local function stop_enabled(stop)
+      if stop.field == "edit" then
+        if stop.option_id == 3 then return ROUTED[framework_id()] == true end
+        if stop.option_id == 4 then return TAILWIND_SUPPORTED[framework_id()] == true end
+        return true
+      end
       if stop.field == "router" then return ROUTED[framework_id()] == true end
       if stop.field == "tailwind" then return TAILWIND_SUPPORTED[framework_id()] == true end
-      if stop.field == "package_manager" then return VITE_SUPPORTED[framework_id()] == true and detected(stop.option_id) end
+      if stop.field == "package_manager" then return VITE_SUPPORTED[framework_id()] == true end
       if stop.field == "interpreter" then
         if INTERPRETER_LOCKED[framework_id()] and stop.option_id ~= "luajit@2.1" then return false end
         return true
       end
       return true
-    end
-
-    --- Whether a whole FIELD (not a specific option) currently applies --
-    --- used by the render loop for hint/disabled-reason text, not by
-    --- navigation itself (which only ever asks stop_enabled about one
-    --- concrete stop at a time).
-    local function field_enabled(field_name)
-      if field_name == "router" then return ROUTED[framework_id()] == true end
-      if field_name == "tailwind" then return TAILWIND_SUPPORTED[framework_id()] == true end
-      if field_name == "package_manager" then return VITE_SUPPORTED[framework_id()] == true end
-      return true
-    end
-
-    local function router_disabled_reason()
-      if framework_id() == "ssr" then return "SSR always uses Hydronium Router" end
-      if ROUTED[framework_id()] then return nil end
-      return "Only configurable for SPA/Islands"
-    end
-    -- Tailwind is enabled for any Vite-based framework regardless of
-    -- whether a JS package manager was actually detected -- like the
-    -- package manager field itself, missing PATH tooling shows up as a
-    -- field-level NOTE there (see the package-manager render block below),
-    -- never as a reason this toggle itself is unreachable.
-    local function tailwind_disabled_reason()
-      if not TAILWIND_SUPPORTED[framework_id()] then
-        return "Not supported for " .. FRAMEWORKS[framework_index()].label .. " projects"
-      end
-      return nil
     end
 
     --- The STOPS index of the option CURRENTLY selected for a multi-option
@@ -366,8 +308,12 @@ function M.create_wizard_app(opts)
     --- pointing at a now-invalid Lua 5.4 pick from an earlier framework.
     local function select_stop(stop)
       if stop.field == "framework" then
+        setNotice(nil)
         setFrameworkIndex(index_of_id(FRAMEWORKS, stop.option_id, framework_index()))
         if INTERPRETER_LOCKED[stop.option_id] then
+          if INTERPRETERS[interpreter_index()].id ~= "luajit@2.1" then
+            setNotice("This template requires LuaJIT; interpreter adjusted.")
+          end
           setInterpreterIndex(index_of_id(INTERPRETERS, "luajit@2.1", interpreter_index()))
         end
       elseif stop.field == "router" then
@@ -379,93 +325,66 @@ function M.create_wizard_app(opts)
       end
     end
 
-    --- Fine-grained move (↑/↓ always; ←/→ too, while parked on a
-    --- multi-option field -- see this file's own header comment). Tries
-    --- stepping within the CURRENT field's own options first; once that
-    --- runs out, rolls into the next enabled field in that direction and
-    --- lands on ITS current selection rather than resetting it.
-    local function move(delta)
-      local cur = STOPS[active()]
-      if MULTI_OPTION_FIELDS[cur.field] then
-        local try = active()
-        local guard = 0
-        repeat
-          try = try + delta
-          guard = guard + 1
-        until try < 1 or try > #STOPS or STOPS[try].field ~= cur.field or stop_enabled(STOPS[try]) or guard > #STOPS
-        if try >= 1 and try <= #STOPS and STOPS[try].field == cur.field and stop_enabled(STOPS[try]) then
-          setActive(try)
-          select_stop(STOPS[try])
-          return
+    local function pages()
+      local list = {1, 2}
+      if ROUTED[framework_id()] then list[#list + 1] = 3 end
+      if TAILWIND_SUPPORTED[framework_id()] then list[#list + 1] = 4 end
+      list[#list + 1] = 5; list[#list + 1] = 6
+      return list
+    end
+    local function visible_stops()
+      local result = {}
+      for i, stop in ipairs(STOPS) do
+        if (stop.group == page() or (stop.field == "continue" and page() < 6)
+          or (stop.field == "back" and page() > 1)) and stop_enabled(stop) then
+          result[#result + 1] = i
         end
       end
-
-      local index = active()
-      local guard = 0
-      repeat
-        index = index + delta
-        if index < 1 then index = #STOPS end
-        if index > #STOPS then index = 1 end
-        guard = guard + 1
-      until (STOPS[index].field ~= cur.field and stop_enabled(STOPS[index])) or guard > #STOPS
-      local landed_field = STOPS[index].field
-      if MULTI_OPTION_FIELDS[landed_field] then
-        local sel = selected_stop_index(landed_field)
-        if sel and stop_enabled(STOPS[sel]) then index = sel end
-      end
-      setActive(index)
+      return result
     end
-
-    --- Coarse move (Tab/Shift+Tab, and Enter as a Tab-alias): always jumps
-    --- past every option of the current field to the next/previous
-    --- DIFFERENT field's own current selection.
-    local function tab_move(delta)
-      local cur_field = STOPS[active()].field
-      local index = active()
-      local guard = 0
-      repeat
-        index = index + delta
-        if index < 1 then index = #STOPS end
-        if index > #STOPS then index = 1 end
-        guard = guard + 1
-      until (STOPS[index].field ~= cur_field and stop_enabled(STOPS[index])) or guard > #STOPS
-      local landed_field = STOPS[index].field
-      if MULTI_OPTION_FIELDS[landed_field] then
-        local sel = selected_stop_index(landed_field)
-        if sel and stop_enabled(STOPS[sel]) then index = sel end
+    local function jump_to_group(group)
+      if group == 3 and not ROUTED[framework_id()] then group = 4 end
+      if group == 4 and not TAILWIND_SUPPORTED[framework_id()] then group = 5 end
+      setPage(group)
+      -- Review opens on "Create project"; its edit rows sit above it.
+      if group == 6 then setActive(first_stop_of_field("submit")); return end
+      local choices = visible_stops()
+      local index = choices[1]
+      if index and MULTI_OPTION_FIELDS[STOPS[index].field] then
+        index = selected_stop_index(STOPS[index].field) or index
       end
-      setActive(index)
+      setActive(index or first_stop_of_field("submit"))
     end
-
-    local function jump_to_group(group_number)
-      local start = nil
-      for i, s in ipairs(STOPS) do if s.group == group_number then start = i break end end
-      if not start then return end
-      for i = start, #STOPS do
-        if stop_enabled(STOPS[i]) then
-          local f = STOPS[i].field
-          if MULTI_OPTION_FIELDS[f] then
-            local sel = selected_stop_index(f)
-            setActive(sel and stop_enabled(STOPS[sel]) and sel or i)
-          else
-            setActive(i)
+    local function move(delta, coarse)
+      local choices = visible_stops()
+      local position = 1
+      for i, index in ipairs(choices) do if index == active() then position = i end end
+      local previous_field = STOPS[active()].field
+      for _ = 1, #choices do
+        position = (position - 1 + delta) % #choices + 1
+        local index = choices[position]
+        if not coarse or STOPS[index].field ~= previous_field then
+          if coarse and MULTI_OPTION_FIELDS[STOPS[index].field] then
+            index = selected_stop_index(STOPS[index].field) or index
           end
+          setActive(index)
           return
         end
       end
-      setActive(start)
     end
+    local function tab_move(delta) move(delta, true) end
 
     local function validate_name()
       local trimmed = name():match("^%s*(.-)%s*$")
-      if trimmed == "" then setNameError("Project name cannot be empty"); return false end
+      local problem = name_problem(trimmed)
+      if problem then setNameError(problem); return false end
       setName(trimmed); setNameError(nil); return true
     end
 
     local function begin_submit()
-      if phase() ~= "form" then return end
+      if phase() ~= "form" or page() ~= 6 then return end
       if not validate_name() then
-        setActive(first_stop_of_field("name"))
+        jump_to_group(1)
         return
       end
       local id = framework_id()
@@ -508,7 +427,7 @@ function M.create_wizard_app(opts)
     -- already "running", actually performing it and recording the result.
     -- See this file's header comment for the stated pacing limitation.
     hydronium.createEffect(function()
-      if phase() ~= "tasks" then return end
+      if preview or phase() ~= "tasks" then return end
       task_anim.frame() -- subscribe: re-run on every tick while in this phase
       local list = tasks()
       for i, t in ipairs(list) do
@@ -544,270 +463,354 @@ function M.create_wizard_app(opts)
       end
     end)
 
+    -- Editing from review: applying a change returns to the review row.
+    local returning, setReturning = signals.createSignal(nil) -- the edit group, or nil
+    local function back_to_review()
+      local group = returning()
+      setReturning(nil)
+      setPage(6)
+      for i, stop in ipairs(STOPS) do
+        if stop.field == "edit" and stop.option_id == group then setActive(i); return end
+      end
+      setActive(first_stop_of_field("submit"))
+    end
+
+    local function change_page(delta)
+      if returning() then
+        if delta > 0 and page() == 1 and not validate_name() then return end
+        back_to_review(); return
+      end
+      if delta > 0 and page() == 1 and not validate_name() then
+        setActive(first_stop_of_field("name")); return
+      end
+      local list = pages()
+      for i, number in ipairs(list) do
+        if number == page() then jump_to_group(list[math.max(1, math.min(#list, i + delta))]); return end
+      end
+    end
+
+    -- Enter applies and moves on (or returns to review); Space applies in place.
+    local function after_apply()
+      if returning() then
+        if page() == 1 and not validate_name() then return end
+        back_to_review()
+      else
+        tab_move(1)
+      end
+    end
+
+    -- The header's intro clock. A key press finishes the reveal instantly
+    -- (the key still reaches the form); `intro = false` hosts start settled.
+    local intro_offset, setIntroOffset = signals.createSignal(
+      (reduced_motion or opts.intro == false) and fizzing.final_time(reaction, ascii) or 0)
+    local header_clock = 0
+    local function skip_intro()
+      if header_clock + intro_offset() < reaction_timeline.faded_at then
+        setIntroOffset(reaction_timeline.faded_at - header_clock)
+      end
+    end
+
     hooks.useInput(function(input, key)
-      if sweeping() and header_time_ms < SWEEP_MS then
-        setSweeping(false)
+      if phase() ~= "form" then
+        if phase() == "done" or scaffold_error() then exit() end
+        return
+      end
+      skip_intro()
+      if key.escape then
+        if returning() then back_to_review() else change_page(-1) end
         return
       end
       if key.pageUp or key.pageDown then
-        local rows = terminal_rows
-        setScrollDelta((key.pageUp and -1 or 1) * (key.scrollRows or math.max(rows - 4, 1)))
-        setScrollRevision(scroll_revision() + 1)
-        return
+        setScrollDelta((key.pageUp and -1 or 1) * math.max(terminal_rows - 4, 1))
+        setScrollRevision(scroll_revision() + 1); return
       end
-      if phase() ~= "form" then
-        if phase() == "done" or (phase() == "tasks" and scaffold_error()) then exit() end
-        return
-      end
-
-      -- Ctrl+Enter (a real Kitty-protocol terminal can tell it apart from
-      -- plain Enter) or its always-distinguishable fallback, Ctrl+S --
-      -- see this file's header comment.
+      -- Shortcuts open review; they never bypass explicit acceptance.
       if (key["return"] and key.ctrl) or (input == "s" and key.ctrl) then
-        begin_submit()
+        setReturning(nil)
+        if validate_name() then jump_to_group(6) else jump_to_group(1) end
         return
       end
-      if key.tab then
-        if key.shift then tab_move(-1) else tab_move(1) end
-        return
-      end
-      if key["return"] then
-        if STOPS[active()].field == "submit" then begin_submit() else tab_move(1) end
-        return
-      end
+      if key.tab then tab_move(key.shift and -1 or 1); return end
       if key.upArrow then move(-1); return end
       if key.downArrow then move(1); return end
-
-      local field_name = STOPS[active()].field
-      local is_text_field = field_name == "name" or field_name == "directory"
-      if not is_text_field and not key.ctrl and (input == "j" or input == "k") then
-        move(input == "j" and 1 or -1)
+      local stop = STOPS[active()]
+      local text_input = stop.field == "name" or stop.field == "directory"
+      if not text_input and (input == "j" or input == "k") then move(input == "j" and 1 or -1); return end
+      if not text_input and not returning() and input:match("^[1-6]$") then
+        local target = pages()[tonumber(input)]
+        if target then jump_to_group(target) end
         return
       end
-
-      if not is_text_field and input:match("^[1-4]$") then
-        jump_to_group(tonumber(input))
-        return
-      end
-      if not is_text_field and input == "?" then
-        setCheat(not cheat())
-        return
-      end
-
-      if field_name == "name" then
-        if key.backspace or key.delete then setName(name():sub(1, -2))
-        elseif input ~= "" and not key.ctrl and not key.escape then setName(name() .. input) end
-        if not directory_touched then
-          setDirectory(name() == "" and "." or ("./" .. name()))
+      local enter, space = key["return"], input == " " and not text_input
+      if enter or space then
+        if stop.field == "continue" then change_page(1)
+        elseif stop.field == "back" then change_page(-1)
+        elseif stop.field == "submit" then begin_submit()
+        elseif stop.field == "edit" then
+          setReturning(stop.option_id)
+          setPage(stop.option_id)
+          local choices = visible_stops()
+          local index = choices[1]
+          if index and MULTI_OPTION_FIELDS[STOPS[index].field] then index = selected_stop_index(STOPS[index].field) or index end
+          setActive(index or first_stop_of_field("submit"))
+        else
+          if MULTI_OPTION_FIELDS[stop.field] then select_stop(stop)
+          elseif stop.field == "tailwind" then setTailwind(not tailwind())
+          elseif stop.field == "install_deps" then setInstallDeps(not install_deps())
+          elseif stop.field == "git_init" then setGitInit(not git_init()) end
+          if enter then after_apply() end
         end
-      elseif field_name == "directory" then
+        return
+      end
+      if stop.field == "name" then
+        if key.backspace or key.delete then setName(name():sub(1, -2))
+        elseif input ~= "" and not key.ctrl then setName(name() .. input) end
+        if name_error() and not name_problem(name()) then setNameError(nil) end
+        if not directory_touched then setDirectory(name() == "" and "." or ("./" .. name())) end
+      elseif stop.field == "directory" then
         directory_touched = true
         if key.backspace or key.delete then setDirectory(directory():sub(1, -2))
-        elseif input ~= "" and not key.ctrl and not key.escape then setDirectory(directory() .. input) end
-      elseif MULTI_OPTION_FIELDS[field_name] then
-        -- ←/→ mirror ↑/↓ here (see this file's own header comment for why
-        -- a vertically-stacked list is picked vertically): both step
-        -- within the field first, then roll to the adjacent one.
-        if key.leftArrow then move(-1) elseif key.rightArrow then move(1) end
-      elseif field_name == "tailwind" then
-        if input == " " or key.leftArrow or key.rightArrow then setTailwind(not tailwind()) end
-      elseif field_name == "install_deps" then
-        if input == " " or key.leftArrow or key.rightArrow then setInstallDeps(not install_deps()) end
-      elseif field_name == "git_init" then
-        if input == " " or key.leftArrow or key.rightArrow then setGitInit(not git_init()) end
+        elseif input ~= "" and not key.ctrl then setDirectory(directory() .. input) end
       end
     end)
 
-    -- The animated header is its own component so animation ticks re-render
-    -- only these few rows, never the whole form. One ticker drives the
-    -- sweep, the update spinner and the bubbles, and it is only READ (so
-    -- only subscribed) while one of them is actually moving.
-    local function Header()
-      local anim = hooks.useAnimation({ interval = 100, isActive = true })
-      return function()
-        local columns = hooks.useWindowSize().columns or 80
-        local status = update_status()
-        local show_bubbles = phase() == "form" and columns >= 64
-        local animating = show_bubbles or (status and status.state == "checking")
-          or (sweeping() and header_time_ms < SWEEP_MS)
-        local t = animating and anim.time() or header_time_ms
-        header_time_ms = t
-        local sweep_progress = (sweeping() and t < SWEEP_MS) and math.min(1, t / SWEEP_MS) or nil
-        local title = logo.render({ columns = columns, version = VERSION, sweep = sweep_progress,
-          frame = math.floor(t / 100), update_status = status })
-        -- The diorama's last row is already the gap under the title; without
-        -- it, a plain blank line keeps the same spacing.
-        if show_bubbles then return bubbles.render_diorama({ time = t, columns = columns }, title) end
-        return hydronium.h(ink.Box, { flexDirection = "column" }, title, hydronium.h(ink.Newline, {}))
+    -- Header, top to bottom:
+    --   brand line   "hydronium/create vX.Y.Z" left; update status right, its
+    --                badge always the rightmost cell
+    --   bubble band  4 rows; the reaction centered on its third row, so the
+    --                fizz has two rows of ceiling
+    -- Rows it takes, by terminal size:
+    --   6  brand + band + spacer               rows >= 24 and the reaction fits
+    --   3  brand + centered reaction + spacer  rows >= 20
+    --   1  brand only
+    local REACTION_WIDTH = fizzing.width(ascii)
+    local BRAND = "hydronium/create v" .. VERSION
+    local function header_height(columns, rows)
+      local inner = columns - 2
+      if rows >= 24 and inner >= REACTION_WIDTH + 2 then return 6 end
+      if rows >= 20 then return 3 end
+      return 1
+    end
+
+    -- The status keeps its badge; the brand and the label share what is
+    -- left, preferring the full brand, then the fuller label.
+    local function brand_row(columns, status, clock)
+      local brand, tier = "hydronium/create", 0
+      for _, candidate in ipairs({ { BRAND, 80 }, { BRAND, 64 }, { BRAND, 0 }, { "hydronium/create", 0 }, { "create", 0 } }) do
+        if columns >= #candidate[1] + 1 + logo.status_width(status, candidate[2]) then
+          brand, tier = candidate[1], candidate[2]
+          break
+        end
       end
+      return hydronium.h(ink.Box, { flexDirection = "row", width = columns },
+        hydronium.h(ink.Text, { color = "brightBlack" }, brand),
+        hydronium.h(ink.Spacer, {}),
+        logo.render_status(status, tier, math.floor(clock / 100)))
+    end
+
+    local function reaction_row(columns, t)
+      local compact = columns < REACTION_WIDTH
+      return hydronium.h(ink.Box, { flexDirection = "row", width = columns, justifyContent = "center" },
+        fizzing.render({ index = reaction, time = t, ascii = ascii, compact = compact }))
+    end
+
+    -- Two clocks: a fast one while characters reveal (one per ~frame), then
+    -- the ambient 100ms one for the fizz. The idle clock starts where the
+    -- fast one left off, so time never jumps backwards.
+    local fast_phase, setFastPhase = signals.createSignal(not reduced_motion and opts.intro ~= false)
+    local handoff_at = 0
+    local function HeaderFrame(props)
+      local anim = hooks.useAnimation({ interval = props.interval, isActive = true })
+      if props.interval < 100 then
+        hydronium.createEffect(function()
+          local t = props.base + anim.time() + intro_offset()
+          if t >= reaction_timeline.faded_at then
+            handoff_at = props.base + anim.time()
+            setFastPhase(false)
+          end
+        end)
+      end
+      return function()
+        local size = hooks.useWindowSize()
+        local columns, rows = (size.columns or 80) - 2, size.rows or 24
+        local clock = props.base + anim.time()
+        header_clock = clock
+        local t = reduced_motion and fizzing.final_time(reaction, ascii) or (clock + intro_offset())
+        local brand = brand_row(columns, update_status(), clock)
+        local height = header_height(columns + 2, rows)
+        if height == 1 then return brand end
+        local reaction_el = reaction_row(columns, t)
+        local body = height == 6 and bubbles.render_diorama({
+          time = t, columns = columns, still = reduced_motion,
+          start = reaction_timeline.lit_at, burst_ms = fizzing.BURST_MS,
+        }, reaction_el) or reaction_el
+        return hydronium.h(ink.Box, { flexDirection = "column" }, brand, body, hydronium.h(ink.Newline, {}))
+      end
+    end
+    local function Header()
+      return function()
+        if fast_phase() then return hydronium.h(HeaderFrame, { key = "intro", interval = 30, base = 0 }) end
+        return hydronium.h(HeaderFrame, { key = "idle", interval = 100, base = handoff_at })
+      end
+    end
+
+    local RADIO_ON, RADIO_OFF = "● ", "○ "
+    local BOX_ON, BOX_OFF = "■ ", "□ "
+    local HEADINGS = { "Project", "App", "Router", "Tailwind", "Tooling" }
+
+    local function tooling_summary()
+      local parts = {}
+      if VITE_SUPPORTED[framework_id()] then parts[#parts + 1] = PACKAGE_MANAGERS[pm_index()] end
+      parts[#parts + 1] = INTERPRETERS[interpreter_index()].label
+      parts[#parts + 1] = install_deps() and "install deps" or "no install"
+      parts[#parts + 1] = git_init() and "git" or "no git"
+      return table.concat(parts, " · ")
+    end
+    local function review_value(group)
+      if group == 1 then return name() .. "  " .. directory() end
+      if group == 2 then return FRAMEWORKS[framework_index()].label end
+      if group == 3 then return ROUTERS[router_index()].label end
+      if group == 4 then return tailwind() and "on" or "off" end
+      return tooling_summary()
+    end
+    local function one_line_summary()
+      local parts = { FRAMEWORKS[framework_index()].label }
+      if ROUTED[framework_id()] then parts[#parts + 1] = ROUTERS[router_index()].label end
+      if VITE_SUPPORTED[framework_id()] and tailwind() then parts[#parts + 1] = "Tailwind" end
+      parts[#parts + 1] = tooling_summary()
+      return table.concat(parts, " · ") .. "  →  " .. directory()
     end
 
     return function()
       local size = hooks.useWindowSize()
       local columns = size.columns or 80
       terminal_rows = size.rows or 24
-      local header = hydronium.h(Header, { key = "header" })
-
-      local current = active()
-      local current_field = phase() == "form" and STOPS[current].field or nil
-      local active_group = phase() == "form" and STOPS[current].group or nil
+      local form = phase() == "form"
+      local inner = columns - 2
       local lines = {}
-      local function push(prefix, element, dim)
-        lines[#lines + 1] = hydronium.h(ink.Box, { key = #lines + 1, flexDirection = "row" },
-          hydronium.h(ink.Text, { color = dim and "brightBlack" or "cyan", dimColor = dim }, prefix .. " "),
-          element)
+      local function line(text, props)
+        props = props or {}; props.key = #lines + 1
+        lines[#lines + 1] = hydronium.h(ink.Text, props, form and clip(text, inner) or text)
       end
-      local function push_rows(rows, dim)
-        for _, row in ipairs(rows) do push("\226\148\130", row, dim) end -- │
-      end
-
-      for group_number, title in ipairs(GROUP_TITLES) do
-        local is_active_group = phase() ~= "form" or group_number == active_group
-        local marker = phase() == "form" and is_active_group and "\226\151\134" or "\226\151\135" -- ◆ ◇
-        push(marker, hydronium.h(ink.Text, { bold = is_active_group, dimColor = not is_active_group }, title), not is_active_group)
-        push_rows({ hydronium.h(ink.Newline, {}) }, not is_active_group)
-
-        if group_number == 1 then
-          push_rows(field.text_field_rows({
-            label = "name", value = name(), placeholder = "my-app", caret = current_field == "name",
-            hint = "Used for the Moonstone package and project directory by default.",
-            error = name_error(), group_dim = not is_active_group,
-          }), not is_active_group)
-          push_rows(field.text_field_rows({
-            label = "directory", value = directory(), placeholder = ".", caret = current_field == "directory",
-            hint = "Relative or absolute; follows the name above until you edit it.",
-            group_dim = not is_active_group,
-          }), not is_active_group)
-        elseif group_number == 2 then
-          push_rows(field.radio_group_rows({
-            field_label = "framework", options = FRAMEWORKS, selected_id = framework_id(),
-            active = current_field == "framework", group_dim = not is_active_group,
-          }), not is_active_group)
-          local router_opts = {}
-          for i, r in ipairs(ROUTERS) do
-            router_opts[i] = { id = r.id, label = r.label, description = r.description, recommended = r.recommended }
+      if form then
+        local list, ordinal = pages(), 1
+        for i, number in ipairs(list) do if number == page() then ordinal = i end end
+        line(string.format("%d/%d  %s", ordinal, #list, GROUP_TITLES[page()]), { bold = true, color = ACCENT })
+        local focused = STOPS[active()]
+        local visible = visible_stops()
+        local heading_rows = header_height(columns, terminal_rows)
+        local room = math.max(3, terminal_rows - heading_rows - 7)
+        local position = 1
+        for i, index in ipairs(visible) do if index == active() then position = i end end
+        local first = math.max(1, math.min(position - room + 1, #visible - room + 1))
+        for item = first, math.min(#visible, first + room - 1) do
+          local index = visible[item]
+          local stop = STOPS[index]
+          local focus = index == active()
+          local label
+          -- An empty name shows a dim placeholder after the cursor, never
+          -- text that looks already typed.
+          local placeholder
+          if stop.field == "name" then
+            label = "name       " .. name() .. (focus and "▍" or "")
+            if name() == "" then placeholder = "my-app" end
+          elseif stop.field == "directory" then label = "directory  " .. directory() .. (focus and "▍" or "")
+          elseif MULTI_OPTION_FIELDS[stop.field] then
+            local options = stop.field == "framework" and FRAMEWORKS or stop.field == "router" and ROUTERS
+              or stop.field == "interpreter" and INTERPRETERS or PACKAGE_MANAGERS
+            local option = options[index_of_id(options, stop.option_id, 1)]
+            label = (selected_stop_index(stop.field) == index and RADIO_ON or RADIO_OFF)
+              .. (type(option) == "table" and option.label or option)
+            if stop.field == "package_manager" and not detected(stop.option_id) then label = label .. "  (not installed)" end
+          elseif stop.field == "tailwind" then label = (tailwind() and BOX_ON or BOX_OFF) .. "Tailwind CSS"
+          elseif stop.field == "install_deps" then label = (install_deps() and BOX_ON or BOX_OFF) .. "Install dependencies"
+          elseif stop.field == "git_init" then label = (git_init() and BOX_ON or BOX_OFF) .. "Initialize Git"
+          elseif stop.field == "edit" then label = string.format("%-9s %s", HEADINGS[stop.option_id], review_value(stop.option_id))
+          elseif stop.field == "continue" then label = returning() and "Back to review" or "Continue →"
+          elseif stop.field == "back" then label = returning() and "← Review" or "← Back"
+          elseif stop.field == "submit" then label = "Create project" end
+          local text = (focus and "▌ " or "  ") .. label
+          local function cells(value)
+            local n = 0
+            for _ in value:gmatch("[%z\1-\127\194-\244][\128-\191]*") do n = n + 1 end
+            return n
           end
-          push_rows(field.radio_group_rows({
-            field_label = "router", options = router_opts, selected_id = ROUTERS[router_index()].id,
-            active = current_field == "router" and field_enabled("router"),
-            field_disabled = not field_enabled("router"), field_disabled_reason = router_disabled_reason(),
-            group_dim = not is_active_group,
-          }), not is_active_group)
-        elseif group_number == 3 then
-          push_rows(field.toggle_rows({
-            label = "Tailwind CSS v4", value = tailwind(), description = "@tailwindcss/vite + @source scanning for .luax/.lua files",
-            active = current_field == "tailwind", disabled = not field_enabled("tailwind"),
-            disabled_reason = tailwind_disabled_reason(), group_dim = not is_active_group,
-          }), not is_active_group)
+          if placeholder then
+            -- Label, dim placeholder, then padding: separate segments so the
+            -- placeholder keeps its own style inside the focus bar.
+            local bar = focus and focus_style.backgroundColor or nil
+            local parts = { hydronium.h(ink.Text, { key = "text", bold = focus, color = focus and focus_style.color or nil,
+              backgroundColor = bar, scrollFocus = focus }, text) }
+            parts[#parts + 1] = hydronium.h(ink.Text, { key = "placeholder", color = "brightBlack", dimColor = true, backgroundColor = bar }, placeholder)
+            local used = cells(text) + cells(placeholder)
+            if focus and used < inner then
+              parts[#parts + 1] = hydronium.h(ink.Text, { key = "pad", backgroundColor = bar }, string.rep(" ", inner - used))
+            end
+            lines[#lines + 1] = hydronium.h(ink.Box, { key = #lines + 1, flexDirection = "row" }, parts)
+          elseif focus then
+            -- Full-width so the focus bar spans the row.
+            local width = cells(text)
+            if width < inner then text = text .. string.rep(" ", inner - width) end
+            line(text, { bold = true, color = focus_style.color, backgroundColor = focus_style.backgroundColor, scrollFocus = true })
+          else
+            line(text, { dimColor = stop.field == "edit" and false or nil })
+          end
+        end
+        if page() == 1 then
+          local problem = name_error() or (name() ~= "" and name_problem(name()))
+          if problem then line("  " .. problem, { color = "yellow" }) end
+          local warning = directory_warning(directory())
+          if warning then line("  " .. warning, { color = "yellow" }) end
+        end
+        if notice() and page() == 2 then line("  " .. notice(), { color = "yellow" }) end
+        if terminal_rows >= 24 then
+          local options = focused.field == "framework" and FRAMEWORKS or focused.field == "router" and ROUTERS
+            or focused.field == "interpreter" and INTERPRETERS
+          if options then line("  " .. options[index_of_id(options, focused.option_id, 1)].description, { dimColor = true }) end
+        end
+        -- Two stable footer rows across pages and focus changes.
+        while #lines < terminal_rows - 2 - heading_rows - 2 do line("") end
+        line((name() == "" and "new project" or name()) .. " · " .. one_line_summary(), { dimColor = true })
+        local hint
+        if returning() then
+          hint = "Enter apply & return · Space pick · Esc back to review"
+        elseif columns >= 76 then
+          hint = "↑↓ move · Space pick · Enter pick & next · Tab field · Esc back · 1–" .. #list .. " steps"
         else
-          local pm_opts = {}
-          for i, name_candidate in ipairs(PACKAGE_MANAGERS) do
-            pm_opts[i] = { id = name_candidate, label = name_candidate, description = "Detected on PATH",
-              disabled = not detected(name_candidate), disabled_reason = "not found on PATH" }
-          end
-          -- A field-level NOTE (distinct from a field-level DISABLED
-          -- reason -- see ui/field.lua's own header comment on the two
-          -- kinds): the field itself stays live for any Vite-based
-          -- framework even when nothing was detected on PATH (files are
-          -- still created either way), so this is informational, not a
-          -- reason the field is unreachable.
-          local pm_note = (#managers == 0 and field_enabled("package_manager"))
-            and "none found on PATH -- files are still created; install one to run Vite" or nil
-          push_rows(field.radio_group_rows({
-            field_label = "package manager", options = pm_opts, selected_id = PACKAGE_MANAGERS[pm_index()],
-            active = current_field == "package_manager" and field_enabled("package_manager"),
-            field_disabled = not field_enabled("package_manager"), field_disabled_reason = "Only used by Vite-based frameworks",
-            field_note = pm_note,
-            group_dim = not is_active_group,
-          }), not is_active_group)
-          local interpreter_opts = {}
-          for i, it in ipairs(INTERPRETERS) do
-            local locked = INTERPRETER_LOCKED[framework_id()] and it.id ~= "luajit@2.1"
-            interpreter_opts[i] = { id = it.id, label = it.label, description = it.description, recommended = it.recommended,
-              disabled = locked, disabled_reason = locked and (FRAMEWORKS[framework_index()].label .. " requires LuaJIT") or nil }
-          end
-          push_rows(field.radio_group_rows({
-            field_label = "interpreter", options = interpreter_opts, selected_id = INTERPRETERS[interpreter_index()].id,
-            active = current_field == "interpreter", group_dim = not is_active_group,
-          }), not is_active_group)
-          push_rows(field.toggle_rows({
-            label = "Install dependencies now", value = install_deps(),
-            description = "Runs moon sync (and the JS install, if Tailwind is on) after scaffolding",
-            active = current_field == "install_deps", group_dim = not is_active_group,
-          }), not is_active_group)
-          push_rows(field.toggle_rows({
-            label = "git init", value = git_init(), description = "Initializes a git repository in the new project",
-            active = current_field == "git_init", group_dim = not is_active_group,
-          }), not is_active_group)
+          hint = "↑↓ · Space pick · Enter next · Esc back"
         end
-      end
-
-      -- Final rail node.
-      local submit_active = current_field == "submit"
-      local submit_label = "\226\150\144 Create " .. clip(name() == "" and "project" or name(), math.max(6, columns - 24)) .. " \226\150\140  \226\134\181"
-      if phase() == "form" then
-        push("\226\151\134", hydronium.h(ink.Text, { bold = true, inverse = submit_active, color = "green", scrollFocus = submit_active }, submit_label), false)
-      end
-
-      local footer = hydronium.h(ink.Text, { key = "footer", color = "brightBlack" }, columns >= 64
-        and "\226\134\145\226\134\147/\226\134\144\226\134\146 pick & move \194\183 space toggle \194\183 1-4 jump \194\183 ctrl+\226\134\181 create (ctrl+s fallback) \194\183 ? keys"
-        or "\226\134\145\226\134\147 pick & move \194\183 ? keys")
-
-      local cheat_panel = cheat() and hydronium.h(ink.Box, { key = "cheat", flexDirection = "column", borderStyle = "single", padding = 1 },
-        hydronium.h(ink.Text, { bold = true }, "Keys"),
-        hydronium.h(ink.Text, {}, "\226\134\145 / \226\134\147 / j / k  move within a field, then roll to the next"),
-        hydronium.h(ink.Text, {}, "\226\134\144 / \226\134\146 / space  same as \226\134\145/\226\134\147 for a radio; flips a toggle"),
-        hydronium.h(ink.Text, {}, "Tab / Shift+Tab   jump straight to the next / previous field"),
-        hydronium.h(ink.Text, {}, "PgUp / PgDn      scroll without changing choices"),
-        hydronium.h(ink.Text, {}, "1 2 3 4           jump to Project / Stack / Styling / Tooling"),
-        hydronium.h(ink.Text, {}, "Enter             advance, or create from the final node"),
-        hydronium.h(ink.Text, {}, "Ctrl+Enter        create from anywhere (Ctrl+S if your terminal can't tell)"),
-        hydronium.h(ink.Text, {}, "?                 toggle this cheat sheet")
-      ) or nil
-
-      local viewport_props = { flexDirection = "column", paddingX = 1, inlineViewport = true,
-        scrollRevision = scroll_revision(), scrollDelta = scroll_delta(), focusRevision = focus_revision(),
-        scrollHint = phase() == "form" and "Tab move · Ctrl+S confirm" or (phase() == "tasks" and "Working" or "Receipt") }
-      if phase() ~= "form" then
-        local task_list = tasks()
-        local body = {}
-        if phase() == "tasks" and not scaffold_error() then
-          -- Light chemistry pun in the STATUS line only, per the wizard's
-          -- own voice guideline -- every label around it (field names,
-          -- task labels) stays plain.
-          body[#body + 1] = hydronium.h(ink.Text, { bold = true, color = "cyan", scrollFocus = true },
-            "Protonating " .. (name() ~= "" and name() or "your project") .. "\226\128\166")
-          body[#body + 1] = hydronium.h(ink.Newline, {})
-        end
-        body[#body + 1] = checklist_ui.render(task_list, task_anim.frame())
-        if phase() == "done" then
+        line(hint, { dimColor = true })
+      else
+        local done = phase() == "done"
+        local failed = false
+        for _, task in ipairs(tasks()) do if task.status == "error" then failed = true end end
+        if done then
           local res = scaffold_result()
-          local any_task_error = false
-          for _, t in ipairs(task_list) do if t.status == "error" then any_task_error = true end end
-          body[#body + 1] = hydronium.h(ink.Newline, {})
-          body[#body + 1] = hydronium.h(ink.Text, { bold = true, scrollFocus = true, color = any_task_error and "yellow" or "green" },
-            any_task_error and "Files are written, but a follow-up step failed -- see above."
-            or (res.dry_run and "[DRY RUN] Solution ready." or "Solution ready."))
-          body[#body + 1] = hydronium.h(ink.Text, {}, "Next steps:")
-          if res.target_dir and res.target_dir ~= "." and res.target_dir ~= "./" then
-            body[#body + 1] = hydronium.h(ink.Text, {}, "  cd " .. res.target_dir)
-          end
-          body[#body + 1] = hydronium.h(ink.Text, {}, "  moon run " .. tostring(res.next_script))
-          body[#body + 1] = logo.render_rule({ columns = columns }) -- closing pH-gradient rule
-        elseif scaffold_error() then
-          body[#body + 1] = hydronium.h(ink.Newline, {})
-          body[#body + 1] = hydronium.h(ink.Text, { color = "red" }, "Press any key to exit.")
+          line((failed and "Created " or "✔ Created ") .. name() .. (res and res.dry_run and "  (dry run)" or ""),
+            { bold = true, color = failed and "yellow" or "green" })
+        else
+          line("Creating " .. name(), { bold = true, color = ACCENT })
         end
-        return hydronium.h(ink.Box, viewport_props,
-          header, hydronium.h(ink.Box, { flexDirection = "column" }, lines),
-          hydronium.h(ink.Newline, {}), hydronium.h(ink.Box, { flexDirection = "column" }, body))
+        line("  " .. one_line_summary(), { dimColor = true })
+        lines[#lines + 1] = checklist_ui.render(tasks(), phase() == "tasks" and task_anim.frame() or 0)
+        if scaffold_error() then line(tostring(scaffold_error()), { color = "red" }) end
+        if done then
+          local res = scaffold_result()
+          if failed then line("Files were created; the steps marked ✖ need attention.", { color = "yellow" }) end
+          line("")
+          line("Next steps", { bold = true })
+          if res.target_dir and res.target_dir ~= "." then line("  cd " .. string.format("%q", res.target_dir), { color = ACCENT }) end
+          if not install_deps() then
+            line("  moon sync", { color = ACCENT })
+            if res.vite then line("  " .. (res.package_manager or PACKAGE_MANAGERS[pm_index()]) .. " install", { color = ACCENT }) end
+          end
+          line("  moon run " .. tostring(res.next_script), { color = ACCENT })
+        end
       end
-
-      return hydronium.h(ink.Box, viewport_props,
-        header,
-        hydronium.h(ink.Box, { flexDirection = "column" }, lines),
-        footer,
-        cheat_panel)
+      return hydronium.h(ink.Box, {flexDirection = "column", paddingX = 1, inlineViewport = true,
+        scrollRevision = scroll_revision(), scrollDelta = scroll_delta(), focusRevision = focus_revision()},
+        form and hydronium.h(Header, {key = "fizzing"}) or nil,
+        hydronium.h(ink.Box, {flexDirection = "column"}, lines))
     end
   end
 end

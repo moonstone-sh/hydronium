@@ -122,14 +122,21 @@ end
 local SPINNER = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
 -- Badge colours were picked by APCA, not by eye: white on the green scores
--- Lc -76, near-black on the yellow Lc 75 (oklab.lc). ansi16 falls back to
--- the theme's own palette slots; "none" strips colour and keeps the badge
--- readable as an inverse block.
+-- Lc -76, near-black on the yellow Lc 75 (oklab.lc), white on the blue
+-- checking badge likewise clears Lc 60. ansi16 falls back to the theme's own
+-- palette slots; "none" strips colour and keeps the badge readable as an
+-- inverse block.
+local WHITE = ink.byProfile({ truecolor = oklab.hex("#ffffff"), ansi256 = oklab.hex("#ffffff"), ansi16 = "brightWhite" })
 local BADGE = {
+  checking = {
+    background = ink.byProfile({ truecolor = oklab.oklch(0.52, 0.15, 250), ansi256 = oklab.oklch(0.52, 0.15, 250), ansi16 = "blue" }),
+    color = WHITE,
+    label_color = ink.byProfile({ truecolor = oklab.oklch(0.72, 0.13, 250), ansi256 = oklab.oklch(0.72, 0.13, 250), ansi16 = "brightBlue" }),
+  },
   current = {
     glyph = "✓",
     background = ink.byProfile({ truecolor = oklab.oklch(0.55, 0.15, 150), ansi256 = oklab.oklch(0.55, 0.15, 150), ansi16 = "green" }),
-    color = ink.byProfile({ truecolor = oklab.hex("#ffffff"), ansi256 = oklab.hex("#ffffff"), ansi16 = "brightWhite" }),
+    color = WHITE,
     label_color = ink.byProfile({ truecolor = oklab.oklch(0.72, 0.15, 150), ansi256 = oklab.oklch(0.72, 0.15, 150), ansi16 = "green" }),
   },
   available = {
@@ -139,40 +146,58 @@ local BADGE = {
     label_color = ink.byProfile({ truecolor = oklab.oklch(0.84, 0.16, 90), ansi256 = oklab.oklch(0.84, 0.16, 90), ansi16 = "yellow" }),
   },
 }
-local SPINNER_COLOR = ink.byProfile({ truecolor = oklab.oklch(0.68, 0.15, 250), ansi256 = oklab.oklch(0.68, 0.15, 250), ansi16 = "brightBlue" })
 local INVERSE_WITHOUT_COLOR = ink.byProfile({ none = true })
 
---- Update-status indicator, icon first, text only where it fits:
----   checking   blue spinner  + "Checking for updates…" (>=80) / "Checking…" (>=64)
----   available  ! on yellow   + "Update available vX" (>=80) / "vX" (>=64)
----   current    ✓ on green    + "Up to date" (>=80)
---- Below 64 columns only the icon remains. nil status (unknown: offline,
---- disabled, no data) renders nothing -- never a claim without data.
---- Accepts the older `{ available = bool }` shape too.
---- @param status? { state?: "checking"|"available"|"current", available?: boolean, latest?: string }
---- @param columns integer
---- @param frame? integer spinner frame
-function M.render_status(status, columns, frame)
-  if not status then return nil end
-  local state = status.state or (status.available and "available" or "current")
-  local label
-  if state == "checking" then
-    label = columns >= 80 and " Checking for updates…" or columns >= 64 and " Checking…" or ""
-    return hydronium.h(ink.Text, { key = "status", color = SPINNER_COLOR },
-      SPINNER[((frame or 0) % #SPINNER) + 1] .. label)
-  end
-  local badge = BADGE[state]
-  if not badge then return nil end
+local function H_row(label, badge, glyph)
+  return hydronium.h(ink.Box, { key = "status", flexDirection = "row", flexShrink = 0 },
+    label ~= "" and hydronium.h(ink.Text, { key = "label", color = badge.label_color }, label .. " ") or nil,
+    hydronium.h(ink.Text, { key = "badge", backgroundColor = badge.background, color = badge.color,
+      bold = true, inverse = INVERSE_WITHOUT_COLOR }, " " .. glyph .. " "))
+end
+
+local function status_state(status)
+  return status.state or (status.available and "available" or "current")
+end
+
+--- The label for `status` at breakpoint `tier` (80 full, 64 short, else none).
+local function status_label(status, tier)
+  local state = status_state(status)
+  if state == "checking" then return tier >= 80 and "Checking for updates…" or tier >= 64 and "Checking…" or "" end
   if state == "available" then
     local latest = "v" .. tostring(status.latest or "?")
-    label = columns >= 80 and (" Update available " .. latest) or columns >= 64 and (" " .. latest) or ""
-  else
-    label = columns >= 80 and " Up to date" or ""
+    return tier >= 80 and ("Update available " .. latest) or tier >= 64 and latest or ""
   end
-  return hydronium.h(ink.Box, { key = "status", flexDirection = "row" },
-    hydronium.h(ink.Text, { key = "badge", backgroundColor = badge.background, color = badge.color,
-      bold = true, inverse = INVERSE_WITHOUT_COLOR }, " " .. badge.glyph .. " "),
-    label ~= "" and hydronium.h(ink.Text, { key = "label", color = badge.label_color }, label) or nil)
+  return tier >= 80 and "Up to date" or ""
+end
+
+--- Cells the indicator occupies at `tier` (0 when there is no status).
+function M.status_width(status, tier)
+  if not status or not BADGE[status_state(status)] then return 0 end
+  local label = status_label(status, tier)
+  local cells = 0
+  for _ in label:gmatch("[%z\1-\127\194-\244][\128-\191]*") do cells = cells + 1 end
+  return (cells > 0 and cells + 1 or 0) + 3
+end
+
+--- Update-status indicator: a label, then a 3-cell badge that is always the
+--- rightmost thing on the line, so the eye finds the state in one place:
+---   checking   white braille spinner on blue
+---   available  ! on yellow   + "Update available vX" (>=80) / "vX" (>=64)
+---   current    ✓ on green    + "Up to date" (>=80)
+--- Below 64 only the badge remains. nil status (unknown: offline, disabled,
+--- no data) renders nothing -- never a claim without data.
+--- Accepts the older `{ available = bool }` shape too.
+--- @param status? { state?: "checking"|"available"|"current", available?: boolean, latest?: string }
+--- @param tier integer breakpoint: 80 full label, 64 short label, lower badge only
+--- @param frame? integer spinner frame
+function M.render_status(status, tier, frame)
+  if not status then return nil end
+  local state = status_state(status)
+  local badge = BADGE[state]
+  if not badge then return nil end
+  local glyph = state == "checking" and SPINNER[((frame or 0) % #SPINNER) + 1] or badge.glyph
+  local label = status_label(status, tier)
+  return H_row(label, badge, glyph)
 end
 
 --- Exposed so bubbles.lua (and stories/snapshots) can size their field

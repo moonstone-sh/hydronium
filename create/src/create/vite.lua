@@ -147,7 +147,10 @@ local H_REQUIRE_LINE = 'local H = require("hydronium")'
 local ASSETS_REQUIRE_INSERT = '\nlocal assets = require("hydronium_dom.assets")'
 local ISLAND_ASSET_ROUTE_LINE = '\n    ["/js/island/:path*"] = { dir = "public/js/island", param = "path" },'
 local DEV_WATCH_ISLAND_LINE = '\n    "public/js/island/counter.js",'
+-- islands has no Lua source topology; ssr additionally keeps Ballad's source
+-- inventory current (--watch-sources).
 local MOONSTONE_DEV_SCRIPT_OLD = [[dev = "moon exec --dev -- hydronium dev --meteorite-args='--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit'"]]
+local SSR_DEV_SCRIPT_OLD = [[dev = "moon exec --dev -- hydronium dev --watch-sources --meteorite-args='--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit'"]]
 local MOONSTONE_DEV_SCRIPT_NEW = 'dev = "npm run dev"'
 
 -- The opening of whichever function actually renders the Document, for
@@ -437,7 +440,7 @@ local function apply_ssr(files, opts)
   if not handler then error("create.vite: " .. tostring(handler_err) .. " in src/app/page_handler.lua (render anchor)", 2) end
   files["src/app/page_handler.lua"] = handler
 
-  local moonstone, moonstone_err = replace_once(files["moonstone.toml"], MOONSTONE_DEV_SCRIPT_OLD, MOONSTONE_DEV_SCRIPT_NEW)
+  local moonstone, moonstone_err = replace_once(files["moonstone.toml"], SSR_DEV_SCRIPT_OLD, MOONSTONE_DEV_SCRIPT_NEW)
   if not moonstone then error("create.vite: " .. tostring(moonstone_err) .. " in moonstone.toml (dev script anchor)", 2) end
   files["moonstone.toml"] = moonstone
 
@@ -486,10 +489,9 @@ export default defineConfig({
 ]]
 
   files["scripts/dev.mjs"] = [[
-import { prepareSources } from "./sources.mjs";
-prepareSources();
 import { spawn } from "node:child_process";
-const child = spawn("moon", ["exec", "--dev", "--", "hydronium", "dev", "--vite",
+// --watch-sources: Ballad (partiture.lua) owns Lua source discovery.
+const child = spawn("moon", ["exec", "--dev", "--", "hydronium", "dev", "--vite", "--watch-sources",
   "--meteorite-args=--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit"],
   { stdio: "inherit", env: { ...process.env, HYDRONIUM_JS_RUNTIME: process.versions.bun ? "bun" : "node" } });
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));
@@ -532,9 +534,9 @@ moon run build      # meteorite build -- bakes public/ into the server binary
 ```
 ]]
 
-  files["scripts/sources.mjs"] = require("create.source_discovery")
-  files["vite.config.js"] = 'import { hydroniumSources } from "./scripts/sources.mjs";\n' .. files["vite.config.js"]
-  files["vite.config.js"] = files["vite.config.js"]:gsub("plugins: %[%s*", "plugins: [\n    hydroniumSources(),\n    ", 1)
+  files["scripts/lua-hot-update.mjs"] = require("create.vite_lua_guard")
+  files["vite.config.js"] = 'import { hydroniumLuaHotUpdate } from "./scripts/lua-hot-update.mjs";\n' .. files["vite.config.js"]
+  files["vite.config.js"] = files["vite.config.js"]:gsub("plugins: %[%s*", "plugins: [\n    hydroniumLuaHotUpdate(),\n    ", 1)
 
   return files
 end
@@ -549,9 +551,9 @@ end
 -- bakes its static file inputs (including dist/index.html and
 -- dist/assets/*) into the compiled server binary AT BUILD TIME.
 local SPA_METEORITE_COMBINED_BUILD = 'build = "moon exec --dev -- ballad play partiture.lua '
-  .. '&& meteorite build --mode release-hybrid --backend fast_http"'
+  .. '&& meteorite build --mode release-hybrid --backend fast_http --lua-root .moonstone/env/libexec/luajit"'
 local SPA_METEORITE_BUILD_SPLIT = 'build = "moon exec --dev -- ballad play partiture.lua"\n'
-  .. 'package = "moon exec --dev -- meteorite build --mode release-hybrid --backend fast_http"'
+  .. 'package = "moon exec --dev -- meteorite build --mode release-hybrid --backend fast_http --lua-root .moonstone/env/libexec/luajit"'
 
 local INJECT_LINK_SCRIPT = [[// Links this project's separately-built Vite stylesheet into
 // dist/index.html, which hydronium_ballad's `hb.plugins.site` generates at

@@ -113,12 +113,19 @@ component state and CSS updates in place. The document bootstrap remains a
 reload boundary. The LUAX require loader is installed at VM entry points, so
 views do not each need compilation shims.
 
-The terminal wizard renders inline, with the full form available through
-Page Up/Page Down. Tab/Shift+Tab, Enter, arrows, `j`/`k`, and section jumps
-`1`–`4` reveal the focused choice automatically. Letters and digits remain
-ordinary input in the name and directory fields. Manual scrolling does not
-change a choice; re-focusing a section brings its active field back into view.
+The inline wizard walks through Project, App, Flavour, Features, Tooling, and Review.
+Flavour is a separate follow-up page for apps with routing variants.
+Irrelevant pages are skipped. Arrows and `j`/`k` move focus; Space or Enter
+selects a choice. Tab/Shift+Tab move between fields. Activate Continue to advance,
+or use Back/Esc to return with your answers intact. Outside text fields,
+`1`–`6` jump to the numbered steps available for your app. Ctrl+S opens Review; only Create project accepts it.
 
-Enter on Create, Ctrl+Enter, or Ctrl+S confirms. Confirmation disappears,
-choices freeze, and tasks run. On completion, the wizard exits and leaves the
-complete form and results in terminal scrollback as a receipt.
+Two footer lines summarize your choices and navigation. Wide terminals show
+**Fizzing**, a centered proton-transfer diorama with fixed arrow and product
+positions. Molecules illuminate from gray using universal-indicator-inspired
+acid/base colors; these illustrate chemical roles rather than measured pH. Compact and short terminals prioritize the current question.
+Set `HYDRONIUM_REDUCED_MOTION=1` to keep Fizzing still.
+
+After acceptance, editing controls disappear and installation progress replaces
+the wizard. The final receipt remains in terminal scrollback with the chosen
+settings, individual task results, and commands to continue.

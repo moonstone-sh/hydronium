@@ -69,30 +69,29 @@ abi = "5.1"
 
 [scripts]
 dev = "moon exec --dev -- hydronium dev --meteorite-args='--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit'"
-build = "moon exec --dev -- meteorite build --mode release-hybrid --backend fast_http"
+build = "moon exec --dev -- meteorite build --mode release-hybrid --backend fast_http --lua-root .moonstone/env/libexec/luajit"
 
 [[dependencies]]
 name = "moonstone/meteorite"
-# 0.2.9 is the first release whose dev-event stream carries request headers
-# and bodies (redacted and capped -- zig/server/dev_events.zig). `hydronium
-# dev`'s filter bar can query them (mime:, origin:, header:, body:), and on an
-# older meteorite those fields are simply absent, so the filters never match.
-constraint = "^0.2.9"
+# 0.3 adds `meteorite client typescript|luacats` (typed DTOs from the route
+# graph) on top of 0.2.9's dev-event request headers/bodies, which `hydronium
+# dev`'s filter bar queries (mime:, origin:, header:, body:).
+constraint = "^0.3.1"
 role = "tool"
 
 [[dependencies]]
 name = "hydronium/cli"
-constraint = "^0.4.1"
+constraint = "^0.4.2"
 role = "tool"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.3.7"
+constraint = "^0.4.0"
 role = "tool"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.2"
+constraint = "^0.2.3"
 role = "runtime"
 
 [[dependencies]]
@@ -102,7 +101,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.1"
+constraint = "^0.3.2"
 role = "runtime"
 ]=], project_name)
 
@@ -120,13 +119,13 @@ zig-out/
 
   -- Registry package layout matches the SSR template.
   files["build.zig"] = [[const std = @import("std");
-const meteorite = @import(".moonstone/env/libexec/meteorite/meteorite/zig/build_api.zig");
+const meteorite = @import(".moonstone/env/libexec/moonstone/meteorite/meteorite/zig/build_api.zig");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     _ = meteorite.addService(b, .{
-        .meteorite_root = ".moonstone/env/libexec/meteorite/meteorite",
+        .meteorite_root = ".moonstone/env/libexec/moonstone/meteorite/meteorite",
         .lua_root = ".moonstone/env/libexec/luajit",
         .target = target,
         .optimize = optimize,

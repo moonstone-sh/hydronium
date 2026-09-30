@@ -331,8 +331,13 @@ test("scaffold dry-run produces expected files for ssr template", function()
   assert(file_map["moonstone.toml"], "missing moonstone.toml")
   assert(file_map["src/main.lua"], "missing src/main.lua")
   assert(not file_map["src/views/Document.lua"], "LUAX modules must not need Lua shims")
-  assert(file_map["scripts/sources.mjs"], "missing automatic source discovery")
-  assert(file_map["src/app/package_roots.lua"], "missing package layout resolver")
+  assert(not file_map["scripts/sources.mjs"], "Lua source discovery belongs to Ballad, not Vite")
+  assert(file_map["scripts/lua-hot-update.mjs"], "missing Vite guard against full reloads on Lua edits")
+  assert(file_map["partiture.lua"], "missing Ballad source discovery partiture")
+  assert(not file_map["src/app/package_roots.lua"], "package layout is resolved by hydronium.mount, not the app")
+  assert(not file_map["client_manifest.json"], "the framework manifest is derived by hydronium.mount, not pasted")
+  assert(file_map["src/app/hello.lua"], "missing plain Meteorite route handler example")
+  assert(file_map["src/features/greeting/Greeting.luax"], "missing component outside src/views")
   assert(file_map["src/views/Document.luax"], "missing src/views/Document.luax")
   assert(file_map["src/views/App.luax"], "missing src/views/App.luax")
   assert(file_map["src/views/Counter.luax"], "missing src/views/Counter.luax")
@@ -342,36 +347,25 @@ test("scaffold dry-run produces expected files for ssr template", function()
   assert(not file_map["src/hydronium"], "generated projects must resolve Hydronium through dependencies, not a source symlink")
 
   local generated = require("create.templates.ssr").files({ name = "test-ssr-app" })
-  local manifest = generated["client_manifest.json"]
-  assert(manifest:find('"hydronium_router.history.state"', 1, true),
-    "SSR client manifest must include browser history state decoding")
-  assert(manifest:find('"hydronium.core.hmr_host"', 1, true),
-    "SSR client manifest must include the browser HMR host coordinator")
-  assert(manifest:find('"hydronium.core.module_graph"', 1, true),
-    "SSR client manifest must include the runtime module graph")
-  assert(manifest:find('"hydronium.core.love_hmr"', 1, true),
-    "SSR client manifest must include the core barrel's LÖVE HMR dependency")
-  assert(manifest:find('"hydronium.core.source_topology"', 1, true),
-    "SSR client manifest must include the core barrel's source topology dependency")
-  assert(manifest:find('"hydronium_router.topology"', 1, true),
-    "SSR client manifest must include the router's topology dependency")
   assert(not generated["moonstone.toml"]:find("path:../", 1, true), "SSR dependencies must install without sibling checkouts")
   assert(generated["build.zig"]:find("meteorite/meteorite/zig/build_api.zig", 1, true),
     "SSR build must use the installed Meteorite package layout")
-  assert(generated["src/main.lua"]:find('package_roots.router .. "hydronium_router/client/history.js"', 1, true),
-    "SSR must serve the packaged router client assets")
-  assert(generated["src/main.lua"]:find('package_roots.dom .. "hydronium_dom/client/vendor"', 1, true),
-    "SSR must serve DOM client assets from Moonstone's package-leaf libexec layout")
-  assert(not generated["src/main.lua"]:find("dev_registry", 1, true),
-    "SSR hybrid handlers must not capture an outer registry helper")
-  assert(generated["src/app/sources.lua"]:find("hydronium_dom.dev.source_registry", 1, true),
-    "SSR must resolve browser modules through the source registry")
-  assert(generated["src/app/sources.lua"]:find(".hydronium/sources.lua", 1, true),
-    "SSR must load the automatically discovered source inventory")
-  assert(generated["src/main.lua"]:find("registry:module(id)", 1, true),
-    "SSR must whitelist declared module IDs")
-  assert(generated["src/main.lua"]:find("passive = hot_sources", 1, true),
+  assert(generated["partiture.lua"]:find("hb.source_inventory(p)", 1, true), "SSR discovery must be the Ballad source_inventory node")
+  assert(generated["moonstone.toml"]:find("hydronium dev --watch-sources", 1, true), "SSR dev must keep the Ballad inventory current")
+  assert(generated["moonstone.toml"]:find('build = "moon exec -- ballad play build.partiture.lua && ', 1, true), "SSR build must bundle before compiling the server")
+  assert(generated["build.partiture.lua"]:find("hb.client_bundle(p)", 1, true), "SSR release build must produce the browser bundle")
+  local main = generated["src/main.lua"]
+  assert(main:find('require("hydronium_dom.server.meteorite")', 1, true) and main:find("hydronium.mount(app)", 1, true),
+    "SSR must declare framework routes through hydronium.mount")
+  assert(main:find("dev_watch = hydronium.dev_watch()", 1, true),
     "SSR must classify client UI source as passive Meteorite input")
+  assert(main:find('meteorite.lua("app.hello"', 1, true),
+    "SSR must show a plain Meteorite route rendering a Hydronium component")
+  assert(not main:find("dev_registry", 1, true) and not main:find("/__hydronium/", 1, true),
+    "SSR main.lua must not carry framework route plumbing")
+  assert(not main:find("io.open", 1, true), "SSR main.lua must not read files per request")
+  assert(generated["moonstone.toml"]:find('name = "hydronium/dom"\nconstraint = "^0.3.2"'),
+    "hydronium.mount needs hydronium/dom 0.3.2")
   assert(not generated["src/main.lua"]:find('id:gsub("%%.", "/")', 1, true),
     "SSR must not reconstruct filesystem paths from request IDs")
 end)
@@ -1333,349 +1327,337 @@ test("create.stories.lua loads and every story renders (honoring a story's own r
   assert(checked >= 12, "expected every non-interactive story to render, checked only " .. checked)
 end)
 
-test("wizard header sweep is skippable by any key and expires on its own within 700ms", function()
-  local session_mod = require("hydronium_ink.session")
-  local hydronium = require("hydronium")
-  local wizard_app = require("create.ui.wizard_app")
+local function stepped_session(opts, dimensions)
+  local H = require("hydronium")
+  opts = opts or {}
+  if opts.name == nil then opts.name = "wizard-app" end
+  opts.dry_run = true
+  opts.pm_mod = opts.pm_mod or {detect = function() return {"bun"} end}
+  return require("hydronium_ink.session").create(H.h(require("create.ui.wizard_app").create_wizard_app(opts)),
+    dimensions or {columns = 80, rows = 24, inline = true, writeFn = function() end})
+end
 
-  -- The form is ALWAYS fully rendered, sweep or not (see wizard_app.lua's
-  -- own header comment: there is no separate splash screen) -- what the
-  -- sweep affects is only the header's gradient animation. This is
-  -- verified indirectly: pressing a key during the sweep must not be
-  -- swallowed as ordinary input into the (already-visible) name field, and
-  -- the sweep must stop influencing anything within 700ms even with no
-  -- key pressed at all, matching SWEEP_MS.
-  local sess = session_mod.create(hydronium.h(wizard_app.create_wizard_app({ intro = true })), { columns = 84, rows = 130 })
-  assert(wizard_text(sess):find("Project", 1, true), "the form must be visible from the very first frame, sweep or not")
-  sess:write("x") -- the very first keypress during the sweep just dismisses it...
-  sess:write("yz") -- ...so THIS is what actually reaches the name field
-  assert(wizard_text(sess):find("yz", 1, true), "typing after the skip must reach the name field")
-  assert(not wizard_text(sess):find("xyz", 1, true), "the key that dismissed the sweep must not also have been typed into the name field")
-  sess:close()
-
-  local timed = session_mod.create(hydronium.h(wizard_app.create_wizard_app({ intro = true })), { columns = 84, rows = 130 })
-  timed:step(0); timed:step(750)
-  -- After the sweep naturally expires, ordinary typing must work again.
-  timed:write("ok")
-  assert(timed:frame() ~= nil)
-  timed:close()
+test("wizard advances explicit steps, keeps edits on Back, and never swallows the first input", function()
+  local s = stepped_session({name = "", intro = true})
+  s:write("hello")
+  assert(wizard_text(s):find("./hello", 1, true))
+  s:write("\t\r") -- directory then Continue
+  assert(wizard_text(s):find("1/5  Project", 1, true))
+  s:write("\r")
+  assert(wizard_text(s):find("2/5  App", 1, true))
+  s:write("\27")
+  -- Escape decoding is disambiguated by a session time step.
+  s:step(100)
+  assert(wizard_text(s):find("hello", 1, true))
+  s:close()
 end)
 
-test("install-flow is a persistent, always-fully-rendered form (radios, toggles, rail, validation, resize)", function()
-  local session_mod = require("hydronium_ink.session")
-  local collection = dofile("./src/create/ui/create.stories.lua")
-
-  local element = collection.render({ dry_run = true })
-  local sess = session_mod.create(element, { columns = 84, rows = 130 })
-
-  local initial = wizard_text(sess)
-  assert(initial:find("Project", 1, true) and initial:find("Stack", 1, true)
-    and initial:find("Styling", 1, true) and initial:find("Tooling", 1, true)
-    and initial:find("Create", 1, true),
-    "every section, and the final Create node, must be visible from the very first frame -- no separate review step")
-  assert(initial:find("SSR", 1, true) and initial:find("SPA", 1, true)
-    and initial:find("Islands", 1, true) and initial:find("Minimal", 1, true),
-    "every framework alternative must always be visible")
-
-  sess:write("test-lab-app")
-  assert(wizard_text(sess):find("test%-lab%-app"), "typed name must appear immediately")
-
-  -- ctrl+Enter with an otherwise-untouched form must not submit anything
-  -- yet if navigation hasn't reached a fully valid state -- but since the
-  -- name IS valid here, ctrl+Enter (or its ctrl+s fallback) must submit
-  -- from ANYWHERE, not only from the final rail node.
-  sess:write("\19") -- Ctrl+S: the documented, always-distinguishable fallback
-  local after_submit = wizard_text(sess)
-  assert(after_submit:find("Write project files", 1, true), "Ctrl+S must submit from anywhere, not only the final rail node")
-  sess:close()
-
-  -- A second run: walk fields explicitly, change the framework and
-  -- router, toggle Tailwind, resize narrow, and confirm every value
-  -- survives -- then submit from the final rail node with plain Enter.
-  -- Navigation is STOP-based (see wizard_app.lua's own header comment):
-  -- ↑/↓/←/→ move within a multi-option field's own vertically-stacked
-  -- options first (matching how they're drawn), and only roll into the
-  -- ADJACENT field once exhausted. Tab is the coarse "jump straight to
-  -- the next field" alternative, used below whenever the intent is "done
-  -- picking here, move on" rather than "change this field's pick".
-  local sess2 = session_mod.create(collection.render({ dry_run = true }), { columns = 84, rows = 130 })
-  sess2:write("router-app")
-  sess2:write("\t")    -- name -> directory (Tab, coarse)
-  sess2:write("\t")    -- directory -> framework (lands on its current pick: SSR)
-  sess2:write("\27[C") -- framework: SSR -> SPA (fine, within the field)
-  sess2:write("\t")    -- framework -> router (now enabled for SPA; lands on its current pick: Hydronium)
-  sess2:write("\27[C") -- router: Hydronium -> Meteorite (fine, within the field)
-  sess2:write("3")     -- digit jump to Styling
-  sess2:write(" ")     -- toggle Tailwind on
-  local mid = wizard_text(sess2)
-  assert(mid:find("router%-app"), "the typed name must survive navigating away from it")
-  assert(mid:find("\226\150\163 Tailwind CSS v4", 1, true), "Tailwind toggle must show as checked (\226\150\163) once turned on")
-
-  sess2:resize(40, 130)
-  local narrow = wizard_text(sess2)
-  assert(narrow:find("router%-app"), "resizing narrower must not lose any typed value")
-  assert(narrow:find("hydronium", 1, true), "the narrow header must fall back to the wordmark-only tier")
-
-  sess2:resize(84, 130)
-  sess2:write("4")     -- digit jump to Tooling (lands on package_manager's current pick)
-  sess2:write("\t\t\t\t") -- package_manager -> interpreter -> install -> git -> submit (all coarse)
-  sess2:write("\r")    -- Enter from the final rail node
-  for step = 1, 6 do sess2:step(step * 150) end
-  local final = wizard_text(sess2)
-  assert(final:find("router%-app"), final)
-  assert(final:find("\226\156\148 Write project files", 1, true), "the checklist must show the write step done")
-  assert(final:find("%[DRY RUN%] Solution ready%.") or final:find("Files are written", 1, true), final)
-  sess2:close()
+test("arrow, j/k and scrolling focus never select an option; Space and Enter do", function()
+  local s = stepped_session({initial_active_id = "framework"})
+  s:write("j")
+  assert(wizard_text(s):find("▌ ○ SPA", 1, true))
+  assert(wizard_text(s):find("● SSR", 1, true))
+  s:write("\27[6~\27[5~")
+  assert(wizard_text(s):find("● SSR", 1, true))
+  s:write(" ") -- Space selects in place
+  assert(wizard_text(s):find("▌ ● SPA", 1, true))
+  s:write("k\r") -- Enter selects and moves on to the next field
+  assert(wizard_text(s):find("● SSR", 1, true))
+  assert(not wizard_text(s):find("▌ ● SSR", 1, true), "Enter advances focus past the option it selected")
+  s:close()
 end)
 
-test("an empty project name blocks submit and is highlighted, from anywhere", function()
-  local session_mod = require("hydronium_ink.session")
-  local hydronium = require("hydronium")
-  local wizard_app = require("create.ui.wizard_app")
-  local sess = session_mod.create(hydronium.h(wizard_app.create_wizard_app({ dry_run = true })), { columns = 84, rows = 130 })
-
-  sess:write("\27[B\27[B\27[B\27[B\27[B\27[B\27[B\27[B\27[B") -- navigate well away from the name field
-  sess:write("\19") -- Ctrl+S from wherever we ended up
-  local text = wizard_text(sess)
-  assert(text:find("cannot be empty", 1, true), "an empty name must block submit with a visible error")
-  assert(not text:find("Write project files", 1, true), "submit must not proceed with an invalid name")
-  sess:close()
+test("irrelevant steps disappear and switching templates preserves applicable answers", function()
+  local s = stepped_session({initial_active_id = "framework", initial_tailwind = true,
+    initial_interpreter_id = "lua@5.4"})
+  s:write("jjjj ") -- Ink
+  assert(wizard_text(s):find("2/4  App", 1, true))
+  assert(wizard_text(s):find("interpreter adjusted", 1, true))
+  s:write("3") -- unavailable Features redirects to Tooling
+  assert(wizard_text(s):find("3/4  Tooling", 1, true))
+  assert(not wizard_text(s):find("○ Lua 5.4", 1, true))
+  assert(not wizard_text(s):find("bun", 1, true))
+  s:write("2kkkk 3") -- return to SSR, restore Tailwind
+  assert(wizard_text(s):find("■ Tailwind CSS", 1, true))
+  s:close()
 end)
 
-test("package manager and router fields disable with a real reason when they don't apply", function()
-  local session_mod = require("hydronium_ink.session")
-  local hydronium = require("hydronium")
-  local wizard_app = require("create.ui.wizard_app")
-  -- SSR is the default framework: router is locked to Hydronium (SSR
-  -- always uses it), and Tailwind/package manager stay whatever this
-  -- machine's own detected managers allow -- this only asserts the
-  -- router side, which is unconditional.
-  local sess = session_mod.create(hydronium.h(wizard_app.create_wizard_app({ dry_run = true, name = "x" })), { columns = 84, rows = 130 })
-  local text = wizard_text(sess)
-  assert(text:find("SSR always uses Hydronium Router", 1, true), "router must show why it's locked for the default SSR framework")
-  -- Field-level reasons print ONCE, not once per option -- and each
-  -- option keeps its own real description regardless.
-  local _, count = text:gsub("SSR always uses Hydronium Router", "")
-  assert(count == 1, "the router disabled reason must print exactly once, not per option: " .. text)
-  assert(text:find("Typed routes and client%-side navigation", 1, false), "each option must keep its own description even while the field is disabled")
-  assert(text:find("One server%-declared route, no router manifest", 1, false), "each option must keep its own description even while the field is disabled")
-  sess:close()
+test("review is the only write boundary and validates an empty project name", function()
+  local calls = 0
+  local s = stepped_session({name = "", create_mod = {scaffold = function() calls = calls + 1 end}})
+  s:write("\19")
+  assert(calls == 0)
+  assert(wizard_text(s):find("cannot be empty", 1, true))
+  s:write("example\19")
+  assert(wizard_text(s):find("Review", 1, true))
+  assert(calls == 0)
+  s:write("\19")
+  assert(calls == 0, "review shortcut cannot accept")
+  s:close()
 end)
 
-test("package manager field is enabled for any Vite-based framework independent of Tailwind, disabled with a reason otherwise", function()
-  local session_mod = require("hydronium_ink.session")
-  local hydronium = require("hydronium")
-  local wizard_app = require("create.ui.wizard_app")
-
-  -- SSR (Vite-based), Tailwind left OFF (the default): package manager must
-  -- still be reachable and show no "only for Vite" disabled reason --
-  -- package manager is tied to Vite, never to Tailwind.
-  local sess = session_mod.create(hydronium.h(wizard_app.create_wizard_app({ dry_run = true, name = "x" })), { columns = 84, rows = 200 })
-  sess:write("4") -- digit-jump to Tooling; package manager is reachable since this machine has at least one manager on PATH
-  local text = wizard_text(sess)
-  assert(not text:find("Only used by Vite-based frameworks", 1, true),
-    "package manager must not show a disabled reason for the default (Vite-based) SSR framework: " .. text)
-  sess:close()
-
-  -- Minimal (NOT Vite-based): package manager shows its field-level
-  -- disabled reason exactly once, every option struck through.
-  local sess2 = session_mod.create(hydronium.h(wizard_app.create_wizard_app({
-    dry_run = true, name = "x", initial_framework_id = "minimal",
-  })), { columns = 84, rows = 200 })
-  sess2:write("4")
-  local text2 = wizard_text(sess2)
-  assert(text2:find("Only used by Vite-based frameworks", 1, true), "package manager must show why it's moot for a non-Vite framework: " .. text2)
-  local _, count = text2:gsub("Only used by Vite%-based frameworks", "")
-  assert(count == 1, "the reason must print once, not per option: " .. text2)
-  sess2:close()
+test("missing package managers remain selectable and review reports the chosen tool", function()
+  local s = stepped_session({initial_active_id = "package_manager", pm_mod = {detect = function() return {} end}})
+  assert(wizard_text(s):find("not installed", 1, true))
+  s:write("jj \19")
+  assert(wizard_text(s):find("Tooling   bun ·", 1, true))
+  s:close()
 end)
 
-test("package manager field shows a field-level note (not a disabled reason) when nothing is detected on PATH, and submit still works", function()
-  local session_mod = require("hydronium_ink.session")
-  local hydronium = require("hydronium")
-  local wizard_app = require("create.ui.wizard_app")
-  local no_managers_pm = { detect = function() return {} end }
-
-  local sess = session_mod.create(hydronium.h(wizard_app.create_wizard_app({
-    dry_run = true, name = "no-pm-app", pm_mod = no_managers_pm,
-  })), { columns = 84, rows = 200 })
-  local text = wizard_text(sess)
-  assert(text:find("none found on PATH", 1, true), "must show an informational note when no package manager is detected: " .. text)
-  assert(text:find("install one to run Vite", 1, true), text)
-  assert(not text:find("Only used by Vite-based frameworks", 1, true),
-    "a note about nothing being detected is not the same as the field being disabled for a non-Vite framework")
-  -- Every option is individually disabled ("not found on PATH"), but the
-  -- form must still let the user submit -- files are created regardless.
-  sess:write("\19") -- Ctrl+S: submit from anywhere
-  local after = wizard_text(sess)
-  assert(after:find("Write project files", 1, true), "submitting with no package manager detected must still succeed: " .. after)
-  sess:close()
+test("stepped wizard fits normal and short terminals and retains the two-line footer", function()
+  for _, size in ipairs({{80,24}, {48,20}, {40,12}}) do
+    for _, field in ipairs({"name", "framework", "tailwind", "package_manager"}) do
+      local s = stepped_session({initial_active_id = field}, {columns=size[1],rows=size[2],inline=true,writeFn=function()end})
+      assert(s:frame().h <= size[2] - 2, field .. " exceeds viewport at " .. size[1] .. "x" .. size[2])
+      local text = wizard_text(s)
+      assert(text:find("wizard-app", 1, true))
+      assert(text:find("↑↓", 1, true))
+      s:write("jjjjjj")
+      assert(s:frame().h <= size[2] - 2)
+      s:close()
+    end
+  end
 end)
 
-test("directory follows the typed name until edited directly, and reflects the real CLI default otherwise", function()
-  local session_mod = require("hydronium_ink.session")
-  local hydronium = require("hydronium")
-  local wizard_app = require("create.ui.wizard_app")
-
-  -- With no name typed yet, the field shows a dim placeholder plus the
-  -- cursor -- never a bare blank line -- and directory reflects the real,
-  -- literal default `create/src/main.lua` uses when no --directory is
-  -- given at all (`ctx.args.directory or "."`, i.e. scaffold IN the
-  -- current directory): "." -- NOT "./<name>", since there is no name yet.
-  local sess = session_mod.create(hydronium.h(wizard_app.create_wizard_app({ dry_run = true })), { columns = 84, rows = 130 })
-  local initial = wizard_text(sess)
-  assert(initial:find("my%-app\226\150\141", 1, false) or initial:find("my%-app", 1, true), "an empty name must show a dim placeholder plus the cursor")
-  assert(initial:find("directory  %.", 1, false), "directory must read the real CLI default (\".\") before any name is typed: " .. initial)
-
-  -- Typing a name updates directory LIVE to "./<name>" (a deliberate wizard
-  -- convenience, NOT a rediscovery of the plain CLI's own "." default --
-  -- see wizard_app.lua's own comment on this).
-  sess:write("acid-app")
-  local after_name = wizard_text(sess)
-  assert(after_name:find("directory  %./acid%-app", 1, false), "directory must live-follow the typed name: " .. after_name)
-
-  -- Editing directory directly stops it from following the name any further.
-  sess:write("\t") -- name -> directory
-  sess:write("-custom")
-  local after_edit = wizard_text(sess)
-  assert(after_edit:find("%./acid%-app%-custom", 1, false), after_edit)
-  sess:write("\t\t") -- directory -> framework -> ... back to name (wraps or lands elsewhere; just go back explicitly)
-  sess:close()
-
-  -- A second session: editing directory FIRST (appending onto its "."
-  -- default -- text fields here are append/backspace-only, never
-  -- select-on-focus, matching every other field in this wizard), then
-  -- typing a name, must never overwrite the manually-typed directory.
-  local sess2 = session_mod.create(hydronium.h(wizard_app.create_wizard_app({ dry_run = true })), { columns = 84, rows = 130 })
-  sess2:write("\t") -- name -> directory
-  sess2:write("somewhere-else")
-  sess2:write("\27[Z") -- Shift+Tab back to name
-  sess2:write("later-name")
-  local final = wizard_text(sess2)
-  assert(final:find("somewhere%-else"), "a manually-typed directory must never be overwritten by a later name edit: " .. final)
-  assert(not final:find("%./later%-name", 1, false), final)
-  sess2:close()
+test("accept removes controls and leaves chosen settings and installation results in scrollback", function()
+  local writes = {}
+  local s = stepped_session({initial_install_deps=false, initial_git_init=false},
+    {columns=80, rows=24, inline=true, writeFn=function(bytes) writes[#writes+1]=bytes end})
+  s:write("\19\r") -- review opens on "Create project"
+  local text = wizard_text(s)
+  assert(text:find("✔ Created wizard-app", 1, true))
+  assert(text:find("Write project files", 1, true))
+  assert(text:find("bun install", 1, true))
+  assert(not text:find("Create project", 1, true))
+  assert(not text:find("▍", 1, true))
+  local before = #writes
+  s:close()
+  assert(#writes == before + 1)
+  assert(writes[#writes]:find("wizard-app", 1, true))
+  assert(writes[#writes]:find("Created wizard-app", 1, true))
+  assert(not table.concat(writes):find("\27[2J", 1, true))
 end)
 
-test("vertical option-stop navigation: up/down pick within a field, then roll into the adjacent field preserving its own selection", function()
-  local session_mod = require("hydronium_ink.session")
-  local hydronium = require("hydronium")
-  local wizard_app = require("create.ui.wizard_app")
-  local sess = session_mod.create(hydronium.h(wizard_app.create_wizard_app({ dry_run = true, name = "x" })), { columns = 84, rows = 200 })
-
-  -- Pick SPA explicitly (Tab to framework, then step down once: SSR -> SPA).
-  -- SPA supports router/Tailwind, so it stays the field ↓/↑ can roll into
-  -- and out of cleanly for the rest of this test (Minimal/Ink/LÖVE would
-  -- disable router entirely, which is covered by its own test).
-  sess:write("\t") -- name -> directory
-  sess:write("\t") -- directory -> framework (lands on current pick: SSR)
-  sess:write("\27[B") -- SSR -> SPA
-  assert(wizard_text(sess):find("\226\151\137 SPA", 1, true), "down from SSR must select SPA")
-
-  -- Coarse-jump to router (Tab) and pick Meteorite (fine, within router).
-  sess:write("\t") -- framework -> router (lands on router's current pick: Hydronium)
-  assert(wizard_text(sess):find("\226\151\137 Hydronium Router", 1, true), "Tab must land on router's OWN current pick")
-  sess:write("\27[B") -- Hydronium -> Meteorite
-  assert(wizard_text(sess):find("\226\151\137 Meteorite only", 1, true), "down within router must select Meteorite")
-
-  -- Coarse-jump forward to Tailwind (a single-stop field), then roll
-  -- BACKWARD (↑) off it -- this must land on ROUTER's CURRENT pick
-  -- (Meteorite, just chosen above), never reset it back to Hydronium.
-  sess:write("\t") -- router -> tailwind
-  sess:write("\27[A") -- rolls back into router
-  local rolled_back = wizard_text(sess)
-  assert(rolled_back:find("\226\151\137 Meteorite only", 1, true), "rolling back into router must preserve ITS current pick (Meteorite), not reset it: " .. rolled_back)
-
-  -- One more ↑ moves WITHIN router (Meteorite -> Hydronium); one more
-  -- after that rolls further back into FRAMEWORK's current pick (SPA),
-  -- never resetting it back to SSR.
-  sess:write("\27[A") -- Meteorite -> Hydronium (within router)
-  assert(wizard_text(sess):find("\226\151\137 Hydronium Router", 1, true))
-  sess:write("\27[A") -- rolls back into framework
-  local back_in_framework = wizard_text(sess)
-  assert(back_in_framework:find("\226\151\137 SPA", 1, true), "rolling back into framework must preserve ITS current pick (SPA), not reset to SSR: " .. back_in_framework)
-  sess:close()
+test("task failures remain visible in the final receipt", function()
+  -- A real (non-dry) scaffold: into a temp directory, never the checkout.
+  local dir = os.tmpname()
+  os.remove(dir)
+  local s = stepped_session({dry_run=false, directory=dir, wizard_tasks_mod={
+    plan=function() return {{id="write",label="Write files"},{id="sync",label="Install dependencies"}} end,
+    run_task=function() return nil, "fixture install failure" end,
+  }})
+  s:write("\19\r")
+  for i=1,8 do s:step(i*150) end
+  local text=wizard_text(s)
+  assert(text:find("fixture install failure",1,true))
+  assert(text:find("need attention",1,true))
+  s:close()
+  os.execute(string.format('rm -rf "%s"', dir))
 end)
 
-test("Ink and LÖVE lock the interpreter to LuaJIT, with a visible per-option disabled reason", function()
-  local session_mod = require("hydronium_ink.session")
-  local hydronium = require("hydronium")
-  local wizard_app = require("create.ui.wizard_app")
-  local sess = session_mod.create(hydronium.h(wizard_app.create_wizard_app({
-    dry_run = true, name = "x", initial_framework_id = "ink",
-  })), { columns = 84, rows = 200 })
-  local text = wizard_text(sess)
-  assert(text:find("Ink requires LuaJIT", 1, true), "Lua 5.4 must show why it's locked out under Ink: " .. text)
-  assert(text:find("\226\151\137 LuaJIT 2%.1", 1, false), "LuaJIT must remain the (only real) pick under Ink")
-  sess:close()
+--- Plain text and cells of one reaction line.
+local function reaction_row(fizz, props, color)
+  local S = require("hydronium_ink.session")
+  local s = S.create(fizz.render(props), {columns = 60, rows = 3, color = color or "ansi16"})
+  local row = s:frame().rows[1]
+  s:close()
+  return row
+end
 
-  local sess2 = session_mod.create(hydronium.h(wizard_app.create_wizard_app({
-    dry_run = true, name = "x", initial_framework_id = "love",
-  })), { columns = 84, rows = 200 })
-  local text2 = wizard_text(sess2)
-  assert(text2:find("LÖVE requires LuaJIT", 1, true), "Lua 5.4 must show why it's locked out under LÖVE: " .. text2)
-  sess2:close()
-
-  -- Switching INTO a locked framework from one where Lua 5.4 was actually
-  -- picked must auto-correct the interpreter back to LuaJIT, since
-  -- create.scaffold itself rejects Ink/LÖVE with any other interpreter.
-  local sess3 = session_mod.create(hydronium.h(wizard_app.create_wizard_app({
-    dry_run = true, name = "x", initial_interpreter_id = "lua@5.4",
-  })), { columns = 84, rows = 200 })
-  assert(wizard_text(sess3):find("\226\151\137 Lua 5%.4", 1, false), "sanity: Lua 5.4 must start selected")
-  sess3:write("\t\t") -- name -> directory -> framework
-  sess3:write("\27[C\27[C\27[C\27[C") -- SSR -> spa -> islands -> minimal -> ink
-  local corrected = wizard_text(sess3)
-  assert(corrected:find("\226\151\137 Ink", 1, true), "sanity: framework must actually be Ink now: " .. corrected)
-  assert(corrected:find("\226\151\137 LuaJIT 2%.1", 1, false), "switching to Ink must auto-correct an incompatible interpreter pick back to LuaJIT: " .. corrected)
-  sess3:close()
+test("every reaction is laid out in the widest one's width with H₃O⁺ last", function()
+  local fizz = require("create.ui.fizzing")
+  assert(#fizz.REACTIONS >= 8, "the broader reaction set")
+  for _, ascii in ipairs({false, true}) do
+    local width = fizz.width(ascii)
+    local widest = 0
+    for i in ipairs(fizz.REACTIONS) do
+      local cells = fizz.cells(i, ascii)
+      widest = math.max(widest, #cells)
+      local tail = {}
+      for k = #cells - 3, #cells do tail[#tail + 1] = cells[k].ch end
+      assert(table.concat(tail) == (ascii and "H3O+" or "H₃O⁺"), "H₃O⁺ closes every reaction")
+    end
+    assert(width == widest, "the line hugs the widest reaction, no fixed slots")
+  end
+  for i = 1, 200 do
+    local index = fizz.pick(i * 7919)
+    assert(index >= 1 and index <= #fizz.REACTIONS)
+  end
 end)
 
-test("strikethrough on unpicked radio options is real at the terminal-cell level, not just a rendered label", function()
-  local session_mod = require("hydronium_ink.session")
-  local hydronium = require("hydronium")
-  local wizard_app = require("create.ui.wizard_app")
-  local sess = session_mod.create(hydronium.h(wizard_app.create_wizard_app({ dry_run = true, name = "x" })), { columns = 84, rows = 200 })
-  -- Move off the framework field entirely (into router) so it is no
-  -- longer the "actively edited" field -- struck-through rendering only
-  -- applies to NON-picked alternatives once their field is no longer
-  -- being edited (see ui/field.lua's own header comment). SSR itself is
-  -- the actual pick here (the default) and must therefore stay UNSTRUCK
-  -- even while inactive -- only its sibling alternatives (e.g. SPA) get
-  -- struck through, which is the real thing worth checking at the cell
-  -- level.
-  sess:write("\t") -- name -> directory
-  sess:write("\t") -- directory -> framework (SSR is the active field now)
-  sess:write("\t") -- framework -> router: framework is no longer the active field
+test("reaction reveals one character per tick, spaces included, then only H₃O⁺ keeps color", function()
+  local fizz = require("create.ui.fizzing")
+  local index = 7 -- CH₃COOH + H₂O → CH₃COO⁻ + H₃O⁺
+  local cells = fizz.cells(index, false)
+  local function revealed(t)
+    local row, count = reaction_row(fizz, {index = index, time = t}, "ansi16"), 0
+    for x = 1, #cells do
+      if not row[x].dim then count = count + 1 end
+    end
+    return count
+  end
+  -- Uniform: at k ticks exactly k+1 cells are lit, whatever their glyph.
+  for k = 0, #cells - 1, 3 do
+    assert(revealed(k * fizz.CHAR_MS) == k + 1, "tick " .. k .. " lit " .. revealed(k * fizz.CHAR_MS))
+  end
+  local timeline = fizz.timeline(index, false)
+  assert(timeline.lit_at == (#cells - 4) * fizz.CHAR_MS, "the fizz starts as H₃O⁺ lights up")
+  -- Flash then settle.
+  local row = reaction_row(fizz, {index = index, time = 0}, "truecolor")
+  assert(row[1].bold, "a freshly revealed character flashes bold")
+  -- Settled: reactants dim, H₃O⁺ colored and bold on its letters.
+  row = reaction_row(fizz, {index = index, time = fizz.final_time(index, false)}, "ansi16")
+  for x = 1, #cells - 4 do assert(row[x].dim, "reactant " .. x .. " fades to gray") end
+  assert(not row[#cells - 3].dim and row[#cells - 3].bold, "H₃O⁺ keeps its color")
+end)
 
-  local frame = sess:frame()
-  local found_struck_spa, found_unstruck_ssr = false, false
-  for _, row in ipairs(frame.rows) do
-    local line_chars = {}
-    for x = 1, #row do line_chars[x] = (row[x] and row[x].ch) or " " end
-    local line = table.concat(line_chars)
-    if line:find("SPA", 1, true) then
+--- Visible-text center offset of the row holding H₃O⁺ (nil if absent).
+local function reaction_offset(frame, columns, content_first, content_last)
+  for y = 1, #frame.rows do
+    local row, text = frame.rows[y], {}
+    for x = 1, #row do text[x] = row[x].ch or " " end
+    local line = table.concat(text)
+    if line:find("H₃O⁺", 1, true) or line:find("H3O+", 1, true) then
+      local first, last
       for x = 1, #row do
-        local cell = row[x]
-        if cell and cell.ch == "S" then
-          assert(cell.strikethrough == true, "the unpicked SPA option must be struck through at the cell level once its field is no longer active: " .. line)
-          assert(cell.dim == true, "a struck-through option must also be dim")
-          found_struck_spa = true
-        end
+        local ch = row[x].ch
+        if ch and ch ~= " " and ch ~= "" then first = first or x; last = x end
       end
-    elseif line:find("SSR", 1, true) then
-      for x = 1, #row do
-        local cell = row[x]
-        if cell and cell.ch == "S" then
-          assert(cell.strikethrough ~= true, "the ACTUAL pick (SSR) must never be struck through, even while its field is inactive: " .. line)
-          found_unstruck_ssr = true
-        end
+      return (first + last) / 2 - (content_first + content_last) / 2
+    end
+  end
+  return nil
+end
+
+test("the reaction is centered on its visible text, for every reaction", function()
+  local H = require("hydronium")
+  local S = require("hydronium_ink.session")
+  local fizz = require("create.ui.fizzing")
+  for _, size in ipairs({{80, 24}, {60, 22}}) do
+    for index = 1, #fizz.REACTIONS do
+      local s = S.create(H.h(require("create.ui.wizard_app").create_wizard_app({name = "demo", dry_run = true,
+        reaction = index, reduced_motion = true, pm_mod = {detect = function() return {"bun"} end}})),
+        {columns = size[1], rows = size[2], inline = true, writeFn = function() end})
+      -- paddingX 1: content spans columns 2..columns-1
+      local offset = reaction_offset(s:frame(), size[1], 2, size[1] - 1)
+      assert(offset and math.abs(offset) <= 0.5, string.format("reaction %d off-center by %s at %dx%d", index, tostring(offset), size[1], size[2]))
+      s:close()
+    end
+  end
+  -- Lab's fizzing stories lay the band out the same way.
+  local c = dofile("./src/create/ui/create.stories.lua")
+  for id, story in pairs(c.stories) do
+    if id:match("^fizzing") or id == "header-bubbles" then
+      for _, size in ipairs(story.sizes) do
+        local args = {}
+        for k, v in pairs(story.args or {}) do args[k] = v end
+        args.reduced_motion = true -- no bubbles skewing the measurement
+        local s = S.create(story.render(args), {columns = size.columns, rows = size.rows})
+        local offset = reaction_offset(s:frame(), size.columns, 1, size.columns)
+        assert(offset and math.abs(offset) <= 0.5, string.format("story %s off-center by %s at %d", id, tostring(offset), size.columns))
+        s:close()
       end
     end
   end
-  assert(found_struck_spa, "did not find the SPA option row to check at all")
-  assert(found_unstruck_ssr, "did not find the SSR option row to check at all")
-  sess:close()
+end)
+
+test("the fizz starts when H₃O⁺ lights up and settles from burst to idle", function()
+  local bubbles = require("create.ui.bubbles")
+  local columns, start, burst = 120, 1000, 5000
+  local function count(t) return #bubbles.field(columns, t, {start = start, burst_ms = burst}) end
+  assert(count(start - 1) == 0, "no bubbles before H₃O⁺ lights up")
+  local burst_peak, idle_peak = 0, 0
+  for t = start, start + burst, 50 do burst_peak = math.max(burst_peak, count(t)) end
+  for t = start + burst + 4000, start + burst + 12000, 50 do idle_peak = math.max(idle_peak, count(t)) end
+  assert(burst_peak > idle_peak and idle_peak > 0, "idle keeps a gentler fizz: " .. burst_peak .. " vs " .. idle_peak)
+  -- Every bubble enters from below the band: none appears mid-air at the start.
+  for _, b in ipairs(bubbles.field(columns, start + 10, {start = start, burst_ms = burst})) do
+    assert(b.row == bubbles.ROWS, "first bubbles rise from the bottom row")
+  end
+end)
+
+test("routing flavours occupy their own next page without expanding the app choices", function()
+  local s = stepped_session({initial_active_id="framework"})
+  s:write("j ")
+  assert(not wizard_text(s):find("Meteorite only",1,true))
+  s:write("\t\r")
+  assert(wizard_text(s):find("3/6  Flavour",1,true))
+  assert(wizard_text(s):find("Meteorite only",1,true))
+  s:write("j \t\r")
+  assert(wizard_text(s):find("4/6  Features",1,true))
+  s:write("\19")
+  assert(wizard_text(s):find("App       SPA",1,true))
+  assert(wizard_text(s):find("Router    Meteorite only",1,true))
+  s:close()
+end)
+
+test("review rows jump to their step and applying a change returns to review", function()
+  local s = stepped_session({initial_active_id = "framework"})
+  s:write("\19") -- review, focused on Create project
+  assert(wizard_text(s):find("▌ Create project", 1, true))
+  s:write("kkk\r") -- Tooling, Tailwind, App -> the App step (SSR has no Router step)
+  assert(wizard_text(s):find("2/5  App", 1, true))
+  assert(wizard_text(s):find("Esc back to review", 1, true))
+  s:write("jj\r") -- pick Islands and return
+  local text = wizard_text(s)
+  assert(text:find("Review", 1, true), "Enter on an option returns to review")
+  assert(text:find("App       Islands", 1, true))
+  s:close()
+end)
+
+test("an empty project name shows a dim placeholder, not text that looks typed", function()
+  local s = stepped_session({name = ""})
+  local function name_row()
+    local f = s:frame()
+    for y = 1, #f.rows do
+      local row, t = f.rows[y], {}
+      for x = 1, #row do t[x] = row[x].ch or " " end
+      local text = table.concat(t)
+      if text:find("name  ", 1, true) then return row, text end
+    end
+  end
+  local row, text = name_row()
+  local x = text:find("my%-app")
+  assert(x and row[x].dim, "placeholder is dimmed")
+  assert(text:find("▍my-app", 1, true), "the cursor sits before the placeholder")
+  s:write("ab")
+  row, text = name_row()
+  assert(not text:find("my-app", 1, true), "typing replaces the placeholder")
+  assert(not row[text:find("ab", 1, true)].dim, "typed text is not dimmed")
+  s:close()
+end)
+
+test("the project name is validated as you type", function()
+  local s = stepped_session({name = ""})
+  s:write("bad name")
+  assert(wizard_text(s):find("Use letters, digits", 1, true))
+  s:write("\8\8\8\8\8")
+  assert(not wizard_text(s):find("Use letters, digits", 1, true))
+  s:close()
+end)
+
+test("all new stories have valid catalog args and receipt fixtures cannot install anything", function()
+  local c=dofile("./src/create/ui/create.stories.lua")
+  local count=0
+  for _,story in pairs(c.stories) do count=count+1 end
+  assert(count>=28)
+  for _,id in ipairs({"installing","receipt","receipt-failed","app-router","update-checking","update-current","update-available"}) do
+    local story=c.stories[id]
+    local s=require("hydronium_ink.session").create((story.render or c.render)(story.args or {}),{columns=80,rows=24})
+    if id=="receipt" then assert(wizard_text(s):find("Created",1,true)) end
+    if id=="receipt-failed" then assert(wizard_text(s):find("Retry bun install",1,true)) end
+    if id=="update-current" then assert(wizard_text(s):find("Up to date",1,true)) end
+    if id=="installing" then s:step(10000); assert(wizard_text(s):find("Creating",1,true)) end
+    s:close()
+  end
+end)
+
+test("reduced motion keeps the wizard header static", function()
+  local s=stepped_session({reduced_motion=true})
+  local before=wizard_text(s)
+  s:step(6000)
+  assert(wizard_text(s)==before)
+  s:close()
 end)
 
 --------------------------------------------------------------------------------
@@ -1955,7 +1937,7 @@ test("update_check.start reports checking while fetching, then settles (or falls
   assert(update.start("0.6.0", opts).poll().state == "current" and #commands == 0)
 end)
 
-test("update status badge follows the breakpoints: icon + label, icon + short, icon only", function()
+test("update status: label then a badge that is always the rightmost cell", function()
   local session_mod = require("hydronium_ink.session")
   local logo = require("create.ui.logo")
   local function text(state, columns)
@@ -1963,18 +1945,22 @@ test("update status badge follows the breakpoints: icon + label, icon + short, i
     local chars = {}
     for x, cell in ipairs(sess:frame().rows[1]) do chars[x] = cell.ch or " " end
     sess:close()
-    return table.concat(chars)
+    return table.concat(chars):gsub("%s+$", "")
   end
+  local function ends_with(s, suffix) return s:sub(-#suffix) == suffix end
   local checking, available, current = { state = "checking" }, { state = "available", latest = "0.6.0" }, { state = "current" }
-  assert(text(checking, 84):find("Checking for updates", 1, true))
-  assert(text(checking, 70):find("Checking…", 1, true) and not text(checking, 70):find("updates", 1, true))
-  assert(text(available, 84):find(" !  Update available v0.6.0", 1, true))
-  assert(text(available, 70):find(" !  v0.6.0", 1, true) and not text(available, 70):find("Update available", 1, true))
-  assert(text(available, 50):find(" ! ", 1, true) and not text(available, 50):find("v0.6.0", 1, true))
-  assert(text(current, 84):find(" ✓  Up to date", 1, true))
-  assert(text(current, 70):find(" ✓ ", 1, true) and not text(current, 70):find("Up to date", 1, true))
+  assert(text(checking, 84):find("Checking for updates… ", 1, true))
+  assert(ends_with(text(checking, 84), " ⠋"), "the checking spinner is the badge, on the right")
+  assert(text(checking, 70):find("Checking… ", 1, true) and not text(checking, 70):find("updates", 1, true))
+  assert(ends_with(text(available, 84), "Update available v0.6.0  !"))
+  assert(ends_with(text(available, 70), " v0.6.0  !") and not text(available, 70):find("Update available", 1, true))
+  assert(ends_with(text(available, 50), " !") and not text(available, 50):find("v0.6.0", 1, true))
+  assert(ends_with(text(current, 84), "Up to date  ✓"))
+  assert(ends_with(text(current, 70), " ✓") and not text(current, 70):find("Up to date", 1, true))
   assert(not text(nil, 84):find("✓", 1, true) and not text(nil, 84):find("!", 1, true), "unknown shows nothing")
   assert(not text(current, 36):find("✓", 1, true), "below 40 columns there is no status")
+  -- The badge is exactly three cells wherever the label goes.
+  assert(logo.status_width(current, 0) == 3 and logo.status_width(current, 80) == 3 + #"Up to date" + 1)
 end)
 
 test("bubble diorama: seeded closed-form motion, depth layering around the title", function()
@@ -2067,66 +2053,6 @@ test("all Vite templates adapt npm, pnpm and Bun commands after Tailwind", funct
     end
   end
 end)
-
-test("24-row inline wizard follows focus, scrolls, removes confirmation and leaves a receipt", function()
-  local H = require("hydronium")
-  local session = require("hydronium_ink.session")
-  local app = require("create.ui.wizard_app")
-  local writes = {}
-  local sess = session.create(H.h(app.create_wizard_app({ dry_run = true, name = "receipt-app",
-    initial_install_deps = false, initial_git_init = false })), {
-    columns = 80, rows = 24, inline = true, color = "ansi16",
-    writeFn = function(bytes) writes[#writes + 1] = bytes end,
-  })
-  assert(sess:frame().h > 24, "full form must not be height-constrained")
-  local start = sess._host._inlineTop
-  sess:write("\27[6~")
-  assert(sess._host._inlineTop > start, "Page Down must scroll the actual viewport")
-  sess:write("\27[5~")
-  assert(sess._host._inlineTop == start, "Page Up must restore the viewport")
-  sess:write("jk")
-  assert(wizard_text(sess):find("receipt%-appjk"), "j/k must type normally in text fields")
-  sess:write("\127\127")
-  sess:write("\t\r") -- directory, then framework via Enter
-  sess:write("j")
-  assert(wizard_text(sess):find("◉ SPA", 1, true), "j must select the next option")
-  sess:write("k")
-  assert(wizard_text(sess):find("◉ SSR", 1, true), "k must select the previous option")
-  sess:write("\27[B")
-  assert(wizard_text(sess):find("◉ SPA", 1, true), "Down must match j")
-  sess:write("\27[A")
-  assert(wizard_text(sess):find("◉ SSR", 1, true), "Up must match k")
-  sess:write("4")
-  local tooling_top = sess._host._inlineTop
-  assert(tooling_top > 0, "section 4 must reveal tooling")
-  sess:write("2")
-  assert(sess._host._inlineTop < tooling_top, "section 2 must reveal stack")
-  sess:write("\27[6~")
-  local manual_top = sess._host._inlineTop
-  sess:write("2")
-  assert(sess._host._inlineTop < manual_top, "re-focusing the same section must restore its viewport")
-  sess:write("3")
-  assert(sess._host._inlineTop > 0, "section 3 must reveal styling")
-  sess:write("1")
-  assert(sess._host._inlineTop < tooling_top, "section 1 must reveal project")
-  sess:write("\t\t")
-  for _ = 1, 7 do sess:write("\t") end
-  assert(sess._host._inlineTop > 0, "keyboard focus must reveal lower fields")
-  sess:resize(42, 12)
-  sess:write("\19")
-  local text = wizard_text(sess)
-  assert(text:find("receipt%-app"), "chosen name must remain")
-  assert(not text:find("▐ Create", 1, true), "confirm must disappear after submission")
-  assert(not text:find("▍", 1, true), "receipt must have no editing caret")
-  local before = #writes
-  sess:close()
-  assert(#writes == before + 1, "close must print one full receipt without erasing it")
-  assert(writes[#writes]:find("receipt%-app"), "receipt must contain chosen values")
-  assert(writes[#writes]:find("Tooling", 1, true), "receipt must contain the complete form")
-  assert(not table.concat(writes):find("\27[2J", 1, true), "inline rendering must never clear the terminal screen")
-  assert(not table.concat(writes):find("\27[H", 1, true), "inline rendering must never move to absolute home")
-end)
-
 
 test("isolated header diorama animates and follows its own terminal size", function()
   local collection = dofile("./src/create/ui/create.stories.lua")

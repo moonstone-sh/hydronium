@@ -23,12 +23,12 @@ package = "moon exec -- ballad play partiture.lua"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.2"
+constraint = "^0.2.3"
 role = "runtime"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.3.7"
+constraint = "^0.4.0"
 role = "tool"
 ]=], project_name)
 

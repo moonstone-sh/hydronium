@@ -1,12 +1,20 @@
 --[[
   create.ui.bubbles -- the header "diorama": bubbles rising through a
-  4-row band -- two open rows, the title row, one open row below it:
+  4-row band under the wizard's brand line -- two open rows (the fizz's
+  ceiling), the centered reaction, one open row below it:
 
       row 1   .   .   °       .
       row 2       *       o
-      row 3   H₃O⁺ · hydronium/create ...        (title)
+      row 3        CH₃COOH + H₂O → CH₃COO⁻ + H₃O⁺   (title)
       row 4     o       o
       ~~~~~   bubbles are born out of window, below row 4
+
+  FIZZ: given `start` (H₃O⁺ lighting up, create.ui.fizzing) the field is
+  empty before it, then bursts -- first launches within ~0.3s from the
+  bottom row, plus a second set of half-offset lanes -- and after `burst_ms`
+  settles to an idle fizz: the extra lanes and two thirds of the regular
+  ones finish the bubble in flight and launch no more. Without `start` the
+  field is the original always-on ambient one.
 
   LIFE OF A BUBBLE: it rises six cells -- three as a whole bubble "o", then
   dissipates one cell each as "*", "°" and "`" -- then rests (invisible)
@@ -72,27 +80,66 @@ local function lane(i)
     phase = 0,
   }
   cached.phase = next_int(cached.cycle)
+  -- About a third of the lanes keep fizzing once the burst settles to idle.
+  cached.idle = next_int(3) == 0
   lane_cache[i] = cached
   return cached
+end
+
+--- Sub-step `t` within lane `l`'s current cycle, or nil when the lane shows
+--- nothing at `time_ms`.
+---
+--- Without `opts.start` every lane runs forever from a seeded phase (the
+--- original ambient field). With it, the fizz begins at `start`: each lane
+--- first launches after a seeded delay, so bubbles rise in from below
+--- rather than appearing mid-air. With `burst_ms` too, lanes not marked
+--- `idle` stop launching new bubbles once the burst ends, but always finish
+--- the one in flight.
+local function lane_tick(l, sub, time_ms, opts, burst_only)
+  local cycle_len = l.cycle * sub
+  if not opts.start then
+    return (math.floor(time_ms * sub / l.speed) + l.phase * sub) % cycle_len
+  end
+  -- First launches are spread over ~0.3s and start at the band's bottom
+  -- row (skipping the hidden cells below it), so the fizz visibly begins
+  -- the moment it is started.
+  local first_launch = opts.start + (l.phase % 4) * l.speed * 0.25
+  if time_ms < first_launch then return nil end
+  local t = math.floor((time_ms - first_launch) * sub / l.speed) + (-l.spawn) * sub
+  local cycle_index = math.floor(t / cycle_len)
+  if opts.burst_ms and (burst_only or not l.idle) then
+    local cycle_began = first_launch + (cycle_index * l.cycle + l.spawn) * l.speed
+    if cycle_index > 0 and cycle_began >= opts.start + opts.burst_ms then return nil end
+  end
+  return t % cycle_len
 end
 
 --- Every visible bubble at monotonic time `time_ms` in a band `columns`
 --- wide. `row` counts from the top of the band (1..ROWS); TITLE_ROW is
 --- the header text row.
+--- @param opts? { start?: number, burst_ms?: number } see lane_tick
 --- @return { col: integer, row: integer, ch: string, depth: integer, dissipating: boolean }[]
-function M.field(columns, time_ms)
+function M.field(columns, time_ms, opts)
+  opts = opts or {}
   local out = {}
-  for i = 1, math.floor(columns / M.SPACING) do
-    local l = lane(i)
+  local lanes = math.floor(columns / M.SPACING)
+  -- During a burst a second set of lanes, offset half a slot, doubles the
+  -- density; they launch no new bubbles once the burst is over.
+  local total = (opts.start and opts.burst_ms) and lanes * 2 or lanes
+  for n = 1, total do
+    local burst_lane = n > lanes
+    local i = burst_lane and (n - lanes) or n
+    local l = burst_lane and lane(10000 + i) or lane(i)
     -- Far dots advance in thirds of a cell at the same vertical speed.
     local sub = l.depth == FAR and #FAR_DOTS or 1
-    local t = (math.floor(time_ms * sub / l.speed) + l.phase * sub) % (l.cycle * sub)
-    local step, within = math.floor(t / sub), t % sub
-    if step < #PATH then
+    local t = lane_tick(l, sub, time_ms, opts, burst_lane)
+    local step, within = t and math.floor(t / sub) or #PATH, t and t % sub or 0
+    local col = (i - 1) * M.SPACING + 1 + (burst_lane and (l.offset + math.floor(M.SPACING / 2)) % M.SPACING or l.offset)
+    if step < #PATH and col <= columns then
       local height = l.spawn + step -- 0 = the band's bottom row
       if height >= 0 and height < M.ROWS then
         out[#out + 1] = {
-          col = (i - 1) * M.SPACING + 1 + l.offset,
+          col = col,
           row = M.ROWS - height,
           ch = l.depth == FAR and FAR_DOTS[within + 1] or PATH[step + 1],
           depth = l.depth,
@@ -158,11 +205,12 @@ end
 --- by depth -- mid/far bubbles painted first (the title text then covers
 --- them, so they show only through its gaps), near ones painted last (in
 --- front of the text).
---- @param props { time?: number, columns: integer }
---- @param header any the title row element (logo.render)
+--- @param props { time?: number, columns: integer, start?: number, burst_ms?: number, still?: boolean }
+---   `start`/`burst_ms`: see M.field; `still`: no bubbles at all (reduced motion).
+--- @param header any the title row element
 function M.render_diorama(props, header)
   local columns = math.max(1, props.columns or 80)
-  local field = M.field(columns, props.time or 0)
+  local field = props.still and {} or M.field(columns, props.time or 0, { start = props.start, burst_ms = props.burst_ms })
   local behind, front = {}, {}
   for _, b in ipairs(field) do
     if b.row == M.TITLE_ROW and b.col <= columns then

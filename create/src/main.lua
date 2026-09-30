@@ -157,7 +157,12 @@ app = c.create({
           local wizard_app = require("create.ui.wizard_app")
 
           local captured_result, captured_err
+          -- Queried once, before the session starts reading input (see
+          -- hydronium_ink.terminal_background): the wizard tints its focus
+          -- bar toward the real background, light or dark.
+          local bg_ok, terminal_background = pcall(require("hydronium_ink").terminal_background)
           local element = hydronium.h(wizard_app.create_wizard_app({
+            terminal_background = bg_ok and terminal_background or nil,
             directory = ctx.args.directory,
             force = ctx.args.force,
             dry_run = ctx.args.dry_run,

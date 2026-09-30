@@ -23,7 +23,7 @@ lab = "moon exec --dev -- hydronium-lab dev"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.2"
+constraint = "^0.2.3"
 role = "runtime"
 
 [[dependencies]]
@@ -50,7 +50,7 @@ role = "dev"
 
 [[dependencies]]
 name = "hydronium/meteorite"
-constraint = "^0.3.1"
+constraint = "^0.3.2"
 role = "dev"
 
 [[dependencies]]
@@ -60,7 +60,7 @@ role = "tool"
 
 [[dependencies]]
 name = "moonstone/meteorite"
-constraint = "^0.2.8"
+constraint = "^0.3.1"
 role = "tool"
 ]=], project_name)
 
@@ -120,7 +120,7 @@ local function scan_paths(config)
 end
 
 local function source_records()
-  local inventory_path = root .. "/.hydronium/source-inventory.lua"
+  local inventory_path = root .. "/.hydronium/ballad/source-inventory.lua"
   local file = io.open(inventory_path, "r")
   if file then
     file:close()
