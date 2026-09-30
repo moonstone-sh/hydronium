@@ -3,6 +3,7 @@ local luals = require("create.luals")
 local process = require("create.process")
 local jsonc = require("alter_jsonc")
 local vite = require("create.vite")
+local lab_starter = require("create.lab_starter")
 local tailwind = require("create.tailwind")
 local router_mode = require("create.router_mode")
 local pm = require("create.pm")
@@ -436,6 +437,10 @@ function create.scaffold(opts, ctx)
     end
     files = pm.apply(files, package_manager)
   end
+
+  -- The DOM templates get the component Lab the Ink template already has
+  -- (see create/lab_starter.lua's header comment).
+  files = lab_starter.apply(files, { template = template_id })
 
   local results, err = writer.write_project(target_dir, files, {
     dry_run = opts.dry_run,

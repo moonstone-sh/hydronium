@@ -210,6 +210,42 @@ test("process builder quotes POSIX paths and rejects unsafe Windows cmd input", 
   assert(windows:find('pushd "C:/Games/My Game"', 1, true), windows)
 end)
 
+test("DOM templates ship the component Lab the Ink template has", function()
+  local lab_starter = require("create.lab_starter")
+  local cases = {
+    { id = "ssr", files = require("create.templates.ssr").files({ name = "lab-ssr" }), story = "stories/Counter.stories.luax", requires = 'require("views.Counter")' },
+    { id = "islands", files = require("create.templates.islands").files({ name = "lab-islands" }), story = "stories/Welcome.stories.luax", requires = 'require("components.Welcome")' },
+    { id = "spa", files = require("create.templates.spa").files({ name = "lab-spa", router = "hydronium" }), story = "stories/Welcome.stories.luax", requires = 'require("components.Welcome")' },
+    { id = "spa", files = require("create.templates.spa").files({ name = "lab-spa-m", router = "meteorite" }), story = "stories/Welcome.stories.luax", requires = 'require("components.Welcome")' },
+  }
+  for _, case in ipairs(cases) do
+    local files = lab_starter.apply(case.files, { template = case.id })
+    local manifest = files["moonstone.toml"]
+    assert(manifest:find('\n%[scripts%]\nlab = "moon exec %-%-dev %-%- hydronium%-lab dev"\n'), case.id .. ": lab script")
+    for _, name in ipairs({ "hydronium/lab", "hydronium/ink-lab", "hydronium/meteorite" }) do
+      assert(manifest:find('name = "' .. name:gsub("%-", "%%-") .. '"\nconstraint = "[^"]+"\nrole = "dev"'), case.id .. ": " .. name .. " must be dev-only")
+    end
+    assert(manifest:find('name = "hydronium/lab%-cli"\nconstraint = "[^"]+"\nrole = "tool"'), case.id .. ": launcher is a tool")
+    local _, meteorites = manifest:gsub('name = "moonstone/meteorite"', "")
+    assert(meteorites == 1, case.id .. ": exactly one moonstone/meteorite dependency, got " .. meteorites)
+    local config = assert(load(files["hydronium.lab.lua"]))()
+    assert(config.renderer == "dom" and config.roots[1] == "stories" and config.module_roots[1] == "src", case.id .. ": lab config")
+    assert(files[case.story] and files[case.story]:find(case.requires, 1, true), case.id .. ": starter story")
+    assert(files["README.md"]:find("moon run lab", 1, true), case.id .. ": README documents the Lab")
+    for path in pairs(files) do
+      assert(not (path:match("^src/") and path:match("%.stories%.")), case.id .. ": stories must stay out of app source roots (" .. path .. ")")
+    end
+  end
+  local ink = require("create.templates.ink").files({ name = "lab-ink" })
+  local before = ink["moonstone.toml"]
+  assert(lab_starter.apply(ink, { template = "ink" })["moonstone.toml"] == before, "the Ink template wires its own Lab")
+
+  local res = assert(create.scaffold({ directory = "/tmp/test-hydronium-lab-ssr", template = "ssr", name = "lab-ssr", dry_run = true }))
+  local created = {}
+  for _, file in ipairs(res.created) do created[file.path] = true end
+  assert(created["hydronium.lab.lua"] and created["stories/Counter.stories.luax"], "scaffold writes the Lab files")
+end)
+
 test("scaffold dry-run produces a portable Ink terminal project", function()
   local res, err = create.scaffold({
     directory = "/tmp/test-hydronium-ink",
