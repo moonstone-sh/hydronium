@@ -400,8 +400,8 @@ test("scaffold dry-run produces expected files for ssr template", function()
   assert(not main:find("dev_registry", 1, true) and not main:find("/__hydronium/", 1, true),
     "SSR main.lua must not carry framework route plumbing")
   assert(not main:find("io.open", 1, true), "SSR main.lua must not read files per request")
-  assert(generated["moonstone.toml"]:find('name = "hydronium/dom"\nconstraint = "^0.3.2"'),
-    "hydronium.mount needs hydronium/dom 0.3.2")
+  assert(generated["moonstone.toml"]:find('name = "hydronium/dom"\nconstraint = "^0.3.3"', 1, true),
+    "SSR apps need hydronium/dom 0.3.3 (the lua-wasm engine with table results)")
   assert(not generated["src/main.lua"]:find('id:gsub("%%.", "/")', 1, true),
     "SSR must not reconstruct filesystem paths from request IDs")
 end)

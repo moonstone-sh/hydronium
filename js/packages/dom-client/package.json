@@ -1,6 +1,6 @@
 {
   "name": "@hydronium-js/dom-client",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "description": "Hydronium's browser client runtime: Bridge API 2 Lua 5.4.9 WASM engine, DOM bridge, mount/hydrate, dev HMR client, JS-island bootstrap, and the dev error overlay. Canonical source for what used to be hand-maintained under dom/src/hydronium_dom/client/ -- that tree is now a generated, drift-checked copy of this package's src/. Ships with no runtime dependencies: the pinned Lua engine and Wasmoon compatibility fallback are vendored, so the runtime works without a bundler and consumers do not resolve an interpreter package.",
   "files": [
