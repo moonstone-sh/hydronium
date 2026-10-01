@@ -23,7 +23,7 @@ lab = "moon exec --dev -- hydronium-lab dev"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.3"
+constraint = "^0.2.4"
 role = "runtime"
 
 [[dependencies]]
@@ -33,14 +33,14 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/luax"
-constraint = "^0.2.3"
+constraint = "^0.2.4"
 role = "runtime"
 
 # Development-only workbench closure. The terminal app never imports these;
 # `moon run lab` starts a separate loopback Meteorite process.
 [[dependencies]]
 name = "hydronium/lab"
-constraint = "^0.3.3"
+constraint = "^0.3.4"
 role = "dev"
 
 [[dependencies]]

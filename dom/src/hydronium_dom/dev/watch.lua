@@ -68,10 +68,18 @@ end
 -- Fingerprints are ~50 bytes per watched file, so they never leave the
 -- server: the wire carries `revision(fp)`, a fixed-size digest (Meteorite
 -- rejects response header values over 1024 bytes and URLs over 8192; a
--- 20-file app already exceeded the header). Recent digests are remembered
--- so a reconnecting browser's `since` can still name which files changed.
+-- 20-file app already exceeded the header). A reconnecting browser's `since`
+-- must still resolve to its file list, and Meteorite's default hybrid mode
+-- gives every request a fresh Lua state, so digests are also recorded as
+-- small content-addressed files in the temp directory (plain io, no fork:
+-- see `fingerprint` on why request threads must not spawn processes).
 local REMEMBERED_REVISIONS = 64
 local remembered, remembered_order = {}, {}
+
+local function revision_file(digest)
+  local dir = os.getenv("TMPDIR") or os.getenv("TMP") or "/tmp"
+  return (dir:gsub("/+$", "")) .. "/hydronium-dev-revision-" .. digest
+end
 
 --- Fixed-size, wire-safe digest of a fingerprint ("r" + 24 hex digits).
 --- Remembers the fingerprint it came from for `fingerprint_for`.
@@ -95,15 +103,30 @@ function M.revision(fp)
     end
   end
   remembered[digest] = fp
+  local path = revision_file(digest)
+  local existing = io.open(path, "rb")
+  if existing then
+    existing:close()
+  else
+    local file = io.open(path, "wb")
+    if file then file:write(fp); file:close() end
+  end
   return digest
 end
 
---- The fingerprint a recent `revision()` digest came from, or nil when it
---- was never produced here (another server process, or long evicted).
+--- The fingerprint a `revision()` digest came from (this Lua state's memory,
+--- else the temp-directory record), or nil when none was ever produced.
 --- @param digest string|nil
 --- @return string|nil
 function M.fingerprint_for(digest)
-  return digest and remembered[digest] or nil
+  if type(digest) ~= "string" or not digest:match("^r%x+$") then return nil end
+  if remembered[digest] then return remembered[digest] end
+  local file = io.open(revision_file(digest), "rb")
+  if not file then return nil end
+  local fp = file:read("*a")
+  file:close()
+  if fp and M.revision(fp) == digest then return fp end
+  return nil
 end
 
 --- Splits a fingerprint back into { [path] = "<hashes> <size>" }.

@@ -151,8 +151,22 @@ describe("hydronium_dom.dev.watch -- per-file change identity", function()
       assert.not_equal(watch.revision(base), watch.revision("1:2 10 views/App.luax|3:5 20 views/Counter.luax"))
     end)
 
+    -- Meteorite's default hybrid mode runs each request in a fresh Lua
+    -- state, so a digest must resolve without this state's memory.
+    it("resolves a digest from a fresh module instance (per-request Lua state)", function()
+      local fp = "9:9 1 views/Fresh.luax|8:8 2 views/Other.luax"
+      local digest = watch.revision(fp)
+      package.loaded["hydronium_dom.dev.watch"] = nil
+      local fresh = require("hydronium_dom.dev.watch")
+      package.loaded["hydronium_dom.dev.watch"] = watch
+      assert.not_equal(fresh, watch)
+      assert.equal(fresh.fingerprint_for(digest), fp)
+      assert.same(fresh.changed_files(fresh.fingerprint_for(digest), "9:9 1 views/Fresh.luax|8:9 2 views/Other.luax"), { "views/Other.luax" })
+    end)
+
     it("does not remember digests it never produced", function()
       assert.falsy(watch.fingerprint_for("r000000000000000000000000"))
+      assert.falsy(watch.fingerprint_for("../../etc/passwd"))
       assert.falsy(watch.fingerprint_for(nil))
     end)
   end)
