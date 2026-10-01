@@ -118,6 +118,45 @@ describe("hydronium_dom.dev.watch -- per-file change identity", function()
     end)
   end)
 
+  describe("revision", function()
+    -- Regression (site finding HF-001): the revision travels as the
+    -- X-Hydronium-Revision header, the SSE id/data and the `revision`
+    -- query, so it must not grow with the watched set. Meteorite rejects
+    -- header values over 1024 bytes; 20 files used to exceed it.
+    it("stays fixed-size for any number of watched files", function()
+      local dir = os.tmpname()
+      os.remove(dir)
+      os.execute("mkdir -p '" .. dir .. "'")
+      local files = {}
+      for index = 1, 200 do
+        local path = dir .. "/module_" .. index .. ".luax"
+        local file = io.open(path, "wb")
+        if not file then error("cannot write " .. path) end
+        file:write("return " .. index)
+        file:close()
+        files[#files + 1] = path
+      end
+      local fp = watch.fingerprint(files)
+      local revision = watch.revision(fp)
+      os.execute("rm -rf '" .. dir .. "'")
+      assert.truthy(#fp > 1024)
+      assert.equal(#revision, 25)
+      assert.truthy(revision:match("^r%x+$"))
+      assert.equal(watch.fingerprint_for(revision), fp)
+    end)
+
+    it("changes when any watched content changes", function()
+      local base = "1:2 10 views/App.luax|3:4 20 views/Counter.luax"
+      assert.equal(watch.revision(base), watch.revision(base))
+      assert.not_equal(watch.revision(base), watch.revision("1:2 10 views/App.luax|3:5 20 views/Counter.luax"))
+    end)
+
+    it("does not remember digests it never produced", function()
+      assert.falsy(watch.fingerprint_for("r000000000000000000000000"))
+      assert.falsy(watch.fingerprint_for(nil))
+    end)
+  end)
+
   describe("read_snapshot", function()
     it("returns a source value only when its watched revision remains stable", function()
       local old_fingerprint = watch.fingerprint
@@ -126,12 +165,12 @@ describe("hydronium_dom.dev.watch -- per-file change identity", function()
         calls = calls + 1
         return "revision-a"
       end
-      local value, revision, reason = watch.read_snapshot({ "views/App.luax" }, "revision-a", function()
+      local value, revision, reason = watch.read_snapshot({ "views/App.luax" }, watch.revision("revision-a"), function()
         return "compiled source"
       end)
       watch.fingerprint = old_fingerprint
       assert.equal(value, "compiled source")
-      assert.equal(revision, "revision-a")
+      assert.equal(revision, watch.revision("revision-a"))
       assert.falsy(reason)
       assert.equal(calls, 2)
     end)
@@ -140,13 +179,13 @@ describe("hydronium_dom.dev.watch -- per-file change identity", function()
       local old_fingerprint = watch.fingerprint
       watch.fingerprint = function() return "revision-b" end
       local read = false
-      local value, revision, reason = watch.read_snapshot({ "views/App.luax" }, "revision-a", function()
+      local value, revision, reason = watch.read_snapshot({ "views/App.luax" }, watch.revision("revision-a"), function()
         read = true
         return "must not be read"
       end)
       watch.fingerprint = old_fingerprint
       assert.falsy(value)
-      assert.equal(revision, "revision-b")
+      assert.equal(revision, watch.revision("revision-b"))
       assert.equal(reason, "stale")
       assert.falsy(read)
     end)
@@ -158,12 +197,12 @@ describe("hydronium_dom.dev.watch -- per-file change identity", function()
         calls = calls + 1
         return calls == 1 and "revision-a" or "revision-b"
       end
-      local value, revision, reason = watch.read_snapshot({ "views/App.luax" }, "revision-a", function()
+      local value, revision, reason = watch.read_snapshot({ "views/App.luax" }, watch.revision("revision-a"), function()
         return "mixed source"
       end)
       watch.fingerprint = old_fingerprint
       assert.falsy(value)
-      assert.equal(revision, "revision-b")
+      assert.equal(revision, watch.revision("revision-b"))
       assert.equal(reason, "stale")
     end)
   end)

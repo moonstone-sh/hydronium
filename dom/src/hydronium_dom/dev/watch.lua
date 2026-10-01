@@ -65,6 +65,47 @@ function M.fingerprint(files)
   return table.concat(lines, "|")
 end
 
+-- Fingerprints are ~50 bytes per watched file, so they never leave the
+-- server: the wire carries `revision(fp)`, a fixed-size digest (Meteorite
+-- rejects response header values over 1024 bytes and URLs over 8192; a
+-- 20-file app already exceeded the header). Recent digests are remembered
+-- so a reconnecting browser's `since` can still name which files changed.
+local REMEMBERED_REVISIONS = 64
+local remembered, remembered_order = {}, {}
+
+--- Fixed-size, wire-safe digest of a fingerprint ("r" + 24 hex digits).
+--- Remembers the fingerprint it came from for `fingerprint_for`.
+--- @param fp string
+--- @return string
+function M.revision(fp)
+  fp = fp or ""
+  local modulo = 4294967296
+  local a, b, c = 5381, 0, 2166136261
+  for index = 1, #fp do
+    local byte = fp:byte(index)
+    a = (a * 33 + byte) % modulo
+    b = (b * 65599 + byte) % modulo
+    c = ((c + byte) * 16777619) % modulo
+  end
+  local digest = string.format("r%08x%08x%08x", a, b, c)
+  if remembered[digest] == nil then
+    remembered_order[#remembered_order + 1] = digest
+    if #remembered_order > REMEMBERED_REVISIONS then
+      remembered[table.remove(remembered_order, 1)] = nil
+    end
+  end
+  remembered[digest] = fp
+  return digest
+end
+
+--- The fingerprint a recent `revision()` digest came from, or nil when it
+--- was never produced here (another server process, or long evicted).
+--- @param digest string|nil
+--- @return string|nil
+function M.fingerprint_for(digest)
+  return digest and remembered[digest] or nil
+end
+
 --- Splits a fingerprint back into { [path] = "<hashes> <size>" }.
 ---
 --- The fingerprint is not an opaque digest -- it is the concatenation of
@@ -151,7 +192,7 @@ function M.read_snapshot(files, expected_revision, read)
     error("hydronium_dom.dev.watch: read_snapshot requires a read function", 2)
   end
 
-  local before = M.fingerprint(files)
+  local before = M.revision(M.fingerprint(files))
   if expected_revision ~= nil and expected_revision ~= before then
     return nil, before, "stale"
   end
@@ -159,7 +200,7 @@ function M.read_snapshot(files, expected_revision, read)
   local ok, value = pcall(read)
   if not ok then return nil, before, "read_failed", value end
 
-  local after = M.fingerprint(files)
+  local after = M.revision(M.fingerprint(files))
   if after ~= before or (expected_revision ~= nil and expected_revision ~= after) then
     return nil, after, "stale"
   end
@@ -176,7 +217,8 @@ end
 ---
 --- PROTOCOL. Unchanged for existing consumers: `hello`/`reload`/`ping`/
 --- `bye` still carry exactly what they always did, and `reload`'s data is
---- still the whole-set fingerprint that doubles as the `since` token. M2
+--- the whole-set revision digest (see `revision`) that doubles as the `since`
+--- token. M2
 --- adds ONE new frame, `changed`, emitted immediately before each
 --- `reload`, whose data is the "|"-joined list of the watched paths that
 --- actually moved. An EventSource never dispatches an event type nobody
@@ -233,16 +275,25 @@ function M.serve_sse(c, files, opts)
     return nil
   end
 
-  -- `id:` is the fingerprint itself (no embedded newlines, per the "|"
-  -- delimiter above, so it's already a valid single-line field value) --
-  -- this is what the browser echoes back as Last-Event-ID.
+  -- `id:` is the revision digest (single-line, fixed-size) -- this is
+  -- what the browser echoes back as Last-Event-ID.
   local function emit(event, data)
     return write("id: " .. tostring(data) .. "\nevent: " .. event .. "\ndata: " .. tostring(data) .. "\n\n")
   end
 
   -- No `id:` -- see the PROTOCOL note in this function's doc comment.
+  -- `prev`/`next_fp` are full fingerprints. A `since` digest this process
+  -- no longer remembers has no file list: report every watched file, which
+  -- the client treats as a full batch (conservative, never a missed edit).
   local function emit_changed(prev, next_fp)
-    local paths = M.changed_files(prev, next_fp)
+    local paths
+    if prev == nil then
+      paths = {}
+      for path in pairs(M.parse_fingerprint(next_fp)) do paths[#paths + 1] = path end
+      table.sort(paths)
+    else
+      paths = M.changed_files(prev, next_fp)
+    end
     return write("event: changed\ndata: " .. table.concat(paths, "|") .. "\n\n")
   end
 
@@ -258,10 +309,11 @@ function M.serve_sse(c, files, opts)
   if not pcall(stream_begin, 200, "text/event-stream") then return end
   if not write("retry: 200\n\n") then return end
 
-  local current = M.fingerprint(files, poll_interval, false)
+  local current_fp = M.fingerprint(files, poll_interval, false)
+  local current = M.revision(current_fp)
 
   if since and since ~= "" and since ~= current then
-    if not emit_changed(since, current) then return end
+    if not emit_changed(M.fingerprint_for(since), current_fp) then return end
     if not emit("reload", current) then return end
     finish()
     return
@@ -276,9 +328,9 @@ function M.serve_sse(c, files, opts)
     local next_fp = M.fingerprint(files)
     elapsed = elapsed + poll_interval
     since_heartbeat = since_heartbeat + poll_interval
-    if next_fp ~= current then
-      if not emit_changed(current, next_fp) then return end
-      if not emit("reload", next_fp) then return end
+    if next_fp ~= current_fp then
+      if not emit_changed(current_fp, next_fp) then return end
+      if not emit("reload", M.revision(next_fp)) then return end
       finish()
       return
     end
