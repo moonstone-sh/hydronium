@@ -13,6 +13,8 @@ test('packaged SSR hydrates, preserves state through LUAX HMR, and updates Tailw
   const errors=[];
   page.on('pageerror',e=>errors.push(String(e)));
   page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+  const requested=[];
+  page.on('request',r=>requested.push(new URL(r.url()).pathname));
   t.after(async()=>{writeFileSync(file,original);await browser.close();});
   const hmrReady=page.waitForRequest(r=>new URL(r.url()).pathname==='/__hydronium/watch',{timeout:30000});
   await page.goto(baseUrl,{waitUntil:'domcontentloaded'});
@@ -30,4 +32,7 @@ test('packaged SSR hydrates, preserves state through LUAX HMR, and updates Tailw
   await page.waitForFunction(()=>{const el=document.querySelector('.count-display');const probe=document.createElement('span');probe.className='text-blue-500';document.body.append(probe);const expected=getComputedStyle(probe).color;probe.remove();return expected!=='rgb(0, 0, 0)'&&getComputedStyle(el).color===expected;},null,{timeout:30000});
   assert.equal(await page.evaluate(()=>performance.timeOrigin),boot,'Lua and CSS updates must not reload the page');
   assert.deepEqual(errors,[],'no hydration or browser errors');
+  // The dev page boots the default engine: this is LUAX HMR on lua-wasm.
+  assert.ok(requested.some(p=>p.endsWith('/vendor/lua-wasm/5.4.9/engine.wasm')),'HMR must run on the default lua-wasm engine');
+  assert.ok(!requested.some(p=>p.includes('wasmoon')),'the dev page must not boot Wasmoon');
 });

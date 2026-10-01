@@ -14,6 +14,8 @@ Current runtime: Hydronium defaults to its self-hosted Bridge API 2 Lua
 compatibility provider, not the default. The end-to-end browser check is
 `js/tests/lua_wasm_mount.browser.test.mjs`; it exercises the default
 provider through a real mount and client-side hash navigation.
+How the two engines convert values, and where they differ from each other
+and from native Lua, is in [LUA_ENGINES.md](LUA_ENGINES.md).
 
 ## What's new
 
