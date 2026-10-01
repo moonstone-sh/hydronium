@@ -52,3 +52,18 @@ rewrite_hydronium_deps() {
     END { flush_block() }
   ' "$src" > "$dst"
 }
+
+# Registries with equal priority resolve in no guaranteed order, so the
+# public registry can serve a same-named, same-versioned package ahead of
+# the disposable one -- and a gate silently tests the last PUBLISHED release.
+# Run in the consumer project after `moon registry add <name> ...`.
+prioritize_local_registry() {
+  local registry_name="$1"
+  awk -v want="\"$registry_name\"" '
+    /^\[\[registries\]\]/ { current = "" }
+    /^name = / { current = $3 }
+    /^priority = / && current == want { $0 = "priority = 100" }
+    { print }
+  ' moonstone.toml > moonstone.toml.tmp && mv moonstone.toml.tmp moonstone.toml
+  grep -q 'priority = 100' moonstone.toml || { echo "could not prioritize the local registry $registry_name" >&2; return 1; }
+}
