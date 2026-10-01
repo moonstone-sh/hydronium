@@ -35,6 +35,25 @@ M.TAGS = { "article", "h1", "h2", "h3", "h4", "h5", "h6", "p", "a", "img", "em",
 local function tag(name) return "HydroniumMd" .. name:sub(1, 1):upper() .. name:sub(2) end
 
 --- A Lua string literal that never spans lines (keeps the LUAX line-aligned).
+-- Lua source for frontmatter/toc values: strings, numbers, booleans and
+-- tables of those, with keys in a stable order.
+local function literal(value)
+  local kind = type(value)
+  if kind == "string" then return string.format("%q", value):gsub("\\\n", "\\n") end
+  if kind == "number" or kind == "boolean" then return tostring(value) end
+  if kind ~= "table" then return "nil" end
+  local parts, keys = {}, {}
+  for index = 1, #value do parts[#parts + 1] = literal(value[index]) end
+  for key in pairs(value) do
+    if not (type(key) == "number" and key >= 1 and key <= #value and key % 1 == 0) then keys[#keys + 1] = key end
+  end
+  table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+  for _, key in ipairs(keys) do
+    parts[#parts + 1] = "[" .. literal(key) .. "] = " .. literal(value[key])
+  end
+  return "{ " .. table.concat(parts, ", ") .. " }"
+end
+
 local function lit(value)
   return (string.format("%q", value):gsub("\\\n", "\\n"))
 end
@@ -910,11 +929,16 @@ function M.compile(source, options)
     bindings[#bindings + 1] = "local " .. tag(name) .. " = components." .. name .. " or " .. lit(name) .. ";"
   end
   w:at(first_content)
-  w:put(" return function(props) local components = props and props.components or {}; "
+  w:put(" local __component = function(props) local components = props and props.components or {}; "
     .. table.concat(bindings, " ")
     .. " return <" .. tag("article") .. " class={props and props.class}>")
   emit_blocks(w, document.blocks, ctx)
-  w:put("</" .. tag("article") .. "> end")
+  -- The module is a callable table: calling it renders the document (so
+  -- `H.h(require("docs.x"))` keeps working), and `meta`/`toc` are readable
+  -- at run time on server and client. Appended to the last line, so the
+  -- generated LUAX stays line-aligned with the document.
+  w:put("</" .. tag("article") .. "> end; return setmetatable({ meta = " .. literal(document.meta)
+    .. ", toc = " .. literal(ctx.toc) .. " }, { __call = function(_, props) return __component(props) end })")
 
   local generated = w:result()
   local compiled = luax.compile(generated, { filename = filename, module_id = options.module_id,

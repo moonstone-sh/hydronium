@@ -235,4 +235,37 @@ describe("parent and child batch refresh", function()
     package.preload["scratch.batch_child"] = nil; package.preload["scratch.batch_parent"] = nil
     familyLoader.reset(); family.reset()
   end)
+  -- A compiled .md/.mdx module is a callable table carrying meta/toc
+  -- (site finding HF-007); it must stay a hot-reloadable component.
+  it("discovers and hot-reloads a callable-table component export", function()
+    family.reset()
+    familyLoader.reset()
+    familyLoader.enable()
+
+    local label = "first"
+    package.preload["scratch.family_hmr_document"] = function()
+      local text = label
+      return setmetatable({ meta = { title = text } }, {
+        __call = function(_, props) return H.h("article", nil, text) end,
+      })
+    end
+
+    local Document = require("scratch.family_hmr_document")
+    local host = H.test.createTestHost()
+    local reconciler = H.Reconciler.new(host)
+    local instance = ComponentInstance.new(H.h(Document, {}), nil, host)
+    instance:mount(nil, nil, reconciler)
+
+    assert.truthy(instance.family, "a callable-table export must be discovered into a family")
+    assert.equal(instance.family.id, "scratch.family_hmr_document::default")
+
+    label = "second"
+    local results = familyLoader.reload("scratch.family_hmr_document")
+    assert.equal(results["scratch.family_hmr_document::default"].refreshed, 1)
+    assert.equal(results["scratch.family_hmr_document::default"].failed, 0)
+    assert.equal(instance:render().props.children[1].text, "second")
+    instance:unmount(reconciler)
+    package.preload["scratch.family_hmr_document"] = nil
+    package.loaded["scratch.family_hmr_document"] = nil
+  end)
 end)
