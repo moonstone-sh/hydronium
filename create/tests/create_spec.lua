@@ -406,6 +406,8 @@ test("scaffold dry-run produces expected files for ssr template", function()
   for path, source in pairs(generated) do
     assert(not tostring(source):find("__dom_", 1, true), path .. " must not reference legacy __dom_* globals")
   end
+  -- Site finding HF-009: the release server must honour PORT at start-up.
+  assert(main:find('port_env = "PORT"', 1, true), "SSR main.lua must let the built server read PORT")
   assert(generated["moonstone.toml"]:find('name = "hydronium/dom"\nconstraint = "^0.3.3"', 1, true),
     "SSR apps need hydronium/dom 0.3.3 (the lua-wasm engine with table results)")
   assert(not generated["src/main.lua"]:find('id:gsub("%%.", "/")', 1, true),
@@ -865,6 +867,10 @@ test("vite.apply wires the REAL adapter into the ssr template (STEP 2, not the C
     "vite.config.js must import the real @hydronium-js/vite plugin")
   assert(files["vite.config.js"]:find('hydronium%(%{ islands: %["src/styles.css"%] %}%)', 1, false),
     "vite.config.js must declare the CSS entry as a real Vite build input")
+  -- Site finding HF-006: CSS url() assets (fonts) resolve under Meteorite's
+  -- /public/dist/ static route only if Vite builds with that base.
+  assert(files["vite.config.js"]:find('base: command === "build" ? "/public/dist/" : "/"', 1, true),
+    "vite.config.js must build with base /public/dist/ so CSS-referenced assets resolve")
 
   assert(files["package.json"]:find('"@hydronium%-js/vite": "file:./vendor/hydronium%-js%-vite"'),
     "package.json must depend on the vendored @hydronium-js/vite via file:")
