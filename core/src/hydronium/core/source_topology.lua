@@ -116,7 +116,13 @@ function M.resolve(config, files)
       if relative and relative ~= "" and transform then
         expect(not candidates[path], "hydronium.source_topology: source path matches more than one root: " .. path)
         local stem = relative:gsub("%.[%a%d_]+$", ""):gsub("/", ".")
-        local id = root.namespace and (root.namespace .. "." .. stem) or stem
+        -- `dir/init.lua` is the module `dir`, as Lua's own `?/init.lua`
+        -- searcher resolves it; `dir.init` would never match a require.
+        stem = stem:gsub("%.init$", "")
+        if stem == "init" and root.namespace then stem = nil end
+        local id
+        if stem == nil then id = root.namespace
+        else id = root.namespace and (root.namespace .. "." .. stem) or stem end
         candidates[path] = { id = module_id(id, "derived module id"), path = path,
           transform = transform, target = root.target, update = root.update,
           effects = root.effects, tags = root.tags }

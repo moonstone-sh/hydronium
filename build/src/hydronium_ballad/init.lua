@@ -46,12 +46,27 @@ local function tree_patterns(dirs, exts)
   return patterns
 end
 
-local function project_sources(p, config)
-  local roots = require("hydronium.core.source_topology").scan_roots(config)
-  return p.source.files(tree_patterns(roots, { "lua", "luax" }), { root = "." })
+-- Every extension a root declares a transform for (`md`/`mdx` included),
+-- not a fixed lua/luax list: a root without `transforms` gets the
+-- topology's own default.
+local function source_extensions(config)
+  local seen, exts = {}, {}
+  for _, root in ipairs(config.roots or {}) do
+    for ext in pairs(root.transforms or { lua = "lua", luax = "luax" }) do
+      if not seen[ext] then seen[ext] = true; exts[#exts + 1] = ext end
+    end
+  end
+  table.sort(exts)
+  return exts
 end
 
---- Discovery as a Ballad node: every `.lua`/`.luax` file under the roots
+local function project_sources(p, config)
+  local roots = require("hydronium.core.source_topology").scan_roots(config)
+  return p.source.files(tree_patterns(roots, source_extensions(config)), { root = "." })
+end
+
+--- Discovery as a Ballad node: every source file (each extension a root
+--- declares a transform for: `.lua`, `.luax`, `.md`, `.mdx`, ...) under the roots
 --- declared in `hydronium.sources.lua`, classified into the private source
 --- inventory (`.hydronium/ballad/source-inventory.{lua,json}`) that dev hosts
 --- (`hydronium_dom.server.meteorite.mount`, the Ink template) read.

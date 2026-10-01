@@ -19,6 +19,39 @@ describe("hydronium.core.source_topology", function()
     assert.equal(records[3].effects, "restart", "undeclared effects must fail closed at runtime")
   end)
 
+  -- Site findings HF-002/HF-003: Markdown sources are modules, and a
+  -- directory module keeps the id Lua's `?/init.lua` searcher gives it.
+  it("maps dir/init.lua to the directory's module id", function()
+    local records = topology.resolve({
+      roots = { { path = "src/lib", namespace = "lib" }, { path = "pkg" } },
+    }, { "src/lib/i18n/init.lua", "src/lib/init.lua", "src/lib/format.lua", "pkg/tools/init.lua", "pkg/init.lua" })
+    local ids = {}
+    for _, record in ipairs(records) do ids[record.path] = record.id end
+    assert.equal(ids["src/lib/i18n/init.lua"], "lib.i18n")
+    assert.equal(ids["src/lib/init.lua"], "lib")
+    assert.equal(ids["src/lib/format.lua"], "lib.format")
+    assert.equal(ids["pkg/tools/init.lua"], "tools")
+    assert.equal(ids["pkg/init.lua"], "init", "a namespace-less root has no directory name to give it")
+  end)
+
+  it("rejects a module defined both as x.lua and x/init.lua", function()
+    local ok, err = pcall(topology.resolve, { roots = { { path = "src", namespace = "app" } } },
+      { "src/i18n.lua", "src/i18n/init.lua" })
+    assert.falsy(ok)
+    assert.truthy(tostring(err):find("collision", 1, true))
+  end)
+
+  it("classifies Markdown and MDX sources through declared transforms", function()
+    local records = topology.resolve({
+      roots = { { path = "content", namespace = "docs", transforms = { md = "md", mdx = "mdx" } } },
+    }, { "content/intro.md", "content/guide/setup.mdx", "content/notes.txt" })
+    assert.equal(#records, 2)
+    assert.equal(records[1].id, "docs.guide.setup")
+    assert.equal(records[1].transform, "mdx")
+    assert.equal(records[2].id, "docs.intro")
+    assert.equal(records[2].transform, "md")
+  end)
+
   it("rejects unknown effect declarations", function()
     assert.falsy(pcall(topology.resolve, {
       roots = { { path = "src", effects = "arbitrary" } },
