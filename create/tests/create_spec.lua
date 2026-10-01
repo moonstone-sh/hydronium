@@ -279,7 +279,7 @@ test("scaffold dry-run produces a portable Ink terminal project", function()
   assert(manifest:find('lab = "moon exec --dev -- hydronium-lab dev"', 1, true), "Ink must expose a standalone Lab script")
   assert(manifest:find('name = "hydronium/lab-cli"', 1, true), "Ink Lab must include the standalone Lab CLI tool")
   assert(manifest:find('name = "hydronium/ink-lab"', 1, true), "Ink Lab must include its renderer adapter")
-  assert(manifest:find('name = "hydronium/lab"\nconstraint = "^0.3.3"\nrole = "dev"', 1, true), "Ink Lab renderer must stay dev-only")
+  assert(manifest:find('name = "hydronium/lab"\nconstraint = "^0.3.4"\nrole = "dev"', 1, true), "Ink Lab renderer must stay dev-only")
   local story = require("create.templates.ink").files({ name = "test-ink-app" })["src/App.stories.luax"]
   assert(story:find("lab.collection", 1, true), "Ink must generate a convention Lab story")
 end)
@@ -408,8 +408,8 @@ test("scaffold dry-run produces expected files for ssr template", function()
   end
   -- Site finding HF-009: the release server must honour PORT at start-up.
   assert(main:find('port_env = "PORT"', 1, true), "SSR main.lua must let the built server read PORT")
-  assert(generated["moonstone.toml"]:find('name = "hydronium/dom"\nconstraint = "^0.3.3"', 1, true),
-    "SSR apps need hydronium/dom 0.3.3 (the lua-wasm engine with table results)")
+  assert(generated["moonstone.toml"]:find('name = "hydronium/dom"\nconstraint = "^0.3.4"', 1, true),
+    "SSR apps need hydronium/dom 0.3.4 (lua-wasm engine, fixed-size dev revisions)")
   assert(not generated["src/main.lua"]:find('id:gsub("%%.", "/")', 1, true),
     "SSR must not reconstruct filesystem paths from request IDs")
 end)

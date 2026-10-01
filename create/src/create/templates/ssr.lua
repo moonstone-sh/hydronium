@@ -165,23 +165,23 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.3"
+constraint = "^0.2.4"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/luax"
-constraint = "^0.2.3"
+constraint = "^0.2.4"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.3"
+constraint = "^0.3.4"
 role = "runtime"
 
 # Ballad plugins: partiture.lua discovers this project's Lua sources.
 [[dependencies]]
 name = "hydronium/ballad"
-constraint = "^0.2.2"
+constraint = "^0.2.3"
 role = "runtime"
 
 [[dependencies]]
