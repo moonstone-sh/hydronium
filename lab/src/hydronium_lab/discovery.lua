@@ -113,7 +113,10 @@ function M.bind(record, value)
   local dialects = require("hydronium_luax.dialects")
   local dialect = dialects.of(record.transform ~= "" and record.transform or nil) or dialects.of(record.path)
   if dialect == "markdown" then
-    if type(value) ~= "function" then error("hydronium_lab.discovery: " .. record.path .. " must export a component", 2) end
+    local mt = type(value) == "table" and getmetatable(value)
+    if type(value) ~= "function" and not (mt and type(mt) == "table" and mt.__call) then
+      error("hydronium_lab.discovery: " .. record.path .. " must export a component", 2)
+    end
     return lab.story({ id = record.id_prefix .. "--default", title = record.stem, renderer = "dom",
       render = function(props) return require("hydronium").h(value, props) end,
       source = { path = record.path } })

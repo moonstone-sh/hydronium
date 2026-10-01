@@ -68,7 +68,10 @@ local enabled = false
 ---   component-shaped export found
 local function scan_exports(module_id, exported)
   local found = {}
-  if type(exported) == "function" then
+  local mt = type(exported) == "table" and getmetatable(exported)
+  if type(exported) == "function" or (mt and type(mt) == "table" and mt.__call) then
+    -- A callable table (e.g. a compiled .md/.mdx module carrying meta/toc)
+    -- is the module's component, just like a plain function export.
     found[module_id .. "::default"] = exported
   elseif type(exported) == "table" then
     for key, value in pairs(exported) do

@@ -68,8 +68,19 @@ the LUAX compiler's result (`code`, `sourcemap`, `map_json`) plus:
 - `toc`: `{ { level, id, text, line } }` for every heading,
 - `generated_luax`: the intermediate LUAX, for debugging.
 
-The module itself returns a plain component function, the shape HMR families,
-the router's lazy loader and Lab discovery recognize. Hosts replace any element
+The module itself is a callable table: calling it renders the document, and
+`meta` and `toc` are fields on it, on the server and in the browser:
+
+```lua
+local Guide = require("docs.guide")
+Guide.meta.title          -- frontmatter
+Guide.toc[1].text         -- first heading
+H.h(Guide, { components = { p = MyParagraph } })
+```
+
+HMR families, the router's screens and Lab discovery accept callable tables as
+components, so hot reload and routing work as for any `.luax` component.
+Hosts replace any element
 through the `components` prop: `{ p = MyParagraph, code = MyCodeBlock }` or an
 intrinsic name, `{ p = "section" }`.
 
