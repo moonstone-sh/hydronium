@@ -3,7 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {chromium} from 'playwright';
+import * as playwright from 'playwright';
+// HYDRONIUM_BROWSER=firefox|webkit runs the same gate in another engine.
+const chromium=playwright[process.env.HYDRONIUM_BROWSER||'chromium'];
 const baseUrl=process.env.HYDRONIUM_CONSUMER_URL;
 test('packaged SSR hydrates, preserves state through LUAX HMR, and updates Tailwind',{skip:!baseUrl},async t=>{
   const file=join(process.env.HYDRONIUM_CONSUMER_APP,'src/views/Counter.luax');

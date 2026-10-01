@@ -5,7 +5,9 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
+import * as playwright from "playwright";
+// HYDRONIUM_BROWSER=firefox|webkit runs the same suite in another engine.
+const chromium = playwright[process.env.HYDRONIUM_BROWSER || "chromium"];
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const dist = join(root, "examples/spa_hash_demo/dist");

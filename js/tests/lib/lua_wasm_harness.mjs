@@ -65,9 +65,11 @@ export async function startServer(appSource) {
     if (pathname.startsWith("/js/bootstrap/")) { base = client; relative = pathname.slice("/js/bootstrap/".length); }
     const resolved = join(base, normalize(relative));
     if (resolved !== base && !resolved.startsWith(base + sep)) { response.writeHead(400).end(); return; }
-    try {
-      response.writeHead(200, { "content-type": mime[extname(resolved)] ?? "application/octet-stream" }).end(await readFile(resolved));
-    } catch { response.writeHead(404).end("not found"); }
+    // Read before writing headers: a missing file (Firefox asks for
+    // /favicon.ico) must become a 404, not a second writeHead.
+    let body;
+    try { body = await readFile(resolved); } catch { response.writeHead(404).end("not found"); return; }
+    response.writeHead(200, { "content-type": mime[extname(resolved)] ?? "application/octet-stream" }).end(body);
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   return {

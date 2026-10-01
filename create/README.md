@@ -24,10 +24,12 @@ The selected package manager controls install, dev and build helper commands.
 
 ```sh
 bun run build
+moon run build
 ./dist/server
 ```
 
-The build produces the application in dist, including its server and browser
+`bun run build` builds the browser assets; `moon run build` compiles the
+server. Together they produce the application in dist, including its server and browser
 assets. Stop the development process before starting the release server if
 both use the same port. Use --dry-run to inspect generated files before writing;
 use --minimal for a one-shot HTML program without a live HMR process.
