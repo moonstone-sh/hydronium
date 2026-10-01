@@ -28,7 +28,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/ink"
-constraint = "^0.5.1"
+constraint = "^0.5.2"
 role = "runtime"
 
 [[dependencies]]

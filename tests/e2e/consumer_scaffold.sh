@@ -223,7 +223,12 @@ server_pid=$!
 # Do not accept a listening socket as proof: wait for a real, successful
 # document response.  Browser assertions below then prove the document and
 # its client island actually execute without invisible failures.
-for _ in $(seq 1 100); do
+# A release server answers at once; `bun run dev` first compiles the dev
+# server for a project scaffolded seconds ago (cold Zig cache), so allow it
+# two minutes.
+attempts=100
+if [[ "${HYDRONIUM_CONSUMER_DEV:-0}" == 1 ]]; then attempts=1200; fi
+for _ in $(seq 1 "$attempts"); do
   if curl --fail-with-body --silent "$url/" >"$scratch/index.html"; then break; fi
   sleep 0.1
 done

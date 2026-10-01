@@ -400,6 +400,12 @@ test("scaffold dry-run produces expected files for ssr template", function()
   assert(not main:find("dev_registry", 1, true) and not main:find("/__hydronium/", 1, true),
     "SSR main.lua must not carry framework route plumbing")
   assert(not main:find("io.open", 1, true), "SSR main.lua must not read files per request")
+  -- The DOM bridge is the dom@1 host capability; app code never probes the
+  -- legacy __dom_* globals (server rendering already runs page handlers
+  -- inside the client boundary, so no "am I in the browser?" guard).
+  for path, source in pairs(generated) do
+    assert(not tostring(source):find("__dom_", 1, true), path .. " must not reference legacy __dom_* globals")
+  end
   assert(generated["moonstone.toml"]:find('name = "hydronium/dom"\nconstraint = "^0.3.3"', 1, true),
     "SSR apps need hydronium/dom 0.3.3 (the lua-wasm engine with table results)")
   assert(not generated["src/main.lua"]:find('id:gsub("%%.", "/")', 1, true),
