@@ -6,7 +6,9 @@
 // forms bridge and router navigation work on it.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chromium } from "playwright";
+import * as playwright from "playwright";
+// HYDRONIUM_BROWSER=firefox|webkit runs the same suite in another engine.
+const chromium = playwright[process.env.HYDRONIUM_BROWSER || "chromium"];
 
 const baseUrl = process.env.HYDRONIUM_CONSUMER_URL;
 

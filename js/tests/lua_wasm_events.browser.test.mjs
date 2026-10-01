@@ -10,7 +10,9 @@
 // chunk.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chromium } from "playwright";
+import * as playwright from "playwright";
+// HYDRONIUM_BROWSER=firefox|webkit runs the same suite in another engine.
+const chromium = playwright[process.env.HYDRONIUM_BROWSER || "chromium"];
 import { distBuilt, startServer, openApp as openHarness } from "./lib/lua_wasm_harness.mjs";
 
 // The app under test. Every handler bumps a counter so the test can wait for

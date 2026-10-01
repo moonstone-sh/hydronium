@@ -133,9 +133,9 @@ jobs:
       - name: Install browser-gate dependencies
         working-directory: js
         run: pnpm install --frozen-lockfile
-      - name: Install Chromium for consumer gate
+      - name: Install browsers for the browser gates
         working-directory: js
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
       - name: Published consumer scaffold gate
         env:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
@@ -183,8 +183,13 @@ jobs:
       - name: lua-wasm engine mount and event-semantics gate
         # Reuses the SPA build above for its framework chunk. Mounts on the
         # default lua-wasm engine, and runs the event default-action suite on
-        # both lua-wasm and the Wasmoon fallback.
-        run: node --test js/tests/lua_wasm_mount.browser.test.mjs js/tests/lua_wasm_events.browser.test.mjs
+        # both lua-wasm and the Wasmoon fallback, in Chromium, Firefox and WebKit.
+        run: |
+          for browser in chromium firefox webkit; do
+            echo "::group::$browser"
+            HYDRONIUM_BROWSER=$browser node --test js/tests/lua_wasm_mount.browser.test.mjs js/tests/lua_wasm_events.browser.test.mjs
+            echo "::endgroup::"
+          done
       - name: Meteorite + Vite production and dual-HMR gates
         env:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
