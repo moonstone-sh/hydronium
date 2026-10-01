@@ -575,12 +575,7 @@ local function Home()
   local navigate = require("hydronium_router").useNavigate()
   local form = require("hydronium.core.form").useForm(actions.contact, { enhance = true })
 
-  local go_about = nil
-  if _G.__dom_set_listener then
-    go_about = function()
-      navigate("/about")
-    end
-  end
+  local go_about = function() navigate("/about") end
 
   return function()
     return (
@@ -622,12 +617,7 @@ local d = require("hydronium_dom").d
 
 local function About()
   local navigate = require("hydronium_router").useNavigate()
-  local go_home = nil
-  if _G.__dom_set_listener then
-    go_home = function()
-      navigate("/")
-    end
-  end
+  local go_home = function() navigate("/") end
   return (
     <d.main class="container">
       <d.header class="hero">

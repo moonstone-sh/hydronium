@@ -120,29 +120,49 @@ function M.detect(opts)
   local readAvailable = opts.readAvailable or tty.readAvailable
   local timeoutMs = opts.timeoutMs or DEFAULT_TIMEOUT_MS
 
-  writeFn("\27]11;?\27\\")
-
-  local buf = ""
-  local waited = 0
-  while waited < timeoutMs do
-    if pollReadable(0, POLL_SLICE_MS) then
-      local chunk = readAvailable(0, 256)
-      if chunk then
-        buf = buf .. chunk
-        local color, s, e = M.parse_response(buf)
-        if color then
-          local leftover = buf:sub(1, s - 1) .. buf:sub(e + 1)
-          return color, leftover ~= "" and leftover or nil
-        end
-      end
-    end
-    waited = waited + POLL_SLICE_MS
+  -- The terminal must not be in canonical mode while the reply arrives:
+  -- with ICANON the line discipline holds it until a newline (so poll()
+  -- never sees it and the query times out), and with ECHO it prints the
+  -- reply on screen (`^[]11;rgb:...`); either way the bytes are left queued
+  -- for the next reader -- the app's key parser or the user's shell. Callers
+  -- run this before their session enables raw mode, so take raw mode for
+  -- the round trip and restore whatever was there. (Injected primitives are
+  -- tests driving no real terminal.)
+  local saved
+  if tty then
+    local ok, mode = pcall(tty.enableRawMode)
+    if not ok then return from_colorfgbg(), nil end
+    saved = mode
   end
 
-  -- Timed out without a (parseable) reply. Whatever was read is real input,
-  -- not this module's own bytes -- hand it back rather than dropping it.
-  local fallback = from_colorfgbg()
-  return fallback, buf ~= "" and buf or nil
+  local ok, color, leftover = pcall(function()
+    writeFn("\27]11;?\27\\")
+
+    local buf = ""
+    local waited = 0
+    while waited < timeoutMs do
+      if pollReadable(0, POLL_SLICE_MS) then
+        local chunk = readAvailable(0, 256)
+        if chunk then
+          buf = buf .. chunk
+          local found, s, e = M.parse_response(buf)
+          if found then
+            local rest = buf:sub(1, s - 1) .. buf:sub(e + 1)
+            return found, rest ~= "" and rest or nil
+          end
+        end
+      end
+      waited = waited + POLL_SLICE_MS
+    end
+
+    -- Timed out without a (parseable) reply. Whatever was read is real
+    -- input, not this module's own bytes -- hand it back rather than
+    -- dropping it.
+    return from_colorfgbg(), buf ~= "" and buf or nil
+  end)
+  if saved then tty.restoreMode(saved) end
+  if not ok then error(color, 0) end
+  return color, leftover
 end
 
 return M

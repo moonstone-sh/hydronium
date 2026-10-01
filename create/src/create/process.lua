@@ -66,6 +66,11 @@ function process.capture(opts)
   else
     command = command .. " > " .. posix_quote(stdout_path) .. " 2> " .. posix_quote(stderr_path)
   end
+  -- `stdin = "null"`: the child must not read the terminal (e.g. while an
+  -- interactive session owns it in raw mode).
+  if opts.stdin == "null" then
+    command = command .. (platform == "windows" and " < NUL" or " < /dev/null")
+  end
   local ok, why, code = os.execute(command)
   local function read(path)
     local file = io.open(path, "rb")

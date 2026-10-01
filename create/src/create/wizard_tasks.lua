@@ -25,6 +25,20 @@ local pm = require("create.pm")
 
 local M = {}
 
+-- The last lines of a failed child's output: enough to act on, without
+-- flooding the wizard's result view with a whole install log.
+local function failure_detail(res)
+  local text = (res.stderr ~= nil and res.stderr ~= "") and res.stderr
+    or (res.stdout ~= nil and res.stdout ~= "") and res.stdout or res.command
+  local lines = {}
+  -- Children write terminal control codes (colors, "clear line") that
+  -- would render as garbage inside the wizard's own text.
+  text = tostring(text):gsub("\27%[[%d;?]*[%a@`]", ""):gsub("\27%][^\7\27]*\7", ""):gsub("\r", "")
+  for line in text:gmatch("[^\n]+") do lines[#lines + 1] = line end
+  local first = math.max(1, #lines - 11)
+  return table.concat(lines, "\n", first)
+end
+
 --- The task list a given wizard selection WOULD run -- always fully
 --- populated regardless of dry_run, so the checklist shows the real plan
 --- even in a Lab preview that never executes any of it.
@@ -52,7 +66,14 @@ end
 --- @return boolean ok, string? err
 function M.run_task(task, ctx)
   if ctx.dry_run then return true end
-  local run_process = ctx.run_process or process.run
+  -- Captured, with stdin detached: these run while the wizard's Ink session
+  -- owns the terminal in raw mode (no output post-processing, so a child's
+  -- "\n" staircases across the screen and overwrites the live form) and
+  -- reads keys from it. Failures report the child's own output instead.
+  local run_process = ctx.run_process or function(opts)
+    opts.stdin = "null"
+    return process.capture(opts)
+  end
 
   if task.id == "write" then
     -- Already performed by create.scaffold before wizard_app ever calls
@@ -61,7 +82,7 @@ function M.run_task(task, ctx)
     return true
   elseif task.id == "sync" then
     local res = run_process({ tool = "moon", cwd = ctx.target_dir, args = { "sync" } })
-    if res.exit_code ~= 0 then return false, "moon sync failed: " .. tostring(res.stderr ~= "" and res.stderr or res.command) end
+    if res.exit_code ~= 0 then return false, "moon sync failed: " .. failure_detail(res) end
     return true
   elseif task.id == "js_install" then
     local pm_mod = ctx.pm_mod or pm
@@ -85,11 +106,11 @@ function M.run_task(task, ctx)
     local args = {}
     if arg and arg ~= "" then for word in arg:gmatch("%S+") do args[#args + 1] = word end end
     local res = run_process({ tool = tool, cwd = ctx.target_dir, args = args })
-    if res.exit_code ~= 0 then return false, manager .. " install failed: " .. tostring(res.stderr ~= "" and res.stderr or res.command) end
+    if res.exit_code ~= 0 then return false, manager .. " install failed: " .. failure_detail(res) end
     return true
   elseif task.id == "git" then
     local res = run_process({ tool = "git", cwd = ctx.target_dir, args = { "init" } })
-    if res.exit_code ~= 0 then return false, "git init failed: " .. tostring(res.stderr ~= "" and res.stderr or res.command) end
+    if res.exit_code ~= 0 then return false, "git init failed: " .. failure_detail(res) end
     return true
   end
   return false, "unknown task '" .. tostring(task.id) .. "'"
