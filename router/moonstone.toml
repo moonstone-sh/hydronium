@@ -3,7 +3,7 @@ manifest_version = 2
 [package]
 name = "hydronium/router"
 registry_name = "hydronium"
-version = "0.2.2"
+version = "0.2.3"
 kind = "lib"
 description = "Host-neutral reactive Router, Outlet, hooks, matching, hrefs, and history adapters for Hydronium"
 

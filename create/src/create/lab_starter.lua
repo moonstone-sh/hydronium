@@ -38,7 +38,7 @@ role = "dev"
 
 [[dependencies]]
 name = "hydronium/meteorite"
-constraint = "^0.3.3"
+constraint = "^0.3.4"
 role = "dev"
 
 [[dependencies]]
