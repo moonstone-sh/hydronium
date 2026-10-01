@@ -52,12 +52,21 @@ CONFIG
 (
   cd "$app"
   "$moon" registry add hydronium-mixed-lab "file://$registry"
+  prioritize_local_registry hydronium-mixed-lab
   "$moon" add --tool --no-sync hydronium-mixed-lab:hydronium/lab-cli moonstone/meteorite
   "$moon" add --dev --no-sync hydronium-mixed-lab:hydronium/lab hydronium-mixed-lab:hydronium/ink-lab hydronium-mixed-lab:hydronium/meteorite
   "$moon" sync
   "$moon" sync --locked
   # grep, not rg: CI runners do not ship ripgrep (a missing rg silently skipped this check).
   if grep -rnF "$root" .moonstone moonstone.lock; then fail "consumer references source checkout"; fi
+  # Every hydronium/* realization must come from this run's export, never
+  # from the public registry's same-versioned release.
+  local_sources=$(awk '/^name = "hydronium\// { h = 1 } h && /^source = / { gsub(/"/, "", $3); print $3; h = 0 }' moonstone.lock)
+  [[ $(wc -w <<< "$local_sources") -ge 5 ]] || fail "expected hydronium/* realizations in moonstone.lock"
+  for source in $local_sources; do
+    [[ -f "$registry/$source" ]] || fail "hydronium package resolved outside the local registry: $source"
+  done
+  echo "lab gate: $(wc -w <<< "$local_sources" | tr -d ' ') hydronium packages resolved from the local export"
   "$moon" exec --dev -- hydronium-lab dev --port 6196 > "$scratch/server.log" 2>&1 &
   echo $! > "$scratch/server.pid"
   wait

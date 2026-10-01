@@ -1,13 +1,21 @@
 import { viewportGroups } from "./preview-settings.js";
 import { installCanvasGuides, createStoryStore, bindStoryControls, loadProjectPreferences, saveProjectPreferences, installWorkbenchPreferences } from "./workbench.js";
 
+// A failed dynamic import stays failed for the page's lifetime (the module
+// map caches the error), so after a dev-server restart retry under a fresh
+// URL, and never keep a rejected promise.
+let virtualTerminal;
+const loadVirtualTerminal = () => virtualTerminal ??= import("./virtual_terminal.js")
+  .catch(() => import(`./virtual_terminal.js?retry=${Date.now()}`))
+  .catch(error => { virtualTerminal = undefined; throw error; });
+
 export async function createDomLab({ root, fetchCatalog, previewUrl, loadModules, pollMs = 750 }) {
   let frame = root.querySelector("[data-lab-dom-preview]");
   const nav = root.querySelector("[data-lab-stories]");
   const search = root.querySelector("[data-lab-story-search]");
   const status = root.querySelector("[data-lab-status]");
   const key = root.dataset.labProject || "hydronium-lab";
-  let catalog = await fetchCatalog(), selected, stopped = false, updateTail = Promise.resolve();
+  let catalog = await fetchCatalog(), selected, stopped = false, updateTail = Promise.resolve(), pendingSelection;
   const preferences = await loadProjectPreferences(key);
   const persist = patch => { Object.assign(preferences, patch); return saveProjectPreferences(key, preferences); };
   const preferenceBinding = installWorkbenchPreferences({ root, preferences, persist: () => persist({}) });
@@ -22,19 +30,30 @@ export async function createDomLab({ root, fetchCatalog, previewUrl, loadModules
   const canvas = installPreviewCanvas(root, () => frame, {preferences, persist});
   const rendererControls = installRendererControls({ root, getFrame: () => frame, preferences, persist, bridge, getStory: () => selected, canvas, report });
   function report(error) { status.textContent = `Update failed — showing last preview: ${error.message}`; }
+  // Runs on every catalog poll, so buttons are reconciled by story id rather
+  // than recreated: a click whose press spans a poll must still land.
   function navigate() {
     const query = search.value.toLowerCase();
-    nav.replaceChildren();
+    const existing = new Map([...nav.children].map(button => [button.dataset.labStory, button]));
+    const wanted = [];
     for (const story of catalog.catalog.stories) {
       if (!(story.title + " " + (story.group || "") + " " + story.id).toLowerCase().includes(query)) continue;
-      const button = root.ownerDocument.createElement("button");
-      button.type = "button"; button.className = "hydronium-lab__story";
-      button.textContent = `${story.group ? story.group + " / " : ""}${story.title} · ${story.renderer}`;
-      button.dataset.labStory = story.id;
+      let button = existing.get(story.id);
+      if (!button) {
+        button = root.ownerDocument.createElement("button");
+        button.type = "button"; button.className = "hydronium-lab__story";
+        button.dataset.labStory = story.id;
+      }
+      const label = `${story.group ? story.group + " / " : ""}${story.title} · ${story.renderer}`;
+      if (button.textContent !== label) button.textContent = label;
       button.setAttribute("aria-current", String(selected?.id === story.id));
-      button.onclick = () => { updateTail = updateTail.then(() => select(story)).catch(report); };
-      nav.append(button);
+      // A selection that fails (the dev server restarting after an edit) is
+      // retried by the next successful poll instead of being dropped.
+      button.onclick = () => { pendingSelection = undefined; updateTail = updateTail.then(() => select(story)).catch(error => { pendingSelection = story.id; report(error); }); };
+      wanted.push(button);
     }
+    wanted.forEach((button, index) => { if (nav.children[index] !== button) nav.insertBefore(button, nav.children[index] || null); });
+    while (nav.children.length > wanted.length) nav.lastElementChild.remove();
   }
   async function select(story) {
     if (selected?.id === story.id) return;
@@ -55,14 +74,16 @@ export async function createDomLab({ root, fetchCatalog, previewUrl, loadModules
         await new Promise((resolve, reject) => {
           // The Lab server restarts when story sources change; a preview
           // requested during that window loads an error page instead of a
-          // preview and never reports ready. Reload only in that case (a slow
-          // but real preview is left alone), within the overall limit.
+          // preview and never reports ready. Reload in that case at once, and
+          // reload a real preview page that loaded but stays silent for 10 s
+          // (one of its own module imports failed in that window), within
+          // the overall limit.
           let attempt = 0, retry;
           const load = () => { const url = new URL(previewUrl(story), location.href); if (attempt) url.searchParams.set("attempt", String(attempt)); attempt += 1; candidate.src = url.pathname + url.search; };
           const loaded = () => {
             let preview = false;
             try { preview = !!candidate.contentDocument?.querySelector("[data-lab-base-path]"); } catch {}
-            if (!preview) { clearTimeout(retry); retry = setTimeout(load, 500); }
+            clearTimeout(retry); retry = setTimeout(load, preview ? 10000 : 500);
           };
           candidate.addEventListener("load", loaded);
           const cleanup = () => { window.removeEventListener("message", ready); candidate.removeEventListener("load", loaded); clearTimeout(timer); clearTimeout(retry); };
@@ -124,6 +145,11 @@ export async function createDomLab({ root, fetchCatalog, previewUrl, loadModules
     const current = next.catalog.stories.find(story => story.id === selected.id);
     if (!current || current.renderer !== selected.renderer) await select(current || next.catalog.stories[0]);
     else { const snapshot = store.getSnapshot(); selected = current; store.select(current); store.accept({ lab: snapshot }); navigate(); }
+    if (pendingSelection) {
+      const story = next.catalog.stories.find(candidate => candidate.id === pendingSelection);
+      pendingSelection = undefined;
+      if (story) { try { await select(story); } catch (error) { pendingSelection = story.id; throw error; } }
+    }
     // A poll that failed while the server restarted recovers on its own.
     if (status.textContent.startsWith("Update failed")) status.textContent = "Connected";
   }
@@ -241,7 +267,7 @@ function installRendererControls({root,getFrame,preferences,persist,bridge,getSt
       const saved=preferences.domViewport;await setViewport(saved&&presets.find(v=>v.width===saved.width&&v.height===saved.height)||presets[0]);
     }else{
       if(!query('ink-size'))return;
-      const {terminalSizeGroups}=await import('./virtual_terminal.js');
+      const {terminalSizeGroups}=await loadVirtualTerminal();
       inkSizes=fill(query('ink-size'),terminalSizeGroups(story,preferences.terminalSizes||[]),v=>`${v.name} · ${v.columns}×${v.rows}`);
       query('ink-color').value=preferences.inkColor||story.color||'truecolor';
       const saved=preferences.inkSize,index=inkSizes.findIndex(v=>v.columns===saved?.columns&&v.rows===saved?.rows);query('ink-size').value=String(Math.max(0,index));
