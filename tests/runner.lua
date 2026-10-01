@@ -457,6 +457,7 @@ local function main()
       "tests/host/ink_hmr_spec.lua",
       "tests/host/love_hmr_spec.lua",
       "tests/host/dev_watch_spec.lua",
+      "tests/host/dev_module_spec.lua",
       "tests/host/source_registry_spec.lua",
       "tests/host/lab_topology_spec.lua",
       "tests/core/lua_mount_spec.lua",

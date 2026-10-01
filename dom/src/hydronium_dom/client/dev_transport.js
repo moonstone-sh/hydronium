@@ -35,15 +35,12 @@
  * transport-internal signal (drives the reconnect) a consumer has no
  * reason to see.
  *
- * A `reload` event also carries `paths`: the watched files the server
- * says actually moved, from the `changed` frame it emits immediately
- * before each `reload` (see hydronium_dom/dev/watch.lua's PROTOCOL
- * note). This is what lets a real HMR client (hmr.js) hot-swap one
- * module instead of reloading the page. It is always an array, empty
- * when the server is an older one that never sends `changed` at all --
- * so a consumer treats "no paths" as "I don't know what changed", which
- * hmr.js maps to its full-reload fallback rather than to "nothing
- * changed".
+ * A `reload` event also carries `paths`. New servers send per-file stamps
+ * in an SSE `snapshot` frame; the browser compares them with its last
+ * snapshot so changes between requests retain exact file identity while
+ * the `since` token stays fixed-size. Older servers' `changed` frames
+ * remain supported. Missing paths mean the edit is unknown, so HMR falls
+ * back rather than treating it as no change.
  *
  * @param {string} url
  * @returns {{ subscribe: (cb: (event: {type: "hello"|"reload", fingerprint: string, paths: string[]}) => void) => (() => void), close: () => void }}
@@ -87,6 +84,8 @@ export function createDevTransport(url) {
   // means a `reload` from a server that sent no `changed` can never
   // inherit a stale path list from an earlier update.
   let pendingPaths = [];
+  let pendingSnapshot = null;
+  let lastSnapshot = null;
 
   function notify(type, fingerprint, paths) {
     for (const cb of listeners) cb({ type, fingerprint, paths: paths || [] });
@@ -117,24 +116,8 @@ export function createDevTransport(url) {
     // seen by ANY subsequent connection. Pure curl/raw-socket testing
     // never exhibited this (no HTTP cache in the picture at all), which
     // is why it wasn't caught until testing through a real browser.
-    // Built with encodeURIComponent, NOT URLSearchParams -- found live,
-    // and it silently broke the whole `since` mechanism. A fingerprint
-    // contains spaces (it is `stat` output), and
-    // URLSearchParams.toString() serializes a space as `+` per the
-    // application/x-www-form-urlencoded rules, while Meteorite's query
-    // parser decodes `%20` but treats `+` literally. So the server
-    // received a `since` that could never equal any fingerprint it
-    // computes, took its "changed while you were disconnected" branch on
-    // EVERY reconnect, and answered with an immediate `reload`.
-    //
-    // With dev_reload.js that surfaced only as an unexplained periodic
-    // page refresh -- easy to miss, since a reload is what that client
-    // does anyway. It is fatal for hmr.js: a bogus `since` also makes
-    // the server's per-file diff report every watched file as changed,
-    // which reads as "I can't tell what changed" and forces a full
-    // reload instead of a hot swap. Verified against the real route:
-    // percent-encoded `since` round-trips and names exactly the one file
-    // edited; plus-encoded `since` names all of them.
+    // Keep encoding explicitly. Current revisions are fixed-size; older
+    // server revisions may contain spaces and require `%20`, not `+`.
     const parts = [`_t=${Date.now()}`, "budget=0"];
     if (since) parts.push(`since=${encodeURIComponent(since)}`);
     const fullUrl = `${url}?${parts.join("&")}`;
@@ -142,7 +125,21 @@ export function createDevTransport(url) {
     source.addEventListener("hello", (ev) => {
       since = ev.data;
       consecutiveReloads = 0;
+      if (pendingSnapshot) {
+        lastSnapshot = pendingSnapshot;
+        pendingSnapshot = null;
+      }
       notify("hello", ev.data);
+    });
+    source.addEventListener("snapshot", (ev) => {
+      try {
+        const parsed = JSON.parse(String(ev.data || ""));
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          pendingSnapshot = parsed;
+        }
+      } catch {
+        pendingSnapshot = null;
+      }
     });
     source.addEventListener("changed", (ev) => {
       pendingPaths = String(ev.data || "")
@@ -151,7 +148,19 @@ export function createDevTransport(url) {
     });
     source.addEventListener("reload", (ev) => {
       since = ev.data;
-      const paths = pendingPaths;
+      let paths = pendingPaths;
+      if (pendingSnapshot) {
+        if (lastSnapshot) {
+          const names = new Set([...Object.keys(lastSnapshot), ...Object.keys(pendingSnapshot)]);
+          paths = [...names].filter((name) => {
+            const before = Object.prototype.hasOwnProperty.call(lastSnapshot, name) ? lastSnapshot[name] : undefined;
+            const after = Object.prototype.hasOwnProperty.call(pendingSnapshot, name) ? pendingSnapshot[name] : undefined;
+            return before !== after;
+          }).sort();
+        }
+        lastSnapshot = pendingSnapshot;
+        pendingSnapshot = null;
+      }
       pendingPaths = [];
       notify("reload", ev.data, paths);
       consecutiveReloads += 1;
