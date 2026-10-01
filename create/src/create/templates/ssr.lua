@@ -463,6 +463,8 @@ local app = meteorite.app({
   name = "%s",
   host = "127.0.0.1",
   port = tonumber(os.getenv("PORT")) or 8080,
+  -- A built server also honours PORT at start-up (Meteorite 0.3.4+).
+  port_env = "PORT",
   -- Hot UI modules declared in hydronium.sources.lua are passive: the browser
   -- swaps them in place, so editing one must not restart the server.
   dev_watch = hydronium.dev_watch(),

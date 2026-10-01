@@ -349,7 +349,11 @@ import { hydronium } from "@hydronium-js/vite";
 // under `public/dist/` (verified with a real `vite build` -- see this
 // file's own header comment on the identical hazard for the CSS-only
 // ssr/spa builds this template used to share).
-export default defineConfig({
+// `base`: built CSS/JS reference their own assets (fonts, images from
+// url()) by absolute URL, and Meteorite serves this output under
+// /public/dist/. Dev keeps "/" for Vite's own server.
+export default defineConfig(({ command }) => ({
+  base: command === "build" ? "/public/dist/" : "/",
   plugins: [
     hydronium({ islands: ["src/islands/counter.js", "src/styles.css"] }), // hydronium-vite-plugin
   ],
@@ -358,7 +362,7 @@ export default defineConfig({
     outDir: "public/dist",
     emptyOutDir: true,
   },
-});
+}));
 ]]
 
   files["scripts/dev.mjs"] = [[
@@ -476,7 +480,11 @@ import { hydronium } from "@hydronium-js/vite";
 // Vite's default behavior is to copy `publicDir` wholesale into
 // `build.outDir` on every build, which here would nest a second copy of
 // the whole `public/` tree under `public/dist/`.
-export default defineConfig({
+// `base`: built CSS/JS reference their own assets (fonts, images from
+// url()) by absolute URL, and Meteorite serves this output under
+// /public/dist/. Dev keeps "/" for Vite's own server.
+export default defineConfig(({ command }) => ({
+  base: command === "build" ? "/public/dist/" : "/",
   plugins: [
     hydronium({ islands: ["src/styles.css"] }), // hydronium-vite-plugin
   ],
@@ -485,7 +493,7 @@ export default defineConfig({
     outDir: "public/dist",
     emptyOutDir: true,
   },
-});
+}));
 ]]
 
   files["scripts/dev.mjs"] = [[
