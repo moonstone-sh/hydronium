@@ -1,4 +1,5 @@
 local islands = {}
+local look = require("create.look")
 
 --[[
   Islands template: a mostly-static SSR shell with ONE real, working
@@ -86,22 +87,22 @@ role = "tool"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.4.0"
+constraint = "^0.4.2"
 role = "tool"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.4"
+constraint = "^0.2.5"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/luax"
-constraint = "^0.2.4"
+constraint = "^0.2.5"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.4"
+constraint = "^0.3.5"
 role = "runtime"
 ]=], project_name)
 
@@ -139,24 +140,15 @@ pub fn build(b: *std.Build) void {
 }
 ]]
 
-  files["views/Document.luax"] = string.format([[-- Server-rendered document boundary with a real JS-hydrated island
+  -- Four views, all under src/views/ (on the Lua path, so `require`
+  -- finds them): the HTML shell, the layout, and two pages.
+  files["src/views/Document.luax"] = string.format([[-- The HTML shell. It loads the island bootstrap and, in development, the
+-- live-reload client. Everything visible is src/views/App.luax.
 local H = require("hydronium")
 local d = require("hydronium_dom").d
-
--- Rendered once during SSR (initial value only) AND shipped as the real
--- hydration target for public/js/island/counter.js's hydrate(context) --
--- it must render as exactly ONE root element (a bare <button>), since
--- counter.js's `context.root` is that single element directly (see its
--- own header comment and hydronium's boundary_registry.js `elements()`:
--- more than one root element here would make `context.root` an array
--- instead, which this template's counter.js does not handle).
-local function JsCounter(props)
-  return <button class="btn btn-primary" data-testid="js-counter-btn">Count: {tostring(props.initial or 0)}</button>
-end
+local App = require("views.App")
 
 local function Document(props)
-  local initial = props.initial or 10
-
   return (
     <html lang="en">
       <head>
@@ -166,44 +158,123 @@ local function Document(props)
         <link rel="stylesheet" href="/public/style.css" />
       </head>
       <body>
-        <div class="shell">
-          <header>
-            <h1>%s</h1>
-            <p>Server-rendered shell with one real, client-hydrated JS island</p>
-          </header>
-
-          <main>
-            <section class="content">
-              <h2>Static Content (0 KB Client JavaScript)</h2>
-              <p>This section is rendered purely on the server; nothing below it ships any client code for it.</p>
-            </section>
-
-            <section class="island-container">
-              <h2>Interactive Island (real hydration)</h2>
-              <d.js.island module="/js/island/counter.js" hydrate="visible" props={{ initial = initial }}>
-                <JsCounter initial={initial} />
-              </d.js.island>
-            </section>
-          </main>
-
-          {H.h("script", { type = "module" },
-            "import { activate } from '/js/bootstrap/bootstrap.js'; activate();")}
-          {H.h("script", { type = "module", src = "/js/bootstrap/dev_reload.js" })}
-        </div>
+        <div class="glow" aria-hidden="true"></div>
+        <script type="module" src="/public/ui/starter.js"></script>
+        <App path={props.path} page={props.page} />
+        {H.h("script", { type = "module" }, "import { activate } from '/js/bootstrap/bootstrap.js'; activate();")}
+        {H.h("script", { type = "module", src = "/js/bootstrap/dev_reload.js" })}
       </body>
     </html>
   )
 end
 
 return Document
-]], project_name, project_name)
+]], project_name)
 
-  -- Compiles views/Document.luax on demand -- same reasoning and structure as
-  -- ssr.lua's src/views/Document.lua (Meteorite's hybrid build lifts inline
-  -- route handlers, so this can't be a `main.lua` upvalue).
-  files["src/views/Document.lua"] = [[local loader = require("hydronium_luax").loader
+  files["src/views/App.luax"] = string.format([[-- The layout around every page. Edit it with `moon run dev` running and the
+-- page reloads with your change.
+local H = require("hydronium")
+local d = require("hydronium_dom").d
 
-return loader.load("views/Document.luax")
+local function App(props)
+  local function link(href, label)
+    return <d.a href={href} aria-current={props.path == href and "page" or nil}>{label}</d.a>
+  end
+
+  return (
+    <d.div class="shell">
+      <d.header class="top">
+        <d.a class="brand" href="/"><d.span class="mark">H₃O⁺</d.span> %s</d.a>
+        <d.nav>{link("/", "Home")}{link("/about", "About")}</d.nav>
+      </d.header>
+      <d.main class="stage">{props.page}</d.main>
+      <d.footer class="foot">Edit <d.code>src/views/App.luax</d.code> to see the changes.</d.footer>
+    </d.div>
+  )
+end
+
+return App
+]], project_name)
+
+  files["src/views/Home.luax"] = [[-- A plain HTML form: "Say hello" posts to /hello and the server renders this
+-- page again with the greeting. The counter is a JavaScript island
+-- (public/js/island/counter.js): rendered here, then hydrated in the browser.
+local H = require("hydronium")
+local d = require("hydronium_dom").d
+
+-- The island's server markup; it must be exactly one root element.
+local function Counter(props)
+  return <d.span class="counter" role="group" aria-label="Times" data-testid="js-counter"><d.button type="button" aria-label="Fewer" disabled={props.times <= 1}>−</d.button><d.output class="count">{tostring(props.times)}</d.output><d.button type="button" aria-label="More" disabled={props.times >= 9}>+</d.button><d.input type="hidden" name="times" value={tostring(props.times)} /></d.span>
+end
+
+local function Home(props)
+  local times = props.times or 3
+  return (
+    <d.form class="hello" method="post" action="/hello">
+      <d.h1 class="line">Say hello to <d.input class="name" id="name" name="name" placeholder="Ada" autocomplete="off" aria-label="Name" value={props.name} /> <d.js.island module="/js/island/counter.js" hydrate="load" props={{ times = times }}><Counter times={times} /></d.js.island> times.</d.h1>
+      <d.button class="send" type="submit">Say hello</d.button>
+      <d.p class={props.error and "result error" or "result"} aria-live="polite">{props.error or props.greeting or ""}</d.p>
+    </d.form>
+  )
+end
+
+return Home
+]]
+
+  files["src/views/About.luax"] = [[local H = require("hydronium")
+local d = require("hydronium_dom").d
+
+local function About()
+  return (
+    <d.section class="hello">
+      <d.h1 class="line">About</d.h1>
+      <d.p class="lede">Meteorite renders every page on the server. Only the counter ships JavaScript: it is an island, hydrated by <d.code>public/js/bootstrap/bootstrap.js</d.code>. Everything else is plain HTML.</d.p>
+    </d.section>
+  )
+end
+
+return About
+]]
+
+  -- Route handlers are lifted out of main.lua and run standalone per
+  -- request, so they only call into this module.
+  files["src/app/page_handler.lua"] = [[-- Server pages: GET /, GET /about, and POST /hello, which renders the home
+-- page again with the greeting.
+require("hydronium_luax").loader.install()
+local H = require("hydronium")
+
+local render = function(c, page, opts)
+  local dom = require("hydronium_dom.server.meteorite")
+  return dom.render(c, require("views.Document"), {
+    status = opts.status or 200,
+    props = { path = opts.path, page = page },
+  })
+end
+
+local M = {}
+
+function M.home(c)
+  return render(c, H.h(require("views.Home"), { times = 3 }), { path = "/" })
+end
+
+function M.about(c)
+  return render(c, H.h(require("views.About"), {}), { path = "/about" })
+end
+
+function M.hello(c)
+  local values = c:form_body() or {}
+  local name = type(values.name) == "string" and values.name:match("^%s*(.-)%s*$") or ""
+  local times = math.max(1, math.min(9, math.floor(tonumber(values.times) or 3)))
+  local props = { name = name, times = times }
+  if name == "" then
+    props.error = "Who should we say hello to?"
+  else
+    props.greeting = (string.rep("Hello, " .. name:sub(1, 40) .. "! ", times):gsub("%s+$", ""))
+  end
+  return render(c, H.h(require("views.Home"), props), { path = "/", status = name == "" and 422 or 200 })
+end
+
+return M
 ]]
 
   files["src/main.lua"] = string.format([[local meteorite = require("meteorite")
@@ -211,7 +282,9 @@ return loader.load("views/Document.luax")
 local app = meteorite.app({
   name = "%s",
   host = "127.0.0.1",
-  port = 8080,
+  port = tonumber(os.getenv("PORT")) or 8080,
+  -- A built server also honours PORT at start-up (Meteorite 0.3.4+).
+  port_env = "PORT",
 })
 
 meteorite.site(app, {
@@ -223,19 +296,14 @@ meteorite.site(app, {
   },
 })
 
--- `dev_reload.js` performs a full page reload when this bounded SSE handler
--- observes an edit. This is intentionally live reload, not state-preserving HMR.
+-- Development live reload: dev_reload.js reloads the page when this
+-- stream reports an edit.
 app:get("/__hydronium/watch", meteorite.lua("dev_watch", { arg_mode = "lazy_context" }))
 
-app:get("/", function(c)
-  local meteorite_adapter = require("hydronium_dom.server.meteorite")
-  local Document = require("views.Document")
-  local initial = tonumber(c:query("initial")) or 10
-  return meteorite_adapter.render(c, Document, {
-    status = 200,
-    props = { initial = initial },
-  })
-end)
+-- Handlers run standalone per request; they call into src/app/page_handler.lua.
+app:get("/", function(c) return require("app.page_handler").home(c) end)
+app:get("/about", function(c) return require("app.page_handler").about(c) end)
+app:post("/hello", function(c) return require("app.page_handler").hello(c) end)
 
 return app
 ]], project_name)
@@ -245,7 +313,11 @@ local watch = require("hydronium_dom.dev.watch")
 
 return function(c)
   watch.serve_sse(c, {
-    "views/Document.luax",
+    "src/views/Document.luax",
+    "src/views/App.luax",
+    "src/views/Home.luax",
+    "src/views/About.luax",
+    "src/app/page_handler.lua",
     "src/main.lua",
     "src/dev_watch.lua",
     "public/style.css",
@@ -676,126 +748,84 @@ transport.subscribe((event) => {
   -- ABI: `hydrate(context)`/`dispose(context)`, `context.root` the
   -- claimed DOM element, `context.props` the passed props). "hydrate"
   -- here means: claim the existing SSR button, don't replace it.
-  files["public/js/island/counter.js"] = [[const state = new WeakMap();
+  files["public/js/island/counter.js"] = [[// The counter island: hydrates the server-rendered "− n +" group in
+// src/views/Home.luax and keeps its hidden `times` input in step, so the
+// form posts the chosen count.
+const cleanups = new WeakMap();
 
 export function hydrate(context) {
-  const button = context.root;
-  const initial = context.props.initial ?? 0;
-  let count = initial;
+  const root = context.root;
+  const [less, more] = root.querySelectorAll("button");
+  const output = root.querySelector("output");
+  const input = root.querySelector('input[name="times"]');
+  let times = Number(context.props.times ?? 3);
 
-  const onClick = () => {
-    count += 1;
-    button.textContent = `Count: ${count}`;
+  const render = () => {
+    output.textContent = String(times);
+    input.value = String(times);
+    less.disabled = times <= 1;
+    more.disabled = times >= 9;
   };
-  button.addEventListener("click", onClick);
-  state.set(button, { onClick, get: () => count });
+  const onLess = () => { times = Math.max(1, times - 1); render(); };
+  const onMore = () => { times = Math.min(9, times + 1); render(); };
+
+  less.addEventListener("click", onLess);
+  more.addEventListener("click", onMore);
+  render();
+  cleanups.set(root, () => {
+    less.removeEventListener("click", onLess);
+    more.removeEventListener("click", onMore);
+  });
 }
 
 export function dispose(context) {
-  const button = context.root;
-  const entry = state.get(button);
-  if (!entry) return;
-  button.removeEventListener("click", entry.onClick);
-  state.delete(button);
+  cleanups.get(context.root)?.();
+  cleanups.delete(context.root);
 }
 ]]
 
-  files["public/style.css"] = [[body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #0f172a;
-  color: #f8fafc;
-  padding: 2rem;
-}
-.shell {
-  max-width: 600px;
-  margin: 0 auto;
-}
-.island-container {
-  background: #1e293b;
-  border: 1px solid #38bdf8;
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-top: 1.5rem;
-  text-align: center;
-}
-.btn {
-  padding: 0.6rem 1.5rem;
-  font-size: 1.25rem;
-  font-weight: bold;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-}
-.btn-primary { background: #38bdf8; color: #0f172a; }
-]]
+  files["public/style.css"] = look.CSS
+  files["public/ui/starter.js"] = look.SCRIPT
 
   files["README.md"] = string.format([[# %s
 
-Hydronium Islands template: a server-rendered shell with ONE real,
-client-hydrated interactive island, built with
+Server-rendered pages with one JavaScript island, built with
 [Hydronium](https://moonstone.sh/packages/hydronium) and
 [Meteorite](https://moonstone.sh/packages/meteorite).
 
-This template uses Moonstone path dependencies for Hydronium's core, LuaX,
-and DOM packages. For local development it assumes your project sits next to
-the `hydronium` workspace and a `meteorite` clone, e.g.:
-
-```
-some-parent-dir/
-  hydronium/
-  meteorite/
-  %s/   <- this project
+```bash
+moon sync
+moon run dev
 ```
 
-## Why "islands" and not just "ssr"
+Open the printed URL and edit `src/views/App.luax`: the page reloads with your
+change.
 
-The counter on this page is a real **JS island**: `public/js/island/counter.js`
-is dynamically `import()`ed client-side by `public/js/bootstrap/bootstrap.js`
-(a real, self-contained copy of Hydronium's own client bootstrap, shipped
-here so this project needs no Hydronium source symlink), which claims the
-server-rendered `<button>` and wires up a real click handler. Everything
-else on the page is plain static SSR output with zero client JavaScript.
+`moon run dev` runs `hydronium dev`: a live log of requests and rebuilds (also
+written to `.hydronium/dev.log`). Press `f` for the fullscreen request
+inspector, `esc` to leave it, `q` to quit.
 
-This is the ONE hydration path genuinely proven end-to-end in Hydronium
-today. The SSR template uses a different mechanism: it mounts a Lua
-application root into a stable `Document.luax` shell. This template keeps the
-static shell in its own `views/Document.luax` too, but its interactive leaf is
-a deliberately small JavaScript hydration boundary rather than a browser VM.
+## Files
 
-The island declares `hydrate="visible"`, so its JavaScript module is not
-fetched until the boundary approaches the viewport. The generated
-`priority.js` implements the same `load`, `idle`, and `visible` vocabulary as
-Hydronium's current client bootstrap.
+- `src/views/App.luax` -- the layout: header, page, footer.
+- `src/views/Home.luax`, `src/views/About.luax` -- the pages. Home's form posts
+  to `/hello` as plain HTML.
+- `public/js/island/counter.js` -- the counter island. It is the only
+  JavaScript the page ships besides the island bootstrap.
+- `src/app/page_handler.lua` -- the server side of `/`, `/about` and `/hello`.
+- `src/views/Document.luax` -- the HTML shell.
+- `src/main.lua` -- the Meteorite server.
+- `public/style.css` -- the styles.
 
-## Getting Started
+## Build
 
-1. **Install Dependencies:**
-   ```bash
-   moon sync
-   ```
+```bash
+moon run build
+./dist/server
+```
 
-2. **Start Dev Server (with live reload):**
-   ```bash
-   moon run dev
-   ```
-
-   This runs `hydronium dev`, which starts the Meteorite dev server with
-   this project's own `--mode`/`--backend`/`--lua-root` flags (they live in
-   the `dev` script in `moonstone.toml`) and renders its dev-event stream
-   live. Keys: `f` opens a fullscreen request inspector, `esc` leaves it,
-   `q` quits. Every event is also appended to `.hydronium/dev.log`.
-
-3. **Build for Production:**
-   ```bash
-   moon run build
-   ./dist/server
-   ```
-
-Then open the page in a real browser and click the counter -- the count
-increments client-side with no page reload. Editing files under `views/`,
-`src/`, or `public/` triggers a full-page reload, so client state resets;
-state-preserving JavaScript-island HMR is not implemented yet.
-]], project_name, project_name)
+`PORT=9000 ./dist/server` listens on another port.
+]], project_name)
 
   return files
 end

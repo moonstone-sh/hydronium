@@ -28,22 +28,22 @@ local DEPENDENCIES = [==[
 # release closure.
 [[dependencies]]
 name = "hydronium/lab"
-constraint = "^0.3.4"
+constraint = "^0.3.5"
 role = "dev"
 
 [[dependencies]]
 name = "hydronium/ink-lab"
-constraint = "^0.3.3"
-role = "dev"
-
-[[dependencies]]
-name = "hydronium/meteorite"
 constraint = "^0.3.4"
 role = "dev"
 
 [[dependencies]]
+name = "hydronium/meteorite"
+constraint = "^0.3.5"
+role = "dev"
+
+[[dependencies]]
 name = "hydronium/lab-cli"
-constraint = "^0.3.2"
+constraint = "^0.3.3"
 role = "tool"
 ]==]
 
@@ -51,7 +51,7 @@ local METEORITE_TOOL = [==[
 
 [[dependencies]]
 name = "moonstone/meteorite"
-constraint = "^0.3.1"
+constraint = "^0.3.5"
 role = "tool"
 ]==]
 
@@ -65,59 +65,17 @@ return {
 }
 ]]
 
--- A small presentational component for templates without one of their own.
-M.WELCOME = [[-- A starter component for the Lab: edit it, or require your own components
--- from stories/ the same way.
-local H = require("hydronium")
-local d = require("hydronium_dom").d
-
-local function Welcome(props)
-  return (
-    <d.section class="welcome">
-      <d.h2>{props.title or "Welcome"}</d.h2>
-      <d.p>{props.message or ""}</d.p>
-    </d.section>
-  )
-end
-
-return Welcome
-]]
-
-local function welcome_story()
+-- One story per page: the About page, which needs no server or router. Plain
+-- Lua, so the project keeps its four .luax files.
+local function about_story()
   return [[local lab = require("hydronium_lab")
-local Welcome = require("components.Welcome")
+local About = require("views.About")
 
--- Each story renders the component with its args; the controls edit them live.
 return lab.collection({
-  title = "Welcome",
+  title = "About",
   renderer = "dom",
-  component = Welcome,
-  args = { title = "Welcome", message = "Rendered by the Hydronium Lab." },
-  controls = { title = { type = "text" }, message = { type = "text" } },
-  stories = {
-    default = {},
-    empty = { args = { message = "" } },
-  },
-})
-]]
-end
-
-local function counter_story()
-  return [[local lab = require("hydronium_lab")
-local Counter = require("views.Counter")
-
--- The app's own Counter (src/views/Counter.luax), rendered in isolation. Edit
--- `initial` in the controls; clicks keep their state across hot updates.
-return lab.collection({
-  title = "Counter",
-  renderer = "dom",
-  component = Counter,
-  args = { initial = 0 },
-  controls = { initial = { type = "number" } },
-  stories = {
-    default = {},
-    ten = { args = { initial = 10 } },
-  },
+  component = About,
+  stories = { default = {} },
 })
 ]]
 end
@@ -158,12 +116,7 @@ function M.apply(files, opts)
   files["moonstone.toml"] = manifest
 
   files["hydronium.lab.lua"] = M.CONFIG
-  if opts.template == "ssr" then
-    files["stories/Counter.stories.luax"] = counter_story()
-  else
-    files["src/components/Welcome.luax"] = M.WELCOME
-    files["stories/Welcome.stories.luax"] = welcome_story()
-  end
+  files["stories/About.stories.lua"] = about_story()
   files["README.md"] = (files["README.md"] or "") .. README
   return files
 end

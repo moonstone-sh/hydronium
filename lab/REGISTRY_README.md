@@ -147,3 +147,15 @@ return lab.collection({ renderer = "dom", component = require("Button"),
 ```
 
 Keep native Ink imports in Ink story modules. Add compiled CSS with `styles = { "public/app.css" }` in `hydronium.lab.lua`; run its compiler in watch mode separately.
+
+## Composable workbench (development candidate)
+
+`hydronium_lab.components` exposes canvas, viewport, grid, rulers, guides,
+sidebar, catalog, inspector, toolbar, settings and action buttons. The default
+`hydronium_lab.workbench.Shell` composes these components. Replace a slot with
+an element or pass `false` to omit it. Choose a left sidebar, right sidebar or
+stacked layout, or compose `Root` yourself. DOM and Ink wrappers forward these
+options. Browser bindings tolerate omitted chrome and retain component-owned
+layers on disposal.
+
+See [the composition guide](../docs/LAB_COMPOSITION.md) for the API and pipeline setup.

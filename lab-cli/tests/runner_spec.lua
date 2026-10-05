@@ -94,3 +94,24 @@ end }))
 assert(copy.files[".lab/Workbench.luax"]:find('require("LabChrome")', 1, true))
 assert(copy.files[".lab/Workbench.luax"]:find('return Document', 1, true))
 assert(copy.files[".lab/LabChrome.luax"])
+
+-- The pipeline adapter consumes the same host plan and emits deterministic
+-- paths relative to its dedicated sink directory.
+package.path = "../../ballad/src/?.lua;../../ballad/src/?/init.lua;" .. package.path
+local plugin = require("hydronium_lab_cli.ballad")
+local graph = require("ballad.graph")
+local original_plan = runner.plan
+runner.plan = function(opts)
+  assert(opts.config.renderer == "dom")
+  return { adapter="test", command="test-host", files={
+    [opts.state_dir .. "/main.lua"]="return true\n",
+    [opts.state_dir .. "/config.lua"]="return {}\n",
+  } }
+end
+local assets = plugin.prepare({graph=graph.Graph.new(), fail=function(message) error(message) end}, {}, {config={renderer="dom"}})
+assert(#assets.assets == 2)
+assert(assets.assets[1].virtual_path == "config.lua")
+assert(assets.assets[2].virtual_path == "main.lua")
+assert(assets.assets[2].content == "return true\n")
+assert(not pcall(plugin.prepare, {fail=function(message) error(message) end}, {}, {state_dir="../outside"}))
+runner.plan = original_plan

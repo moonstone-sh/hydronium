@@ -106,6 +106,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
+      - name: i18n compiler and runtime contracts
+        working-directory: i18n
+        run: bun tests/contracts.mjs
       - name: Verify Ink Lab browser distribution
         working-directory: ink-lab
         run: |
@@ -252,6 +255,7 @@ jobs:
           node --test js/tests/virtual.browser.test.mjs
           node --test js/tests/host_capabilities.browser.test.mjs
           node --test js/tests/lab_controls.browser.test.mjs
+          node --test js/tests/lab_composition.browser.test.mjs
 
       - name: Tailwind + build-manifest gate
         working-directory: js/examples/islands-tailwind

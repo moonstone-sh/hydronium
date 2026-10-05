@@ -18,6 +18,7 @@ return ballad.partiture(function(p)
 			"src/main.lua",
 			"src/create/init.lua",
 			"src/create/lab_starter.lua",
+			"src/create/look.lua",
 			"src/create/luals.lua",
 			"src/create/pm.lua",
 			"src/create/process.lua",

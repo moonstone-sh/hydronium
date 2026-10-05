@@ -2,7 +2,7 @@ manifest_version = 2
 
 [package]
 name = "hydronium/ballad"
-version = "0.2.3"
+version = "0.2.4"
 kind = "lib"
 description = "Hydronium's ballad plugins: .luax compile, CSS/assets, and client bundling/minification"
 
@@ -16,7 +16,7 @@ package = "moon exec -- ballad play partiture.lua"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.4.0"
+constraint = "^0.4.2"
 role = "tool"
 
 [[dependencies]]

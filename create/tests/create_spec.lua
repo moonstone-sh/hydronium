@@ -213,10 +213,10 @@ end)
 test("DOM templates ship the component Lab the Ink template has", function()
   local lab_starter = require("create.lab_starter")
   local cases = {
-    { id = "ssr", files = require("create.templates.ssr").files({ name = "lab-ssr" }), story = "stories/Counter.stories.luax", requires = 'require("views.Counter")' },
-    { id = "islands", files = require("create.templates.islands").files({ name = "lab-islands" }), story = "stories/Welcome.stories.luax", requires = 'require("components.Welcome")' },
-    { id = "spa", files = require("create.templates.spa").files({ name = "lab-spa", router = "hydronium" }), story = "stories/Welcome.stories.luax", requires = 'require("components.Welcome")' },
-    { id = "spa", files = require("create.templates.spa").files({ name = "lab-spa-m", router = "meteorite" }), story = "stories/Welcome.stories.luax", requires = 'require("components.Welcome")' },
+    { id = "ssr", files = require("create.templates.ssr").files({ name = "lab-ssr" }), story = "stories/About.stories.lua", requires = 'require("views.About")' },
+    { id = "islands", files = require("create.templates.islands").files({ name = "lab-islands" }), story = "stories/About.stories.lua", requires = 'require("views.About")' },
+    { id = "spa", files = require("create.templates.spa").files({ name = "lab-spa", router = "hydronium" }), story = "stories/About.stories.lua", requires = 'require("views.About")' },
+    { id = "spa", files = require("create.templates.spa").files({ name = "lab-spa-m", router = "meteorite" }), story = "stories/About.stories.lua", requires = 'require("views.About")' },
   }
   for _, case in ipairs(cases) do
     local files = lab_starter.apply(case.files, { template = case.id })
@@ -243,7 +243,7 @@ test("DOM templates ship the component Lab the Ink template has", function()
   local res = assert(create.scaffold({ directory = "/tmp/test-hydronium-lab-ssr", template = "ssr", name = "lab-ssr", dry_run = true }))
   local created = {}
   for _, file in ipairs(res.created) do created[file.path] = true end
-  assert(created["hydronium.lab.lua"] and created["stories/Counter.stories.luax"], "scaffold writes the Lab files")
+  assert(created["hydronium.lab.lua"] and created["stories/About.stories.lua"], "scaffold writes the Lab files")
 end)
 
 test("scaffold dry-run produces a portable Ink terminal project", function()
@@ -279,7 +279,7 @@ test("scaffold dry-run produces a portable Ink terminal project", function()
   assert(manifest:find('lab = "moon exec --dev -- hydronium-lab dev"', 1, true), "Ink must expose a standalone Lab script")
   assert(manifest:find('name = "hydronium/lab-cli"', 1, true), "Ink Lab must include the standalone Lab CLI tool")
   assert(manifest:find('name = "hydronium/ink-lab"', 1, true), "Ink Lab must include its renderer adapter")
-  assert(manifest:find('name = "hydronium/lab"\nconstraint = "^0.3.4"\nrole = "dev"', 1, true), "Ink Lab renderer must stay dev-only")
+  assert(manifest:find('name = "hydronium/lab"\nconstraint = "^0.3.5"\nrole = "dev"', 1, true), "Ink Lab renderer must stay dev-only")
   local story = require("create.templates.ink").files({ name = "test-ink-app" })["src/App.stories.luax"]
   assert(story:find("lab.collection", 1, true), "Ink must generate a convention Lab story")
 end)
@@ -343,10 +343,12 @@ test("scaffold dry-run produces a real Meteorite-served single-screen SPA (route
   assert(file_map["src/main.lua"], "the meteorite spa variant must have a Meteorite server entrypoint")
 
   local generated = require("create.templates.spa").files({ name = "test-spa-meteorite", router = "meteorite" })
-  assert(not generated["app.lua"]:find('require("hydronium_router")', 1, true), "meteorite variant must not bundle the client router")
-  assert(not generated["partiture.lua"]:find("router_src", 1, true), "meteorite variant must not resolve router sources")
+  -- Both SPA variants share the hash-routed views; this one adds a server.
+  assert(generated["app.lua"]:find('require("hydronium_router")', 1, true), "the SPA views are hash-routed in both variants")
+  assert(generated["partiture.lua"]:find("router_src", 1, true), "the bundle must resolve router sources")
   assert(generated["src/main.lua"]:find("meteorite.site", 1, true), "must serve the Ballad-built dist/ via Meteorite")
-  assert(not generated["moonstone.toml"]:find('name = "hydronium/router"', 1, true), "meteorite variant has no router dependency")
+  assert(generated["src/main.lua"]:find('"/js/router/:path*"', 1, true), "must serve the hash-history adapter")
+  assert(generated["moonstone.toml"]:find('name = "hydronium/router"', 1, true), "the router is a runtime dependency")
 end)
 
 test("scaffold dry-run produces expected files for ssr template", function()
@@ -372,11 +374,14 @@ test("scaffold dry-run produces expected files for ssr template", function()
   assert(file_map["partiture.lua"], "missing Ballad source discovery partiture")
   assert(not file_map["src/app/package_roots.lua"], "package layout is resolved by hydronium.mount, not the app")
   assert(not file_map["client_manifest.json"], "the framework manifest is derived by hydronium.mount, not pasted")
-  assert(file_map["src/app/hello.lua"], "missing plain Meteorite route handler example")
-  assert(file_map["src/features/greeting/Greeting.luax"], "missing component outside src/views")
-  assert(file_map["src/views/Document.luax"], "missing src/views/Document.luax")
-  assert(file_map["src/views/App.luax"], "missing src/views/App.luax")
-  assert(file_map["src/views/Counter.luax"], "missing src/views/Counter.luax")
+  -- The starter is four .luax files: shell, layout and two pages.
+  local luax_files = {}
+  for path in pairs(file_map) do if path:match("%.luax$") then luax_files[#luax_files + 1] = path end end
+  table.sort(luax_files)
+  assert(table.concat(luax_files, ",") == "src/views/About.luax,src/views/App.luax,src/views/Document.luax,src/views/Home.luax",
+    "SSR starter must be exactly Document/App/Home/About, got " .. table.concat(luax_files, ","))
+  assert(file_map["src/views/Client.lua"], "missing the browser entry src/views/Client.lua")
+  assert(file_map["src/app/hello_action.lua"], "missing the hello action handler")
   assert(file_map["hydronium.sources.lua"], "missing source topology manifest")
   assert(file_map["public/style.css"], "missing public/style.css")
   assert(file_map["build.zig"], "missing build.zig")
@@ -395,8 +400,14 @@ test("scaffold dry-run produces expected files for ssr template", function()
     "SSR must declare framework routes through hydronium.mount")
   assert(main:find("dev_watch = hydronium.dev_watch()", 1, true),
     "SSR must classify client UI source as passive Meteorite input")
-  assert(main:find('meteorite.lua("app.hello"', 1, true),
-    "SSR must show a plain Meteorite route rendering a Hydronium component")
+  assert(main:find("router.mount(app, site", 1, true), "SSR pages come from the site manifest")
+  assert(generated["src/views/Site.lua"]:find('screen = "views.App"', 1, true), "App.luax is the root layout screen")
+  assert(generated["hydronium.sources.lua"]:find('entry = "views.Client"', 1, true), "the browser entry is views.Client")
+  assert(generated["src/views/App.luax"]:find("Edit <d.code>src/views/App.luax</d.code> to see the changes.", 1, true),
+    "the layout's footer points at App.luax")
+  assert(generated["src/views/Home.luax"]:find('name="times"', 1, true) and generated["src/views/Home.luax"]:find("useForm(actions.hello", 1, true),
+    "Home posts the name and the counter through the hello action")
+  assert(generated["public/style.css"] == require("create.look").CSS, "SSR ships the shared starter look")
   assert(not main:find("dev_registry", 1, true) and not main:find("/__hydronium/", 1, true),
     "SSR main.lua must not carry framework route plumbing")
   assert(not main:find("io.open", 1, true), "SSR main.lua must not read files per request")
@@ -408,7 +419,7 @@ test("scaffold dry-run produces expected files for ssr template", function()
   end
   -- Site finding HF-009: the release server must honour PORT at start-up.
   assert(main:find('port_env = "PORT"', 1, true), "SSR main.lua must let the built server read PORT")
-  assert(generated["moonstone.toml"]:find('name = "hydronium/dom"\nconstraint = "^0.3.4"', 1, true),
+  assert(generated["moonstone.toml"]:find('name = "hydronium/dom"\nconstraint = "^0.3.5"', 1, true),
     "SSR apps need hydronium/dom 0.3.4 (lua-wasm engine, fixed-size dev revisions)")
   assert(not generated["src/main.lua"]:find('id:gsub("%%.", "/")', 1, true),
     "SSR must not reconstruct filesystem paths from request IDs")
@@ -426,8 +437,11 @@ test("scaffold dry-run produces expected files for islands template", function()
   for _, f in ipairs(res.created) do
     file_map[f.path] = true
   end
-  assert(file_map["views/Document.luax"], "missing views/Document.luax")
-  assert(file_map["src/views/Document.lua"], "missing src/views/Document.lua")
+  for _, view in ipairs({ "Document", "App", "Home", "About" }) do
+    assert(file_map["src/views/" .. view .. ".luax"], "missing src/views/" .. view .. ".luax")
+  end
+  assert(not file_map["src/views/Document.lua"], "views are on the Lua path; no loader shims")
+  assert(file_map["src/app/page_handler.lua"], "missing src/app/page_handler.lua")
   assert(file_map["public/js/bootstrap/bootstrap.js"], "missing public/js/bootstrap/bootstrap.js")
   assert(file_map["public/js/bootstrap/boundary_registry.js"], "missing public/js/bootstrap/boundary_registry.js")
   assert(file_map["public/js/bootstrap/priority.js"], "missing public/js/bootstrap/priority.js")
@@ -899,17 +913,17 @@ test("vite.apply wires the REAL adapter into the islands template (STEP 2, not t
 
   -- No hardcoded /public/dist/... path in application Lua -- the Document
   -- asks the neutral provider contract for its markup instead.
-  assert(not files["views/Document.luax"]:find("/public/dist/", 1, true),
+  assert(not files["src/views/Document.luax"]:find("/public/dist/", 1, true),
     "Document must not hardcode a Vite build path -- use assets.tags() instead")
-  assert(files["views/Document.luax"]:find('assets.tags("src/styles.css")', 1, true),
+  assert(files["src/views/Document.luax"]:find('assets.tags("src/styles.css")', 1, true),
     "Document must render its stylesheet via hydronium_dom.assets.tags()")
-  assert(files["views/Document.luax"]:find('local assets = require("hydronium_dom.assets")', 1, true),
+  assert(files["src/views/Document.luax"]:find('local assets = require("hydronium_dom.assets")', 1, true),
     "Document must require hydronium_dom.assets")
 
   -- The JS island is a real Vite entry now, resolved dev/prod by
   -- hydronium_dom.server.vite_module (already wired into
   -- hydronium_dom.server.init's ISLAND branch) -- not a raw static path.
-  assert(files["views/Document.luax"]:find('module="src/islands/counter.js"', 1, true),
+  assert(files["src/views/Home.luax"]:find('module="src/islands/counter.js"', 1, true),
     "the island's module must be a Vite entry specifier, not a static /js/island/ path")
   assert(files["src/islands/counter.js"], "counter.js must move to a real Vite build entry under src/islands/")
   assert(not files["public/js/island/counter.js"], "counter.js must no longer be served as a raw static file")
@@ -937,10 +951,10 @@ test("vite.apply wires the REAL adapter into the islands template (STEP 2, not t
 
   -- src/main.lua bootstraps the provider contract and no longer serves the
   -- island as a raw static file.
-  assert(files["src/main.lua"]:find('assets.configure_provider', 1, true),
-    "src/main.lua must configure the asset provider")
-  assert(files["src/main.lua"]:find('vite_module.configure', 1, true),
-    "src/main.lua must configure vite_module")
+  assert(files["src/app/page_handler.lua"]:find('assets.configure_provider', 1, true),
+    "the page handler must configure the asset provider")
+  assert(files["src/app/page_handler.lua"]:find('vite_module.configure', 1, true),
+    "the page handler must configure vite_module")
   assert(not files["src/main.lua"]:find('/js/island/:path%*'),
     "src/main.lua must no longer serve a static /js/island/ route")
   -- REGRESSION (found by a real scaffold -> build -> curl gate, not unit
@@ -949,8 +963,8 @@ test("vite.apply wires the REAL adapter into the islands template (STEP 2, not t
   -- Meteorite's `/public/:path*` static route. Without this exact `base`,
   -- every hashed asset URL 404s in a real running server even though the
   -- SSR HTML looks plausible and every unit/dry-run test still passes.
-  assert(files["src/main.lua"]:find('base = "/public/dist"', 1, true),
-    "src/main.lua's vite-manifest provider must set base = \"/public/dist\" (Vite's outDir), or every hashed asset URL 404s")
+  assert(files["src/app/page_handler.lua"]:find('base = "/public/dist"', 1, true),
+    "the vite-manifest provider must set base = \"/public/dist\" (Vite's outDir), or every hashed asset URL 404s")
   -- The provider bootstrap must be INLINED into the actual render
   -- call site, not a shared function or top-level state -- Meteorite's
   -- hybrid build requires an inline route handler to be fully
@@ -958,8 +972,9 @@ test("vite.apply wires the REAL adapter into the islands template (STEP 2, not t
   -- the handler fails `moon run build` outright), and even when a build
   -- succeeds, top-level state configured outside the handler is invisible
   -- inside it (a separately-loaded chunk with its own fresh module cache).
-  assert(files["src/main.lua"]:find('app:get("/", function(c)\n  local assets = require', 1, true),
-    "the provider bootstrap must be inlined directly inside the \"/\" handler body, immediately after its opening line")
+  assert(files["src/app/page_handler.lua"]:find('render = function(c, page, opts)\n  local assets = require', 1, true),
+    "the provider bootstrap must be inlined directly inside the page handler's render function")
+  assert(not files["src/main.lua"]:find("configure_provider", 1, true), "main.lua has no render of its own")
 
   -- Vite now owns HMR for the island/CSS it builds; the Lua-side
   -- full-page-reload watcher must not also watch them.
@@ -967,18 +982,18 @@ test("vite.apply wires the REAL adapter into the islands template (STEP 2, not t
     "dev_watch.lua must not watch a file Vite's own dev server now HMRs")
 end)
 
-test("vite.apply on islands also works when --router hydronium already moved the island to views/Home.luax", function()
+test("vite.apply on islands also works with --router hydronium", function()
   local router_mode = require("create.router_mode")
   local files = require("create.templates.islands").files({ name = "test-islands-router-vite" })
   files = router_mode.apply_islands(files, { name = "test-islands-router-vite" })
   files = vite.apply(files, { template = "islands", name = "test-islands-router-vite" })
 
-  assert(files["views/Home.luax"]:find('module="src/islands/counter.js"', 1, true),
-    "the island moved to views/Home.luax under --router hydronium; vite.apply must patch it there")
-  assert(not files["views/Home.luax"]:find('module="/js/island/counter.js"', 1, true),
+  assert(files["src/views/Home.luax"]:find('module="src/islands/counter.js"', 1, true),
+    "the island lives in src/views/Home.luax; vite.apply must patch it there")
+  assert(not files["src/views/Home.luax"]:find('module="/js/island/counter.js"', 1, true),
     "the old static module path must be gone")
-  assert(files["views/Document.luax"]:find('assets.tags("src/styles.css")', 1, true),
-    "the shared shell (views/Document.luax) must still render the stylesheet via assets.tags()")
+  assert(files["src/views/Document.luax"]:find('assets.tags("src/styles.css")', 1, true),
+    "the shared shell must still render the stylesheet via assets.tags()")
 
   -- Under --router hydronium, main.lua has NO inline Document render at
   -- all (router_mode.apply_islands moves it to src/app/page_handler.lua's
@@ -1050,8 +1065,10 @@ test("tailwind.apply layers Tailwind v4 on top of an already-vite-applied ssr/is
 
   local islands_files = vite.apply(require("create.templates.islands").files({ name = "x" }), { template = "islands", name = "x" })
   islands_files = tailwind.apply(islands_files, { template = "islands", name = "x" })
-  assert(islands_files["src/styles.css"]:find('@source "../views/**/*.luax";', 1, true),
-    "islands' .luax views live one level above src/, unlike ssr's")
+  assert(islands_files["src/styles.css"]:find('@source "./views/**/*.luax";', 1, true),
+    "islands' .luax views live in src/views")
+  assert(islands_files["src/styles.css"]:find('@import "../public/style.css" layer(components);', 1, true),
+    "islands keeps the starter look under Tailwind")
 end)
 
 test("tailwind.apply layers Tailwind v4 on top of an already-vite-applied spa template, both router variants", function()
@@ -1060,7 +1077,8 @@ test("tailwind.apply layers Tailwind v4 on top of an already-vite-applied spa te
     files = vite.apply(files, { template = "spa", name = "x", router = router })
     local build_script_before = files["package.json"]:match('"build": "([^"]+)"')
     files = tailwind.apply(files, { template = "spa", name = "x", router = router })
-    assert(files["src/styles.css"]:find('@source "./app.lua"', 1, true), "[spa/" .. router .. "] must scan app.lua for Tailwind classes")
+    assert(files["src/styles.css"]:find('@source "./views/**/*.luax"', 1, true), "[spa/" .. router .. "] must scan the views for Tailwind classes")
+    assert(files["src/styles.css"]:find(".glow", 1, true), "[spa/" .. router .. "] keeps the starter look under Tailwind")
     assert(files["vite.config.js"]:find('tailwindcss()', 1, true), "[spa/" .. router .. "] vite.config.js must register the Tailwind plugin")
     assert(files["package.json"]:find('"@tailwindcss/vite"', 1, true), "[spa/" .. router .. "] missing @tailwindcss/vite devDependency")
     assert(files["package.json"]:match('"build": "([^"]+)"') == build_script_before,
@@ -1092,19 +1110,17 @@ test("router_mode.apply_islands replaces the single hand-written route with a Hy
   files = router_mode.apply_islands(files, { name = "test-islands-router" })
 
   assert(files["moonstone.toml"]:find('name = "hydronium/router"', 1, true), "must add the hydronium/router dependency")
-  assert(files["views/Site.lua"], "missing views/Site.lua route manifest")
-  assert(files["views/Home.luax"], "missing views/Home.luax (split out of Document.luax)")
-  assert(files["views/About.luax"], "missing views/About.luax second page")
-  assert(files["src/views/Home.lua"] and files["src/views/About.lua"], "missing loader wrappers for the new screens")
-  assert(files["src/app/page_handler.lua"], "missing router-driven page handler")
+  assert(files["src/views/Site.lua"], "missing src/views/Site.lua route manifest")
+  assert(files["src/app/page_handler.lua"]:find("function M.routed(c)", 1, true), "missing router-driven page handler")
 
   assert(files["src/main.lua"]:find("hydronium_router.meteorite", 1, true), "src/main.lua must use the router adapter")
-  assert(files["src/main.lua"]:find("router_adapter.mount", 1, true), "src/main.lua must mount the site")
-  assert(files["src/main.lua"]:find("router_adapter.validate_final", 1, true), "src/main.lua must validate the final route table")
-  assert(not files["src/main.lua"]:find('app:get%("/1"', 1, false), "sanity: no leftover placeholder route")
+  assert(files["src/main.lua"]:find("router.mount(app, site", 1, true), "src/main.lua must mount the site")
+  assert(files["src/main.lua"]:find("router.validate_final(app, site)", 1, true), "src/main.lua must validate the final route table")
+  assert(not files["src/main.lua"]:find('app:get("/about"', 1, true), "pages come from the manifest, not hand-written routes")
+  assert(files["src/main.lua"]:find('app:post("/hello"', 1, true), "the form action stays a plain route")
 
-  assert(files["views/Site.lua"]:find('screen = "views.Home"', 1, true), "site must declare the home screen")
-  assert(files["views/Site.lua"]:find('screen = "views.About"', 1, true), "site must declare the about screen")
+  assert(files["src/views/Site.lua"]:find('screen = "views.Home"', 1, true), "site must declare the home screen")
+  assert(files["src/views/Site.lua"]:find('screen = "views.About"', 1, true), "site must declare the about screen")
 end)
 
 test("create.scaffold always produces package.json + vite.config.js for ssr/spa/islands, tailwind on or off (6 combos)", function()
@@ -1211,8 +1227,8 @@ test("create.scaffold(--router hydronium) on islands adds the router site, dry-r
   assert(res ~= nil, "scaffold with --router hydronium failed: " .. tostring(err))
   local file_map = {}
   for _, f in ipairs(res.created) do file_map[f.path] = true end
-  assert(file_map["views/Site.lua"], "missing views/Site.lua")
-  assert(file_map["views/About.luax"], "missing views/About.luax")
+  assert(file_map["src/views/Site.lua"], "missing src/views/Site.lua")
+  assert(file_map["src/views/About.luax"], "missing src/views/About.luax")
   assert(res.router == "hydronium")
 end)
 
@@ -1224,7 +1240,7 @@ test("create.scaffold(--router meteorite) on islands is a no-op (today's default
   assert(res ~= nil, "scaffold with --router meteorite failed: " .. tostring(err))
   local file_map = {}
   for _, f in ipairs(res.created) do file_map[f.path] = true end
-  assert(not file_map["views/Site.lua"], "--router meteorite must not add a router site manifest")
+  assert(not file_map["src/views/Site.lua"], "--router meteorite must not add a router site manifest")
   assert(res.router == "meteorite")
 end)
 
@@ -2114,6 +2130,22 @@ test("isolated header diorama animates and follows its own terminal size", funct
   session:resize(50, 4)
   assert(session:frame().w == 50, "diorama must honor selected dimensions")
   session:close()
+end)
+
+test("SPA Meteorite serves shared starter globals alongside its client bundle", function()
+  local files = require("create.templates.spa").files({ name = "spa-assets", router = "meteorite" })
+  assert(files["public/ui/starter.js"]:find("createHashHistoryGlobals", 1, true))
+  assert(files["partiture.lua"]:find('module = "/ui/starter.js"', 1, true))
+  assert(files["src/main.lua"]:find('["/ui/:path*"] = { dir = "dist/ui", param = "path" }', 1, true), "Meteorite must serve emitted globals module")
+end)
+
+test("Vite dev launchers honour VITE_PORT and refuse silent port fallback", function()
+  for _, template in ipairs({ "ssr", "islands" }) do
+    local files = require("create.templates." .. template).files({ name = "dev-port" })
+    vite.apply(files, { template = template, name = "dev-port" })
+    assert(files["scripts/dev.mjs"]:find('process.env.VITE_PORT || "5173"', 1, true))
+    assert(files["scripts/dev.mjs"]:find(" --strictPort", 1, true))
+  end
 end)
 
 print(string.format("\nResults: %d/%d passed\n", passed, total))

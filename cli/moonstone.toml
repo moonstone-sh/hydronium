@@ -68,12 +68,12 @@ role = "runtime"
 # `link:` override.
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.4.0"
+constraint = "^0.4.2"
 role = "tool"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.4.0"
+constraint = "^0.4.2"
 role = "runtime"
 
 # `hydronium build` (src/build_runner.lua, src/build_verify.lua) requires

@@ -59,3 +59,12 @@ searcher does not itself watch files or enable HMR.
 Add the package's types and LuaLS plugin paths to .luarc.json, or scaffold with
 hydronium/create to generate that setup. The Neovim plugin is shipped under
 nvim/ and exposes require("luax").setup().
+
+## Highlight LUAX in other editors
+
+The package ships the canonical TextMate grammars under
+`.moonstone/env/libexec/hydronium/luax/syntaxes/`. Load
+`luax.tmLanguage.json` into Shiki with `name: "luax"`, or use its
+`source.luax` scope with Monaco's TextMate integration. This is the same grammar
+used by the editor integration; it provides highlighting, not semantic Lua
+completion or diagnostics. Those need LuaLS and the LUAX virtual-source plugin.

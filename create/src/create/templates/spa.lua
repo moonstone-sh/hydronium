@@ -71,6 +71,7 @@
   second stylesheet into.
 ]]
 
+local look = require("create.look")
 local spa = {}
 
 local ROUTER_MODES = { hydronium = true, meteorite = true }
@@ -84,100 +85,31 @@ function spa.files(opts)
   end
   local files = {}
 
-  files["app.css"] = [[.card {
-  max-width: 420px;
-  margin: 3rem auto;
-  padding: 2rem;
-  border-radius: 12px;
-  background: #1e293b;
-  color: #f8fafc;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  text-align: center;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-}
-
-.card h1 {
-  color: #38bdf8;
-}
-
-.card button {
-  margin-top: 1rem;
-  padding: 0.6rem 1.5rem;
-  font-size: 1rem;
-  font-weight: bold;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  background: #38bdf8;
-  color: #0f172a;
-}
+  -- Component-scoped styles (class names here are rewritten per component;
+  -- see `require("hydronium_dom.css").sheet`). The page look is plain CSS in
+  -- src/styles.css, built by Vite.
+  files["app.css"] = [[/* Scoped component styles go here. The page look lives in src/styles.css. */
+.unused { display: none; }
 ]]
 
-  if router == "hydronium" then
-    files["app.lua"] = string.format([==[-- Real two-route hash-routed static SPA entry -- mirrors
--- hydronium/examples/spa_hash_demo/app.lua exactly (see this template's
--- own header comment for what differs and why: installed package paths,
--- no hb.plugins.assets).
---
--- Routes go through `hydronium_router.site` (R.node/R.createSite), NOT a
--- hand-assembled `routes = {...}` table -- see this file's own repo
--- ground truth (examples/spa_hash_demo/app.lua) for the exact failure
--- mode a hand-rolled table hits: the router matches correctly but
--- `Outlet` silently renders nothing, because a bare match result's
--- `.component` lives one level down (`.meta.component`) from where
--- `site:routes(resolve)`'s real chain entries put it.
+  files["app.lua"] = [==[-- Browser entry: a hash router over three views in src/views/.
+-- The generated bootstrap loads the asset manifest through this module.
+require("hydronium_dom.assets")
 local H = require("hydronium")
-local dom = require("hydronium_dom")
-local d = dom.d
 local R = require("hydronium_router")
 local hash_history = require("hydronium_router.history.hash")
-local styles = require("hydronium_dom.css").sheet("app.css")
 
--- A plain <button>, not <a href> -- dom_bridge.js's set_listener documents
--- that wasmoon cannot safely marshal a browser Event as a Lua callback
--- argument, so onClick fires with none; a real <a href="#/..."> would need
--- to preventDefault() its own default navigation to avoid racing the
--- router's own history.push, which a plain button sidesteps entirely.
-local function nav_button(id, label, navigate, to)
-  return d.button({ id = id, onClick = function() navigate(to) end }, label)
-end
-
-local function RootLayout(props)
-  return function(current_props)
-    current_props = current_props or props
-    return current_props.outlet
-  end
-end
-
-local function HomeScreen()
-  local navigate = R.use_navigate()
-  return function()
-    return d.div({ id = "home-screen", class = styles.card },
-      d.h1({}, "%s"),
-      d.p({ id = "home-marker" }, "This is the home route -- rendered entirely client-side, no server."),
-      nav_button("go-about", "Go to About", navigate, "/about")
-    )
-  end
-end
-
-local function AboutScreen()
-  local navigate = R.use_navigate()
-  return function()
-    return d.div({ id = "about-screen", class = styles.card },
-      d.h1({}, "About"),
-      d.p({ id = "about-marker" }, "This is the about route."),
-      nav_button("go-home", "Go Home", navigate, "/")
-    )
-  end
-end
-
-local components = { Root = RootLayout, Home = HomeScreen, About = AboutScreen }
+local screens = {
+  App = require("views.App"),
+  Home = require("views.Home"),
+  About = require("views.About"),
+}
 
 local site = R.createSite({
   root = R.node({
     id = "root",
     path = "/",
-    screen = "Root",
+    screen = "App",
     children = {
       { id = "home", path = "", screen = "Home" },
       { id = "about", path = "about", screen = "About" },
@@ -185,46 +117,108 @@ local site = R.createSite({
   }),
 })
 
-return function(props)
+return function()
   local router = site:create_router({
     history = hash_history.create_hash_history(),
-    resolve = function(id) return components[id] end,
+    resolve = function(id) return screens[id] end,
   })
-
   return function()
     return H.h(router.Provider, {}, H.h(R.Outlet, {}))
   end
 end
+]==]
+
+  files["src/views/App.luax"] = string.format([==[-- The layout around every page. Edit it, run `moon run build`, and reload.
+local H = require("hydronium")
+local R = require("hydronium_router")
+local signals = require("hydronium.signals")
+local d = require("hydronium_dom").d
+
+local function App(props)
+  local router = R.useRouter()
+  local navigate = R.useNavigate()
+
+  local function link(path, label)
+    local current = signals.createComputed(function() return router.location().path == path and "page" or nil end)
+    return (
+      <d.a href={"#" .. path} onNavigate={function() navigate(path) end}
+        aria-current={current}>{label}</d.a>
+    )
+  end
+
+  return (
+    <d.div class="shell">
+      <d.div class="glow" aria-hidden="true"></d.div>
+      <d.header class="top">
+        <d.a class="brand" href="#/" onNavigate={function() navigate("/") end}><d.span class="mark">H₃O⁺</d.span> %s</d.a>
+        <d.nav>{link("/", "Home")}{link("/about", "About")}</d.nav>
+      </d.header>
+      <d.main class="stage">{props.outlet}</d.main>
+      <d.footer class="foot">Edit <d.code>src/views/App.luax</d.code> to see the changes.</d.footer>
+    </d.div>
+  )
+end
+
+return App
 ]==], project_name)
 
-  else -- router == "meteorite"
-    files["app.lua"] = string.format([==[-- Single-screen client mount -- no hydronium_router in the bundle at
--- all, and no client-side navigation. Meteorite (src/main.lua) serves
--- this bundle's dist/ output and is where a future second page/route
--- would be added, by hand, server-side.
-local H = require("hydronium")
-local dom = require("hydronium_dom")
-local d = dom.d
-local styles = require("hydronium_dom.css").sheet("app.css")
+  files["public/ui/starter.js"] = look.SCRIPT .. [[
+import { createHashHistoryGlobals } from "/js/router/hash_history.js";
+export function createGlobals() { return createHashHistoryGlobals(); }
+]]
 
-local function Home()
+  files["src/views/Home.luax"] = [==[-- Everything runs in the browser: the counter is reactive Lua, and "Say
+-- hello" reads the name field through a ref and answers right here.
+local H = require("hydronium")
+local d = require("hydronium_dom").d
+local signals = require("hydronium.signals")
+
+local function Home(props, scope)
+  local times, setTimes = signals.createSignal(3)
+  local greeting, setGreeting = signals.createSignal("")
+  local fewerDisabled = signals.createComputed(function() return times() <= 1 end)
+  local moreDisabled = signals.createComputed(function() return times() >= 9 end)
+  local name_field
+
+  local function say_hello()
+    local name = name_field and tostring(name_field.value or ""):match("^%s*(.-)%s*$") or ""
+    if name == "" then
+      setGreeting("Who should we say hello to?")
+    else
+      setGreeting((string.rep("Hello, " .. name:sub(1, 40) .. "! ", times()):gsub("%s+$", "")))
+    end
+  end
+
   return function()
-    return d.div({ id = "home-screen", class = styles.card },
-      d.h1({}, "%s"),
-      d.p({ id = "home-marker" }, "Rendered entirely client-side, served by Meteorite.")
+    return (
+      <d.form class="hello" onSubmit={say_hello}>
+        <d.h1 class="line">Say hello to <d.input class="name" id="name" name="name" placeholder="Ada" autocomplete="off" aria-label="Name" ref={function(el) name_field = el end} /> <d.span class="counter" role="group" aria-label="Times"><d.button type="button" aria-label="Fewer" disabled={fewerDisabled} onClick={function() setTimes(times() - 1) end}>−</d.button><d.output class="count">{times}</d.output><d.button type="button" aria-label="More" disabled={moreDisabled} onClick={function() setTimes(times() + 1) end}>+</d.button></d.span> times.</d.h1>
+        <d.button class="send" type="submit">Say hello</d.button>
+        <d.p class="result" aria-live="polite">{greeting}</d.p>
+      </d.form>
     )
   end
 end
 
-return function(props)
-  return function()
-    return H.h(Home)
-  end
-end
-]==], project_name)
-  end
+return Home
+]==]
 
-  files["partiture.lua"] = string.format([==[-- Real hydronium_ballad build: bundles app.lua (+ framework%s) into one
+  files["src/views/About.luax"] = [==[local H = require("hydronium")
+local d = require("hydronium_dom").d
+
+local function About()
+  return (
+    <d.section class="hello">
+      <d.h1 class="line">About</d.h1>
+      <d.p class="lede">A client-only app: Hydronium, the router and these views are bundled into one Lua chunk that runs in your browser. Routes live in <d.code>app.lua</d.code>; pages in <d.code>src/views/</d.code>.</d.p>
+    </d.section>
+  )
+end
+
+return About
+]==]
+
+  files["partiture.lua"] = string.format([==[-- Real hydronium_ballad build: bundles app.lua and src/views (+ framework and router) into one
 -- client Lua chunk, scopes app.css, and emits a static dist/ shell --
 -- mirrors hydronium/examples/spa_hash_demo/partiture.lua exactly, with
 -- one real, verified difference beyond source roots: every package root
@@ -259,6 +253,7 @@ end
 
 return ballad.partiture(function(p)
   local client = p:use(hb.plugins.client)
+  local luax = p:use(hb.plugins.luax)
   local style = p:use(hb.plugins.style)
   local site = p:use(hb.plugins.site)
 
@@ -274,8 +269,17 @@ return ballad.partiture(function(p)
     root = pkg_root("MOONSTONE_PACKAGE_ROOT_HYDRONIUM_DOM", ".moonstone/env/libexec/dom"),
     metadata = { hydronium = { target = "shared" } },
   })
-  local depends_on = { core_src, dom_src }
-%s
+  local router_src = p.source.files({ "**/*.lua" }, {
+    root = pkg_root("MOONSTONE_PACKAGE_ROOT_HYDRONIUM_ROUTER", ".moonstone/env/libexec/router"),
+    metadata = { hydronium = { target = "shared" } },
+  })
+  -- src/views/*.luax compiled to Lua; module ids follow the path (views.App).
+  local views = luax.compile(p.source.files({ "views/*.luax" }, {
+    root = "src",
+    metadata = { hydronium = { target = "client" } },
+  }))
+  local depends_on = { core_src, dom_src, router_src, views }
+
   local resolved = client.resolve(app_src, {
     entries = { "app" },
     depends_on = depends_on,
@@ -291,28 +295,18 @@ return ballad.partiture(function(p)
     mount = {
       title = "%s",
       hydrate = false,
-%s      vendor = {
+      lua_globals = { module = "/ui/starter.js", import = "createGlobals" },
+      vendor = {
+        { dir = "public/ui", url_prefix = "ui" },
         { dir = pkg_root("MOONSTONE_PACKAGE_ROOT_HYDRONIUM_DOM", ".moonstone/env/libexec/dom") .. "/hydronium_dom/client", url_prefix = "js/bootstrap" },
-%s      },
+        { dir = pkg_root("MOONSTONE_PACKAGE_ROOT_HYDRONIUM_ROUTER", ".moonstone/env/libexec/router") .. "/hydronium_router/client", url_prefix = "js/router" },
+      },
     },
   })
 
   p.sink.directory(merged, { out = "dist", file_graph = true })
 end)
-]==],
-    router == "hydronium" and " + the router" or "",
-    router == "hydronium" and [[
-  local router_src = p.source.files({ "**/*.lua" }, {
-    root = pkg_root("MOONSTONE_PACKAGE_ROOT_HYDRONIUM_ROUTER", ".moonstone/env/libexec/router"),
-    metadata = { hydronium = { target = "shared" } },
-  })
-  depends_on[#depends_on + 1] = router_src
-]] or "",
-    project_name,
-    router == "hydronium" and [[      lua_globals = { module = "/js/router/hash_history.js", import = "createHashHistoryGlobals" },
-]] or "",
-    router == "hydronium" and [[        { dir = pkg_root("MOONSTONE_PACKAGE_ROOT_HYDRONIUM_ROUTER", ".moonstone/env/libexec/router") .. "/hydronium_router/client", url_prefix = "js/router" },
-]] or "")
+]==], project_name)
 
   if router == "hydronium" then
     files["moonstone.toml"] = string.format([=[manifest_version = 2
@@ -333,22 +327,22 @@ build = "moon exec -- ballad play partiture.lua"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.4.0"
+constraint = "^0.4.2"
 role = "tool"
 
 [[dependencies]]
 name = "hydronium/ballad"
-constraint = "^0.2.3"
-role = "runtime"
-
-[[dependencies]]
-name = "hydronium/core"
 constraint = "^0.2.4"
 role = "runtime"
 
 [[dependencies]]
+name = "hydronium/core"
+constraint = "^0.2.5"
+role = "runtime"
+
+[[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.4"
+constraint = "^0.3.5"
 role = "runtime"
 
 [[dependencies]]
@@ -364,43 +358,26 @@ dist/
 
     files["README.md"] = string.format([[# %s
 
-Client-only Hydronium SPA: framework, router, and application compiled
-into one Lua chunk by [hydronium/ballad](https://moonstone.sh/packages/hydronium)'s
-real client bundler, hash-routed, with **no server at all**. Ground truth:
-`hydronium/examples/spa_hash_demo` in the framework repo.
-
-## Getting started
+A client-only [Hydronium](https://moonstone.sh/packages/hydronium) app: the
+framework, the router and your views compile into one Lua chunk that runs in
+the browser. No server.
 
 ```bash
 moon sync
 moon run build
-```
-
-`moon run build` runs `ballad play partiture.lua`, which produces a
-complete, static `dist/` directory:
-
-```
-dist/
-  index.html
-  client/runtime-<hash>.lua
-  assets/app-<hash>.css
-  hydronium-manifest.lua
-  hydronium-manifest.json
-```
-
-`dist/` is deployable to any static file server -- there is no Meteorite
-process, no server rewrite rules, and no SSR. During development, serve
-it with anything, e.g.:
-
-```bash
 npx --yes serve dist
 ```
 
-Client-side routing is `location.hash`-driven (`#/`, `#/about`) --
-`hydronium_router`'s hash history adapter, joined into the same client
-bundle. Editing `app.lua` and re-running `moon run build` is the whole
-edit loop; there is no HMR for this template (a from-scratch static
-bundle rebuild each time).
+## Files
+
+- `src/views/App.luax` -- the layout: header, page, footer.
+- `src/views/Home.luax`, `src/views/About.luax` -- the pages.
+- `app.lua` -- the entry: routes (`#/`, `#/about`) and the hash router.
+- `src/styles.css` -- the styles (built by Vite).
+- `partiture.lua` -- the build: one Lua chunk plus a static `dist/`.
+
+Edit a view and run `moon run build` again. `dist/` deploys to any static
+file server.
 ]], project_name)
   else
     files["moonstone.toml"] = string.format([=[manifest_version = 2
@@ -409,7 +386,7 @@ bundle rebuild each time).
 name = "%s"
 version = "0.1.0"
 kind = "bin"
-description = "Client-only Hydronium SPA (single screen, no client router) served by Meteorite"
+description = "Client-only Hydronium SPA served by Meteorite"
 
 [interpreter]
 name = "luajit"
@@ -422,7 +399,7 @@ build = "moon exec --dev -- ballad play partiture.lua && meteorite build --mode 
 
 [[dependencies]]
 name = "moonstone/meteorite"
-constraint = "^0.3.1"
+constraint = "^0.3.5"
 role = "tool"
 
 [[dependencies]]
@@ -432,22 +409,27 @@ role = "tool"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.4.0"
+constraint = "^0.4.2"
 role = "tool"
 
 [[dependencies]]
 name = "hydronium/ballad"
-constraint = "^0.2.3"
-role = "runtime"
-
-[[dependencies]]
-name = "hydronium/core"
 constraint = "^0.2.4"
 role = "runtime"
 
 [[dependencies]]
+name = "hydronium/core"
+constraint = "^0.2.5"
+role = "runtime"
+
+[[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.4"
+constraint = "^0.3.5"
+role = "runtime"
+
+[[dependencies]]
+name = "hydronium/router"
+constraint = "^0.2.3"
 role = "runtime"
 ]=], project_name)
 
@@ -490,15 +472,19 @@ local meteorite = require("meteorite")
 local app = meteorite.app({
   name = "%s",
   host = "127.0.0.1",
-  port = 8080,
+  port = tonumber(os.getenv("PORT")) or 8080,
+  -- A built server also honours PORT at start-up (Meteorite 0.3.4+).
+  port_env = "PORT",
 })
 
 meteorite.site(app, {
   root = ".",
   assets = {
     ["/assets/:path*"] = { dir = "dist/assets", param = "path" },
+    ["/ui/:path*"] = { dir = "dist/ui", param = "path" },
     ["/client/:path*"] = { dir = "dist/client", param = "path" },
     ["/js/bootstrap/:path*"] = { dir = "dist/js/bootstrap", param = "path" },
+    ["/js/router/:path*"] = { dir = "dist/js/router", param = "path" },
   },
 })
 
@@ -510,37 +496,33 @@ return app
 
     files["README.md"] = string.format([[# %s
 
-Client-only Hydronium SPA (single screen, no client-side router), built
-with [hydronium/ballad](https://moonstone.sh/packages/hydronium)'s real
-client bundler and served by a real Meteorite process instead of a bare
-static file server -- "relying on Meteorite" means Meteorite decides what
-gets served and is where a future server route or page would be added by
-hand. Ground truth: `hydronium/examples/spa_hash_demo` in the framework
-repo (this template omits its `hydronium_router` bundling on purpose --
-see templates/spa.lua's own header comment).
+A client-only [Hydronium](https://moonstone.sh/packages/hydronium) app served
+by [Meteorite](https://moonstone.sh/packages/meteorite): your views compile
+into one Lua chunk that runs in the browser, and Meteorite serves it (add
+your own server routes to `src/main.lua`).
 
-## Getting Started
+```bash
+moon sync
+moon run dev
+```
 
-1. **Install Dependencies:**
-   ```bash
-   moon sync
-   ```
+## Files
 
-2. **Start Dev Server:**
-   ```bash
-   moon run dev
-   ```
+- `src/views/App.luax` -- the layout: header, page, footer.
+- `src/views/Home.luax`, `src/views/About.luax` -- the pages.
+- `app.lua` -- the entry: routes (`#/`, `#/about`) and the hash router.
+- `src/styles.css` -- the styles (built by Vite).
+- `src/main.lua` -- the Meteorite server.
 
-   This runs `hydronium dev --ballad ...`: `ballad play partiture.lua` builds
-   this project's static client bundle ONCE before `meteorite dev` starts
-   (there is no watch/rebuild loop for the Ballad half -- re-run `moon run
-   dev` after editing `app.lua`/`app.css`).
+`moon run dev` builds the client once and starts the server; run it again
+after editing a view.
 
-3. **Build for Production:**
-   ```bash
-   moon run build
-   ./dist/server
-   ```
+## Build
+
+```bash
+moon run build
+./dist/server
+```
 ]], project_name)
   end
 

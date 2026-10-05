@@ -23,6 +23,7 @@ return ballad.partiture(function(p)
         collect = {
             assets = {
                 convention.tree("types", { prefix = "types" }),
+                convention.tree("syntaxes", { prefix = "syntaxes" }),
             },
             lua_modules = {
                 convention.tree("src", {

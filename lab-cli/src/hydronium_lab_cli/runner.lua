@@ -293,9 +293,16 @@ local function host_descriptor(config, override)
   return { id = selected, module = selected }
 end
 
+local function resolve_config(value)
+  if type(value) ~= "table" then return M.read_config(value) end
+  local config = {}
+  for key, item in pairs(value) do config[key] = item end
+  return config
+end
+
 function M.plan(opts)
   opts = opts or {}
-  local config, config_err = M.read_config(opts.config)
+  local config, config_err = resolve_config(opts.config)
   if not config then return nil, config_err end
   config.renderer = opts.renderer or config.renderer or "ink"
   if config.renderer ~= "ink" and config.renderer ~= "dom" and config.renderer ~= "mixed" then return nil, "renderer must be dom, ink or mixed" end
@@ -393,7 +400,7 @@ local function package_source(package_name, module_name)
 end
 function M.customize(opts)
   opts = opts or {}
-  local config, config_err = M.read_config(opts.config)
+  local config, config_err = resolve_config(opts.config)
   if not config then return nil, config_err end
   local dom = config.renderer == "dom" or config.renderer == "mixed"
   local entry = dom and DEFAULT_WORKBENCH:gsub("hydronium_ink_lab.components", "hydronium_lab.dom_document") or DEFAULT_WORKBENCH
