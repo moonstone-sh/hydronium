@@ -151,7 +151,7 @@ name = "moonstone/meteorite"
 # 0.3 adds `meteorite client typescript|luacats` (typed DTOs from the route
 # graph) on top of 0.2.9's dev-event request headers/bodies, which `hydronium
 # dev`'s filter bar queries (mime:, origin:, header:, body:).
-constraint = "^0.3.1"
+constraint = "^0.3.5"
 role = "tool"
 
 [[dependencies]]
