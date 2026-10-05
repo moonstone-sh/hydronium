@@ -160,20 +160,36 @@ end
 function Client:useQuery(options)
   local core = require("hydronium.core")
   local state, set_state = core.createSignal({ status = "idle", fetching = false })
-  local unsubscribe = self:observe(options, set_state)
-  core.onCleanup(unsubscribe)
+  local scheduler = require("hydronium.core.scheduler")
+  local unsubscribe, disposed
+  local function start()
+    if not disposed then unsubscribe = self:observe(options, set_state) end
+  end
+  local function stop()
+    disposed = true
+    if unsubscribe then unsubscribe(); unsubscribe = nil end
+  end
+  -- Component setup runs inside its first render boundary. Query observations
+  -- notify immediately, so begin after that render to respect signal purity.
+  -- Server rendering owns no live observation or browser request.
+  if not scheduler.isSSR() then
+    if self.schedule then self.schedule(start)
+    elseif scheduler.isRendering() then scheduler.queueEffect({ execute = start })
+    else start() end
+  end
+  core.onCleanup(stop)
   return {
     state = state,
     data = function() return state().data end,
     error = function() return state().error end,
     refetch = function() return self:fetch(options) end,
-    dispose = unsubscribe,
+    dispose = stop,
   }
 end
 
 function M.createClient(options)
   options = options or {}
-  return setmetatable({ entries = {}, clock = options.clock or now_seconds, default_stale_time = options.stale_time or 0, gc_time = options.gc_time or 300 }, Client)
+  return setmetatable({ entries = {}, schedule = options.schedule, clock = options.clock or now_seconds, default_stale_time = options.stale_time or 0, gc_time = options.gc_time or 300 }, Client)
 end
 
 M.create_client = M.createClient

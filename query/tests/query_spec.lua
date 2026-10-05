@@ -44,4 +44,46 @@ test.describe("hydronium/query", function()
     test.assert.equal(handle.data().name, "Ada")
     handle:dispose()
   end)
+  test.it("starts component observations after render and cancels on unmount", function()
+    local H = require("hydronium")
+    local scheduler = require("hydronium.core.scheduler")
+    local starts, stops, complete = 0, 0
+    local client = q.createClient()
+    local function Preview()
+      local result = client:useQuery({ key={"preview"}, query=function(_, done)
+        test.assert.falsy(scheduler.isRendering())
+        starts = starts + 1; complete = done
+        return function() stops = stops + 1 end
+      end })
+      return function() return H.h("output", {}, result.state().status) end
+    end
+    local root = H.create_test_root()
+    H.act(function() root:render(H.h(Preview)) end)
+    test.assert.equal(starts, 1)
+    test.assert.equal(root:text(), "pending")
+    H.act(function() root:render(nil) end)
+    test.assert.equal(stops, 1)
+    complete(nil, "obsolete")
+  end)
+
+  test.it("host startup scheduling is cancelled by disposal and SSR starts no request", function()
+    local scheduler = require("hydronium.core.scheduler")
+    local queued, starts = nil, 0
+    local client = q.createClient({ schedule=function(fn) queued=fn end })
+    local options={key={"scheduled"},query=function() starts=starts+1 end}
+    local handle=client:useQuery(options)
+    test.assert.equal(starts,0)
+    handle.dispose();queued()
+    test.assert.equal(starts,0)
+    scheduler.setSSR(true)
+    local ok, err = pcall(function()
+      local server=q.createClient():useQuery(options)
+      test.assert.equal(server.state().status,"idle")
+      test.assert.equal(starts,0)
+      server.dispose()
+    end)
+    scheduler.setSSR(false)
+    if not ok then error(err) end
+  end)
+
 end)

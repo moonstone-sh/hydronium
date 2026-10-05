@@ -114,6 +114,40 @@ test("reload reconnects immediately and forwards changed paths", () => {
   }
 });
 
+test("per-file snapshots preserve exact paths across client-paced polls", () => {
+  const env = installFakeEventSourceAndTimers();
+  try {
+    const transport = createDevTransport("/__hydronium/watch");
+    const events = [];
+    transport.subscribe((event) => events.push(event));
+
+    env.sources[0].emit("snapshot", JSON.stringify({
+      "views/App.luax": "old",
+      "views/My Counter|Demo.luax": "same",
+      toString: "old",
+    }));
+    env.sources[0].emit("hello", "r0123456789abcdef01234567");
+    env.sources[0].emit("bye", "r0123456789abcdef01234567");
+    env.timers[0].fn();
+    assert.match(env.sources[1].url, /since=r0123456789abcdef01234567/);
+
+    env.sources[1].emit("snapshot", JSON.stringify({
+      "views/App.luax": "new",
+      "views/My Counter|Demo.luax": "same",
+      "views/New.luax": "created",
+    }));
+    env.sources[1].emit("reload", "rfedcba9876543210fedcba98");
+    assert.deepEqual(events.at(-1), {
+      type: "reload",
+      fingerprint: "rfedcba9876543210fedcba98",
+      paths: ["toString", "views/App.luax", "views/New.luax"],
+    });
+    transport.close();
+  } finally {
+    env.restore();
+  }
+});
+
 // Reload-storm floor: dev_transport.js's own module doc explains why a
 // `reload` reconnects at delay 0 -- correct for a real edit, where the
 // very next poll converges (server answers hello+bye). A watched file

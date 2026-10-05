@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Proves query, virtual and table can be installed from exported artifacts.
+# Proves the composable mixed Lab and pipeline planner work from installed artifacts.
 set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 moon=${MOON_BIN:?Set MOON_BIN to the Moonstone executable under test}
@@ -53,10 +53,21 @@ CONFIG
   cd "$app"
   "$moon" registry add hydronium-mixed-lab "file://$registry"
   prioritize_local_registry hydronium-mixed-lab
-  "$moon" add --tool --no-sync hydronium-mixed-lab:hydronium/lab-cli moonstone/meteorite
-  "$moon" add --dev --no-sync hydronium-mixed-lab:hydronium/lab hydronium-mixed-lab:hydronium/ink-lab hydronium-mixed-lab:hydronium/meteorite
+  "$moon" add --tool --no-sync hydronium-mixed-lab:hydronium/lab-cli moonstone/meteorite moonstone/ballad@^0.4.0
+  "$moon" add --dev --no-sync hydronium-mixed-lab:hydronium/lab hydronium-mixed-lab:hydronium/ink-lab hydronium-mixed-lab:hydronium/meteorite hydronium-mixed-lab:hydronium/ballad
   "$moon" sync
   "$moon" sync --locked
+  "$moon" exec --dev -- luajit -e 'local C=require("hydronium_lab.components");assert(C.Rulers and C.Guides and C.Canvas and C.Root)'
+  cat > lab.partiture.lua <<'PIPELINE'
+local ballad = require("ballad")
+return ballad.partiture(function(p)
+  local lab = p:use(require("hydronium_ballad.plugins.lab"))
+  local files = lab.prepare({ config_path="hydronium.lab.lua" })
+  p.sink.directory(files, {out=".hydronium/lab"})
+end)
+PIPELINE
+  "$moon" exec --dev -- ballad play lab.partiture.lua
+  [[ -f .hydronium/lab/main.lua && -f .hydronium/lab/config.lua ]] || fail "pipeline did not prepare Lab"
   # grep, not rg: CI runners do not ship ripgrep (a missing rg silently skipped this check).
   if grep -rnF "$root" .moonstone moonstone.lock; then fail "consumer references source checkout"; fi
   # Every hydronium/* realization must come from this run's export, never

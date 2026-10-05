@@ -5,6 +5,36 @@ local H, lab = require("hydronium"), require("hydronium_lab")
 package.path = "meteorite/src/?.lua;meteorite/src/?/init.lua;" .. package.path
 
 describe("DOM and mixed Lab", function()
+  it("exposes workbench parts without requiring the default shell", function()
+    local C = require("hydronium_lab.components")
+    local server = require("hydronium_dom.server")
+    local html = server.renderToString(H.h(C.Root, { project_id="custom", style="display:flex;flex-direction:column" },
+      H.h(C.Sidebar, nil, H.h(C.StorySearch), H.h(C.StoryCatalog)),
+      H.h(C.Canvas, nil, H.h(C.Stage, nil, H.h(C.Viewport, nil, H.h("iframe", { ["data-lab-dom-preview"]="" }))))))
+    assert.truthy(html:find('data-lab-layout="custom"', 1, true))
+    assert.truthy(html:find('display:flex;flex-direction:column', 1, true))
+    assert.truthy(html:find('data-lab-stories', 1, true))
+    assert.falsy(html:find('data-lab-rulers', 1, true))
+    assert.falsy(html:find('data-lab-preferences', 1, true))
+    local bare = server.renderToString(H.h(C.Grid, { unstyled=true, style="background:red" }))
+    assert.falsy(bare:find('hydronium-lab__world-grid', 1, true))
+    assert.truthy(bare:find('background:red', 1, true))
+    for _, name in ipairs({ "Grid", "Rulers", "Guides", "RulerHandle", "Toolbar", "Inspector", "Preferences", "NavigationSettings", "GridSettings", "ZoomIn", "ZoomOut" }) do
+      assert.equal(type(C[name]), "function")
+    end
+  end)
+  it("lets default workbenches omit sections and choose their arrangement", function()
+    local W = require("hydronium_lab.workbench")
+    local server = require("hydronium_dom.server")
+    local html = server.renderToString(H.h(W.Shell, { layout="stacked", sidebar=false, preferences_panel=false, rulers=false, guides=false, ruler_handle=false, grid=false }))
+    assert.truthy(html:find('data-lab-layout="stacked"', 1, true))
+    for _, role in ipairs({ "sidebar", "preferences", "rulers", "guide-layer", "ruler-hit", "grid" }) do
+      assert.falsy(html:find('data-lab-' .. role .. '=', 1, true))
+    end
+    local dom = server.renderToString(H.h(require("hydronium_lab.dom_document").Shell, { sidebar=false, toolbar=false, preferences_panel=false }))
+    assert.falsy(dom:find('data-lab-sidebar=', 1, true))
+    assert.falsy(dom:find('data-lab-toolbar=', 1, true))
+  end)
   it("binds a Markdown story from a record that only carries its path", function()
     -- The browser DOM Lab builds records without `transform`; an .mdx story
     -- must still bind as a DOM story instead of "must return a Lab value".

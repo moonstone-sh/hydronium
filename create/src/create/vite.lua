@@ -93,6 +93,7 @@
 ]]
 
 local M = {}
+local look = require("create.look")
 local vite_vendor = require("create.vite_vendor")
 
 local function insert_after(haystack, anchor, insertion)
@@ -229,7 +230,7 @@ local VITE_PROVIDER_BOOTSTRAP = [=[
 --- (router_mode.apply_islands, which runs BEFORE this module, moves the
 --- island there -- see that module's own generated content).
 local function patch_island_module(files)
-  for _, key in ipairs({ "views/Home.luax", "views/Document.luax" }) do
+  for _, key in ipairs({ "src/views/Home.luax", "src/views/Document.luax" }) do
     if files[key] and files[key]:find(ISLAND_MODULE_ATTR, 1, true) then
       local patched, err = replace_once(files[key], ISLAND_MODULE_ATTR, ISLAND_MODULE_SPECIFIER)
       if not patched then error("create.vite: " .. tostring(err) .. " in " .. key, 2) end
@@ -238,7 +239,7 @@ local function patch_island_module(files)
     end
   end
   error("create.vite: could not find the JS island's " .. ISLAND_MODULE_ATTR
-    .. " in views/Home.luax or views/Document.luax -- has templates/islands.lua or router_mode.lua drifted?", 2)
+    .. " in src/views/Home.luax or src/views/Document.luax -- has templates/islands.lua or router_mode.lua drifted?", 2)
 end
 
 local function apply_islands(files, opts)
@@ -246,7 +247,7 @@ local function apply_islands(files, opts)
   -- always contains the base stylesheet link -- see this module's own
   -- header comment on why `islands`' Vite build lives in `public/` with no
   -- sink-order hazard.
-  local document = files["views/Document.luax"]
+  local document = files["src/views/Document.luax"]
   if not document then
     error("create.vite: apply_islands expected views/Document.luax to exist", 2)
   end
@@ -254,7 +255,7 @@ local function apply_islands(files, opts)
   if not patched then error("create.vite: " .. tostring(err) .. " in views/Document.luax", 2) end
   patched, err = replace_once(patched, H_REQUIRE_LINE, H_REQUIRE_LINE .. ASSETS_REQUIRE_INSERT)
   if not patched then error("create.vite: " .. tostring(err) .. " in views/Document.luax (H require anchor)", 2) end
-  files["views/Document.luax"] = patched
+  files["src/views/Document.luax"] = patched
 
   patch_island_module(files)
 
@@ -368,6 +369,7 @@ export default defineConfig(({ command }) => ({
   files["scripts/dev.mjs"] = [[
 import { spawn } from "node:child_process";
 const child = spawn("moon", ["exec", "--dev", "--", "hydronium", "dev", "--vite",
+  "--vite-args=--port " + (process.env.VITE_PORT || "5173") + " --strictPort",
   "--meteorite-args=--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit"],
   { stdio: "inherit", env: { ...process.env, HYDRONIUM_JS_RUNTIME: process.versions.bun ? "bun" : "node" } });
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));
@@ -500,6 +502,7 @@ export default defineConfig(({ command }) => ({
 import { spawn } from "node:child_process";
 // --watch-sources: Ballad (partiture.lua) owns Lua source discovery.
 const child = spawn("moon", ["exec", "--dev", "--", "hydronium", "dev", "--vite", "--watch-sources",
+  "--vite-args=--port " + (process.env.VITE_PORT || "5173") + " --strictPort",
   "--meteorite-args=--mode hybrid_dev --backend fast_http --lua-root .moonstone/env/libexec/luajit"],
   { stdio: "inherit", env: { ...process.env, HYDRONIUM_JS_RUNTIME: process.versions.bun ? "bun" : "node" } });
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));
@@ -610,7 +613,7 @@ local function apply_spa(files, opts)
     files["moonstone.toml"] = toml
   end
 
-  files["src/styles.css"] = BASE_STYLES_CSS
+  files["src/styles.css"] = BASE_STYLES_CSS .. look.CSS
 
   files["scripts/inject-vite-link.mjs"] = INJECT_LINK_SCRIPT
 
@@ -636,7 +639,12 @@ local function apply_spa(files, opts)
 // own header comment) -- this project's actual client application is
 // bundled separately by hydronium_ballad's real client bundler
 // (partiture.lua), which this build never touches or replaces.
+// `base`: Vite writes into dist/assets/, served at /assets/, so CSS url()
+// references (fonts, images) must resolve there. The stylesheet keeps the
+// fixed name site.css (scripts/inject-vite-link.mjs links it); other assets
+// get hashed names instead of all being called site.css.
 export default defineConfig({
+  base: "/assets/",
   plugins: [],
   build: {
     outDir: "dist/assets",
@@ -644,7 +652,9 @@ export default defineConfig({
     cssCodeSplit: true,
     rollupOptions: {
       input: "src/styles.css",
-      output: { assetFileNames: "site.css" },
+      output: {
+        assetFileNames: (asset) => (asset.names ?? [asset.name]).some((name) => name?.endsWith(".css")) ? "site.css" : "[name]-[hash][extname]",
+      },
     },
   },
 });

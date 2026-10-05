@@ -1,0 +1,152 @@
+--- @class hydronium_lab.ComponentProps
+--- @field class? string Additional CSS classes.
+--- @field style? string|table Inline CSS string or style table.
+--- @field unstyled? boolean Omit the default component class.
+--- @field children? table[] Ordinary Hydronium elements.
+--- @field legacy_class_prefix? string Compatibility class prefix.
+--- @class hydronium_lab.RootProps: hydronium_lab.ComponentProps
+--- @field project_id? string Preference namespace.
+--- @field renderer? "dom"|"ink"
+--- @field layout? "custom"|"sidebar-right"|"sidebar-left"|"stacked"
+-- Public browser components. Behaviour binds to data-lab roles within Root.
+local H = require("hydronium")
+local controls = require("hydronium_lab.controls")
+-- Inline symbols keep the workbench usable offline, without an icon font.
+local icon_paths = {
+  zoom_in = "M10 3a7 7 0 1 0 0 14a7 7 0 1 0 0-14M15 15l6 6M7 10h6M10 7v6",
+  zoom_out = "M10 3a7 7 0 1 0 0 14a7 7 0 1 0 0-14M15 15l6 6M7 10h6",
+  my_location = "M12 5a7 7 0 1 0 0 14a7 7 0 1 0 0-14M12 2v4M12 18v4M2 12h4M18 12h4M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6",
+  menu = "M4 6h16M4 12h16M4 18h16",
+  close = "M5 5l14 14M19 5L5 19",
+  settings = "M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z",
+  restart_alt = "M4 10a8 8 0 1 1 1 8M4 4v6h6",
+}
+local function Icon(props)
+  local attrs = {}
+  for key, value in pairs(props) do if key ~= "name" and key ~= "children" then attrs[key] = value end end
+  return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" {...attrs}><path d={icon_paths[props.name] or icon_paths.menu} /></svg>
+end
+
+local function class_name(suffix, legacy_prefix)
+  local value = "hydronium-lab" .. suffix
+  if legacy_prefix and legacy_prefix ~= "" then
+    value = value .. " " .. legacy_prefix .. suffix
+  end
+  return value
+end
+
+
+local internal = { children=true, legacy_class_prefix=true, unstyled=true, project_id=true, renderer=true, layout=true, guide_id=true, label=true, name=true }
+local function attributes(props, role, suffix, defaults)
+  local out = {}
+  for key, value in pairs(defaults or {}) do out[key] = value end
+  for key, value in pairs(props) do if not internal[key] then out[key] = value end end
+  if role then out["data-lab-" .. role] = "" end
+  if props.unstyled then out.class = props.class
+  else out.class = class_name(suffix or "", props.legacy_class_prefix) .. (props.class and (" " .. props.class) or "") end
+  return out
+end
+local function component(tag, role, suffix, defaults)
+  return function(props) return H.h(tag, attributes(props, role, suffix, defaults), props.children) end
+end
+local Root = function(props)
+  local attrs = attributes(props, nil, "")
+  attrs["data-hydronium-lab"] = ""
+  attrs["data-lab-project"] = props.project_id or "hydronium-lab"
+  attrs["data-lab-renderer"] = props.renderer or "dom"
+  attrs["data-lab-layout"] = props.layout or "custom"
+  return H.h("main", attrs, props.children)
+end
+local Canvas = component("section", "canvas", "__canvas")
+local Toolbar = component("header", "toolbar", "__canvas-toolbar")
+local Hud = component("div", "canvas-hud", "__canvas-hud")
+local CanvasActions = component("div", "canvas-actions", "__canvas-actions")
+local ActiveStory = component("span", "active-story", "__active-story", { ["aria-live"]="polite" })
+local Stage = component("section", "stage", "__stage", { tabindex=0, ["aria-label"]="Preview canvas" })
+local Viewport = component("div", "viewport", "__viewport")
+local Grid = component("div", "grid", "__world-grid", { ["aria-hidden"]=true })
+local Rulers = component("canvas", "rulers", "__rulers", { ["aria-hidden"]=true })
+local function Guide(props)
+  local attrs = attributes(props, "guide", "__guide", {type="button"})
+  attrs["data-lab-guide"] = props.guide_id or props.id or ""
+  return H.h("button", attrs, props.children)
+end
+local Guides = component("div", "guide-layer", "__guide-layer")
+local RulerHandle = component("div", "ruler-hit", "__ruler-hit", { ["aria-label"]="Drag rulers to create guides" })
+local Hints = component("p", "hint", "__hint")
+local Status = component("output", "status", "__status", { ["aria-live"]="polite" })
+local Sidebar = component("aside", "sidebar", "__sidebar", { ["aria-label"]="Stories" })
+local SidebarHeader = component("header", "sidebar-header", "__sidebar-header")
+local StorySearch = component("input", "story-search", "__story-search", { type="search", ["aria-label"]="Search stories", placeholder="Search stories", autocomplete="off" })
+local StoryCatalog = component("nav", "stories", "__stories", { ["aria-label"]="Story catalog" })
+local Inspector = component("section", "story-inspector", "__story-inspector", { ["aria-label"]="Selected story tools" })
+local Interactions = component("div", "interactions", "__interactions")
+local Preferences = component("aside", "preferences", "__preferences", { hidden=true, ["aria-label"]="Lab preferences" })
+local PreferencesHeader = component("header", "preferences-header", "__preferences-header")
+local function action(role, icon, label)
+  return function(props)
+    return H.h("button", attributes(props, role, "__toolbar-icon", { type="button", ["aria-label"]=label }), (props.children and #props.children > 0) and props.children or H.h(Icon, {name=icon}))
+  end
+end
+local ZoomIn = action("zoom-in", "zoom_in", "Zoom in")
+local ZoomOut = action("zoom-out", "zoom_out", "Zoom out")
+local CenterCanvas = action("canvas-reset", "my_location", "Center canvas")
+local SidebarToggle = action("sidebar-toggle", "menu", "Hide stories")
+local PreferencesToggle = action("preferences-toggle", "settings", "Preferences")
+local PreferencesClose = action("preferences-close", "close", "Close preferences")
+local function NavigationSettings(props)
+  local legacy = props.legacy_class_prefix
+  return (
+        <fieldset {...attributes(props, "navigation-settings", "__preference-group")}>
+          <legend>Canvas navigation</legend>
+          <label class={class_name("__toggle", legacy)}><input type="checkbox" data-lab-rulers-enabled /><span>Show rulers (R)</span></label>
+          <label class={class_name("__control", legacy)}>Ruler origin<select data-lab-ruler-origin aria-label="Ruler origin"><option value="story">Story top-left</option><option value="top-left">Canvas top-left</option><option value="center">Canvas center</option></select></label>
+          <label class={class_name("__toggle", legacy)}><input type="checkbox" data-lab-hints-enabled /><span>Show canvas hints (H)</span></label>
+          <label class={class_name("__toggle", legacy)}><input type="checkbox" data-lab-snapping-enabled /><span>Enable snapping</span></label>
+          <label class={class_name("__toggle", legacy)}><input type="checkbox" data-lab-snap-center /><span>Snap to canvas center</span></label>
+          <label class={class_name("__toggle", legacy)}><input type="checkbox" data-lab-snap-edges /><span>Snap to canvas edges</span></label>
+          <label class={class_name("__toggle", legacy)}><input type="checkbox" data-lab-snap-guides /><span>Snap to placed guides</span></label>
+          <label class={class_name("__control", legacy)}>Snap distance (screen pixels)<input type="number" min="1" max="32" data-lab-snap-distance aria-label="Snap distance" /></label>
+          <label class={class_name("__control", legacy)}>Guide color<input type="color" data-lab-guide-color aria-label="Guide color" /></label>
+          <button type="button" data-lab-clear-guides>Clear guides</button>
+          <p>Drag from a ruler or its corner to place guides. Drag a guide to move it. Alt-click, Ctrl/Command-click, or drag back to the corner to remove it. Select a guide to change its color. Hold Alt to bypass snapping.</p>
+        </fieldset>
+  )
+end
+local function GridSettings(props)
+  local legacy = props.legacy_class_prefix
+  return (
+        <fieldset {...attributes(props, "grid-settings", "__preference-group")}>
+          <legend>Canvas grid</legend>
+          <div class={class_name("__preference-row", legacy)}>
+            <label class={class_name("__toggle", legacy)}><input type="checkbox" data-lab-grid-enabled /><span>Show grid</span></label>
+            <button type="button" class={class_name("__reset", legacy)} data-lab-grid-reset="enabled" aria-label="Reset grid visibility" title="Reset grid visibility"><Icon name="restart_alt" /></button>
+          </div>
+          <div class={class_name("__preference-row", legacy)}>
+            <label class={class_name("__control", legacy)}>Grid color<input type="color" data-lab-grid-color aria-label="Grid color" /></label>
+            <button type="button" class={class_name("__reset", legacy)} data-lab-grid-reset="color" aria-label="Reset grid color" title="Reset grid color"><Icon name="restart_alt" /></button>
+          </div>
+          <div class={class_name("__preference-row", legacy)}>
+            <label class={class_name("__control", legacy)}>Cell width<input type="number" min="8" max="160" step="1" inputmode="numeric" data-lab-grid-width aria-label="Grid cell width in pixels" /></label>
+            <button type="button" class={class_name("__reset", legacy)} data-lab-grid-reset="width" aria-label="Reset grid cell width" title="Reset grid cell width"><Icon name="restart_alt" /></button>
+          </div>
+          <div class={class_name("__preference-row", legacy)}>
+            <label class={class_name("__control", legacy)}>Cell height<input type="number" min="8" max="160" step="1" inputmode="numeric" data-lab-grid-height aria-label="Grid cell height in pixels" /></label>
+            <button type="button" class={class_name("__reset", legacy)} data-lab-grid-reset="height" aria-label="Reset grid cell height" title="Reset grid cell height"><Icon name="restart_alt" /></button>
+          </div>
+          <div class={class_name("__preference-row", legacy)}>
+            <label class={class_name("__control", legacy)}>Cell shape<select data-lab-grid-shape aria-label="Grid cell shape"><option value="square">Square</option><option value="hexagonal">Hexagonal</option></select></label>
+            <button type="button" class={class_name("__reset", legacy)} data-lab-grid-reset="shape" aria-label="Reset grid cell shape" title="Reset grid cell shape"><Icon name="restart_alt" /></button>
+          </div>
+        </fieldset>
+  )
+end
+local exports = { Root=Root, Canvas=Canvas, Toolbar=Toolbar, Hud=Hud, CanvasActions=CanvasActions,
+  ActiveStory=ActiveStory, Stage=Stage, Viewport=Viewport, Grid=Grid, Rulers=Rulers, Guides=Guides,
+  RulerHandle=RulerHandle, Hints=Hints, Status=Status, Sidebar=Sidebar, SidebarHeader=SidebarHeader,
+  StorySearch=StorySearch, StoryCatalog=StoryCatalog, Inspector=Inspector, Interactions=Interactions,
+  Preferences=Preferences, PreferencesHeader=PreferencesHeader, NavigationSettings=NavigationSettings,
+  GridSettings=GridSettings, ZoomIn=ZoomIn, ZoomOut=ZoomOut, CenterCanvas=CenterCanvas,
+  SidebarToggle=SidebarToggle, PreferencesToggle=PreferencesToggle, PreferencesClose=PreferencesClose, Icon=Icon, Guide=Guide }
+for name, value in pairs(controls) do exports[name] = value end
+return exports

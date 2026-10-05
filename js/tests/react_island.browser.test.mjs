@@ -20,20 +20,20 @@ test("a React component hydrates as a Hydronium island", { skip: !baseUrl }, asy
     const response = await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
     assert.equal(response?.status(), 200, "server must return the document");
 
-    const counter = page.getByTestId("js-counter-btn");
+    const counter = page.getByTestId("js-counter");
     await counter.waitFor();
-    assert.equal(await counter.textContent(), "Count: 10", "SSR renders the island's initial state");
+    const count = () => counter.locator("output").textContent();
+    assert.equal(await count(), "3", "SSR renders the island's initial state");
 
     // Set in a React effect: only a real hydrateRoot commit can produce it.
     await page.waitForFunction(() => document.documentElement.dataset.reactIsland, null, { timeout: 15000 });
     const reactVersion = await page.evaluate(() => document.documentElement.dataset.reactIsland);
     assert.match(reactVersion, /^19\./, "the island is React 19");
 
-    await counter.click();
-    await page.waitForFunction(() => document.querySelector('[data-testid="js-counter-btn"]')?.textContent === "Count: 11");
-    await counter.click();
-    await page.waitForFunction(() => document.querySelector('[data-testid="js-counter-btn"]')?.textContent === "Count: 12");
-    assert.equal(await page.locator('[data-testid="js-counter-btn"]').count(), 1, "React hydrated in place (no duplicate button)");
+    await page.getByRole("button", { name: "More" }).click();
+    await page.waitForFunction(() => document.querySelector('[data-testid="js-counter"] output')?.textContent === "4");
+    assert.equal(await page.locator('input[name="times"]').inputValue(), "4", "React keeps the form field in step");
+    assert.equal(await page.locator('[data-testid="js-counter"]').count(), 1, "React hydrated in place (no duplicate group)");
 
     // React reports hydration mismatches through console.error.
     assert.deepEqual(consoleErrors, [], "no console errors (incl. hydration mismatches)");

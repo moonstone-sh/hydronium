@@ -171,6 +171,19 @@ describe("hydronium_dom.dev.watch -- per-file change identity", function()
     end)
   end)
 
+  describe("per-file snapshots", function()
+    it("diffs edits between client-paced requests without retaining server state", function()
+      local first = { ["views/App.luax"] = "old", ["views/Counter.luax"] = "same" }
+      local next_snapshot = { ["views/App.luax"] = "new", ["views/New.luax"] = "created" }
+      assert.same(watch.changed_files(first, next_snapshot), {
+        "views/App.luax",
+        "views/Counter.luax",
+        "views/New.luax",
+      })
+      assert.same(watch.changed_files(next_snapshot, next_snapshot), {})
+    end)
+  end)
+
   describe("read_snapshot", function()
     it("returns a source value only when its watched revision remains stable", function()
       local old_fingerprint = watch.fingerprint
@@ -226,6 +239,8 @@ describe("hydronium_dom.dev.watch -- abandoned connections", function()
   it("reads protocol controls from Meteorite's callable query table", function()
     local old_fingerprint = watch.fingerprint
     watch.fingerprint = function() return "current" end
+    local old_snapshot = watch.snapshot
+    watch.snapshot = function() return { revision = "current", entries = { ["views/App.luax"] = "stamp" } } end
     local frames = {}
     local query = setmetatable({}, {
       __call = function(_, key)
@@ -241,12 +256,42 @@ describe("hydronium_dom.dev.watch -- abandoned connections", function()
       end)
     end)
     watch.fingerprint = old_fingerprint
+    watch.snapshot = old_snapshot
     assert.truthy(ok, err)
     local output = table.concat(frames)
-    assert.truthy(output:find("event: changed", 1, true))
+    assert.truthy(output:find('event: snapshot\ndata: {"views/App.luax":"stamp"}', 1, true))
     assert.truthy(output:find("event: reload", 1, true))
     assert.falsy(output:find("event: ping", 1, true))
     assert.falsy(output:find("event: bye", 1, true))
+  end)
+
+  it("sends a fresh snapshot before an in-session reload", function()
+    local old_snapshot = watch.snapshot
+    local calls = 0
+    watch.snapshot = function()
+      calls = calls + 1
+      if calls == 1 then return { revision = "old", entries = { ["views/App.luax"] = "one" } } end
+      return { revision = "new", entries = { ["views/App.luax"] = "two" } }
+    end
+    local frames = {}
+    local ok, err = pcall(function()
+      with_fake_streams(function(chunk)
+        frames[#frames + 1] = chunk
+      end, function()
+        watch.serve_sse({ header = function() end, query = function() end }, { "unused" }, {
+          poll_interval = 0.5,
+          budget = 0.5,
+          sleep = function() end,
+        })
+      end)
+    end)
+    watch.snapshot = old_snapshot
+    assert.truthy(ok, err)
+    local output = table.concat(frames)
+    local changed = output:find("event: changed\ndata: views/App.luax", 1, true)
+    local snapshot = output:find('event: snapshot\ndata: {"views/App.luax":"two"}', 1, true)
+    local reload = output:find("event: reload\ndata: new", 1, true)
+    assert.truthy(changed and snapshot and reload and changed < snapshot and snapshot < reload)
   end)
 
   it("treats a failed heartbeat write as a normal disconnect", function()
@@ -256,7 +301,7 @@ describe("hydronium_dom.dev.watch -- abandoned connections", function()
     local ok, err = pcall(function()
       with_fake_streams(function()
         writes = writes + 1
-        if writes == 3 then error("WriteFailed", 0) end
+        if writes == 4 then error("WriteFailed", 0) end
       end, function()
         watch.serve_sse({ header = function() end, query = function() end }, { "unused" }, {
           poll_interval = 0.5,
@@ -267,7 +312,7 @@ describe("hydronium_dom.dev.watch -- abandoned connections", function()
     end)
     watch.fingerprint = old_fingerprint
     assert.truthy(ok, err)
-    assert.equal(writes, 3, "retry, hello, then the first heartbeat")
+    assert.equal(writes, 4, "retry, snapshot, hello, then the first heartbeat")
   end)
 
   it("heartbeats every poll by default", function()

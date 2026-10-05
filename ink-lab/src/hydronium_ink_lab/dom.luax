@@ -50,6 +50,7 @@ local function Shell(props)
   if transport.session_operations then root_attributes["data-lab-session-operations-url"] = transport.session_operations end
   if transport.close_session then root_attributes["data-lab-close-session-url"] = transport.close_session end
   return <Workbench
+    {...props}
     renderer="ink"
     class={props.class}
     legacy_class_prefix="hydronium-ink-lab"
@@ -87,7 +88,7 @@ local function Document(props)
         {renderer_stylesheet_url and <link rel="stylesheet" href={renderer_stylesheet_url} />}
         {stylesheet_url and <link rel="stylesheet" href={stylesheet_url} />}
       </head>
-      <body><Shell {...props} /><script type="module" src={client_url} /></body>
+      <body style="margin:0;width:100%;height:100dvh;overflow:hidden"><Shell {...props} /><script type="module" src={client_url} /></body>
     </html>
   )
 end

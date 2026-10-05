@@ -2,7 +2,7 @@ manifest_version = 2
 
 [package]
 name = "hydronium/lab-cli"
-version = "0.3.2"
+version = "0.3.3"
 kind = "bin"
 description = "Host-neutral Hydronium Lab launcher with explicit host adapters"
 
@@ -34,5 +34,5 @@ role = "runtime"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.4.0"
+constraint = "^0.4.2"
 role = "tool"

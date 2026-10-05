@@ -1,4 +1,4 @@
-:root {
+.hydronium-lab {
   color-scheme: dark;
   --hy-lab-page: #0b1020;
   --hy-lab-panel: #121a2d;
@@ -11,21 +11,13 @@
   --hy-lab-radius: 12px;
 }
 
-html,
-body {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  overflow: hidden;
-  background: var(--hy-lab-page);
-}
-
 .hydronium-lab,
 .hydronium-lab * {
   box-sizing: border-box;
 }
 
 .hydronium-lab {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 288px;
   width: 100%;
@@ -200,8 +192,8 @@ body {
   margin: 0;
   overflow: hidden;
   touch-action: none;
-  background-color: #101827;
-  background-image: radial-gradient(circle at 55% 45%, rgb(42 67 111 / 32%), transparent 48%);
+  background-color: var(--hy-lab-canvas, #101827);
+  background-image: var(--hy-lab-canvas-image, radial-gradient(circle at 55% 45%, rgb(42 67 111 / 32%), transparent 48%));
 }
 
 .hydronium-lab__stage:focus-visible {
@@ -368,8 +360,11 @@ body {
 }
 
 .hydronium-lab__preferences {
-  position: fixed;
-  z-index: 5;
+  position: absolute;
+  z-index: 50;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   top: 12px;
   right: 12px;
   width: min(320px, calc(100vw - 24px));
@@ -400,7 +395,7 @@ body {
   margin: 0 0 18px;
   padding: 12px;
   border: 1px solid var(--hy-lab-line);
-  border-radius: 10px;
+  border-radius: var(--hy-lab-radius);
 }
 
 .hydronium-lab__preference-group legend {
@@ -615,3 +610,14 @@ body {
   .hydronium-lab [data-lab-viewport-preset] { width:220px; max-width:22vw; }
   .hydronium-lab__canvas-actions { margin-left:4px; }
 }
+
+.hydronium-lab__preferences > header { position:sticky; top:-16px; z-index:1; margin:-16px -16px 16px; padding:12px 16px; border-bottom:1px solid var(--hy-lab-line); background:var(--hy-lab-panel); }
+
+/* Root is layout-neutral. Only the default workbench selects a layout. */
+.hydronium-lab[data-lab-layout="custom"] { display: block; height: auto; overflow: visible; }
+.hydronium-lab[data-lab-layout="sidebar-left"] { grid-template-columns: 288px minmax(0, 1fr); }
+.hydronium-lab[data-lab-layout="sidebar-left"] > [data-lab-sidebar] { grid-column: 1; grid-row: 1; }
+.hydronium-lab[data-lab-layout="sidebar-left"] > [data-lab-canvas] { grid-column: 2; grid-row: 1; }
+.hydronium-lab[data-lab-layout="sidebar-left"][data-sidebar-collapsed="true"] { grid-template-columns: 0 minmax(0, 1fr); }
+.hydronium-lab[data-lab-layout="stacked"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+.hydronium-lab[data-lab-layout="stacked"] > [data-lab-sidebar] { max-height: 35dvh; }

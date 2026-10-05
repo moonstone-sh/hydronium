@@ -56,8 +56,8 @@ end
 -- comment: Tailwind cannot see `.luax`/plain `.lua` on its own).
 local SOURCE_GLOB = {
   ssr = "./**/*.{lua,luax}",
-  islands = "../views/**/*.luax",
-  spa = "./app.lua",
+  islands = "./views/**/*.luax",
+  spa = "./views/**/*.luax",
 }
 
 M.supported_templates = { ssr = true, islands = true, spa = true }
@@ -138,7 +138,12 @@ function M.apply(files, opts)
   end
 
   files["src/styles.css"] = tailwind_styles_css(SOURCE_GLOB[opts.template])
-  if opts.template == "ssr" then
+  if opts.template == "spa" then
+    -- No public/style.css here: the starter look is part of this file.
+    files["src/styles.css"] = files["src/styles.css"] .. "\n" .. require("create.look").CSS
+  end
+  if opts.template == "ssr" or opts.template == "islands" then
+    -- Keep the starter look (public/style.css) under Tailwind's utilities.
     files["src/styles.css"] = files["src/styles.css"]:gsub('@import "tailwindcss";', '@import "tailwindcss";\n@import "../public/style.css" layer(components);', 1)
   end
 

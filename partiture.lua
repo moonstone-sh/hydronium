@@ -17,6 +17,11 @@ return ballad.partiture(function(p)
                 "client/**",
                 "native/**",
                 "nvim/**",
+                "types/**",
+                "syntaxes/**",
+                "compiler/**",
+                "package.json",
+                "language-configuration.json",
             },
         }):product("package")
     end
@@ -32,6 +37,7 @@ return ballad.partiture(function(p)
         { from = package_orbit("ink-lab"), to = "ink-lab" },
         { from = package_orbit("meteorite"), to = "meteorite" },
         { from = package_orbit("router"), to = "router" },
+        { from = package_orbit("i18n"), to = "i18n" },
         { from = package_orbit("query"), to = "query" },
         { from = package_orbit("virtual"), to = "virtual" },
         { from = package_orbit("table"), to = "table" },

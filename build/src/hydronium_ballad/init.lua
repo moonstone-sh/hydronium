@@ -10,6 +10,7 @@
 local M = {}
 
 M.plugins = {
+  lab = require("hydronium_ballad.plugins.lab"),
   luax = require("hydronium_ballad.plugins.luax"),
   client = require("hydronium_ballad.plugins.client"),
   topology = require("hydronium_ballad.plugins.topology"),

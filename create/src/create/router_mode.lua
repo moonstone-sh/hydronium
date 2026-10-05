@@ -49,7 +49,7 @@ end
 -- header comment for the identical reason.
 local DOM_DEP_ANCHOR = [=[[[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.4"
+constraint = "^0.3.5"
 role = "runtime"]=]
 
 local ROUTER_DEP_BLOCK = [=[
@@ -74,117 +74,11 @@ function M.apply_islands(files, opts)
   end
   files["moonstone.toml"] = toml
 
-  -- The shared shell. Page content moves to views/Home.luax and
-  -- views/About.luax so both can be rendered into `{props.page}` by
-  -- whichever route the router manifest matched.
-  files["views/Document.luax"] = string.format([=[-- Server-rendered shell shared by every page the router manifest below
--- resolves. src/app/page_handler.lua renders whichever page the URL
--- matched into `props.page`.
-local H = require("hydronium")
-
-local function Document(props)
-  return (
-    <html lang="en">
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>%s</title>
-        <link rel="stylesheet" href="/public/style.css" />
-      </head>
-      <body>
-        <div class="shell">{props.page}</div>
-
-        {H.h("script", { type = "module" },
-          "import { activate } from '/js/bootstrap/bootstrap.js'; activate();")}
-        {H.h("script", { type = "module", src = "/js/bootstrap/dev_reload.js" })}
-      </body>
-    </html>
-  )
-end
-
-return Document
-]=], project_name)
-
-  files["src/views/Home.lua"] = [[return require("hydronium_luax").loader.load("views/Home.luax")
-]]
-
-  files["views/Home.luax"] = string.format([=[-- The home page's own content -- moved out of Document.luax so the shell
--- can be shared with router-resolved pages (see views/About.luax).
--- `local H` is required even though every tag below is bare (not
--- `d.<tag>`): compiled LUAX emits `H.h(...)` for every element regardless
--- of tag syntax, resolved as an ordinary Lua name -- verified the hard
--- way (a real `moon run build` + `curl` against this exact file failed
--- with "attempt to index a nil value (global 'H')" before this line was
--- added). See templates/ssr.lua's Counter.luax for the same convention.
-local H = require("hydronium")
-local d = require("hydronium_dom").d
-
--- Rendered once during SSR (initial value only) AND shipped as the real
--- hydration target for public/js/island/counter.js's hydrate(context) --
--- it must render as exactly ONE root element (a bare <button>). See
--- templates/islands.lua's own header comment for why.
-local function JsCounter(props)
-  return <button class="btn btn-primary" data-testid="js-counter-btn">Count: {tostring(props.initial or 0)}</button>
-end
-
-local function Home()
-  local initial = 10
-
-  return (
-    <main>
-      <header>
-        <h1>%s</h1>
-        <p>Server-rendered shell with one real, client-hydrated JS island</p>
-        <a href="/about">About this app</a>
-      </header>
-
-      <section class="content">
-        <h2>Static Content (0 KB Client JavaScript)</h2>
-        <p>This section is rendered purely on the server; nothing below it ships any client code for it.</p>
-      </section>
-
-      <section class="island-container">
-        <h2>Interactive Island (real hydration)</h2>
-        <d.js.island module="/js/island/counter.js" hydrate="visible" props={{ initial = initial }}>
-          <JsCounter initial={initial} />
-        </d.js.island>
-      </section>
-    </main>
-  )
-end
-
-return Home
-]=], project_name)
-
-  files["src/views/About.lua"] = [[return require("hydronium_luax").loader.load("views/About.luax")
-]]
-
-  files["views/About.luax"] = [[-- A second, real page -- exists so the router manifest below has more
--- than one leaf to demonstrate. Plain server-rendered content, no
--- signals, no client hooks: this template ships no client-side Lua VM, so
--- page-to-page navigation is an ordinary full page load via <a href>, not
--- client-side routing.
--- `local H` is required for the bare tags below -- see views/Home.luax's
--- own comment for why (verified live: this file 500'd with "attempt to
--- index a nil value (global 'H')" before this line was added).
-local H = require("hydronium")
-
-local function About()
-  return (
-    <main>
-      <header>
-        <h1>About</h1>
-        <p>This page is selected by the shared hydronium/router site manifest, not a hand-written route.</p>
-        <a href="/">Back home</a>
-      </header>
-    </main>
-  )
-end
-
-return About
-]]
-
-  files["views/Site.lua"] = [[local r = require("hydronium_router")
+  -- Pages come from a route manifest instead of hand-written app:get calls.
+  -- The views themselves are the base template's (src/views/*.luax).
+  files["src/views/Site.lua"] = [[-- The page manifest: every page in one place, lowered to Meteorite GET
+-- routes by hydronium_router.meteorite (see src/main.lua).
+local r = require("hydronium_router")
 
 return r.createSite({
   root = r.node({
@@ -198,97 +92,47 @@ return r.createSite({
 })
 ]]
 
-  files["src/app/page_handler.lua"] = [[local adapter = require("hydronium_router.meteorite")
-local dom = require("hydronium_dom.server.meteorite")
-local site = require("views.Site")
+  local handler, handler_err = insert_after(files["src/app/page_handler.lua"], "local M = {}\n", [[
 
-return adapter.handler(site, {
-  resolve = require,
-  resolve_loader = require,
-  render = function(c, page, opts)
-    local Document = require("views.Document")
-    return dom.render(c, Document, {
-      status = opts.status,
-      state = opts.state,
-      props = { page = page },
-    })
-  end,
-})
-]]
-
-  files["src/main.lua"] = string.format([[local meteorite = require("meteorite")
-
-local app = meteorite.app({
-  name = "%s",
-  host = "127.0.0.1",
-  port = 8080,
-})
-
-meteorite.site(app, {
-  root = ".",
-  assets = {
-    ["/public/:path*"] = { dir = "public", param = "path" },
-    ["/js/bootstrap/:path*"] = { dir = "public/js/bootstrap", param = "path" },
-    ["/js/island/:path*"] = { dir = "public/js/island", param = "path" },
-  },
-})
-
--- `dev_reload.js` performs a full page reload when this bounded SSE handler
--- observes an edit. This is intentionally live reload, not state-preserving HMR.
-app:get("/__hydronium/watch", meteorite.lua("dev_watch", { arg_mode = "lazy_context" }))
-
--- Every page is declared once, in views/Site.lua, and lowered here to
--- explicit Meteorite GET routes -- see hydronium_router.meteorite's own
--- doc comment for why this does not synthesize a catch-all: asset routes
--- above stay ordinary Meteorite declarations.
-local site = require("views.Site")
-local router_adapter = require("hydronium_router.meteorite")
-router_adapter.mount(app, site, {
-  handler = meteorite.lua("app.page_handler", { arg_mode = "lazy_context" }),
-})
-router_adapter.validate_final(app, site)
-
-return app
-]], project_name)
-
-  files["src/dev_watch.lua"] = [[-- Full-page development reload transport for the generated app.
-local watch = require("hydronium_dom.dev.watch")
-
-return function(c)
-  watch.serve_sse(c, {
-    "views/Document.luax",
-    "views/Home.luax",
-    "views/About.luax",
-    "views/Site.lua",
-    "src/app/page_handler.lua",
-    "src/main.lua",
-    "src/dev_watch.lua",
-    "public/style.css",
-    "public/js/bootstrap/bootstrap.js",
-    "public/js/bootstrap/boundary_registry.js",
-    "public/js/bootstrap/priority.js",
-    "public/js/bootstrap/dev_transport.js",
-    "public/js/bootstrap/dev_reload.js",
-    "public/js/island/counter.js",
-  })
+-- Pages declared in src/views/Site.lua, rendered through the same Document.
+function M.routed(c)
+  local adapter = require("hydronium_router.meteorite")
+  return adapter.handler(require("views.Site"), {
+    resolve = require,
+    resolve_loader = require,
+    render = function(request, page, opts)
+      local state = opts.state and opts.state.hydronium_router
+      local path = state and state.location and state.location.pathname or "/"
+      return render(request, page, { path = path, status = opts.status })
+    end,
+  })(c)
 end
-]]
+]])
+  if not handler then error("create.router_mode: " .. tostring(handler_err) .. " in src/app/page_handler.lua", 2) end
+  files["src/app/page_handler.lua"] = handler
+
+  local routes = 'app:get("/", function(c) return require("app.page_handler").home(c) end)\n'
+    .. 'app:get("/about", function(c) return require("app.page_handler").about(c) end)\n'
+  local main = files["src/main.lua"]
+  local s_at, e_at = main:find(routes, 1, true)
+  if not s_at then error("create.router_mode: page routes not found in src/main.lua", 2) end
+  main = main:sub(1, s_at - 1) .. [[local router = require("hydronium_router.meteorite")
+local site = require("views.Site")
+router.mount(app, site, {
+  handler = function(c) return require("app.page_handler").routed(c) end,
+})
+]] .. main:sub(e_at + 1)
+  main = main:gsub("\nreturn app\n$", "\nrouter.validate_final(app, site)\n\nreturn app\n")
+  files["src/main.lua"] = main
 
   files["README.md"] = (files["README.md"] or "") .. [[
 
-## Routing (Hydronium Router)
+## Routing
 
-This project was scaffolded with `--router hydronium`: `views/Site.lua`
-declares every page in one typed manifest, and `hydronium_router.meteorite`
-lowers it to explicit Meteorite GET routes in `src/main.lua` (see
-`src/app/page_handler.lua`) instead of hand-written `app:get(...)` calls
-per page.
-
-There is no client-side Lua VM in this template, so this is still
-full-page navigation (`<a href="/about">`), not client-side routing --
-`views/Site.lua` buys a single source of truth for the route table, not an
-SPA. Add a new page by adding a `r.node({...})` to `views/Site.lua` and a
-matching `views/<Name>.luax`.
+Scaffolded with `--router hydronium`: `src/views/Site.lua` lists the pages, and
+`hydronium_router.meteorite` turns them into Meteorite routes. Navigation is
+still full page loads; add a page with an `r.node({...})` in `Site.lua` and a
+`src/views/<Name>.luax`.
 ]]
 
   return files

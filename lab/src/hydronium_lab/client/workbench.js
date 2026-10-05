@@ -336,14 +336,15 @@ export function rulerStep(unitsPerPixel) {
   const power=10**Math.floor(Math.log10(desired));
   return Math.max(1,[1,2,5,10].find(n=>n*power>=desired)*power);
 }
-export function installCanvasGuides({root,getSurface,getUnits,preferences={},persist=()=>{}}) {
+export function installCanvasGuides({root,getSurface,getUnits,preferences={},persist=()=>{},createGuide}) {
   const stage=root.querySelector('[data-lab-stage]');
-  if(!stage)return {update(){},snap:pan=>pan,clear(){},destroy(){}};
-  const doc=root.ownerDocument, canvas=doc.createElement('canvas');
-  canvas.className='hydronium-lab__rulers';canvas.dataset.labRulers='';canvas.setAttribute('aria-hidden','true');stage.append(canvas);
-  const ctx=canvas.getContext('2d'), abort=new AbortController();
-  const layer=doc.createElement('div');layer.className='hydronium-lab__guide-layer';layer.dataset.labGuideLayer='';stage.append(layer);
-  const hit=doc.createElement('div');hit.className='hydronium-lab__ruler-hit';hit.dataset.labRulerHit='';hit.setAttribute('aria-label','Drag rulers to create guides');stage.append(hit);
+  if(!stage)return {update(){},snap:pan=>pan,clear(){},toggleRulers(){},toggleHints(){},resetUnitScale(){},destroy(){}};
+  // Components own the DOM. Missing slots remain missing; mounting never
+  // inserts rulers or guide layers into a user's custom layout.
+  const doc=root.ownerDocument, canvas=stage.querySelector('[data-lab-rulers]');
+  const ctx=canvas?.getContext?.('2d'), abort=new AbortController();
+  const layer=stage.querySelector('[data-lab-guide-layer]');
+  const hit=stage.querySelector('[data-lab-ruler-hit]');
   let placed=Array.isArray(preferences.canvasGuides)?preferences.canvasGuides.filter(g=>g&&['x','y'].includes(g.axis)&&Number.isFinite(g.value)&&typeof g.id==='string').map(g=>({...g,color:/^#[0-9a-f]{6}$/i.test(g.color)?g.color:'#45d6ba'})):[];
   let selectedGuide, gesture, sequence=0;
   const guideButtons=new Map();
@@ -368,17 +369,18 @@ export function installCanvasGuides({root,getSurface,getUnits,preferences={},per
   root.querySelector('[data-lab-clear-guides]')?.addEventListener('click',()=>{placed=[];selectedGuide=null;saveGuides();update();},{signal:abort.signal});
   function position(g,geo){return (g.axis==='x'?geo.originX:geo.originY)+g.value*(g.axis==='x'?geo.rx:geo.ry);}
   function renderGuides(geo){
-    hit.hidden=!enabled;
+    if(hit)hit.hidden=!enabled || !canvas;
+    if(!layer)return;
     const visible=placed.filter(g=>(g.units||'px')===geo.units);
     for(const [id,button] of guideButtons)if(!visible.some(g=>g.id===id)){button.remove();guideButtons.delete(id);}
-    for(const g of visible){let button=guideButtons.get(g.id);if(!button){button=doc.createElement('button');guideButtons.set(g.id,button);layer.append(button);}button.type='button';button.className=`hydronium-lab__guide hydronium-lab__guide--${g.axis}`;button.dataset.labGuide=g.id;button.setAttribute('aria-label',`${g.axis==='x'?'Vertical':'Horizontal'} guide`);button.style.setProperty('--guide-color',g.color);button.style[g.axis==='x'?'left':'top']=`${position(g,geo)}px`;button.setAttribute('aria-pressed',String(selectedGuide===g.id));}
+    for(const g of visible){let button=guideButtons.get(g.id);if(!button){button=createGuide?.({...g},doc) || doc.createElement('button');guideButtons.set(g.id,button);layer.append(button);}button.type='button';button.className ||= `hydronium-lab__guide hydronium-lab__guide--${g.axis}`;button.dataset.labGuide=g.id;button.setAttribute('aria-label',`${g.axis==='x'?'Vertical':'Horizontal'} guide`);button.style.setProperty('--guide-color',g.color);button.style[g.axis==='x'?'left':'top']=`${position(g,geo)}px`;button.setAttribute('aria-pressed',String(selectedGuide===g.id));}
   }
   function stop(event){event.preventDefault();event.stopImmediatePropagation?.();}
   // Removal is visible at once: the next frame's redraw would otherwise leave
   // a deleted guide's button in the DOM (and clickable) for one more frame.
   function dropGuideButtons(){for(const [id,button] of guideButtons)if(!placed.some(g=>g.id===id)){button.remove();guideButtons.delete(id);}}
   stage.addEventListener('pointerdown',event=>{
-    const button=event.target?.closest?.('[data-lab-guide]');const isRuler=event.target===hit;
+    const button=event.target?.closest?.('[data-lab-guide]');const isRuler=!!layer && !!canvas && event.target===hit;
     if(!button&&!isRuler)return;
     const geo=geometry();if(!geo)return;stop(event);const id=button?.dataset.labGuide;
     if(id&&(event.altKey||event.ctrlKey||event.metaKey)){placed=placed.filter(g=>g.id!==id);dropGuideButtons();saveGuides();update();return;}
@@ -409,29 +411,32 @@ export function installCanvasGuides({root,getSurface,getUnits,preferences={},per
     hintInput.addEventListener('change',()=>{hints=hintInput.checked;root.dataset.hintsVisible=String(hints);persist({showHints:hints});},{signal:abort.signal});}
   function toggleRulers(){enabled=!enabled;const input=root.querySelector('[data-lab-rulers-enabled]');if(input)input.checked=enabled;persist({rulers:enabled});update();}
   function toggleHints(){hints=!hints;if(hintInput)hintInput.checked=hints;root.dataset.hintsVisible=String(hints);persist({showHints:hints});}
-  doc.defaultView.addEventListener?.('keydown',event=>{
+  root.addEventListener('keydown',event=>{
     if(event.repeat||event.ctrlKey||event.metaKey||event.altKey||event.target?.closest?.('input,textarea,select,[contenteditable]'))return;
     const key=event.key?.toLowerCase();if(key==='r'){event.preventDefault();toggleRulers();}
     else if(key==='h'){event.preventDefault();toggleHints();}
   },{signal:abort.signal});
   function draw() {
-    pending=null;if(!alive||!ctx)return;
+    pending=null;if(!alive)return;
+    const geo=geometry();if(geo)renderGuides(geo);
+    const grid=root.querySelector('[data-lab-grid]');
+    if(grid&&geo){const gridRect=grid.getBoundingClientRect(),world=root.querySelector('[data-lab-viewport]'),worldRect=world?.getBoundingClientRect(),zoom=world?.offsetWidth?worldRect.width/world.offsetWidth:1;
+      grid.style.backgroundPosition=`${(geo.box.left+geo.originX-gridRect.left)/zoom}px ${(geo.box.top+geo.originY-gridRect.top)/zoom}px`;}
+    if(!ctx)return;
     const box=stage.getBoundingClientRect(),rect=getSurface()?.getBoundingClientRect(),w=stage.clientWidth,h=stage.clientHeight,dpr=doc.defaultView.devicePixelRatio||1;
     canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
     if(!rect?.width||!rect?.height)return;
     const left=rect.left-box.left,top=rect.top-box.top,units=getUnits?.()||{width:getSurface().offsetWidth,height:getSurface().offsetHeight,label:'px'};
     canvas.dataset.units=units.label;
-    const geo=geometry();if(geo)renderGuides(geo);
-    const grid=root.querySelector('[data-lab-grid]');
-    if(grid&&geo){const gridRect=grid.getBoundingClientRect(),world=root.querySelector('[data-lab-viewport]'),worldRect=world?.getBoundingClientRect(),zoom=world?.offsetWidth?worldRect.width/world.offsetWidth:1;
-      grid.style.backgroundPosition=`${(box.left+geo.originX-gridRect.left)/zoom}px ${(box.top+geo.originY-gridRect.top)/zoom}px`;}
-    canvas.dataset.snapActive=String(Object.keys(locks).length>0);ctx.strokeStyle='#8eaaff';ctx.setLineDash([4,4]);
+    const theme=doc.defaultView.getComputedStyle(root);
+    const color=(name,fallback)=>theme.getPropertyValue(`--hy-lab-${name}`).trim()||fallback;
+    canvas.dataset.snapActive=String(Object.keys(locks).length>0);ctx.strokeStyle=color('snap-color','#8eaaff');ctx.setLineDash([4,4]);
     for(const [axis,alignment] of Object.entries(locks)) {
       const origin=axis==='x'?left:top,extent=axis==='x'?rect.width:rect.height,anchor=alignment.split(':').at(-1),position=origin+(anchor==='center'?extent/2:anchor==='end'?extent:0);
       ctx.beginPath();if(axis==='x'){ctx.moveTo(position,24);ctx.lineTo(position,h);}else {ctx.moveTo(24,position);ctx.lineTo(w,position);}ctx.stroke();
     }
     ctx.setLineDash([]);if(!enabled)return;
-    ctx.fillStyle='#121a2df2';ctx.fillRect(0,0,w,24);ctx.fillRect(0,0,24,h);ctx.font='10px ui-monospace, monospace';
+    ctx.fillStyle=color('ruler-background','#121a2df2');ctx.fillRect(0,0,w,24);ctx.fillRect(0,0,24,h);ctx.font='10px ui-monospace, monospace';
     // Story origin follows its top-left; explicit canvas origins follow pan.
     // Cell spacing is calibrated once, independently of the resizable box.
     const rulerX=geo.originX,rulerY=geo.originY;
@@ -439,22 +444,90 @@ export function installCanvasGuides({root,getSurface,getUnits,preferences={},per
       if(!(count>0))continue;
       const ratio=axis==='x'?geo.rx:geo.ry,step=rulerStep(1/ratio),minor=step>=5?step/5:step;
       const previewOrigin=axis==='x'?left:top;
-      ctx.fillStyle='#263b60';const startEdge=Math.max(24,previewOrigin),range=Math.max(0,Math.min(length,previewOrigin+extent)-startEdge);
+      ctx.fillStyle=color('ruler-range','#263b60');const startEdge=Math.max(24,previewOrigin),range=Math.max(0,Math.min(length,previewOrigin+extent)-startEdge);
       if(axis==='x')ctx.fillRect(startEdge,20,range,4);else ctx.fillRect(20,startEdge,4,range);
       const start=Math.ceil((24-origin)/ratio/minor),finish=Math.floor((length-origin)/ratio/minor);
       for(let n=start;n<=finish&&n<start+1000;n++) {
         const value=n*minor,pixel=Math.round(origin+value*ratio)+.5,major=Math.abs(value/step-Math.round(value/step))<.001;
-        ctx.strokeStyle=major?'#91a2c1':'#475875';ctx.beginPath();if(axis==='x'){ctx.moveTo(pixel,major?15:20);ctx.lineTo(pixel,24);}else {ctx.moveTo(major?15:20,pixel);ctx.lineTo(24,pixel);}ctx.stroke();
-        if(major){ctx.fillStyle='#b6c3db';const text=String(Math.round(value));if(axis==='x')ctx.fillText(text,pixel+3,11);else {ctx.save();ctx.translate(11,pixel-3);ctx.rotate(-Math.PI/2);ctx.fillText(text,0,0);ctx.restore();}}
+        ctx.strokeStyle=major?color('ruler-tick','#91a2c1'):color('ruler-tick-minor','#475875');ctx.beginPath();if(axis==='x'){ctx.moveTo(pixel,major?15:20);ctx.lineTo(pixel,24);}else {ctx.moveTo(major?15:20,pixel);ctx.lineTo(24,pixel);}ctx.stroke();
+        if(major){ctx.fillStyle=color('ruler-text','#b6c3db');const text=String(Math.round(value));if(axis==='x')ctx.fillText(text,pixel+3,11);else {ctx.save();ctx.translate(11,pixel-3);ctx.rotate(-Math.PI/2);ctx.fillText(text,0,0);ctx.restore();}}
       }
     }
-    ctx.fillStyle='#19243b';ctx.fillRect(0,0,24,24);ctx.fillStyle='#b6c3db';ctx.font='9px ui-monospace, monospace';ctx.fillText(units.label==='cells'?'cell':'px',2,15);
+    ctx.fillStyle=color('ruler-corner','#19243b');ctx.fillRect(0,0,24,24);ctx.fillStyle=color('ruler-text','#b6c3db');ctx.font='9px ui-monospace, monospace';ctx.fillText(units.label==='cells'?'cell':'px',2,15);
   }
   function update(){if(alive&&pending==null)pending=doc.defaultView.requestAnimationFrame(draw);}
   const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(update);observer?.observe(stage);const surface=getSurface();if(surface)observer?.observe(surface);update();
+  const Mutation = doc.defaultView?.MutationObserver || globalThis.MutationObserver;
+  const themeObserver=Mutation ? new Mutation(update) : null;
+  themeObserver?.observe(doc.documentElement,{attributes:true,attributeFilter:['data-theme','class','style']});
+  themeObserver?.observe(root,{attributes:true,attributeFilter:['data-theme','class','style']});
+  const themeMedia=doc.defaultView?.matchMedia?.('(prefers-color-scheme: dark)');
+  themeMedia?.addEventListener('change',update,{signal:abort.signal});
   return {update,toggleRulers,toggleHints,resetUnitScale(){unitPixels.clear();update();},clear(){locks={};update();},snap(pan,bypass=false){const rect=getSurface()?.getBoundingClientRect();if(!rect)return pan;
     const geo=geometry(),guideTargets={x:{},y:{}};
-    if(geo)for(const g of placed.filter(g=>(g.units||'px')===geo.units)){const size=g.axis==='x'?rect.width:rect.height,target=position(g,geo)-(g.axis==='x'?geo.w:geo.h)/2;for(const [anchor,offset] of [['start',-size/2],['center',0],['end',size/2]])guideTargets[g.axis][`guide:${g.id}:${anchor}`]=target-offset;}
+    if(geo&&layer)for(const g of placed.filter(g=>(g.units||'px')===geo.units)){const size=g.axis==='x'?rect.width:rect.height,target=position(g,geo)-(g.axis==='x'?geo.w:geo.h)/2;for(const [anchor,offset] of [['start',-size/2],['center',0],['end',size/2]])guideTargets[g.axis][`guide:${g.id}:${anchor}`]=target-offset;}
     const result=snapViewportPan(pan,{width:rect.width,height:rect.height,stageWidth:stage.clientWidth,stageHeight:stage.clientHeight,guideTargets,config},locks,bypass||!magnetic);locks=result.guides;update();return {x:result.x,y:result.y};
-  },destroy(){alive=false;abort.abort();observer?.disconnect();if(pending!=null)doc.defaultView.cancelAnimationFrame(pending);canvas.remove();layer.remove();hit.remove();}};
+  },destroy(){alive=false;abort.abort();observer?.disconnect();themeObserver?.disconnect();if(pending!=null)doc.defaultView.cancelAnimationFrame(pending);guideButtons.forEach(button=>button.remove());guideButtons.clear();}};
+}
+
+export function installPreviewCanvas(root, getFrame = () => root.querySelector("[data-lab-dom-preview]"), settings = {}) {
+  const stage = root.querySelector("[data-lab-stage]");
+  if (!stage) return {reset(){},fit(){},resize(width,height){const frame=getFrame();if(frame){frame.style.width=`${width}px`;frame.style.height=`${height}px`;}},refresh(){},destroy(){}};
+  const view = root.ownerDocument.defaultView;
+  const doc = root.ownerDocument;
+  let zoom = 1, x = 0, y = 0, space = false, drag, wheelTimer;
+  const guides = installCanvasGuides({root, getSurface: getFrame, ...settings, getUnits: () => {
+    const frame = getFrame(), terminal = frame.contentDocument?.querySelector('[data-lab-terminal]');
+    if(terminal){const columns=Number(terminal.dataset.columns),rows=Number(terminal.dataset.rows),screen=terminal.querySelector('.xterm-screen');
+      return {width:columns,height:rows,label:'cells',pixelWidth:screen?.offsetWidth/columns,pixelHeight:screen?.offsetHeight/rows};}
+    return {width:parseFloat(frame.style.width)||800,height:parseFloat(frame.style.height)||600,label:'px',pixelWidth:1,pixelHeight:1};
+  }});
+  const abort = new AbortController(), options = { signal: abort.signal };
+  // Transform the world layer, which contains both the grid and preview.
+  // Keeping them in one coordinate system also preserves pointer mapping.
+  const paint = () => { const world = getFrame().parentElement; world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`; world.style.transformOrigin = 'center'; guides.update(); };
+  const resize = (width,height) => {
+    const frame=getFrame(),before=frame.getBoundingClientRect();
+    frame.style.width=`${width}px`;frame.style.height=`${height}px`;
+    const after=frame.getBoundingClientRect();
+    x+=before.left-after.left;y+=before.top-after.top;
+    paint();
+  };
+  const fit = () => { guides.clear(); x = y = 0; zoom = Math.max(.1, Math.min(1, (stage.clientWidth - 48) / (parseFloat(getFrame().style.width) || 800), (stage.clientHeight - 48) / (parseFloat(getFrame().style.height) || 600))); paint(); };
+  const reset = () => {guides.clear(); fit();};
+  const scale = step => { guides.clear(); zoom = Math.max(.1, Math.min(4, zoom * step)); paint(); };
+  root.addEventListener('click', event => {
+    const openMenu = event.target.closest("details");
+    for (const menu of root.querySelectorAll(".hydronium-lab__toolbar-menu[open]")) if (menu !== openMenu) menu.open = false;
+    const target = event.target.closest('button'); if (!target) return;
+    if (target.hasAttribute('data-lab-zoom-in')) scale(1.1);
+    if (target.hasAttribute('data-lab-zoom-out')) scale(1 / 1.1);
+    if (target.hasAttribute('data-lab-canvas-reset')) reset();
+    if (target.hasAttribute('data-lab-sidebar-toggle')) { const sidebar=root.querySelector('[data-lab-sidebar]'); if(!sidebar)return; sidebar.hidden=!sidebar.hidden; root.dataset.sidebarCollapsed=String(sidebar.hidden); for(const button of root.querySelectorAll('[data-lab-sidebar-toggle]'))button.setAttribute('aria-expanded',String(!sidebar.hidden)); }
+    if (target.hasAttribute('data-lab-preferences-toggle') || target.hasAttribute('data-lab-preferences-close')) { const panel=root.querySelector('[data-lab-preferences]'); if(!panel)return; panel.hidden=target.hasAttribute('data-lab-preferences-close') || !panel.hidden; root.querySelector('[data-lab-preferences-toggle]')?.setAttribute('aria-expanded',String(!panel.hidden)); if(panel.hidden)root.querySelector('[data-lab-preferences-toggle]')?.focus();else panel.querySelector('[data-lab-preferences-close]')?.focus(); }
+  }, options);
+  root.addEventListener('keydown', event => {
+    if(event.key==='Escape') { const panel=root.querySelector('[data-lab-preferences]');if(panel&&!panel.hidden){event.preventDefault();panel.hidden=true;const toggle=root.querySelector('[data-lab-preferences-toggle]');toggle?.setAttribute('aria-expanded','false');toggle?.focus();} for(const menu of root.querySelectorAll(".hydronium-lab__toolbar-menu[open]"))menu.open=false; }
+    if (event.target.closest('input,textarea,select,[contenteditable]')) return;
+    if (!stage.contains(event.target)) return;
+    if (event.code==='Space') { space=true; event.preventDefault(); }
+    if (event.key.toLowerCase()==='c') reset();
+    if ((event.ctrlKey || event.metaKey) && ['+','=','-'].includes(event.key)) { event.preventDefault(); scale(event.key==='-'?1/1.1:1.1); }
+    if (event.key.toLowerCase()==='f') { if(doc.fullscreenElement)doc.exitFullscreen();else stage.requestFullscreen?.(); }
+  }, options);
+  view.addEventListener('keyup', event => { if(event.code==='Space')space=false; }, options);
+  view.addEventListener('blur', () => { space=false; drag=null; guides.clear(); getFrame().style.pointerEvents=''; }, options);
+  stage.addEventListener('pointerdown', event => {
+    if(!space && event.pointerType!=='touch' && event.button!==1 && event.target.closest('iframe,button,input'))return;
+    guides.clear(); drag={id:event.pointerId,x:event.clientX,y:event.clientY,pan:{x,y}};stage.setPointerCapture(event.pointerId);getFrame().style.pointerEvents='none';event.preventDefault();
+  }, options);
+  stage.addEventListener('pointermove', event => {if(!drag||drag.id!==event.pointerId)return;const pan=guides.snap({x:drag.pan.x+event.clientX-drag.x,y:drag.pan.y+event.clientY-drag.y},event.altKey);x=pan.x;y=pan.y;paint();},options);
+  const end = () => { drag=null;guides.clear();getFrame().style.pointerEvents=''; };
+  stage.addEventListener('pointerup',end,options);stage.addEventListener('pointercancel',end,options);
+  stage.addEventListener('wheel',event=>{if(event.ctrlKey||event.metaKey){event.preventDefault();scale(Math.exp(-event.deltaY*.002));}else if(event.target===stage){event.preventDefault();guides.clear();const unit=event.deltaMode===1?16:event.deltaMode===2?stage.clientHeight:1;x-=event.deltaX*unit;y-=event.deltaY*unit;paint();clearTimeout(wheelTimer);wheelTimer=setTimeout(()=>{const pan=guides.snap({x,y},event.altKey);x=pan.x;y=pan.y;paint();guides.clear();},160);}}, {...options,passive:false});
+  return {reset,fit,resize,refresh:paint,
+    getSnapshot(){return {zoom,pan:{x,y}};},
+    zoomTo(value){if(Number.isFinite(value)){guides.clear();zoom=Math.max(.1,Math.min(4,value));paint();}},
+    panTo(pan){if(Number.isFinite(pan?.x)&&Number.isFinite(pan?.y)){x=pan.x;y=pan.y;paint();}},
+    destroy(){clearTimeout(wheelTimer);guides.destroy();abort.abort();end();}};
 }

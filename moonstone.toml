@@ -56,6 +56,10 @@ name = "router"
 path = "router"
 
 [[orbits.member]]
+name = "i18n"
+path = "i18n"
+
+[[orbits.member]]
 name = "query"
 path = "query"
 
@@ -101,7 +105,7 @@ role = "tool"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.4.0"
+constraint = "^0.4.2"
 role = "tool"
 
 [[dependencies]]
@@ -131,5 +135,5 @@ role = "dev"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.4.0"
+constraint = "^0.4.2"
 role = "runtime"

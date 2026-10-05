@@ -323,14 +323,17 @@ end
 --- unconditionally `error()`ed on every ISLAND. This makes it true for
 --- the one case where it actually can be.
 ---
---- A "js" island is deliberately NOT given this treatment -- js-island
---- hydration is a completely different code path (bootstrap.js's
---- dynamic `import()` against SSR-produced markers), never this
---- reconciler, so reaching here with a "js" island is still a real
---- "no client reconciler yet" case, unchanged.
+--- A JS island keeps an opaque SSR boundary. Bootstrap activates its module;
+--- the Lua reconciler claims the boundary for placement without rendering or
+--- updating the subtree owned by JavaScript.
 local function isTransparentLuaIsland(vnode)
   return vnode ~= nil and vnode.kind == symbols.ISLAND
     and type(vnode.tag) == "table" and vnode.tag.interpreter == "lua"
+end
+
+local function isOpaqueJsIsland(vnode)
+  return vnode ~= nil and vnode.kind == symbols.ISLAND
+    and type(vnode.tag) == "table" and vnode.tag.interpreter == "js"
 end
 
 function Reconciler:canReuse(oldVNode, newVNode)
@@ -357,6 +360,8 @@ function Reconciler:getHostNode(vnode)
       return self:getHostNode(vnode.componentInstance.subTree)
     end
     return vnode.hostNode
+  elseif isOpaqueJsIsland(vnode) then
+    return vnode._islandRoot or vnode.hostNode
   elseif vnode.kind == symbols.FRAGMENT or isTransparentLuaIsland(vnode) then
     local raw, len = getChildrenList(vnode)
     if len > 0 then
@@ -378,6 +383,14 @@ function Reconciler:getAllHostNodes(vnode, out)
   elseif vnode.kind == symbols.COMPONENT or vnode.kind == symbols.BOUNDARY then
     if vnode.componentInstance and vnode.componentInstance.subTree then
       self:getAllHostNodes(vnode.componentInstance.subTree, out)
+    elseif vnode.hostNode then
+      table.insert(out, vnode.hostNode)
+    end
+  elseif isOpaqueJsIsland(vnode) then
+    if vnode._islandNodes then
+      for _, node in ipairs(vnode._islandNodes) do
+        if node then table.insert(out, node) end
+      end
     elseif vnode.hostNode then
       table.insert(out, vnode.hostNode)
     end
@@ -461,6 +474,8 @@ function Reconciler:mount(vnode, parentHostNode, beforeChild, parentComponent)
     end
     vnode.hostNode = firstHostNode
     return firstHostNode
+  elseif isOpaqueJsIsland(vnode) then
+    error("Hydronium: a JavaScript island can only be activated from server-rendered markup", 2)
   elseif kind == symbols.SUSPENSE or kind == symbols.ISLAND or kind == symbols.SCRIPT then
     -- Client (live-DOM/test-renderer) mounting for these kinds is not
     -- implemented yet -- they exist for SSR (buffered) this version. Erroring
@@ -539,7 +554,8 @@ function Reconciler:hydrate(vnode, parentHostNode, domNode, boundaryNode, parent
     local raw, len = getChildrenList(vnode)
     local childCursor = host.firstChild(domNode)
     for i = 1, len do
-      while childCursor and host.isCommentNode and host.isCommentNode(childCursor) do
+      while childCursor and host.isCommentNode and host.isCommentNode(childCursor)
+        and not isOpaqueJsIsland(raw[i]) do
         childCursor = host.nextSibling(childCursor)
       end
       local _, nextCursor = self:hydrate(raw[i], domNode, childCursor, nil, parentComponent)
@@ -584,6 +600,46 @@ function Reconciler:hydrate(vnode, parentHostNode, domNode, boundaryNode, parent
     vnode.hostNode = hostNode
     return hostNode, nextCursor
 
+  elseif isOpaqueJsIsland(vnode) then
+    -- A JS island owns its rendered subtree. The server emits one boundary
+    -- around its single root element; the Lua reconciler records that range
+    -- for sibling placement and disposal, then leaves every host child alone.
+    local start = domNode
+    local island_root = start and host.nextSibling(start) or nil
+    local finish = island_root and host.nextSibling(island_root) or nil
+    -- An island may sit below one or more ordinary component wrappers. A
+    -- parent element cannot know that the next component renders a JS island,
+    -- so it may have skipped the opening comment before entering those
+    -- wrappers. If the cursor is already the island root element, recover the
+    -- adjacent opening marker by walking this parent's children once.
+    if start and host.isElementNode(start) then
+      local previous, cursor = nil, host.firstChild(parentHostNode)
+      while cursor and cursor ~= start do
+        previous, cursor = cursor, host.nextSibling(cursor)
+      end
+      if cursor == start and previous then
+        local marker_ok = type(host.isCommentNode) ~= "function" or host.isCommentNode(previous)
+        if marker_ok then
+          start, island_root, finish = previous, domNode, host.nextSibling(domNode)
+        end
+      end
+    end
+    -- `is_comment` is optional in the DOM bridge contract so bridges from
+    -- before boundary inspection was added can still hydrate server output.
+    -- In that case the ordered vnode tree gives us the marker positions; we
+    -- can still validate the island's one-element payload before claiming it.
+    local has_comment_inspector = type(host.isCommentNode) == "function"
+    if not start or (has_comment_inspector and not host.isCommentNode(start))
+      or not island_root or not host.isElementNode(island_root)
+      or not finish or (has_comment_inspector and not host.isCommentNode(finish)) then
+      reportMismatch("js_island_boundary")
+      error("Hydronium: JavaScript island hydration requires one root element between its SSR markers", 2)
+    end
+    vnode._islandRoot = island_root
+    vnode._islandNodes = { start, island_root, finish }
+    vnode.hostNode = island_root
+    return island_root, host.nextSibling(finish)
+
   elseif kind == symbols.FRAGMENT or isTransparentLuaIsland(vnode) then
     local firstHostNode = nil
     local raw, len = getChildrenList(vnode)
@@ -623,8 +679,8 @@ function Reconciler:hydrate(vnode, parentHostNode, domNode, boundaryNode, parent
       return node
     end
 
-    cursor = skipCommentMarkers(cursor)
     for i = 1, len do
+      if not isOpaqueJsIsland(raw[i]) then cursor = skipCommentMarkers(cursor) end
       local childHost, nextCursor = self:hydrate(raw[i], parentHostNode, cursor, boundaryNode, parentComponent)
       if not firstHostNode and childHost then firstHostNode = childHost end
       cursor = nextCursor
@@ -881,6 +937,12 @@ function Reconciler:reconcile(parentHostNode, oldVNode, newVNode, parentComponen
     newVNode.hostNode = newVNode.componentInstance.hostNode
     return newVNode
 
+  elseif isOpaqueJsIsland(newVNode) then
+    newVNode._islandRoot = oldVNode._islandRoot
+    newVNode._islandNodes = oldVNode._islandNodes
+    newVNode.hostNode = oldVNode.hostNode
+    return newVNode
+
   elseif kind == symbols.FRAGMENT or isTransparentLuaIsland(newVNode) then
     newVNode.children = self:reconcileChildren(parentHostNode, oldVNode.children, newVNode.children, parentComponent)
     newVNode.hostNode = self:getHostNode(newVNode)
@@ -916,6 +978,10 @@ function Reconciler:unmount(vnode)
       vnode.componentInstance = nil
     end
 
+  elseif isOpaqueJsIsland(vnode) then
+    -- The island module owns effects and event listeners for this opaque tree.
+    -- Removing its recorded host range lets the island lifecycle observe the
+    -- detach and dispose its own work without Lua walking the subtree.
   elseif kind == symbols.FRAGMENT or isTransparentLuaIsland(vnode) then
     local raw, len = getChildrenList(vnode)
     for i = 1, len do

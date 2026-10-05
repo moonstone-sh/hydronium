@@ -133,3 +133,9 @@ return lab.collection({ renderer = "dom", component = require("Button"),
 ```
 
 Keep native Ink imports in Ink story modules. Add compiled CSS with `styles = { "public/app.css" }` in `hydronium.lab.lua`; run its compiler in watch mode separately.
+
+### Pipeline preparation (development candidate)
+
+`hydronium_lab_cli.ballad` adapts the existing CLI planner. Its `prepare` method
+emits host files into a dedicated Ballad directory sink without launching a
+persistent server. See [Lab composition](../docs/LAB_COMPOSITION.md).
