@@ -6,9 +6,9 @@ This audit covers the local `hydronium-templates` candidate and Meteorite checko
 
 | Check | Result |
 | --- | --- |
-| Hydronium Lua suite | 1,463 passed after the Lab composition changes |
+| Hydronium Lua suite | 1,466 passed after merging the v0.3.7 HMR fix |
 | Generated starter suite | 84 passed |
-| JavaScript client suite | 93 passed |
+| JavaScript client suite | 94 passed |
 | Vite adapter suite | 20 passed |
 | DOM client and Vite vendor drift | No drift |
 | Browser primitive checks | Virtual scrolling, listener cleanup and Lab controls passed |
