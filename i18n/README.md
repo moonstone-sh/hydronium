@@ -4,22 +4,20 @@ Compile one message catalog into Lua and JavaScript functions. Each render owns
 its locale context, so concurrent requests and islands can use different
 languages without changing global state.
 
-From a Moonstone project in this workspace:
+From a Moonstone project:
 
 ```sh
-moon add path:../hydronium-templates/i18n
+moon add hydronium/i18n
 ```
 
-The package is under development; a registry release has not been published.
-The workspace export now includes both the Lua runtime and `compiler/index.mjs`.
-After installation from a candidate file registry, the compiler is available at
-`.moonstone/env/libexec/hydronium/i18n/compiler/index.mjs`. A registry release will
-use `moon add hydronium/i18n`; the path dependency above remains the local
-source-development option.
+The package includes both the Lua runtime and `compiler/index.mjs`.
+After installation, the compiler is available at
+`.moonstone/env/libexec/hydronium/i18n/compiler/index.mjs`.
+For local source development, use `moon add path:../hydronium-templates/i18n`.
 Run the compiler with Bun from a build script:
 
 ```js
-import { compileMessages } from '../hydronium-templates/i18n/compiler/index.mjs';
+import { compileMessages } from './.moonstone/env/libexec/hydronium/i18n/compiler/index.mjs';
 
 compileMessages({
   messagesDir: 'messages',
