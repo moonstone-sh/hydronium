@@ -5,6 +5,23 @@ local describe, it = h.describe, h.it
 local assert = h.assert
 
 describe("Core: Components & Scope Lifecycle", function()
+  it("removes a conditional component body on every collapse", function()
+    local expanded, setExpanded = H.signal(false)
+    local function Body()
+      return function()
+        if not expanded() then return nil end
+        return H.h("p", {}, "Disclosure body")
+      end
+    end
+    local root = H.create_test_root()
+    root:render(H.h("section", {}, H.h(Body)))
+    for _ = 1, 5 do
+      H.act(function() setExpanded(true) end)
+      assert.equal(root:text(), "Disclosure body")
+      H.act(function() setExpanded(false) end)
+      assert.equal(root:text(), "")
+    end
+  end)
 
   describe("Setup-once / render-many (closure components)", function()
     it("runs setup function once and render function on subsequent updates", function()

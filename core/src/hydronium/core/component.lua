@@ -340,7 +340,9 @@ function ComponentInstance:update(newProps, reconciler)
     self.subTree = nextSubTree
     self.hostNode = rec:mount(nextSubTree, self.parentHostNode, nil, self)
   elseif self.subTree and not nextSubTree then
-    rec:unmount(self.subTree)
+    -- Unmount releases effects; reconciliation also removes the host nodes.
+    -- A component rendering nil must not leave its previous DOM behind.
+    rec:reconcile(self.parentHostNode, self.subTree, nil, self)
     self.subTree = nil
     self.hostNode = nil
   end
