@@ -471,6 +471,7 @@ local function main()
       "tests/server/ssr_spec.lua",
       "tests/server/server_spec.lua",
       "tests/server/islands_suspense_spec.lua",
+      "tests/server/client_boot_spec.lua",
       "tests/server/vite_module_spec.lua",
       "tests/server/meteorite_spec.lua",
       "tests/server/client_manifest_spec.lua",

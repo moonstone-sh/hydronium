@@ -196,13 +196,30 @@ function installRendererControls({root,getFrame,preferences,persist,bridge,getSt
   const query = name => root.querySelector(`[data-lab-${name}]`);
   const fill = (select,groups,format) => {if(!select)return groups.flatMap(group=>group.sizes);select.replaceChildren();let flat=[];for(const group of groups){const node=doc.createElement('optgroup');node.label=group.label;for(const size of group.sizes){const option=doc.createElement('option');option.value=String(flat.length);option.textContent=format(size);node.append(option);flat.push(size);}select.append(node);}return flat;};
   const queue = action => action().catch(report);
+  // "page" follows the Lab page: its computed color-scheme when it names one
+  // scheme (a site theme toggle), otherwise the OS preference.
+  const pageScheme = () => {
+    const declared = getComputedStyle(doc.documentElement).colorScheme || '';
+    const dark = /\bdark\b/.test(declared), light = /\blight\b/.test(declared);
+    if (dark !== light) return dark ? 'dark' : 'light';
+    return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  };
+  const colorScheme = () => { const value = query('color-scheme')?.value || preferences.domColorScheme || 'page'; return value === 'light' || value === 'dark' ? value : pageScheme(); };
+  let appliedScheme = null, domActive = false;
   const applyDOM = async () => {
     const resized = getFrame().style.width !== `${viewport.width}px` || getFrame().style.height !== `${viewport.height}px`;
     if(resized) canvas.resize(viewport.width,viewport.height);
     if(query('viewport-width'))query('viewport-width').value=viewport.width;if(query('viewport-height'))query('viewport-height').value=viewport.height;
     preferences.domViewport=viewport;await persist({domViewport:viewport});
-    await (await bridge()).configure({colorSpace:(query('color-space')?.value || preferences.domColorSpace || 'srgb'),vision:(query('vision')?.value || preferences.domVision || 'none'),width:viewport.width,height:viewport.height});
+    appliedScheme = colorScheme();
+    getFrame().style.colorScheme = appliedScheme;
+    await (await bridge()).configure({colorSpace:(query('color-space')?.value || preferences.domColorSpace || 'srgb'),vision:(query('vision')?.value || preferences.domVision || 'none'),colorScheme:appliedScheme,width:viewport.width,height:viewport.height});
   };
+  const followPage = () => { if (domActive && viewport && colorScheme() !== appliedScheme) queue(applyDOM); };
+  const pageObserver = new MutationObserver(followPage);
+  pageObserver.observe(doc.documentElement, { attributes: true });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', followPage, options);
+  abort.signal.addEventListener('abort', () => pageObserver.disconnect());
   const setViewport = async size => {viewport={...size};const index=presets.findIndex(v=>v.width===size.width&&v.height===size.height);if(query('viewport-preset'))query('viewport-preset').value=String(index);await applyDOM();};
   query('viewport-preset')?.addEventListener('change',event=>queue(()=>setViewport(presets[Number(event.target.value)])),options);
   for(const dimension of ['width','height'])query('viewport-'+dimension)?.addEventListener('change',()=>queue(async()=>{
@@ -215,17 +232,19 @@ function installRendererControls({root,getFrame,preferences,persist,bridge,getSt
     user.push({...viewport,name:`${viewport.width}×${viewport.height}`});await persist({domViewports:user});
     presets=fill(query('viewport-preset'),viewportGroups(getStory(),user),v=>`${v.name} · ${v.width}×${v.height}`);await setViewport(viewport);
   }),options);
-  for(const name of ['color-space','vision'])query(name)?.addEventListener('change',()=>queue(async()=>{await persist({domColorSpace:(query('color-space')?.value || preferences.domColorSpace || 'srgb'),domVision:(query('vision')?.value || preferences.domVision || 'none')});await applyDOM();}),options);
+  for(const name of ['color-space','vision','color-scheme'])query(name)?.addEventListener('change',()=>queue(async()=>{await persist({domColorSpace:(query('color-space')?.value || preferences.domColorSpace || 'srgb'),domVision:(query('vision')?.value || preferences.domVision || 'none'),domColorScheme:(query('color-scheme')?.value || preferences.domColorScheme || 'page')});await applyDOM();}),options);
   const applyInk = async settings => { const bounds=await(await bridge()).configure(settings); if(bounds?.width && bounds?.height)canvas.resize(bounds.width,bounds.height); };
   query('ink-size')?.addEventListener('change',event=>queue(async()=>{const size=inkSizes[Number(event.target.value)];await applyInk(size);await persist({inkSize:size});}),options);
   query('ink-color')?.addEventListener('change',event=>queue(async()=>{await(await bridge()).configure({color:event.target.value});await persist({inkColor:event.target.value});}),options);
   return {async select(story){
     for(const el of root.querySelectorAll('[data-lab-dom-tools]'))el.hidden=story.renderer!=='dom';
     for(const el of root.querySelectorAll('[data-lab-ink-tools]'))el.hidden=story.renderer!=='ink';
+    domActive=story.renderer==='dom';
     if(story.renderer==='dom'){
       presets=fill(query('viewport-preset'),viewportGroups(story,preferences.domViewports||[]),v=>`${v.name} · ${v.width}×${v.height}`);
       if(query('color-space'))query('color-space').value=['srgb','display-p3','rec2020'].includes(preferences.domColorSpace)?preferences.domColorSpace:'srgb';
       if(query('vision'))query('vision').value=['none','protanopia','deuteranopia','tritanopia','achromatopsia'].includes(preferences.domVision)?preferences.domVision:'none';
+      if(query('color-scheme'))query('color-scheme').value=['page','light','dark'].includes(preferences.domColorScheme)?preferences.domColorScheme:'page';
       for(const option of query('color-space')?.options || [])option.disabled=!CSS.supports('color',`color(${option.value} 1 0 0)`);
       const gamut=matchMedia('(color-gamut: rec2020)').matches?'Rec. 2020':matchMedia('(color-gamut: p3)').matches?'P3':'sRGB';
       if(query('gamut-support'))query('gamut-support').textContent=`Display gamut: ${gamut} · target does not emulate hardware`;
