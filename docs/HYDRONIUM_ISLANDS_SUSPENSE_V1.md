@@ -603,3 +603,29 @@ the whole harness. Confirmed pre-existing (reproduces with zero changes
 applied) and out of scope for islands/d.lua/d.js work -- flagged here so
 it isn't mistaken for something this session's changes caused, not
 investigated further.
+
+## Update (2026-10-06): Lua islands hydrate in the browser
+
+`d.lua.island` is no longer SSR-only. A server-rendered page (no root
+`d.lua.mount`) hydrates each top-level Lua island in place:
+
+- **Authoring:** `hydronium_dom.server.island(module, props, opts)` or the
+  drop-in `island.component(module, { hydrate = "load"|"idle"|"visible" })`.
+  Props are plain data (they travel in the client plan); islands take no
+  children.
+- **Server:** `<hydronium_dom.server.client_boot.ClientBoot bundle={release} />`
+  after the page content emits, for pages that rendered Lua islands only, the
+  chunk list (`__HYDRONIUM_BOOT__`) and, when an island hydrates on load,
+  modulepreload/preload hints for the engine and chunks.
+- **Build:** `islands = { ... }` in `hydronium.sources.lua` makes
+  `hydronium_ballad.client_bundle` split the bundle into a shared `runtime`
+  chunk plus one chunk per island (`split = "entry"`).
+- **Browser:** `/js/bootstrap/islands.js` (`bootIslands`, `startIslands`,
+  `hydrateIslands`) boots one VM when the first island's priority fires and
+  hydrates each island between its markers. Pages without Lua islands load no
+  engine. In development, island modules hot-swap (`installHmr` with
+  `reloadWhenNotLive`), and island-free pages use `dev_reload.js`.
+
+Verified on hydronium.moonstone.sh: docs pages without islands went from
+~471KB / 4.0s to ~128KB / 0.9s to ready (Slow 4G, 4x CPU), and hydration
+claims every server node (no remounts).
