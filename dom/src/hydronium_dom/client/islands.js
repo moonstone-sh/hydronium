@@ -107,8 +107,10 @@ function report(island, error) {
  *
  * @returns {Promise<{ lua: object, timings: object, islands: object[],
  *   hydrated: Promise<Error[]>, remount: () => Promise<void> }>}
- *   `hydrated` settles once every island has hydrated or failed (deferred
- *   islands may take arbitrarily long, or never, for "visible").
+ *   Resolves once the VM is booted, which waits for the first island's
+ *   priority. `hydrated` settles once every island has hydrated or failed
+ *   (deferred islands may take arbitrarily long, or never, for "visible").
+ *   `loaded` settles once the "load"-priority islands have (see startIslands).
  */
 export async function hydrateIslands({ islands, root = document, container, ...bootOptions }) {
   const entries = [];
@@ -123,6 +125,12 @@ export async function hydrateIslands({ islands, root = document, container, ...b
     }
   }
   const active = topLevel(entries);
+  const anchor = (entry) => firstElement(entry.boundary) || entry.boundary.start.parentNode;
+  const triggers = active.map((entry) => whenPriority(entry.island.hydrate || "load", anchor(entry)));
+
+  // No VM until the first island asks for one: a page whose islands are all
+  // "visible" below the fold downloads and starts nothing until scrolled.
+  if (triggers.length > 0) await Promise.race(triggers);
 
   const handle = await boot({
     ...bootOptions,
@@ -152,16 +160,22 @@ export async function hydrateIslands({ islands, root = document, container, ...b
   await serial(() => lua.doString(SETUP_LUA));
 
   const rendered = new Set();
-  const hydrated = Promise.all(active.map((entry) =>
-    whenPriority(entry.island.hydrate || "load", firstElement(entry.boundary) || entry.boundary.start.parentNode)
+  const done = active.map((entry, index) =>
+    triggers[index]
       .then(() => serial(async () => {
         select(entry, true);
         await lua.doString(RENDER_LUA);
         rendered.add(entry);
         boundaries.markFinalized(entry.island.id);
       }))
-      .then(() => null, (error) => { report(entry.island, error); return error; })
-  )).then((results) => results.filter(Boolean));
+      .then(() => null, (error) => { report(entry.island, error); return error; }));
+  const settle = (promises) => Promise.all(promises).then((results) => results.filter(Boolean));
+  const hydrated = settle(done);
+  // "load" islands only: what a page waits on before announcing it is ready.
+  const loaded = settle(done.filter((_, index) => {
+    const priority = active[index].island.hydrate;
+    return !priority || priority === "load";
+  }));
 
   async function remount() {
     for (const entry of rendered) {
@@ -175,7 +189,7 @@ export async function hydrateIslands({ islands, root = document, container, ...b
     }
   }
 
-  return { lua, timings: handle.timings, islands: active.map((entry) => entry.island), hydrated, remount };
+  return { lua, timings: handle.timings, islands: active.map((entry) => entry.island), hydrated, loaded, remount };
 }
 
 /**
@@ -187,6 +201,8 @@ export async function hydrateIslands({ islands, root = document, container, ...b
  * @param {object} [options.engineProvider] Override the default Lua 5.4 engine.
  * @param {object} [options.updates] Extra HMR update policies merged over the manifest's.
  * @param {string} [options.sourceManifestUrl] Dev module manifest.
+ * @param {boolean} [options.liveReload] Development: a page without Lua
+ *   islands has no VM for HMR, so it reloads on changes (dev_reload.js).
  */
 export async function bootIslands({
   luaGlobals = {},
@@ -196,9 +212,13 @@ export async function bootIslands({
   sourceManifestUrl = "/__hydronium/dev/manifest.json",
   hydroniumBaseUrl = "/hydronium-src",
   manifestUrl = "/__hydronium/client_manifest.json",
+  liveReload = false,
 } = {}) {
   const islands = luaIslands(readJson("__HYDRONIUM_CLIENT_PLAN__"));
-  if (islands.length === 0) return { lua: null, islands, hydrated: Promise.resolve([]), remount: async () => {} };
+  if (islands.length === 0) {
+    if (liveReload) await import("./dev_reload.js");
+    return { lua: null, islands, hydrated: Promise.resolve([]), loaded: Promise.resolve([]), remount: async () => {} };
+  }
 
   const release = readJson("__HYDRONIUM_BOOT__");
   let manifest = null;
@@ -228,7 +248,24 @@ export async function bootIslands({
   });
   if (hmr) {
     const { installHmr } = await import("./hmr.js");
-    installHmr({ lua: result.lua, remount: result.remount, updates: { ...manifest.updates, ...updates } });
+    installHmr({ lua: result.lua, remount: result.remount, reloadWhenNotLive: true, updates: { ...manifest.updates, ...updates } });
   }
   return result;
+}
+
+/**
+ * bootIslands() without waiting on deferred islands: resolves `ready` once
+ * every "load"-priority island has hydrated (at once when there are none),
+ * while idle/visible islands keep their own schedule. Errors are reported,
+ * not thrown, so a page's own startup is never blocked by an island.
+ *
+ * @returns {{ ready: Promise<void>, booted: Promise<object> }}
+ */
+export function startIslands(options = {}) {
+  const islands = luaIslands(readJson("__HYDRONIUM_CLIENT_PLAN__"));
+  const eager = islands.some((island) => !island.hydrate || island.hydrate === "load");
+  const booted = bootIslands(options);
+  booted.catch((error) => console.error("[hydronium] islands failed to boot:", error));
+  const ready = eager ? booted.then((result) => result.loaded).then(() => {}, () => {}) : Promise.resolve();
+  return { ready, booted };
 }

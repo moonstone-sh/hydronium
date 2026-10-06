@@ -110,6 +110,9 @@ const APPLY_BATCH_LUA = `
  *   `mount()`. It may use the Lua VM's optional snapshot/restore hooks.
  * @param {(apply: () => void) => void} [options.schedule] Runs an accepted
  *   batch at a host-safe boundary. Defaults to `requestAnimationFrame`.
+ * @param {boolean} [options.reloadWhenNotLive] Server-rendered pages (Lua
+ *   islands): a module the VM has not loaded is rendered by the server, so an
+ *   "installed" outcome reloads the page instead of silently doing nothing.
  * @returns {{ close: () => void }}
  */
 export function installHmr(options) {
@@ -122,6 +125,7 @@ export function installHmr(options) {
     onFullReload,
     remount,
     schedule,
+    reloadWhenNotLive = false,
   } = options || {};
 
   if (!lua) throw new Error("hydronium.client.hmr: `lua` (the engine mount() returned) is required");
@@ -322,6 +326,10 @@ export function installHmr(options) {
     }
     if (result.failed > 0) {
       fullReload({ reason: "an instance failed to refresh", paths, ids, ...result });
+      return;
+    }
+    if (reloadWhenNotLive && result.outcome === "installed") {
+      fullReload({ reason: "changed module is not live in a browser island; the server renders it", paths, ids, ...result });
       return;
     }
     report({

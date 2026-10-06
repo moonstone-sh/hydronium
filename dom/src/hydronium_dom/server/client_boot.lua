@@ -6,7 +6,8 @@
   `d.lua.island` has been rendered and recorded in the plan. It emits
   nothing for a page without Lua islands -- that page never starts a Lua
   engine. Otherwise, in a release build with a split Ballad bundle
-  (`islands` in hydronium.sources.lua), it emits:
+  (`islands` in hydronium.sources.lua), it emits (preload hints only when
+  some island hydrates on "load"):
 
     - <link rel="modulepreload"> for the island bootstrap's module graph,
     - low-priority <link rel="preload"> for engine.wasm and the chunks,
@@ -100,7 +101,10 @@ function M.chunks_for(modules)
   return urls
 end
 
---- @param props? { bootstrap_url?: string }
+--- @param props? { bootstrap_url?: string, bundle?: boolean }
+---   `bundle = false` in development: a bundle left on disk by an earlier
+---   release build is not what the dev server serves (it serves modules), and
+---   request handlers cannot see Meteorite's build mode themselves.
 function M.ClientBoot(props)
   props = props or {}
   local islands = M.lua_islands(server.current_client_plan())
@@ -112,19 +116,28 @@ function M.ClientBoot(props)
       modules[#modules + 1] = island.module
     end
   end
-  local chunks = M.chunks_for(modules)
+  local chunks = props.bundle ~= false and M.chunks_for(modules) or {}
   if #chunks == 0 then return nil end
 
   local d = require("hydronium_dom").d
   local base = (props.bootstrap_url or M.BOOTSTRAP_URL):gsub("/+$", "")
   local out = {}
-  for _, path in ipairs(M.BOOTSTRAP_MODULES) do
+  -- Hints only when something hydrates on load: islands that wait for idle
+  -- or visibility start the VM later (islands.js), so fetching the engine up
+  -- front would spend bandwidth the first paint and the reader may never need.
+  local eager = false
+  for _, island in ipairs(islands) do
+    if island.hydrate == nil or island.hydrate == "load" then eager = true end
+  end
+  for _, path in ipairs(eager and M.BOOTSTRAP_MODULES or {}) do
     out[#out + 1] = d.link({ rel = "modulepreload", href = base .. "/" .. path })
   end
-  out[#out + 1] = d.link({ rel = "preload", href = base .. "/" .. M.ENGINE_WASM, as = "fetch",
-    type = "application/wasm", crossorigin = "anonymous", fetchpriority = "low" })
-  for _, url in ipairs(chunks) do
-    out[#out + 1] = d.link({ rel = "preload", href = url, as = "fetch", crossorigin = "anonymous", fetchpriority = "low" })
+  if eager then
+    out[#out + 1] = d.link({ rel = "preload", href = base .. "/" .. M.ENGINE_WASM, as = "fetch",
+      type = "application/wasm", crossorigin = "anonymous", fetchpriority = "low" })
+    for _, url in ipairs(chunks) do
+      out[#out + 1] = d.link({ rel = "preload", href = url, as = "fetch", crossorigin = "anonymous", fetchpriority = "low" })
+    end
   end
   out[#out + 1] = d.script({ id = "__HYDRONIUM_BOOT__", type = "application/json" },
     json.encode({ chunks = chunks, hmr = false }))

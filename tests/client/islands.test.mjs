@@ -116,6 +116,7 @@ test("hydrates each top-level island in its own range, in order, with its props"
       engineProvider: { create: async () => engine.lua },
     });
     assert.deepEqual(await result.hydrated, []);
+    assert.deepEqual(await result.loaded, []);
     assert.deepEqual(engine.renders.map((r) => [r.id, r.module, r.hydrate]), [
       ["hy:i1", "components.Counter", true],
       ["hy:i2", "components.Panel", true],
@@ -127,6 +128,41 @@ test("hydrates each top-level island in its own range, in order, with its props"
     assert.deepEqual(engine.renders.slice(2).map((r) => [r.id, r.hydrate]), [["hy:i1", false], ["hy:i2", false]]);
   } finally {
     globalThis.fetch = originalFetch;
+    boundaries._reset();
+  }
+});
+
+test("a page whose islands all wait for visibility starts no VM until one is visible", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalObserver = globalThis.IntersectionObserver;
+  let reveal;
+  globalThis.IntersectionObserver = class {
+    constructor(callback) { reveal = () => callback([{ isIntersecting: true }]); }
+    observe() {}
+    disconnect() {}
+  };
+  globalThis.fetch = async () => ({ ok: true, text: async () => "return {}" });
+  boundaries._reset();
+  const { doc } = fakeDocument(["#hy:i:hy:i1:lua", "button", "#hy:/i:hy:i1"]);
+  const engine = fakeEngine();
+  let created = 0;
+  try {
+    const pending = hydrateIslands({
+      root: doc,
+      islands: [{ id: "hy:i1", interpreter: "lua", module: "components.Counter", props: {}, hydrate: "visible" }],
+      chunkUrls: ["/runtime.lua"],
+      engineProvider: { create: async () => { created++; return engine.lua; } },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(created, 0, "no engine before the island is visible");
+    reveal();
+    const result = await pending;
+    await result.hydrated;
+    assert.equal(created, 1);
+    assert.deepEqual(engine.renders.map((r) => r.id), ["hy:i1"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.IntersectionObserver = originalObserver;
     boundaries._reset();
   }
 });
