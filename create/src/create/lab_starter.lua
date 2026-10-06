@@ -28,7 +28,7 @@ local DEPENDENCIES = [==[
 # release closure.
 [[dependencies]]
 name = "hydronium/lab"
-constraint = "^0.3.5"
+constraint = "^0.3.6"
 role = "dev"
 
 [[dependencies]]
@@ -38,7 +38,7 @@ role = "dev"
 
 [[dependencies]]
 name = "hydronium/meteorite"
-constraint = "^0.3.5"
+constraint = "^0.3.6"
 role = "dev"
 
 [[dependencies]]
