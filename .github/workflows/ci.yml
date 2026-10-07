@@ -245,6 +245,8 @@ jobs:
         run: node js/scripts/check-vite-vendor-drift.mjs
       - name: Plugin unit tests
         run: node --test js/packages/vite/tests/plugin.test.mjs
+      - name: LUAX grammar (every .luax file, against the lexer-mirroring scanner)
+        run: node --test js/packages/vscode-luax/test/grammar.test.mjs
       - name: Install Chromium for browser gates
         working-directory: js
         run: pnpm exec playwright install --with-deps chromium

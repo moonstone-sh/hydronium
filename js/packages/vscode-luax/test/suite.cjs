@@ -140,6 +140,18 @@ exports.run = async function run() {
     if (text !== "return <d.div>a</d.div>") throw new Error("remove: " + text);
   });
 
+  await check("Format Document formats .luax with Hydronium's formatter", async () => {
+    const { doc, editor } = await open("Complete.luax");
+    await setText(editor, 'return   <d.div   class="a"><d.span>x</d.span></d.div>\n');
+    const edits = await vscode.commands.executeCommand("vscode.executeFormatDocumentProvider", doc.uri, { tabSize: 2, insertSpaces: true });
+    if (!edits || !edits.length) throw new Error("no edits");
+    const we = new vscode.WorkspaceEdit();
+    for (const e of edits) we.replace(doc.uri, e.range, e.newText);
+    await vscode.workspace.applyEdit(we);
+    const expected = 'return <d.div class="a">\n  <d.span>x</d.span>\n</d.div>\n';
+    if (doc.getText() !== expected) throw new Error(JSON.stringify(doc.getText()));
+  });
+
   await check("one language server instance reports each .luax problem once", async () => {
     const { doc } = await open("App.luax");
     const all = vscode.languages.getDiagnostics(doc.uri).filter((d) => d.range.start.line === 4 && /disabled/.test(doc.lineAt(4).text.slice(d.range.start.character)));

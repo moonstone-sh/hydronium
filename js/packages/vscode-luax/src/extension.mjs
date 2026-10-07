@@ -116,6 +116,68 @@ async function startClient(context) {
   await client.start();
 }
 
+// Format Document for .luax: Hydronium's LUAX formatter (the same one
+// `luax format` runs), executed by the wasm Lua engine bundled in
+// dist/engine, over the formatter sources the extension already ships in src/.
+let formatterEngine = null;
+async function luaxFormatter(context) {
+  formatterEngine ||= (async () => {
+    const { readFileSync, readdirSync, statSync } = await import("node:fs");
+    const { pathToFileURL } = await import("node:url");
+    const engineDir = join(context.extensionPath, "dist", "engine");
+    // A runtime import: the engine is an ES module next to this bundle.
+    const load = new Function("url", "return import(url)");
+    const { default: createModule } = await load(pathToFileURL(join(engineDir, "luals.mjs")).href);
+    const M = await createModule({ locateFile: (file) => join(engineDir, file), onLualsEmit() {} });
+    const enc = new TextEncoder();
+    const withBuffer = (data, fn) => {
+      const bytes = typeof data === "string" ? enc.encode(data) : data;
+      const ptr = M._malloc(bytes.length + 1);
+      M.HEAPU8.set(bytes, ptr);
+      M.HEAPU8[ptr + bytes.length] = 0;
+      try { return fn(ptr, bytes.length); } finally { M._free(ptr); }
+    };
+    const result = () => M.UTF8ToString(M._luals_result(), M._luals_result_len());
+    const invoke = (fn, data) => withBuffer(fn, (fp) => withBuffer(data, (p, n) => {
+      if (M._luals_invoke(fp, p, n) !== 0) throw new Error(result());
+      return result();
+    }));
+    if (M._luals_init() !== 0) throw new Error("formatter engine failed to start");
+    withBuffer(readFileSync(join(engineDir, "shim.lua")), (p, n) => withBuffer("@/luals/shim.lua", (np) => {
+      if (M._luals_run(p, n, np) !== 0) throw new Error(result());
+    }));
+    const src = join(context.extensionPath, "src");
+    const walk = (dir) => {
+      for (const name of readdirSync(dir)) {
+        const path = join(dir, name);
+        if (statSync(path).isDirectory()) walk(path);
+        else if (name.endsWith(".lua")) invoke("write", `/hydronium/luax/src${path.slice(src.length)}\0${readFileSync(path, "utf8")}`);
+      }
+    };
+    walk(src);
+    return (text) => invoke("format_luax", text);
+  })();
+  return formatterEngine;
+}
+
+function formatting(context) {
+  return vscode.languages.registerDocumentFormattingEditProvider(LANGUAGE, {
+    async provideDocumentFormattingEdits(document) {
+      const original = document.getText();
+      let text;
+      try {
+        text = (await luaxFormatter(context))(original);
+      } catch (error) {
+        vscode.window.showWarningMessage(`Hydronium LUAX: cannot format (${String(error.message || error).split("\n")[0]})`);
+        return [];
+      }
+      if (original.endsWith("\n") && !text.endsWith("\n")) text += "\n";
+      if (text === original) return [];
+      return [vscode.TextEdit.replace(new vscode.Range(document.positionAt(0), document.positionAt(original.length)), text)];
+    },
+  });
+}
+
 // Linked editing: typing in `<d.div>` renames `</d.div>`.
 function linkedEditing() {
   return vscode.languages.registerLinkedEditingRangeProvider(LANGUAGE, {
@@ -205,7 +267,7 @@ function tagCommands() {
 export async function activate(context) {
   globalThis.__hydroniumLuaxContext = context;
   output = vscode.window.createOutputChannel("Hydronium LUAX");
-  context.subscriptions.push(output, linkedEditing(), autoClose(), ...tagCommands());
+  context.subscriptions.push(output, linkedEditing(), autoClose(), formatting(context), ...tagCommands());
   context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(() =>
     vscode.commands.executeCommand("hydroniumLuax.restartServer")));
   await startClient(context);

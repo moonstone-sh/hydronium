@@ -96,7 +96,20 @@ await pump(() => responses.has(hid));
 console.log(`hover in ${(performance.now() - t).toFixed(0)} ms: ${responses.get(hid)?.result?.contents?.value?.split("\n").slice(0, 2).join(" ").slice(0, 140)}`);
 console.log(`wasm memory: ${(M.HEAPU8.length / 1048576).toFixed(0)} MB`);
 
+// Formatting: .lua through LuaLS (EmmyLuaCodeStyle), .luax through Hydronium's formatter.
+const muri = "file:///workspace/messy.lua";
+const messy = "local   x={1,2,3}\nif x then print( x ) end\n";
+notify("textDocument/didOpen", { textDocument: { uri: muri, languageId: "lua", version: 1, text: messy } });
+const fid = request("textDocument/formatting", { textDocument: { uri: muri }, options: { tabSize: 2, insertSpaces: true } });
+await pump(() => responses.has(fid));
+const formatted = (responses.get(fid)?.result || [])[0]?.newText || "";
+console.log("lua formatting:", JSON.stringify(formatted));
+const luaxFormatted = invoke("format_luax", 'return   <d.div   class="a"><d.span>x</d.span></d.div>\n');
+console.log("luax formatting:", JSON.stringify(luaxFormatted));
+
 const fails = [];
+if (!formatted.includes("local x = { 1, 2, 3 }")) fails.push("lua formatting");
+if (!luaxFormatted.includes('<d.div class="a">') || !luaxFormatted.includes("  <d.span>x</d.span>")) fails.push("luax formatting");
 if (!(diagnostics.get(uri) || []).some((d) => d.code === "assign-type-mismatch" && d.range.start.line === 4 && d.range.start.character === 16)) fails.push("diagnostic at 5:17");
 if (!items.some((i) => i.label === "button") || items.length < 100) fails.push("<d. completion");
 if (!/HTMLButtonProps/.test(responses.get(hid)?.result?.contents?.value || "")) fails.push("hover");

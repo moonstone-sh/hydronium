@@ -14,6 +14,8 @@ Editor support for [Hydronium](https://github.com/moonstone-sh/hydronium)'s
   renames its closing tag (linked editing), and *LUAX: Rename Tag*,
   *Remove Tag* and *Unwrap Tag* work on the tag at the cursor. Emmet
   abbreviations expand to LUAX tags.
+- **Format Document:** `.luax` with Hydronium's LUAX formatter (bundled, no
+  Lua install needed); `.lua` with lua-language-server's formatter.
 - **Snippets** for typed components.
 
 ## Requirements

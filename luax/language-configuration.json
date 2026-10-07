@@ -81,7 +81,7 @@
   ],
   "indentationRules": {
     "increaseIndentPattern": "^\\s*(else|elseif|do|then|repeat)\\b|^((?!--).)*(\\bfunction\\b(?!.+\\bend\\b)|\\bthen\\b|\\bdo\\b|\\brepeat\\b|\\{|\\(|<[a-zA-Z_][a-zA-Z0-9_\\-\\.]*(\\s+[^>]*)?>\\s*)$",
-    "decreaseIndentPattern": "^\\s*(elseif|else|end|until|\\}|\\)|\\/>|<\\/[a-zA-Z_][a-zA-Z0-9_\\-\\.]*>)\\b"
+    "decreaseIndentPattern": "^\\s*((elseif|else|end|until)\\b|\\}|\\)|/>|</[a-zA-Z_][a-zA-Z0-9_\\-\\.]*\\s*>)"
   },
   "folding": {
     "markers": {

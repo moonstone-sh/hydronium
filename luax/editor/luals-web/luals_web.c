@@ -15,6 +15,7 @@
 #include "lauxlib.h"
 
 int luaopen_lpeglabel(lua_State *L);
+int luaopen_code_format(lua_State *L);  // EmmyLuaCodeStyle (C++), LuaLS's formatter
 
 EM_JS(void, js_emit, (int kind, const char *ptr, size_t len), {
   Module.onLualsEmit(kind, UTF8ToString(ptr, len));
@@ -47,6 +48,8 @@ EMSCRIPTEN_KEEPALIVE int luals_init(void) {
   luaL_getsubtable(L, LUA_REGISTRYINDEX, LUA_PRELOAD_TABLE);
   lua_pushcfunction(L, luaopen_lpeglabel);
   lua_setfield(L, -2, "lpeglabel");
+  lua_pushcfunction(L, luaopen_code_format);
+  lua_setfield(L, -2, "code_format");
   lua_pop(L, 1);
   lua_register(L, "__host_emit", host_emit);
   lua_register(L, "__host_now", host_now);
