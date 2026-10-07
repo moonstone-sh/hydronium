@@ -251,11 +251,13 @@ local modules = {
   ["bee.epoll"] = { create = function() return nil end },
   ["bee.filewatch"] = { create = function() return { add = function() end, set_recursive = function() end, set_follow_symlinks = function() end, set_filter = function() end, select = function() return nil end } end },
   ["bee.windows"] = { filemode = function() end },
-  -- The C++ formatter is not built in: formatting and the code-style check
-  -- report nothing.
+  -- Only when the engine was built without EmmyLuaCodeStyle: formatting and
+  -- the code-style check then report nothing.
   ["code_format"] = setmetatable({}, { __index = function() return function() return false end end }),
 }
-for name, mod in pairs(modules) do package.preload[name] = function() return mod end end
+for name, mod in pairs(modules) do
+  if not package.preload[name] then package.preload[name] = function() return mod end end
+end
 
 ---------------------------------------------------------------- pub / brave: tasks run in place
 local brave = { ability = {}, id = 0 }
@@ -311,6 +313,16 @@ end
 if __host_emit then
   LUALS.emit = function(text) __host_emit(1, text) end
   LUALS.log = function(level, msg) __host_emit(2, tostring(level) .. ": " .. tostring(msg)) end
+end
+-- .luax formatting: Hydronium's LUAX formatter (lua-language-server formats
+-- .lua with EmmyLuaCodeStyle, but leaves plugin-lowered .luax alone).
+local luaxPath = false
+function LUALS.format_luax(text)
+  if not luaxPath then
+    package.path = "/hydronium/luax/src/?.lua;/hydronium/luax/src/?/init.lua;" .. package.path
+    luaxPath = true
+  end
+  return require("hydronium_luax.formatter").format(text)
 end
 function LUALS.boot()
   dofile("/luals/boot.lua")

@@ -171,7 +171,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/luax"
-constraint = "^0.2.5"
+constraint = "^0.2.6"
 role = "runtime"
 
 [[dependencies]]

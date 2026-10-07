@@ -6,7 +6,7 @@
 //
 // `node build.mjs --package` also writes luax/hydronium-luax-<version>.vsix.
 import { build } from "esbuild";
-import { cpSync, rmSync, mkdirSync, readFileSync } from "node:fs";
+import { cpSync, rmSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -18,6 +18,7 @@ const dist = join(luax, "dist");
 
 rmSync(join(dist, "extension.cjs"), { force: true });
 rmSync(join(dist, "types"), { recursive: true, force: true });
+rmSync(join(dist, "engine"), { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 
 await build({
@@ -36,7 +37,13 @@ await build({
 cpSync(join(repo, "core/types"), join(dist, "types/core"), { recursive: true });
 cpSync(join(luax, "types"), join(dist, "types/luax"), { recursive: true });
 cpSync(join(repo, "dom/types"), join(dist, "types/dom"), { recursive: true });
-console.log("built luax/dist/extension.cjs and luax/dist/types");
+// The wasm Lua engine (luax/editor/luals-web) runs Hydronium's LUAX formatter
+// for Format Document: lua-language-server leaves plugin-lowered .luax alone.
+const engine = join(luax, "editor/luals-web/dist");
+if (!existsSync(join(engine, "luals.wasm"))) throw new Error("build luax/editor/luals-web first (./build.sh)");
+mkdirSync(join(dist, "engine"), { recursive: true });
+for (const f of ["luals.mjs", "luals.wasm", "shim.lua"]) cpSync(join(engine, f), join(dist, "engine", f));
+console.log("built luax/dist/extension.cjs, luax/dist/types and luax/dist/engine");
 
 if (process.argv.includes("--package")) {
   const { version } = JSON.parse(readFileSync(join(luax, "package.json"), "utf8"));
