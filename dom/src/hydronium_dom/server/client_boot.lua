@@ -6,11 +6,13 @@
   `d.lua.island` has been rendered and recorded in the plan. It emits
   nothing for a page without Lua islands -- that page never starts a Lua
   engine. Otherwise, in a release build with a split Ballad bundle
-  (`islands` in hydronium.sources.lua), it emits (preload hints only when
-  some island hydrates on "load"):
+  (`islands` in hydronium.sources.lua), it emits:
 
-    - <link rel="modulepreload"> for the island bootstrap's module graph,
-    - low-priority <link rel="preload"> for engine.wasm and the chunks,
+    - <link rel="modulepreload"> for islands.js and its two static imports,
+    - when some island hydrates on "load": modulepreloads for the VM boot
+      path (mount.js imports it once an island triggers), and low-priority
+      <link rel="preload"> for engine.wasm and the chunks those islands need
+      (idle/visible islands fetch theirs when they start),
     - <script id="__HYDRONIUM_BOOT__" type="application/json"> with the chunk
       URLs in load order (shared runtime first, then each island's chunk),
       read by /js/bootstrap/islands.js.
@@ -32,12 +34,19 @@ M.CLIENT_DIR = ".hydronium/client"
 M.CLIENT_URL = "/__hydronium/client"
 M.BOOTSTRAP_URL = "/js/bootstrap"
 
--- islands.js and everything it imports, plus the engine's own modules.
-M.BOOTSTRAP_MODULES = {
-  "islands.js", "mount.js", "dom_bridge.js", "host_capabilities.js", "engine_provider.js",
-  "priority.js", "boundary_registry.js",
+-- islands.js and its static imports: what any page with Lua islands loads.
+M.ISLAND_MODULES = { "islands.js", "priority.js", "boundary_registry.js" }
+-- The VM boot path islands.js imports when the first island triggers,
+-- plus the engine's own modules.
+M.BOOT_MODULES = {
+  "mount.js", "dom_bridge.js", "host_capabilities.js", "engine_provider.js",
   "vendor/lua-wasm/5.4.9/engine.js", "vendor/lua-wasm/5.4.9/task-runtime.mjs",
 }
+-- Both, in load order (kept for callers that preload everything).
+M.BOOTSTRAP_MODULES = {}
+for _, list in ipairs({ M.ISLAND_MODULES, M.BOOT_MODULES }) do
+  for _, path in ipairs(list) do M.BOOTSTRAP_MODULES[#M.BOOTSTRAP_MODULES + 1] = path end
+end
 M.ENGINE_WASM = "vendor/lua-wasm/5.4.9/engine.wasm"
 
 local graph_cache
@@ -109,11 +118,14 @@ function M.ClientBoot(props)
   props = props or {}
   local islands = M.lua_islands(server.current_client_plan())
   if #islands == 0 then return nil end
-  local modules, seen = {}, {}
+  local modules, eager_modules, seen = {}, {}, {}
   for _, island in ipairs(islands) do
     if type(island.module) == "string" and not seen[island.module] then
       seen[island.module] = true
       modules[#modules + 1] = island.module
+    end
+    if type(island.module) == "string" and (island.hydrate == nil or island.hydrate == "load") then
+      eager_modules[#eager_modules + 1] = island.module
     end
   end
   local chunks = props.bundle ~= false and M.chunks_for(modules) or {}
@@ -122,20 +134,21 @@ function M.ClientBoot(props)
   local d = require("hydronium_dom").d
   local base = (props.bootstrap_url or M.BOOTSTRAP_URL):gsub("/+$", "")
   local out = {}
-  -- Hints only when something hydrates on load: islands that wait for idle
-  -- or visibility start the VM later (islands.js), so fetching the engine up
-  -- front would spend bandwidth the first paint and the reader may never need.
-  local eager = false
-  for _, island in ipairs(islands) do
-    if island.hydrate == nil or island.hydrate == "load" then eager = true end
-  end
-  for _, path in ipairs(eager and M.BOOTSTRAP_MODULES or {}) do
+  -- islands.js runs on every page with Lua islands; preloading its two
+  -- imports saves a request round trip at no bandwidth cost.
+  for _, path in ipairs(M.ISLAND_MODULES) do
     out[#out + 1] = d.link({ rel = "modulepreload", href = base .. "/" .. path })
   end
-  if eager then
+  -- The engine and chunks only for islands that hydrate on load: islands that
+  -- wait for idle or visibility start the VM later, so fetching their code up
+  -- front would spend bandwidth the first paint and the reader may never need.
+  if #eager_modules > 0 then
+    for _, path in ipairs(M.BOOT_MODULES) do
+      out[#out + 1] = d.link({ rel = "modulepreload", href = base .. "/" .. path })
+    end
     out[#out + 1] = d.link({ rel = "preload", href = base .. "/" .. M.ENGINE_WASM, as = "fetch",
       type = "application/wasm", crossorigin = "anonymous", fetchpriority = "low" })
-    for _, url in ipairs(chunks) do
+    for _, url in ipairs(M.chunks_for(eager_modules)) do
       out[#out + 1] = d.link({ rel = "preload", href = url, as = "fetch", crossorigin = "anonymous", fetchpriority = "low" })
     end
   end

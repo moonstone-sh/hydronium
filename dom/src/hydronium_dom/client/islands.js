@@ -21,8 +21,13 @@
   Island props cross as a Lua literal (see mount.js toLuaLiteral): plain
   data only -- no functions, which also could not have been serialized into
   the client plan in the first place.
+
+  mount.js (and through it the engine provider and the DOM bridge) is
+  imported only once the first island's priority fires: a page whose islands
+  all wait for idle or visibility loads this module and two small helpers,
+  not the VM boot path. ClientBoot preloads the boot path when some island
+  hydrates on load, so the dynamic import costs nothing there.
 */
-import { boot, toLuaLiteral } from "./mount.js";
 import { whenPriority } from "./priority.js";
 import * as boundaries from "./boundary_registry.js";
 
@@ -132,6 +137,7 @@ export async function hydrateIslands({ islands, root = document, container, ...b
   // "visible" below the fold downloads and starts nothing until scrolled.
   if (triggers.length > 0) await Promise.race(triggers);
 
+  const { boot, toLuaLiteral } = await import("./mount.js");
   const handle = await boot({
     ...bootOptions,
     entryless: true,

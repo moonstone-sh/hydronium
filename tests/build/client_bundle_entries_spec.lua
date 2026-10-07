@@ -35,6 +35,39 @@ describe("hydronium_ballad client production bundle entries", function()
     assert.same(ids_of(result), { "lib.used", "views.App", "views.Home" })
   end)
 
+  it("ships stubbed modules as stubs and does not walk their requires", function()
+    local store = graph.Graph.new()
+    local project = {
+      store:add_asset({ kind = "hy_module", virtual_path = "views/App.lua",
+        content = 'local barrel = require("pkg")\nreturn barrel',
+        metadata = { hydronium = { module_id = "views.App", target = "client" } } }),
+    }
+    local framework = {
+      store:add_asset({ kind = "file", virtual_path = "pkg/init.lua",
+        content = 'local t = require("pkg.test")\nreturn { helper = t.helper, real = require("pkg.real") }' }),
+      store:add_asset({ kind = "file", virtual_path = "pkg/real.lua", content = "return 1" }),
+      store:add_asset({ kind = "file", virtual_path = "pkg/test/init.lua", content = 'return { helper = require("pkg.test.heavy") }' }),
+      store:add_asset({ kind = "file", virtual_path = "pkg/test/heavy.lua", content = "return 2" }),
+    }
+    local result = client.resolve(fake_ctx(), { { assets = project }, { assets = framework } },
+      { project_entries = true, stub = { "pkg.test" } })
+    assert.same(ids_of(result), { "pkg.init", "pkg.real", "pkg.test.init", "views.App" })
+    local stub
+    for _, asset in ipairs(result.assets) do
+      if asset.kind == "hy_module" and asset.metadata.hydronium.module_id == "pkg.test.init" then stub = asset end
+    end
+    local load_chunk = loadstring or load
+    local chunk, load_err = load_chunk(stub.content)
+    if not chunk then error(load_err) end
+    local module = chunk()
+    local helper = module.helper
+    assert.equal(type(helper), "function")
+    local ok, err = pcall(helper)
+    assert.falsy(ok)
+    assert.truthy(tostring(err):find("pkg.test is not part of production browser bundles", 1, true))
+    assert.truthy(tostring(err):find("helper", 1, true))
+  end)
+
   it("still requires explicit entries without project_entries", function()
     assert.has_error(function() client.resolve(fake_ctx(), { { assets = {} } }, {}) end)
   end)

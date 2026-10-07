@@ -103,13 +103,34 @@ describe("hydronium_dom.server.client_boot", function()
     end)
   end)
 
-  it("skips preload hints when every island waits for idle or visibility", function()
+  it("preloads only islands.js and its imports when every island waits for idle or visibility", function()
     with_manifest(split, function()
       local html = server.render_to_string(H.h("main", nil,
         island("spec.island_counter", { start = 1 }, { hydrate = "visible" }), H.h(client_boot.ClientBoot)))
       assert.equal(#boot_json(html).chunks, 2)
-      assert.falsy(html:find("modulepreload", 1, true))
+      local _, preloads = html:gsub('rel="modulepreload"', "")
+      assert.equal(preloads, #client_boot.ISLAND_MODULES)
+      assert.truthy(html:find("/js/bootstrap/islands.js", 1, true))
+      assert.falsy(html:find("mount.js", 1, true))
       assert.falsy(html:find("engine.wasm", 1, true))
+      assert.falsy(html:find('rel="preload"', 1, true))
+    end)
+  end)
+
+  it("preloads the chunks of load islands only, while the boot list keeps every island's", function()
+    with_manifest(split, function()
+      local html = server.render_to_string(H.h("main", nil,
+        island("spec.island_counter", { start = 1 }),
+        island("spec.island_other", nil, { hydrate = "visible" }),
+        H.h(client_boot.ClientBoot)))
+      local boot = boot_json(html)
+      assert.equal(#boot.chunks, 3)
+      assert.equal(boot.chunks[3], "/__hydronium/client/entry-other-cccc.lua")
+      assert.truthy(html:find("mount.js", 1, true))
+      assert.truthy(html:find("engine.wasm", 1, true))
+      local head = html:gsub('<script id="__HYDRONIUM_BOOT__".-</script>', "")
+      assert.truthy(head:find("entry-counter-bbbb.lua", 1, true))
+      assert.falsy(head:find("entry-other-cccc.lua", 1, true))
     end)
   end)
 
