@@ -2,7 +2,7 @@ manifest_version = 2
 
 [package]
 name = "hydronium/create"
-version = "0.5.8"
+version = "0.5.9"
 kind = "bin"
 description = "Starter project generator and scaffolding tool for Hydronium reactive applications"
 

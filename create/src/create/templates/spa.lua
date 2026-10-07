@@ -332,7 +332,7 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/ballad"
-constraint = "^0.2.5"
+constraint = "^0.2.6"
 role = "runtime"
 
 [[dependencies]]
@@ -342,7 +342,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.6"
+constraint = "^0.3.7"
 role = "runtime"
 
 [[dependencies]]
@@ -414,7 +414,7 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/ballad"
-constraint = "^0.2.5"
+constraint = "^0.2.6"
 role = "runtime"
 
 [[dependencies]]
@@ -424,7 +424,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.6"
+constraint = "^0.3.7"
 role = "runtime"
 
 [[dependencies]]
