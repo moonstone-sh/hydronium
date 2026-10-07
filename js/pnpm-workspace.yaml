@@ -1,3 +1,9 @@
 packages:
   - "packages/*"
   - "examples/*"
+# Install scripts not needed: esbuild runs from its platform package, and the
+# extension is packaged without stored publisher credentials.
+allowBuilds:
+  '@vscode/vsce-sign': false
+  esbuild: false
+  keytar: false

@@ -1,0 +1,4 @@
+local function Good()
+  return <d.section class="ok"><d.button disabled={true}>Go</d.button></d.section>
+end
+return Good
