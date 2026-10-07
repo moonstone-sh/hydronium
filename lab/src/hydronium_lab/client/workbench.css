@@ -568,7 +568,7 @@
 .hydronium-lab__renderer-controls select { min-width:0; max-width:240px; }
 .hydronium-lab__toolbar-menu { position:relative; }
 .hydronium-lab__toolbar-menu summary { min-height:34px; padding:6px 10px; border:1px solid var(--hy-lab-line); border-radius:8px; background:var(--hy-lab-panel-raised); cursor:pointer; white-space:nowrap; }
-.hydronium-lab__toolbar-panel { position:absolute; top:calc(100% + 8px); right:0; z-index:40; width:260px; max-width:80vw; display:grid; gap:12px; padding:16px; border:1px solid var(--hy-lab-line); border-radius:12px; background:var(--hy-lab-panel); box-shadow:0 12px 32px #0008; }
+.hydronium-lab__toolbar-panel { position:absolute; top:calc(100% + 8px); right:0; z-index:40; width:260px; max-width:80vw; max-height:calc(100vh - 160px); overflow:auto; display:grid; grid-template-columns:minmax(0, 1fr); gap:12px; white-space:normal; padding:16px; border:1px solid var(--hy-lab-line); border-radius:12px; background:var(--hy-lab-panel); box-shadow:0 12px 32px #0008; }
 .hydronium-lab__toolbar-panel label { display:grid; gap:5px; }
 .hydronium-lab__toolbar-panel input,.hydronium-lab__toolbar-panel select { width:100%; min-width:0; }
 .hydronium-lab__toolbar-icon { display:grid; place-items:center; width:34px; min-width:34px; padding:0!important; }
