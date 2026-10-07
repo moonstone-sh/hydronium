@@ -18,6 +18,70 @@ function installVisionFilters() {
   }
   document.body.prepend(svg);
 }
+// Preferred color scheme, emulated: browsers do not agree on letting an
+// embedder set a frame's prefers-color-scheme (Chromium ignores the iframe's
+// color-scheme), so the preview rewrites its own conditions instead. Every
+// `(prefers-color-scheme: X)` in same-origin stylesheets (@media, @import,
+// nested rules), in media attributes and in matchMedia() becomes always-true
+// or always-false; `color-scheme` on the root makes light-dark() and form
+// controls follow. Original conditions are kept, so switching is lossless.
+const SCHEME_FEATURE = /\(\s*prefers-color-scheme\s*:\s*(light|dark)\s*\)/gi;
+const ALWAYS = "(min-width: 0px)", NEVER = "(not (min-width: 0px))";
+let emulatedScheme = null;
+const originalMedia = new WeakMap();
+const rewriteScheme = text => text.replace(SCHEME_FEATURE, (_, value) => value.toLowerCase() === emulatedScheme ? ALWAYS : NEVER);
+const mentionsScheme = text => /prefers-color-scheme/i.test(text || "");
+function patchMediaList(list) {
+  if (!list) return;
+  const original = originalMedia.has(list) ? originalMedia.get(list) : list.mediaText;
+  if (!mentionsScheme(original)) return;
+  originalMedia.set(list, original);
+  const next = emulatedScheme ? rewriteScheme(original) : original;
+  if (list.mediaText !== next) list.mediaText = next;
+}
+function patchRules(rules) {
+  for (const rule of rules) {
+    if (rule.media) patchMediaList(rule.media);
+    if (rule.styleSheet) patchSheet(rule.styleSheet);
+    if (rule.cssRules) patchRules(rule.cssRules);
+  }
+}
+function patchSheet(sheet) {
+  let rules;
+  try { rules = sheet.cssRules; } catch { return; } // cross-origin: not ours to read
+  if (rules) patchRules(rules);
+}
+function patchAttributes() {
+  for (const element of document.querySelectorAll("[media]")) {
+    if (!element.hasAttribute("data-lab-media")) {
+      if (!mentionsScheme(element.getAttribute("media"))) continue;
+      element.setAttribute("data-lab-media", element.getAttribute("media"));
+    }
+    const original = element.getAttribute("data-lab-media");
+    element.setAttribute("media", emulatedScheme ? rewriteScheme(original) : original);
+  }
+}
+function applyColorScheme() {
+  for (const sheet of document.styleSheets) patchSheet(sheet);
+  patchAttributes();
+  document.documentElement.style.colorScheme = emulatedScheme || "";
+}
+const nativeMatchMedia = window.matchMedia.bind(window);
+window.matchMedia = query => nativeMatchMedia(emulatedScheme ? rewriteScheme(String(query)) : query);
+// Stories re-render constantly; only additions that can carry a scheme
+// condition (stylesheets, media attributes) trigger a re-scan.
+const STYLE_CARRIERS = "style,link,[media]";
+new MutationObserver(records => {
+  if (!emulatedScheme) return;
+  let relevant = false;
+  for (const record of records) for (const node of record.addedNodes) {
+    if (node.nodeType !== 1) continue;
+    if (node.nodeName === "LINK") node.addEventListener("load", applyColorScheme, { once: true });
+    if (node.matches(STYLE_CARRIERS) || node.querySelector(STYLE_CARRIERS)) relevant = true;
+  }
+  if (relevant) applyColorScheme();
+}).observe(document.documentElement, { childList: true, subtree: true });
+
 import { mount } from "./dom-client/mount.js";
 function literal(value) {
   if (value === null || value === undefined) return "nil";
@@ -48,17 +112,21 @@ try {
   installVisionFilters();
   window.hydroniumLabPreview = {
     async configure(settings) {
-      const { colorSpace = "srgb", vision = "none", width = 800, height = 600 } = settings;
+      const { colorSpace = "srgb", vision = "none", colorScheme = null, width = 800, height = 600 } = settings;
       if (!["srgb", "display-p3", "rec2020"].includes(colorSpace) || (vision !== "none" && !VISION_MATRICES[vision])) throw new Error("Invalid DOM preview environment");
+      if (colorScheme !== null && colorScheme !== "light" && colorScheme !== "dark") throw new Error("Invalid DOM preview color scheme");
+      emulatedScheme = colorScheme;
+      document.documentElement.dataset.labColorScheme = colorScheme || "";
+      applyColorScheme();
       document.documentElement.dataset.labColorSpace = colorSpace;
       document.documentElement.dataset.labVision = vision;
       document.documentElement.style.setProperty("--lab-color-space", colorSpace);
       document.querySelector("#preview").style.filter = vision === "none" ? "" : `url(#lab-vision-${vision})`;
-      await invoke("request", { op: "environment", environment: { colorSpace, vision, width, height } });
+      await invoke("request", { op: "environment", environment: { colorSpace, vision, colorScheme, width, height } });
     },
     request: message => invoke("request", message),
     snapshot: () => invoke("request", { op: "snapshot" }),
-    reloadStyles() { for (const link of document.querySelectorAll('link[rel="stylesheet"]')) { const url = new URL(link.href); url.searchParams.set("revision", Date.now()); link.href = url.href; } },
+    reloadStyles() { for (const link of document.querySelectorAll('link[rel="stylesheet"]')) { link.addEventListener("load", applyColorScheme, { once: true }); const url = new URL(link.href); url.searchParams.set("revision", Date.now()); link.href = url.href; } },
     async replace(sources) {
       const summary = await handle.lua.doString(`return require("hydronium.core.hmr").apply_batch(${literal(sources)}, {effects= ${literal(Object.fromEntries(Object.keys(sources).map(id => [id, "safe"])))} })`);
       if (summary.failed || summary.outcome === "rejected" || summary.outcome === "restart") throw new Error(summary.reason || "Hot update failed");

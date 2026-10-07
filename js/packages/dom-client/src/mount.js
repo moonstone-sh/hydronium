@@ -208,7 +208,7 @@ function fetchChunkSources(chunkUrls) {
  * since their URLs are what the manifest lists.
  */
 async function fetchUnbundledSources({ hydroniumBaseUrl, manifestUrl, appModuleUrl, moduleUrls = {} }) {
-  const appSourcePromise = fetchText(appModuleUrl, "app module");
+  const appSourcePromise = appModuleUrl ? fetchText(appModuleUrl, "app module") : Promise.resolve(null);
   const appModuleEntriesPromise = Promise.all(
     Object.entries(moduleUrls).map(async ([moduleId, url]) => [
       moduleId,
@@ -242,7 +242,7 @@ async function fetchUnbundledSources({ hydroniumBaseUrl, manifestUrl, appModuleU
  * source text. This keeps structured values portable across engine
  * providers and avoids relying on provider-specific object marshalling.
  */
-function toLuaLiteral(value) {
+export function toLuaLiteral(value) {
   if (value === null || value === undefined) return "nil";
   if (typeof value === "boolean" || typeof value === "number") return String(value);
   if (typeof value === "string") return JSON.stringify(value);
@@ -536,7 +536,9 @@ const REQUIRE_LUA = `
   _G.__hydronium_dom = require("hydronium_dom")
   _G.__hydronium_domhost_mod = require("hydronium_dom.host.dom")
   _G.__hydronium_reconciler_mod = require("hydronium.core.reconciler")
-  _G.__hydronium_App = require(__hydronium_app_module_id)
+  if __hydronium_app_module_id then
+    _G.__hydronium_App = require(__hydronium_app_module_id)
+  end
 `;
 
 /*
@@ -632,17 +634,20 @@ export async function boot(options) {
     luaWasmUrl = DEFAULT_LUA_WASM_URL,
     wasmoonUrl = DEFAULT_WASMOON_URL,
     wasmoonWasmUrl = DEFAULT_WASMOON_WASM_URL,
+    // Island pages (hydrateIslands) have no root module: each island
+    // requires its own after boot.
+    entryless = false,
   } = options;
 
   const bundled = Array.isArray(chunkUrls) && chunkUrls.length > 0;
   if (!engineProvider || typeof engineProvider.create !== "function") {
     throw new Error("hydronium.client.mount: engineProvider must expose create(options)");
   }
-  if (!appModuleId) throw new Error("hydronium.client.mount: appModuleId is required");
+  if (!appModuleId && !entryless) throw new Error("hydronium.client.mount: appModuleId is required");
   if (!bundled) {
     if (!hydroniumBaseUrl) throw new Error("hydronium.client.mount: hydroniumBaseUrl is required (or pass chunkUrls)");
     if (!manifestUrl) throw new Error("hydronium.client.mount: manifestUrl is required (or pass chunkUrls)");
-    if (!appModuleUrl) throw new Error("hydronium.client.mount: appModuleUrl is required (or pass chunkUrls)");
+    if (!appModuleUrl && !entryless) throw new Error("hydronium.client.mount: appModuleUrl is required (or pass chunkUrls)");
   }
 
   const containerEl = typeof container === "string" ? document.querySelector(container) : container;
@@ -758,9 +763,11 @@ export async function boot(options) {
         })
         .join("\n");
       await lua.doString(preloadLua);
-      await lua.doString(
-        "package.preload[__hydronium_app_module_id_unbundled] = assert(__hydronium_compile(__hydronium_app_src, __hydronium_app_module_id_unbundled))"
-      );
+      if (appSource !== null) {
+        await lua.doString(
+          "package.preload[__hydronium_app_module_id_unbundled] = assert(__hydronium_compile(__hydronium_app_src, __hydronium_app_module_id_unbundled))"
+        );
+      }
     }
     mark("preload:end");
     await installHostCapability(lua, { name: "dom", version: 1, bindings: bridge, legacyPrefix: "__dom_" });
@@ -783,7 +790,8 @@ export async function boot(options) {
       `);
     }
 
-    lua.global.set("__hydronium_app_module_id", appModuleId);
+    if (appModuleId) lua.global.set("__hydronium_app_module_id", appModuleId);
+    else await lua.doString("__hydronium_app_module_id = nil");
     lua.global.set("__hydronium_hydrate", hydrate === true);
     lua.global.set("__hydronium_hmr_enabled", hmr === true);
 
@@ -792,7 +800,7 @@ export async function boot(options) {
     // the first require so observed importers inherit the declaration.
     if (hmr) {
       const managedEffects = { ...moduleEffects };
-      if (!managedEffects[appModuleId]) managedEffects[appModuleId] = "restart";
+      if (appModuleId && !managedEffects[appModuleId]) managedEffects[appModuleId] = "restart";
       const entries = Object.entries(managedEffects);
       entries.forEach(([id, effects], index) => {
         lua.global.set(`__hydronium_hmr_managed_id_${index}`, id);

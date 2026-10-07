@@ -59,7 +59,7 @@ The component stylesheet scopes its selectors and tokens to `.hydronium-lab`; it
 | Settings | Preferences, PreferencesHeader, NavigationSettings, GridSettings |
 | Actions | ZoomIn, ZoomOut, CenterCanvas, SidebarToggle, PreferencesToggle, PreferencesClose |
 | Args/playback | All exports of hydronium_lab.controls |
-| DOM/mixed adapter | Root, Preview, ViewportPreset, ViewportWidth, ViewportHeight, SaveViewport, ColorSpace, Vision, GamutSupport, InkSize, InkColor, RestartStory from hydronium_lab.dom_document |
+| DOM/mixed adapter | Root, Preview, ViewportPreset, ViewportWidth, ViewportHeight, SaveViewport, ColorScheme, ColorSpace, Vision, GamutSupport, InkSize, InkColor, RestartStory from hydronium_lab.dom_document |
 | Ink adapter | Shell, InkControls, InkPreferences, Document from hydronium_ink_lab.components |
 
 Settings groups are convenient compositions. For a different arrangement, supply ordinary bound inputs using the roles in their component source. `Guide` uses `guide_id` to identify its model. The browser guide installer accepts `createGuide(model, document)` to customize generated guide buttons.

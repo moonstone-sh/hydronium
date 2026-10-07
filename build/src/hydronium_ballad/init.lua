@@ -104,6 +104,13 @@ M.FRAMEWORK_NAMESPACES = { "hydronium", "hydronium_dom", "hydronium_router", "hy
 --- `hydronium_dom.server.meteorite.mount` serves it in release builds and
 --- the page boots with `chunkUrls` instead of per-module fetches.
 ---
+--- When `hydronium.sources.lua` lists `islands = { "components.Counter", ... }`
+--- (the modules pages render through `d.lua.island`), the bundle is split
+--- instead: `runtime-<hash>.lua` (framework core plus modules two islands
+--- share) and `entry-<island>-<hash>.lua` per island, each recorded in the
+--- manifest with its `entry`. Only modules an island reaches are bundled, so
+--- server-only content never ships.
+---
 --- @param p table Ballad partiture builder
 --- @param opts? { config?: string, out?: string, framework_root?: string }
 --- @return table sink node
@@ -134,6 +141,27 @@ function M.client_bundle(p, opts)
   end
 
   local project = luax.compile(topology.classify(project_sources(p, config), { config = config_path }))
+
+  -- Islands: one reachability walk per `d.lua.island` module, split into a
+  -- shared runtime chunk (framework core and anything two islands reach)
+  -- plus one chunk per island. A page loads the runtime and the chunks of
+  -- the islands it rendered (hydronium_dom.server.client_boot); a page with
+  -- no Lua islands loads nothing.
+  if type(config.islands) == "table" and #config.islands > 0 then
+    local sets, names = {}, {}
+    for index, id in ipairs(config.islands) do
+      if type(id) ~= "string" then error("hydronium_ballad.client_bundle: islands[" .. index .. "] must be a module id", 2) end
+      sets[index] = client.minify(client.resolve(project, { entries = { id }, depends_on = framework }), { level = "safe" })
+      names[index] = id
+    end
+    local rest = {}
+    for index = 2, #sets do rest[#rest + 1] = sets[index] end
+    local bundled = client.bundle(sets[1], {
+      split = "entry", entry_names = names, chunk_prefix = "", depends_on = #rest > 0 and rest or nil,
+    })
+    return p.sink.directory(site.manifest(bundled), { out = opts.out or M.CLIENT_DIR })
+  end
+
   local resolved = client.resolve(project, { project_entries = true, depends_on = framework })
   local bundled = client.bundle(client.minify(resolved, { level = "safe" }), { entry = config.entry, chunk_prefix = "" })
   return p.sink.directory(site.manifest(bundled), { out = opts.out or M.CLIENT_DIR })

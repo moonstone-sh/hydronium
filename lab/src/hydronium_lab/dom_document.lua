@@ -21,6 +21,10 @@ M.ViewportPreset = widget("select", "viewport-preset", { ["aria-label"]="Viewpor
 M.ViewportWidth = widget("input", "viewport-width", {type="number", min=1, max=8192, ["aria-label"]="Viewport width"})
 M.ViewportHeight = widget("input", "viewport-height", {type="number", min=1, max=8192, ["aria-label"]="Viewport height"})
 M.SaveViewport = widget("button", "viewport-save", {type="button"}, "Save viewport")
+-- Emulated inside the preview (prefers-color-scheme rules, matchMedia,
+-- light-dark()); "page" follows the Lab page's own scheme.
+M.ColorScheme = widget("select", "color-scheme", { ["aria-label"]="Preferred color scheme" }, {
+  option("page", "Follow page"), option("light", "Light"), option("dark", "Dark") })
 M.ColorSpace = widget("select", "color-space", { ["aria-label"]="Color authoring target" }, {
   option("srgb", "sRGB / RGB"), option("display-p3", "Display P3"), option("rec2020", "Rec. 2020") })
 M.Vision = widget("select", "vision", { ["aria-label"]="Color vision simulation" }, {
@@ -47,7 +51,7 @@ function M.RendererControls()
       menu("Viewport", H.h(H.Fragment, nil, H.h("strong", nil, "Custom viewport"),
         H.h("label", nil, "Width", H.h(M.ViewportWidth)), H.h("label", nil, "Height", H.h(M.ViewportHeight)), H.h(M.SaveViewport))),
       menu("Color & vision", H.h(H.Fragment, nil,
-        H.h("label", nil, "Color target", H.h(M.ColorSpace)), H.h("label", nil, "Vision", H.h(M.Vision)), H.h(M.GamutSupport)))),
+        H.h("label", nil, "Color scheme", H.h(M.ColorScheme)), H.h("label", nil, "Color target", H.h(M.ColorSpace)), H.h("label", nil, "Vision", H.h(M.Vision)), H.h(M.GamutSupport)))),
     H.h("span", { ["data-lab-ink-tools"]="", class="hydronium-lab__ink-toolbar", hidden=true }, H.h(M.InkSize), H.h(M.InkColor)),
     H.h(M.RestartStory))
 end

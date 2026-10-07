@@ -86,6 +86,16 @@ function server.current_lua_island()
   return false
 end
 
+--- The client plan of the render in progress (islands rendered so far, in
+--- tree order), or nil outside a render. A component placed after the page
+--- content -- hydronium_dom.server.client_boot -- reads it to emit exactly
+--- the browser resources those islands need.
+--- @return table|nil
+function server.current_client_plan()
+  if not render_state.pass then return nil end
+  return render_state.client_plan
+end
+
 -- Export HTML helpers on server table
 server.escape_html = html.escape_html
 server.escape_script_content = html.escape_script_content

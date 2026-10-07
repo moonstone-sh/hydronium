@@ -17,6 +17,8 @@ export const RUNTIME_FILES = [
   "dev_reload.js",
   "priority.js",
   "boundary_registry.js",
+  // Lua islands on server-rendered pages (one VM, per-island hydration).
+  "islands.js",
   "forms.js",
   "fetch.js",
   "virtual.js",
