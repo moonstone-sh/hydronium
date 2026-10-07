@@ -65,7 +65,7 @@ local webgpu = canvas.webgpu()                     -- nil without WebGPU (or on 
 local device = webgpu.gpu:requestAdapter():requestDevice()   -- each call suspends until resolved
 local context = canvas.context(ref, "webgpu")      -- GPUCanvasContext|nil
 context:configure({ device = device, format = webgpu.gpu:getPreferredCanvasFormat() })
-local buffer = device:createBuffer({ size = 24, usage = webgpu.BufferUsage.VERTEX | webgpu.BufferUsage.COPY_DST })
+local buffer = device:createBuffer({ size = 24, usage = webgpu.BufferUsage.VERTEX + webgpu.BufferUsage.COPY_DST })  -- distinct bits: + is |
 local pass = encoder:beginRenderPass({ colorAttachments = { { view = context:getCurrentTexture():createView(), loadOp = "clear", storeOp = "store" } } })
 pass["end"](pass)                                  -- `end` is a Lua keyword
 ```
