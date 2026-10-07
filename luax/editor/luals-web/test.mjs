@@ -115,7 +115,16 @@ await pump(() => responses.has(aid));
 const attrs = (responses.get(aid)?.result?.items ?? responses.get(aid)?.result ?? []).map((i) => i.label);
 console.log("attribute completion:", attrs.slice(0, 6).join(" "));
 
+const kuri = "file:///workspace/Canvas.lua";
+notify("textDocument/didOpen", { textDocument: { uri: kuri, languageId: "lua", version: 1, text: 'local canvas = require("hydronium_dom.canvas")\nlocal ctx = canvas.context(nil)\nif ctx then ctx:fillRect("x", 0, 1, 1) end\nif ctx then ctx: end\n' } });
+const kid = request("textDocument/completion", { textDocument: { uri: kuri }, position: { line: 3, character: 16 } });
+await pump(() => responses.has(kid) && (diagnostics.get(kuri) || []).length > 0);
+const ctxItems = (responses.get(kid)?.result?.items ?? responses.get(kid)?.result ?? []).map((i) => i.label);
+console.log("canvas completion:", ctxItems.filter((l) => /fillRect|arc|drawImage|getImageData/.test(l)).join(" "));
+
 const fails = [];
+if (!ctxItems.some((l) => /^fillRect/.test(l)) || !ctxItems.some((l) => /^drawImage/.test(l))) fails.push("canvas context completion");
+if (!(diagnostics.get(kuri) || []).some((x) => x.code === "param-type-mismatch")) fails.push("canvas parameter types");
 if (!attrs.some((l) => /^style/.test(l))) fails.push("attribute completion through require('hydronium_dom').d");
 if (!formatted.includes("local x = { 1, 2, 3 }")) fails.push("lua formatting");
 if (!luaxFormatted.includes('<d.div class="a">') || !luaxFormatted.includes("  <d.span>x</d.span>")) fails.push("luax formatting");

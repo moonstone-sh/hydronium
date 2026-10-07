@@ -10,6 +10,9 @@ local unpack = table.unpack or unpack
 
 local refModule = {}
 
+---@generic T
+---@param initialValue? T
+---@return Ref<T>
 function refModule.createRef(initialValue)
   return {
     _typeof = symbols.REF,

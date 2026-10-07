@@ -3,7 +3,7 @@ manifest_version = 2
 [package]
 name = "hydronium/dom"
 registry_name = "hydronium"
-version = "0.3.7"
+version = "0.3.8"
 kind = "lib"
 description = "Hydronium DOM host, browser client, SSR renderer, and Meteorite adapter"
 

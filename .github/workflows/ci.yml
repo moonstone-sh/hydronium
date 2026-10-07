@@ -190,7 +190,7 @@ jobs:
         run: |
           for browser in chromium firefox webkit; do
             echo "::group::$browser"
-            HYDRONIUM_BROWSER=$browser node --test js/tests/lua_wasm_mount.browser.test.mjs js/tests/lua_wasm_events.browser.test.mjs
+            HYDRONIUM_BROWSER=$browser node --test js/tests/lua_wasm_mount.browser.test.mjs js/tests/lua_wasm_events.browser.test.mjs js/tests/canvas.browser.test.mjs
             echo "::endgroup::"
           done
       - name: Meteorite + Vite production and dual-HMR gates
