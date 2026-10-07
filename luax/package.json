@@ -1,19 +1,46 @@
 {
   "name": "hydronium-luax",
   "displayName": "Hydronium LUAX",
-  "description": "Syntax highlighting, language configuration, and LuaLS integration for .luax (Hydronium's JSX-like Lua syntax extension)",
-  "version": "0.1.0",
+  "description": "LUAX (.luax) and Hydronium MDX: highlighting, completion, hover and diagnostics through lua-language-server with Hydronium's plugin, tag auto-close and linked rename, and tag commands.",
+  "version": "0.2.0",
   "publisher": "hydronium",
-  "engines": {
-    "vscode": "^1.75.0"
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moonstone-sh/hydronium",
+    "directory": "luax"
   },
-  "categories": ["Programming Languages"],
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "lua",
+    "luax",
+    "jsx",
+    "hydronium",
+    "mdx"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "onLanguage:luax",
+    "workspaceContains:**/*.luax",
+    "workspaceContains:**/*.mdx"
+  ],
   "contributes": {
     "languages": [
       {
         "id": "luax",
-        "aliases": ["LUAX", "luax"],
-        "extensions": [".luax"],
+        "aliases": [
+          "LUAX",
+          "luax"
+        ],
+        "extensions": [
+          ".luax"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -26,8 +53,83 @@
       {
         "path": "./syntaxes/luax.tmLanguage.json",
         "scopeName": "source.luax",
-        "injectTo": ["source.lua"]
+        "injectTo": [
+          "source.lua"
+        ]
       }
-    ]
+    ],
+    "snippets": [
+      {
+        "language": "luax",
+        "path": "./snippets/luax.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "hydroniumLuax.renameTag",
+        "title": "Rename Tag",
+        "category": "LUAX"
+      },
+      {
+        "command": "hydroniumLuax.removeTag",
+        "title": "Remove Tag",
+        "category": "LUAX"
+      },
+      {
+        "command": "hydroniumLuax.unwrapTag",
+        "title": "Unwrap Tag (keep children)",
+        "category": "LUAX"
+      },
+      {
+        "command": "hydroniumLuax.restartServer",
+        "title": "Restart Language Server",
+        "category": "LUAX"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "hydroniumLuax.renameTag",
+          "when": "editorLangId == luax"
+        },
+        {
+          "command": "hydroniumLuax.removeTag",
+          "when": "editorLangId == luax"
+        },
+        {
+          "command": "hydroniumLuax.unwrapTag",
+          "when": "editorLangId == luax"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Hydronium LUAX",
+      "properties": {
+        "hydroniumLuax.server.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to `lua-language-server`. Empty: the one bundled with the Lua extension (`sumneko.lua`), then `PATH`."
+        },
+        "hydroniumLuax.autoCloseTags": {
+          "type": "boolean",
+          "default": true,
+          "description": "Insert the closing tag when typing the > of an opening tag."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[luax]": {
+        "editor.linkedEditing": true
+      },
+      "emmet.includeLanguages": {
+        "luax": "html"
+      }
+    }
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In Restricted Mode, lua-language-server asks before loading a LuaLS plugin."
+    }
   }
 }

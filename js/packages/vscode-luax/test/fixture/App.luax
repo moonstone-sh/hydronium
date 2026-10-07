@@ -1,0 +1,10 @@
+---@param props { label: string }
+local function App(props)
+  return (
+    <d.div class="app">
+      <d.button disabled={"yes"} onClick={function() end}>{props.label}</d.button>
+    </d.div>
+  )
+end
+
+return App

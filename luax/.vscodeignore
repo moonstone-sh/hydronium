@@ -1,7 +1,13 @@
-.git/**
-.moonstone/**
-benchmarks/**
-examples/**
-tests/**
-docs/**
-*.vsix
+# Allow-list: the .vsix carries the manifest, the bundled extension and type
+# libraries (dist/), the grammar, snippets, and the LUAX sources the LuaLS
+# plugin loads. Everything else in luax/ (Neovim plugin, tree-sitter, CLI,
+# tests) stays out.
+**
+!package.json
+!VSCODE_README.md
+!LICENSE
+!language-configuration.json
+!dist/**
+!syntaxes/**
+!snippets/**
+!src/**
