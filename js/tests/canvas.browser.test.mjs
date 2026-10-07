@@ -50,6 +50,10 @@ const PAGE = `<!doctype html><meta charset="utf-8"><canvas width="64" height="16
       __report("lua_red", px.data[0])
       __report("lua_len", #px.data)
       __report("measure", ctx:measureText("hello").width > 0)
+      local floats = canvas.typed("Float32Array", { 0.5, -1, 2 })
+      __report("typed_first", floats[0])
+      __report("typed_length", floats.length)
+      __report("typed_zero", canvas.typed("Uint16Array", 4)[3])
       local frames = 0
       canvas.frame(function(t, dt)
         frames = frames + 1
@@ -95,4 +99,7 @@ test("hydronium_dom.canvas draws through canvas@1 in a real browser", async (t) 
   assert.equal(report.lua_len, 4);
   assert.equal(report.measure, true);
   assert.equal(report.frames, 3, "the frame loop stops when the callback returns false");
+  assert.equal(report.typed_first, 0.5, "canvas.typed builds a Float32Array indexed from 0");
+  assert.equal(report.typed_length, 3);
+  assert.equal(report.typed_zero, 0);
 });

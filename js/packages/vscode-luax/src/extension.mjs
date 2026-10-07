@@ -62,6 +62,9 @@ function luaDefaults(context) {
       checkThirdParty: false,
     },
     diagnostics: { globals: ["__luax", "__luax_component", "__luax_fragment"] },
+    // WebGL contexts have ~450 members; LuaLS's default (100) withholds member
+    // completion on larger objects until a prefix is typed.
+    completion: { maxSuggestCount: 1000 },
   };
 }
 
