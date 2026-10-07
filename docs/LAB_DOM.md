@@ -53,6 +53,19 @@ moon exec -- hydronium-lab customize --copy-shell
 
 DOM and mixed configurations use `hydronium_lab.dom_document.Document`; Ink uses its existing document. The generated `.lab/Workbench.luax` is ordinary project code. The underlying DOM preview controller is available as `hydronium_lab.dom_preview`.
 
+## Ink stories in the browser
+
+By default an Ink story runs as a session on the Lab host (`POST /lab/sessions`), which needs the native Yoga library and keeps one Lua session per viewer. A host can run those sessions in the viewer's browser instead: set `ink_transport` in the Lab config to a same-origin module URL (a path, optionally with a query for cache busting).
+
+```lua
+-- .hydronium/lab/config.lua
+return { renderer = "mixed", paths = { ... }, ink_transport = "/assets/ink-lab-transport.js?v=3f2a" }
+```
+
+The Ink preview imports that module and calls its `createInkTransport({ basePath, catalogUrl })`, which returns `{ createSession(), operation(session, envelope), close(session) }` with the same JSON shapes as the HTTP endpoints. `GET <base>/ink/modules` returns the sources it needs: the Ink stories (registered as `hydronium_lab.ink_stories`), their project modules, and the Ink and Ink Lab runtime, without the native modules (`hydronium_ink.yoga_ffi`, `tty_ffi`, `clock`, `terminal_background`, `render`), which the transport provides. A transport typically runs `require("hydronium_ink_lab.service").new(require("hydronium_lab.ink_stories"), {...})` in a Web Worker on lua-wasm with Yoga compiled to WebAssembly. The catalog stays on the host.
+
+The catalog's `generation` is the stories' content fingerprint, so a host that gives each request a fresh Lua state (Meteorite release builds) reports the same catalog on every poll.
+
 ## DOM viewport and color inspection
 
 Declare `viewports = { { name = "Card", width = 480, height = 640 } }` on a story or collection. The picker groups Story-specific, Standard, then User-defined sizes; editable pixel inputs and Save viewport add local project presets. Ink keeps cell dimensions and ANSI/truecolor in its own toolbar.

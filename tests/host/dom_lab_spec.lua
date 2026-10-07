@@ -123,6 +123,56 @@ describe("DOM and mixed Lab", function()
     host.reset_for_test(); os.remove(path)
     _G.H, _G.__luax = previousH, previousRuntime
   end)
+  it("serves Ink story sources to a browser transport named in the config", function()
+    local previousH, previousRuntime = _G.H, _G.__luax
+    local host = require("hydronium_meteorite.lab")
+    local function configure(extra)
+      host.reset_for_test()
+      local path = os.tmpname()
+      local file = io.open(path, "wb")
+      file:write('return { renderer="mixed", roots={"tests/fixtures/lab_mixed"}, module_roots={"tests/fixtures/lab_mixed"}, paths={"tests/fixtures/lab_mixed/Counter.stories.lua","tests/fixtures/lab_mixed/Terminal.stories.lua"}' .. extra .. ' }')
+      file:close()
+      local routes = {}
+      host.mount({ get=function(_, route) routes[route]=true end, post=function() end, delete=function() end }, { config_path=path, base_path="/lab" })
+      return path, routes
+    end
+    local previous = package.path
+    package.path = "tests/fixtures/lab_mixed/?.lua;" .. package.path
+    local context = { header=function() return nil end, json=function(_, first, value) if type(first) == "number" then return value end return first end,
+      text=function(_, status) return status end, bytes=function(_, status, mime, body) return body end }
+
+    local path, routes = configure(', ink_transport="/assets/ink-transport.js?v=1"')
+    assert.truthy(routes["/lab/ink/modules"])
+    assert.truthy(host.ink_preview(context):find('data-lab-ink-transport="/assets/ink-transport.js?v=1"', 1, true))
+    local served = host.ink_modules(context)
+    assert.truthy(served.ok)
+    assert.truthy(served.modules["hydronium_lab.ink_stories"]:find("story_2", 1, true), "only the Ink collection is registered")
+    assert.falsy(served.modules["hydronium_lab.ink_stories"]:find("story_1", 1, true))
+    assert.truthy(served.modules["hydronium_ink_lab.service"])
+    assert.truthy(served.modules["hydronium_ink.host.terminal"])
+    assert.equal(served.modules["hydronium_ink.yoga_ffi"], nil, "the transport supplies native modules")
+    assert.equal(served.modules["hydronium_ink.tty_ffi"], nil)
+    -- A fresh Lua state (release builds use one per request) reports the
+    -- same catalog, so previews do not reopen their story on every poll.
+    local first = host.catalog(context)
+    host.reset_for_test()
+    host.mount({ get=function() end, post=function() end, delete=function() end }, { config_path=path, base_path="/lab" })
+    local second = host.catalog(context)
+    assert.equal(first.generation, second.generation)
+    assert.equal(first.instance, second.instance)
+    os.remove(path)
+
+    path = configure(', ink_transport="//evil.example/x.js"')
+    assert.falsy(pcall(host.ink_preview, context), "a transport must be a same-origin path")
+    os.remove(path)
+    path = configure("")
+    assert.falsy(host.ink_preview(context):find("data-lab-ink-transport", 1, true))
+    os.remove(path)
+    package.path = previous; package.loaded.Counter=nil
+    host.reset_for_test()
+    _G.H, _G.__luax = previousH, previousRuntime
+  end)
+
   it("loads an MDX component and its LUAX import in the DOM Lab preview", function()
     local previousH, previousRuntime = _G.H, _G.__luax
     local host = require("hydronium_meteorite.lab")

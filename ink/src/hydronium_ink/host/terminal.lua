@@ -188,12 +188,30 @@ end
 -- terminalColor objects and lowered only when the frame is encoded.
 local COLOR_CODES = terminalColor.palette
 
--- Only "single" is implemented. Any other truthy `borderStyle` still
--- reserves the 1-cell border in layout (see getBoxMetrics) but paints
--- nothing, since there is no character set registered for it here.
+-- Ink's border styles (the cli-boxes sets). `h`/`v` are the edges; `t`,
+-- `b`, `l`, `r` override one edge where a set differs (arrow). An unknown
+-- truthy `borderStyle` still reserves the 1-cell border in layout (see
+-- getBoxMetrics) but paints nothing.
 local BOX_CHARS = {
-  single = { tl = "\226\148\140", tr = "\226\148\144", bl = "\226\148\148", br = "\226\148\152", h = "\226\148\128", v = "\226\148\130" },
+  single = { tl = "┌", tr = "┐", bl = "└", br = "┘", h = "─", v = "│" },
+  double = { tl = "╔", tr = "╗", bl = "╚", br = "╝", h = "═", v = "║" },
+  round = { tl = "╭", tr = "╮", bl = "╰", br = "╯", h = "─", v = "│" },
+  bold = { tl = "┏", tr = "┓", bl = "┗", br = "┛", h = "━", v = "┃" },
+  singleDouble = { tl = "╓", tr = "╖", bl = "╙", br = "╜", h = "─", v = "║" },
+  doubleSingle = { tl = "╒", tr = "╕", bl = "╘", br = "╛", h = "═", v = "│" },
+  classic = { tl = "+", tr = "+", bl = "+", br = "+", h = "-", v = "|" },
+  arrow = { tl = "↘", tr = "↙", bl = "↗", br = "↖", h = "↓", v = "→", t = "↓", b = "↑", l = "→", r = "←" },
 }
+
+local FLEX_DIRECTIONS = { row = true, column = true, ["row-reverse"] = true, ["column-reverse"] = true }
+
+-- True when `node` sits on a Box whose main axis is horizontal.
+local function inRow(node)
+  local parent = node.parent
+  if not parent or parent.tag ~= "Box" then return false end
+  local direction = (parent.props or {}).flexDirection
+  return not FLEX_DIRECTIONS[direction] or direction == "row" or direction == "row-reverse"
+end
 
 local nodeIdCounter = 0
 local function nextNodeId()
@@ -950,7 +968,16 @@ local function buildYogaTree(node)
         yogaWidth = nil
       end
       node._layoutLines = lines
-      yg:setStyle({ width = yogaWidth, height = math.max(#lines, 1) })
+      local style = { width = yogaWidth, height = math.max(#lines, 1) }
+      if REFLOW_MODES[props.wrap] and not props.width and inRow(node) then
+        -- A row's main axis is horizontal, so stretch never sizes this
+        -- Text; as in Ink, it starts at its natural width and shrinks to
+        -- the space the row leaves it (pass 1), then keeps the width the
+        -- reflow resolved (pass 2).
+        style.flexBasis = node._prewrapWidth or w
+        style.flexShrink = 1
+      end
+      yg:setStyle(style)
       node._styleDirty = false
     end
     return yg
@@ -966,7 +993,9 @@ local function buildYogaTree(node)
   if isNew or node._styleDirty then
     local props = node.props or {}
     yg:setStyle({
-      flexDirection = props.flexDirection == "row" and "row" or "column",
+      -- As in Ink: a Box lays its children out in a row; the implicit root
+      -- (no tag) keeps Yoga's column, so top-level siblings stack.
+      flexDirection = FLEX_DIRECTIONS[props.flexDirection] and props.flexDirection or (node.tag == "Box" and "row" or "column"),
       justifyContent = props.justifyContent,
       alignItems = props.alignItems,
       flexWrap = props.flexWrap,
@@ -1213,12 +1242,12 @@ paintNode = function(node, frame, clip, offsetX, offsetY)
         setCell(frame, x1, y2, chars.bl, { fg = baseFg, bg = bg, dim = baseDim }, clip)
         setCell(frame, x2, y2, chars.br, { fg = baseFg, bg = bg, dim = baseDim }, clip)
         for x = x1 + 1, x2 - 1 do
-          setCell(frame, x, y1, chars.h, { fg = topFg, bg = bg, dim = topDim }, clip)
-          setCell(frame, x, y2, chars.h, { fg = bottomFg, bg = bg, dim = bottomDim }, clip)
+          setCell(frame, x, y1, chars.t or chars.h, { fg = topFg, bg = bg, dim = topDim }, clip)
+          setCell(frame, x, y2, chars.b or chars.h, { fg = bottomFg, bg = bg, dim = bottomDim }, clip)
         end
         for y = y1 + 1, y2 - 1 do
-          setCell(frame, x1, y, chars.v, { fg = leftFg, bg = bg, dim = leftDim }, clip)
-          setCell(frame, x2, y, chars.v, { fg = rightFg, bg = bg, dim = rightDim }, clip)
+          setCell(frame, x1, y, chars.l or chars.v, { fg = leftFg, bg = bg, dim = leftDim }, clip)
+          setCell(frame, x2, y, chars.r or chars.v, { fg = rightFg, bg = bg, dim = rightDim }, clip)
         end
       end
     end

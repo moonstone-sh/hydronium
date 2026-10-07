@@ -106,7 +106,11 @@ local function rebuild(config, revision)
   local records = discovery.plan(config.paths, { roots = config.roots or { "src" } })
   local registry = discovery.registry(records, load_story)
   for _, story in ipairs(registry.stories) do story.renderer = story.renderer or (config.renderer == "dom" and "dom" or "ink") end
-  state.generation = state.generation + 1
+  -- The generation is the stories' content fingerprint, not a counter:
+  -- release builds give each request a fresh Lua state, where a counter
+  -- (or a per-state instance id) would read as a new catalog on every poll
+  -- and make previews reopen their story, losing its state.
+  state.generation = revision
   if state.service then state.service:invalidate(tostring(state.generation), registry) end
   state.registry, state.fingerprint, state.error = registry, revision, nil
   return registry
@@ -234,6 +238,7 @@ function M.mount(app, opts)
   app:get(prefix .. "/dom/bundle", function(c) return require("hydronium_meteorite.lab").dom_bundle(c) end)
   app:get(prefix .. "/dom/preview", function(c) return require("hydronium_meteorite.lab").dom_preview(c) end)
   app:get(prefix .. "/ink/preview", function(c) return require("hydronium_meteorite.lab").ink_preview(c) end)
+  app:get(prefix .. "/ink/modules", function(c) return require("hydronium_meteorite.lab").ink_modules(c) end)
   app:get(prefix .. "/assets/dom-lab.js", function(c) return require("hydronium_meteorite.lab").asset(c, "dom-lab.js") end)
   app:get(prefix .. "/assets/dom-preview.js", function(c) return require("hydronium_meteorite.lab").asset(c, "dom-preview.js") end)
   app:get(prefix .. "/assets/ink-preview.js", function(c) return require("hydronium_meteorite.lab").asset(c, "ink-preview.js") end)
@@ -316,7 +321,7 @@ function M.catalog(c)
   local current, err = refresh()
   if not current then return c:json(500, { ok = false, outcome = "compile_error", message = err }) end
   return c:json({ ok = true, catalog = { version = 1, stories = current.manifest() }, generation = tostring(state.generation),
-    instance = state.instance, error = err })
+    instance = state.fingerprint or state.instance, error = err })
 end
 
 function M.create_session(c)
@@ -420,10 +425,37 @@ function M.dom_preview(c)
     H.h("body", { ["data-lab-base-path"] = base }, H.h("div", { id = "preview" }), H.h("script", { type = "module", src = base .. "/assets/dom-preview.js" }))))
   return c:bytes(200, "text/html; charset=utf-8", "<!doctype html>" .. html, { headers = { ["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self'" } })
 end
+--- Ink story sources for a browser transport (`ink_transport` in the Lab
+--- config): the stories, their project modules and the Ink/Lab runtime,
+--- without the native modules the transport provides.
+function M.ink_modules(c)
+  if not same_origin(c) then return c:text(403, "forbidden") end
+  local ok, sources = pcall(function()
+    local registry, err = refresh()
+    if not registry then error(err, 0) end
+    return require("hydronium_meteorite.dom_lab").sources(load_config(), registry, "ink")
+  end)
+  if not ok then return c:json(500, { ok = false, outcome = "compile_error", message = tostring(sources) }) end
+  return c:json({ ok = true, generation = tostring(state.generation), modules = sources },
+    { headers = { ["Cache-Control"] = "no-store" } })
+end
+
+-- `ink_transport`: a same-origin module URL (path, optional query) that runs
+-- Ink sessions somewhere other than this server, e.g. in a browser worker.
+local function ink_transport_url(value)
+  if value == nil then return nil end
+  if type(value) ~= "string" or not value:match("^/[^/]") or value:find("[%z\r\n\"'<>\\#]") then
+    error("hydronium_meteorite.lab: ink_transport must be a same-origin path such as /assets/ink-transport.js", 0)
+  end
+  return value
+end
+M.ink_transport_url = ink_transport_url
+
 function M.ink_preview(c)
   install_luax_searcher()
   if not same_origin(c) then return c:text(403, "forbidden") end
   local config = load_config()
+  local transport_url = ink_transport_url(config.ink_transport)
   local contract = lab_host.contract({ base_path = config.base_path, client_asset = "assets/ink-preview.js", renderer_stylesheet_asset = "assets/ink.css" })
   local H = require("hydronium")
   local assets = contract.assets
@@ -432,7 +464,8 @@ function M.ink_preview(c)
       H.h("link", { rel = "stylesheet", href = assets.renderer_stylesheet }),
       H.h("style", {}, "html,body{margin:0;padding:0;background:transparent;overflow:hidden} [data-lab-terminal]{margin:0;padding:0;width:max-content;transform:none}")),
     H.h("body", {}, H.h("main", { ["data-hydronium-ink-lab"] = "", ["data-lab-base-path"] = config.base_path,
-      ["data-lab-project"] = (config.project_id or "lab") .. ":ink-preview" },
+      ["data-lab-project"] = (config.project_id or "lab") .. ":ink-preview",
+      ["data-lab-ink-transport"] = transport_url },
       H.h("div", { ["data-lab-terminal"] = "", tabindex = "0", role = "application", ["aria-label"] = "Interactive terminal preview" })),
       H.h("script", { type = "module", src = assets.client }))))
   return c:bytes(200, "text/html; charset=utf-8", "<!doctype html>" .. html)

@@ -20,7 +20,8 @@
   Supported props (see docs/HYDRONIUM_INK_TERMINAL_HOST.md for the full,
   honest scope statement of what each one does and does not do):
 
-    Box:     flexDirection ("row" | "column", default "column")
+    Box:     flexDirection ("row" | "column" | "row-reverse" |
+             "column-reverse", default "row" as in Ink)
              justifyContent ("flex-start" | "center" | "flex-end" |
                "space-between" | "space-around" | "space-evenly")
              alignItems ("auto" | "flex-start" | "center" | "flex-end" |
@@ -40,9 +41,9 @@
              overflow ("visible" | "hidden" | "scroll")
              scrollTop / scrollLeft (integer, controlled cell offsets for
                overflow="scroll"; compose with a signal and useInput)
-             borderStyle ("single" draws real box-drawing characters;
-               any other truthy value reserves border space but draws
-               nothing -- only "single" is implemented)
+             borderStyle (Ink's sets: "single", "double", "round", "bold",
+               "singleDouble", "doubleSingle", "classic", "arrow"; any
+               other truthy value reserves border space but draws nothing)
              borderColor / borderTopColor / borderRightColor /
                borderBottomColor / borderLeftColor (named color, see
              Text's `color` below for accepted values) -- the per-edge props
@@ -163,7 +164,7 @@ end
 --- opaque #RRGGBB, or an sRGB/OKLab/OKLCH value from hydronium/oklab-utils.
 
 ---@class HydroniumInkBoxProps
----@field flexDirection? "row"|"column"
+---@field flexDirection? "row"|"column"|"row-reverse"|"column-reverse" Default "row" (as in Ink).
 ---@field justifyContent? "flex-start"|"center"|"flex-end"|"space-between"|"space-around"|"space-evenly"
 ---@field alignItems? "auto"|"flex-start"|"center"|"flex-end"|"stretch"|"baseline"|"space-between"|"space-around"|"space-evenly"
 ---@field flexWrap? "nowrap"|"wrap"|"wrap-reverse"
@@ -185,7 +186,7 @@ end
 ---@field overflow? "visible"|"hidden"|"scroll"
 ---@field scrollTop? integer Controlled vertical offset in terminal cells.
 ---@field scrollLeft? integer Controlled horizontal offset in terminal cells.
----@field borderStyle? "single"|boolean
+---@field borderStyle? "single"|"double"|"round"|"bold"|"singleDouble"|"doubleSingle"|"classic"|"arrow"|boolean
 ---@field borderColor? HydroniumInkColor
 ---@field borderTopColor? HydroniumInkColor
 ---@field borderRightColor? HydroniumInkColor

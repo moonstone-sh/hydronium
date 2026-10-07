@@ -40,7 +40,7 @@ local function Counter()
   end)
 
   return function()
-    return ink.Box({ borderStyle = "single", paddingX = 1 },
+    return ink.Box({ flexDirection = "column", borderStyle = "single", paddingX = 1 },
       ink.Text({ color = "cyan", bold = true }, "Count: " .. count()),
       ink.Newline(),
       ink.Text({ dimColor = true }, "+ to increment, q to quit")
@@ -82,7 +82,10 @@ example of `useInput`, `useApp`, `useWindowSize`, `Box`, `Spacer`, and
 
 `Box` supports Yoga flexbox properties such as `flexDirection`, `justifyContent`,
 `alignItems`, `flexGrow`, `padding`, `margin`, `width`, `height`, and
-`borderStyle = "single"`. A `Box` with `overflow = "scroll"` is a controlled
+`borderStyle` (Ink's sets: `single`, `double`, `round`, `bold`, `singleDouble`,
+`doubleSingle`, `classic`, `arrow`). As in Ink, a `Box` lays its children out
+in a row unless it sets `flexDirection = "column"`; the root stacks its
+top-level children. A `Box` with `overflow = "scroll"` is a controlled
 viewport: set `scrollTop` and/or `scrollLeft` from application state, normally
 updated by `useInput`; `useBoxMetrics(ref)` reports the effective and maximum
 offsets after layout. `Text` supports `color`, `backgroundColor`, `bold`,

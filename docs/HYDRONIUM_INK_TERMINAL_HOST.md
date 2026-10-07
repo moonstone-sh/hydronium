@@ -170,6 +170,11 @@ five target triples with zero CMake.
   see `hydronium_ink/init.lua`'s doc comment for the full prop list and
   exact accepted string values (they follow real Ink's own naming, e.g.
   `flexWrap: "nowrap"`, not Yoga's internal `NoWrap` spelling).
+- **Since 2026-10-07**, `Box` defaults to `flexDirection: "row"`, as in Ink
+  (the implicit root keeps Yoga's column, so top-level siblings stack), and
+  `borderStyle` draws every Ink set (`single`, `double`, `round`, `bold`,
+  `singleDouble`, `doubleSingle`, `classic`, `arrow`). Before, a Box without
+  `flexDirection` stacked its children and only `single` painted.
 - `borderStyle: "single"` still draws the same real box-drawing characters
   (`┌─┐│└┘`, U+250C/U+2500/U+2510/U+2502/U+2514/U+2518) exactly as before
   — Yoga's own `border` edge occupies the same box-model layer
@@ -232,11 +237,10 @@ integration described (and deliberately not attempted) above:
   (`wrapLine` in `host/terminal.lua`), and reruns `buildYogaTree` +
   `calculateLayout` once more with the wrapped lines pinned to that same
   width (so pass 2 can't trigger a different flex allocation and need a
-  third pass). A Box in the far more common `flexDirection: "column"`
-  case gets this "for free" from Yoga's own default cross-axis stretch;
-  a `flexDirection: "row"` parent has no such mechanism for its own main
-  axis, so a width-less wrapping `Text` inside a row currently has
-  nothing to resolve a width from -- an edge case not solved here.
+  third pass). In a `flexDirection: "column"` Box this comes from Yoga's
+  default cross-axis stretch. In a row (the default since 2026-10-07) the
+  Text starts at its natural width as its `flexBasis` with `flexShrink: 1`,
+  as Ink's Text does, so Yoga shrinks it to the space the row leaves it.
 - **Unicode-aware measurement and painting**: a new
   `hydronium_ink.text_metrics` module replaces every place this host used
   to treat `#text` (byte count) as both display width and paint-loop

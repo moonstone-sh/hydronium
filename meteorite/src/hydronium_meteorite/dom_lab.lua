@@ -21,13 +21,27 @@ local function compile(path, id)
   if not chunk then error(err, 0) end
   return source
 end
-function M.sources(config, registry)
+-- Modules an Ink browser transport supplies itself: they bind native
+-- libraries (Yoga, the TTY) or the host clock.
+local INK_NATIVE = {
+  ["hydronium_ink.yoga_ffi"] = true, ["hydronium_ink.tty_ffi"] = true, ["hydronium_ink.clock"] = true,
+  ["hydronium_ink.terminal_background"] = true, ["hydronium_ink.render"] = true,
+}
+M.ink_native_modules = INK_NATIVE
+
+--- The browser source closure for one renderer's stories. "dom" (default)
+--- feeds the DOM preview; "ink" feeds a browser Ink transport (see
+--- docs/LAB_DOM.md), which runs `hydronium_ink_lab.service` over
+--- `hydronium_lab.ink_stories` and provides INK_NATIVE itself.
+---@param renderer? "dom"|"ink"
+function M.sources(config, registry, renderer)
+  renderer = renderer or "dom"
   local sources, seen, project = {}, {}, {}
   local records = discovery.plan(config.paths, { roots = config.roots })
   local entries = {}
   for index, record in ipairs(records) do
     local include = false
-    for _, story in ipairs(registry.stories) do if story.renderer == "dom" and story.source.path == record.path then include = true end end
+    for _, story in ipairs(registry.stories) do if story.renderer == renderer and story.source.path == record.path then include = true end end
     if include then
     local id = "hydronium_lab.story_" .. index
     -- Normalize collections inside the module so a component re-export cannot
@@ -37,9 +51,12 @@ function M.sources(config, registry)
     entries[#entries + 1] = string.format("(require(%q))", id)
   end
     end
-  sources["hydronium_lab.dom_stories"] = "return require('hydronium_lab').registry({" .. table.concat(entries, ",") .. "})"
-  sources["hydronium_lab.dom_entry"] = "__luax = require('hydronium_luax.runtime'); return require('hydronium_lab.dom_preview').App"
-  project["hydronium_lab.dom_stories"] = true
+  local stories_id = "hydronium_lab." .. renderer .. "_stories"
+  sources[stories_id] = "return require('hydronium_lab').registry({" .. table.concat(entries, ",") .. "})"
+  project[stories_id] = true
+  if renderer == "dom" then
+    sources["hydronium_lab.dom_entry"] = "__luax = require('hydronium_luax.runtime'); return require('hydronium_lab.dom_preview').App"
+  end
   -- The project's declared source topology (hydronium.sources.lua or Ballad's
   -- inventory) resolves namespaced ids like `ui.Button` -> src/components/Button.luax
   -- exactly as the app's dev host does; module_roots stays the fallback for
@@ -59,7 +76,7 @@ function M.sources(config, registry)
     return package.searchpath(id, package.path)
   end
   local function visit(id)
-    if seen[id] then return end
+    if seen[id] or (renderer == "ink" and INK_NATIVE[id]) then return end
     seen[id] = true
     if not sources[id] then
       local path = resolve(id)
@@ -69,12 +86,20 @@ function M.sources(config, registry)
     end
     for _, dependency in ipairs(requires(sources[id])) do visit(dependency) end
   end
-  visit("hydronium_lab.dom_entry")
-  visit("hydronium_dom.host.dom")
-  visit("hydronium_dom")
-  visit("hydronium.core.hmr")
-  visit("hydronium.runtime.hosts")
-  visit("hydronium_lab.dom_stories")
+  if renderer == "ink" then
+    visit("hydronium_luax.runtime")
+    visit("hydronium_ink_lab.service")
+    visit("hydronium_ink_lab.frame")
+    visit("hydronium_ink_lab.snapshot")
+    visit("hydronium_dom.server.json")
+  else
+    visit("hydronium_lab.dom_entry")
+    visit("hydronium_dom.host.dom")
+    visit("hydronium_dom")
+    visit("hydronium.core.hmr")
+    visit("hydronium.runtime.hosts")
+  end
+  visit(stories_id)
   return sources, project
 end
 function M.bundle(sources)
