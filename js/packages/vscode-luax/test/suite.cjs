@@ -108,9 +108,10 @@ exports.run = async function run() {
 
   await check("typing > closes the tag", async () => {
     const { doc, editor } = await open("Complete.luax");
-    await setText(editor, "return <d.article\n");
-    editor.selection = new vscode.Selection(0, "return <d.article".length, 0, "return <d.article".length);
-    await vscode.commands.executeCommand("type", { text: ">" });
+    // Typed one character at a time, so bracket auto-pairing applies as it would for a person.
+    await setText(editor, "return \n");
+    editor.selection = new vscode.Selection(0, "return ".length, 0, "return ".length);
+    for (const ch of "<d.article>") await vscode.commands.executeCommand("type", { text: ch });
     const done = await until(() => doc.getText().startsWith("return <d.article></d.article>") ? true : null, 5000);
     if (!done) throw new Error(JSON.stringify(doc.lineAt(0).text));
     const cursor = editor.selection.active.character;

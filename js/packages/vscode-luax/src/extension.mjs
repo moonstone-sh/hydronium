@@ -137,7 +137,8 @@ function autoClose() {
     if (event.document.languageId !== LANGUAGE || event.reason) return; // reason is set for undo/redo
     if (!vscode.workspace.getConfiguration("hydroniumLuax", event.document).get("autoCloseTags", true)) return;
     const change = event.contentChanges[event.contentChanges.length - 1];
-    if (!change || event.contentChanges.length !== 1 || !change.text.endsWith(">") || change.rangeLength > 0) return;
+    // Only a typed `>`: an auto-inserted or pasted `>` is not the end of a tag being written.
+    if (!change || event.contentChanges.length !== 1 || change.text !== ">" || change.rangeLength > 0) return;
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document !== event.document) return;
     const document = event.document;
