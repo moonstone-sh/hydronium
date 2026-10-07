@@ -32,11 +32,45 @@ async function json(url, options = {}) {
   return value;
 }
 
+// Sessions run on this server over HTTP, or wherever the host's transport
+// module puts them (data-lab-ink-transport, e.g. a browser worker). A module
+// exports createInkTransport({ basePath, catalogUrl }) returning
+// { createSession(), operation(session, envelope), close(session) } with the
+// HTTP endpoints' JSON shapes.
+const httpSessions = {
+  createSession: () => json(transport.createSession, {
+    method: "POST", headers: { "content-type": "application/json", "x-hydronium-lab": "1" }, body: "{}",
+  }),
+  operation: (id, envelope) => json(sessionUrl(transport.sessionOperations, id), {
+    method: "POST", headers: { "content-type": "application/json", "x-hydronium-lab": "1" },
+    body: JSON.stringify(envelope),
+  }),
+  close: (id) => fetch(sessionUrl(transport.closeSession, id), {
+    method: "DELETE", headers: { "x-hydronium-lab": "1" }, keepalive: true,
+  }).catch(() => undefined),
+};
+function checked(value) {
+  if (!value || value.ok === false) throw Object.assign(new Error(value?.message || value?.outcome || "Ink session failed"), { outcome: value?.outcome });
+  return value;
+}
+let sessionsPromise = null;
+function sessions() {
+  const url = root?.dataset.labInkTransport;
+  if (!url) return Promise.resolve(httpSessions);
+  sessionsPromise ??= import(new URL(url, location.href).href).then(async module => {
+    const custom = await module.createInkTransport({ basePath, catalogUrl: transport.catalog });
+    return {
+      createSession: async () => checked(await custom.createSession()),
+      operation: async (id, envelope) => checked(await custom.operation(id, envelope)),
+      close: async (id) => custom.close(id),
+    };
+  });
+  return sessionsPromise;
+}
+
 async function ensureSession() {
   if (session) return;
-  const value = await json(transport.createSession, {
-    method: "POST", headers: { "content-type": "application/json", "x-hydronium-lab": "1" }, body: "{}",
-  });
+  const value = await (await sessions()).createSession();
   session = value.session;
   generation = value.generation;
   sequence = 0;
@@ -49,21 +83,16 @@ async function performRequest(message) {
   }
   await ensureSession();
   sequence += 1;
+  const backend = await sessions();
   try {
-    const value = await json(sessionUrl(transport.sessionOperations, session), {
-      method: "POST", headers: { "content-type": "application/json", "x-hydronium-lab": "1" },
-      body: JSON.stringify({ sequence, generation, request: message }),
-    });
+    const value = await backend.operation(session, { sequence, generation, request: message });
     return value.result;
   } catch (error) {
     if (error.outcome === "session_expired" || error.outcome === "stale_revision") {
       session = null;
       await ensureSession();
       sequence += 1;
-      const value = await json(sessionUrl(transport.sessionOperations, session), {
-        method: "POST", headers: { "content-type": "application/json", "x-hydronium-lab": "1" },
-        body: JSON.stringify({ sequence, generation, request: message }),
-      });
+      const value = await backend.operation(session, { sequence, generation, request: message });
       return value.result;
     }
     throw error;
@@ -135,10 +164,7 @@ window.addEventListener("pagehide", () => {
   window.clearInterval(refreshTimer);
   lab?.close();
   if (!session) return;
-  fetch(sessionUrl(transport.closeSession, session), {
-    method: "DELETE",
-    headers: { "x-hydronium-lab": "1" },
-    keepalive: true,
-  }).catch(() => undefined);
+  const id = session;
   session = null;
+  sessions().then(backend => backend.close(id)).catch(() => undefined);
 }, { once: true });

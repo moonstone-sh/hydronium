@@ -279,7 +279,7 @@ test("scaffold dry-run produces a portable Ink terminal project", function()
   assert(manifest:find('lab = "moon exec --dev -- hydronium-lab dev"', 1, true), "Ink must expose a standalone Lab script")
   assert(manifest:find('name = "hydronium/lab-cli"', 1, true), "Ink Lab must include the standalone Lab CLI tool")
   assert(manifest:find('name = "hydronium/ink-lab"', 1, true), "Ink Lab must include its renderer adapter")
-  assert(manifest:find('name = "hydronium/lab"\nconstraint = "^0.3.6"\nrole = "dev"', 1, true), "Ink Lab renderer must stay dev-only")
+  assert(manifest:find('name = "hydronium/lab"\nconstraint = "^0.3.7"\nrole = "dev"', 1, true), "Ink Lab renderer must stay dev-only")
   local story = require("create.templates.ink").files({ name = "test-ink-app" })["src/App.stories.luax"]
   assert(story:find("lab.collection", 1, true), "Ink must generate a convention Lab story")
 end)

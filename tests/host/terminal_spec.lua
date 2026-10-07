@@ -613,6 +613,44 @@ describe("hydronium.host.terminal -- real Host contract + real ANSI output", fun
     assert.equal(rowText(grid, 1, 1, 10), "HELLOSIDE ", "overflowing 'WORLD' must be clipped, and the sibling's own 'SIDE' must be untouched")
   end)
 
+  it("lays out a Box's children in a row by default, as Ink does, while the root stacks", function()
+    local writes, capture = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    local reconciler = H.Reconciler.new(host)
+    reconciler:mount(H.h(H.Fragment, nil,
+      H.h(ink.Box, nil, H.h(ink.Text, nil, "ab"), H.h(ink.Text, nil, "cd")),
+      H.h(ink.Box, { flexDirection = "row-reverse", width = 6 }, H.h(ink.Text, nil, "ef"), H.h(ink.Text, nil, "gh"))
+    ), host.getRoot())
+    host.flush()
+    local grid = interpretAnsi(table.concat(writes), 6, 2)
+    assert.equal(rowText(grid, 1, 1, 4), "abcd")
+    assert.equal(rowText(grid, 2, 1, 6), "  ghef")
+  end)
+
+  it("draws every Ink border style", function()
+    local expected = { single = "┌", double = "╔", round = "╭", bold = "┏", singleDouble = "╓", doubleSingle = "╒", classic = "+", arrow = "↘" }
+    for style, corner in pairs(expected) do
+      local writes, capture = newCapture()
+      local host = terminalHostModule.createTerminalHost(capture)
+      H.Reconciler.new(host):mount(H.h(ink.Box, { borderStyle = style, width = 4, height = 3 }), host.getRoot())
+      host.flush()
+      assert.equal(interpretAnsi(table.concat(writes), 4, 3)[1][1].ch, corner, style)
+    end
+  end)
+
+  it("wraps an unsized Text against the width a row leaves it", function()
+    local writes, capture = newCapture()
+    local host = terminalHostModule.createTerminalHost(capture)
+    H.Reconciler.new(host):mount(H.h(ink.Box, { width = 9 },
+      H.h(ink.Text, nil, "> "),
+      H.h(ink.Text, { wrap = "wrap" }, "one two three")
+    ), host.getRoot())
+    host.flush()
+    local grid = interpretAnsi(table.concat(writes), 9, 3)
+    assert.equal(rowText(grid, 1, 1, 9):gsub("%s+$", ""), "> one two")
+    assert.equal(rowText(grid, 2, 1, 9):gsub("%s+$", ""), "  three")
+  end)
+
   it("renders a controlled overflow=scroll viewport and exposes its clamped metrics", function()
     local writes, capture, clearWrites = newCapture()
     local host = terminalHostModule.createTerminalHost(capture)
@@ -620,7 +658,7 @@ describe("hydronium.host.terminal -- real Host contract + real ANSI output", fun
     local reconciler = H.Reconciler.new(host)
     local viewportRef = H.createRef()
 
-    reconciler:mount(H.h(ink.Box, { ref = viewportRef, width = 5, height = 2, overflow = "scroll", scrollTop = 1 },
+    reconciler:mount(H.h(ink.Box, { ref = viewportRef, flexDirection = "column", width = 5, height = 2, overflow = "scroll", scrollTop = 1 },
       H.h(ink.Text, nil, "first"),
       H.h(ink.Text, nil, "second"),
       H.h(ink.Text, nil, "third")

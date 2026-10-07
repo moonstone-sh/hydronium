@@ -28,7 +28,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/ink"
-constraint = "^0.5.2"
+constraint = "^0.6.0"
 role = "runtime"
 
 [[dependencies]]
@@ -40,7 +40,7 @@ role = "runtime"
 # `moon run lab` starts a separate loopback Meteorite process.
 [[dependencies]]
 name = "hydronium/lab"
-constraint = "^0.3.6"
+constraint = "^0.3.7"
 role = "dev"
 
 [[dependencies]]
@@ -50,7 +50,7 @@ role = "dev"
 
 [[dependencies]]
 name = "hydronium/meteorite"
-constraint = "^0.3.6"
+constraint = "^0.3.7"
 role = "dev"
 
 [[dependencies]]
