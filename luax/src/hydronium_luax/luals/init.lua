@@ -45,6 +45,14 @@ function plugin.OnSetText(uri, text)
   end
 
   local virtual_code = plugin_mod.virtual_lower(text, uri)
+  -- Bare attributes, as LuaLS positions (row * 10000 + column, 0-based).
+  local bare = {}
+  for _, offset in ipairs(virtual_source.bare_attributes) do
+    local row, line_start = 0, 1
+    for nl in text:sub(1, offset - 1):gmatch("()\n") do row, line_start = row + 1, nl + 1 end
+    bare[row * 10000 + (offset - line_start)] = true
+  end
+  plugin.bare_attributes[uri] = next(bare) and bare or nil
   -- An empty diff list means "this file needs no changes", which is exactly
   -- right for a .luax file containing no JSX at all — its text is already
   -- valid Lua. Do NOT substitute a whole-file {start=1, finish=#text} hunk
@@ -58,6 +66,38 @@ function plugin.OnSetText(uri, text)
   local diffs = compute_diff(text, virtual_code)
   diffs.text = virtual_code
   return diffs
+end
+
+plugin.bare_attributes = {}
+
+--- LuaLS plugin OnTransformAst hook: `<d.input disabled />` means
+--- `disabled = true`. The byte-preserving lowering leaves `disabled` as a
+--- positional entry (a global read: "undefined global"); this turns those
+--- entries into fields, so they are typed against the props like any other.
+--- Walks the tree itself: LuaLS's guide caches would keep the old nodes.
+function plugin.OnTransformAst(uri, ast)
+  local bare = plugin.bare_attributes[uri]
+  if not bare or not ast then return nil end
+  local seen = {}
+  local function visit(node)
+    if type(node) ~= "table" or seen[node] then return end
+    seen[node] = true
+    if node.type == "tableexp" and node.value and node.value.type == "getglobal" and bare[node.value.start] then
+      local name = node.value
+      node.type = "tablefield"
+      node.tindex = nil
+      node.node = node.parent
+      node.field = { type = "field", start = name.start, finish = name.finish, parent = node, [1] = name[1] }
+      node.value = { type = "boolean", start = name.finish, finish = name.finish, parent = node, [1] = true }
+      node.range = name.finish
+      return
+    end
+    for key, child in pairs(node) do
+      if key ~= "parent" and key ~= "node" and type(child) == "table" then visit(child) end
+    end
+  end
+  visit(ast)
+  return ast
 end
 
 --- LuaLS plugin ResolveRequire hook.
@@ -79,5 +119,6 @@ plugin.virtual_source = virtual_source
 -- Expose to LuaLS plugin environment
 OnSetText = plugin.OnSetText
 ResolveRequire = plugin.ResolveRequire
+OnTransformAst = plugin.OnTransformAst
 
 return plugin

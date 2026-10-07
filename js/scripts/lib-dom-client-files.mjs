@@ -10,6 +10,7 @@ export const RUNTIME_FILES = [
   "engine_provider.js",
   "mount.js",
   "dom_bridge.js",
+  "canvas_bridge.js",
   "host_capabilities.js",
   "bootstrap.js",
   "hmr.js",

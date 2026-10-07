@@ -310,7 +310,7 @@ end
 --- @field include? string[] Which `metadata.hydronium.target` values to consider. Default `{"client","shared"}`.
 --- @field deny_getinfo? boolean Refuse (ctx.fail) any reachable module whose source uses `debug.getinfo` for self-location -- amalgamation changes chunknames, breaking that pattern. Default true.
 --- @field enforce_require_discipline? boolean Refuse (ctx.fail) any reachable module outside `REQUIRE_DISCIPLINE_ALLOWLIST`/`require_discipline_allowlist` that contains a non-literal `require()` call or reassigns `require`/`package.loaded`/`package.preload` -- see `scan_require_violations`'s doc comment for why this is exactly the precondition that makes this function's reachability walk a sound module-level tree-shake. Default true.
---- @field host_capabilities? table[] Declarative host contracts; defaults to dom@1. Provider/effect evidence is serialized in the module graph and retained in chunks. Analysis inventories literal references; capability elimination is disabled.
+--- @field host_capabilities? table[] Declarative host contracts; defaults to dom@1 and canvas@1. Provider/effect evidence is serialized in the module graph and retained in chunks. Analysis inventories literal references; capability elimination is disabled.
 --- @field require_discipline_allowlist? string[] Module ids exempt from the above, in addition to the built-in framework allowlist.
 --- @field stub? string[] Module ids (as required, or their real `.init` id) bundled as a stub instead of their source: requiring one succeeds, indexing it returns a function, and calling that function raises an error naming the module. The stub's own requires are not walked. For modules a barrel requires eagerly that never run in a production browser (test host, editor/tooling integrations) -- `hydronium_ballad.client_bundle` passes `hydronium_ballad.BROWSER_STUBS`.
 
@@ -320,7 +320,10 @@ end
 --- @return AssetSet
 function M.resolve(ctx, inputs, opts)
   opts = opts or {}
-  local contracts = opts.host_capabilities or { require("hydronium_dom.host.contract").manifest() }
+  local contracts = opts.host_capabilities or {
+    require("hydronium_dom.host.contract").manifest(),
+    require("hydronium_dom.host.canvas_contract").manifest(),
+  }
   local app_entries = opts.entries or {}
   if #app_entries == 0 and not opts.project_entries then
     ctx.fail("hydronium_ballad.plugins.client.resolve: opts.entries is required (a list of module ids to walk from)")

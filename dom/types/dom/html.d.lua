@@ -101,8 +101,7 @@
 ---@field rowSpan integer?
 
 ---@class HTMLCanvasElement : HTMLElement
----@field width number | string?
----@field height number | string?
+-- Members (width, height, getContext, toDataURL, ...): canvas.d.lua.
 
 ---@class HTMLAudioElement : HTMLElement
 ---@field src string?

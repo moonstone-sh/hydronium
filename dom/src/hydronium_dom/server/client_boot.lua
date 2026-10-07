@@ -39,7 +39,7 @@ M.ISLAND_MODULES = { "islands.js", "priority.js", "boundary_registry.js" }
 -- The VM boot path islands.js imports when the first island triggers,
 -- plus the engine's own modules.
 M.BOOT_MODULES = {
-  "mount.js", "dom_bridge.js", "host_capabilities.js", "engine_provider.js",
+  "mount.js", "dom_bridge.js", "canvas_bridge.js", "host_capabilities.js", "engine_provider.js",
   "vendor/lua-wasm/5.4.9/engine.js", "vendor/lua-wasm/5.4.9/task-runtime.mjs",
 }
 -- Both, in load order (kept for callers that preload everything).

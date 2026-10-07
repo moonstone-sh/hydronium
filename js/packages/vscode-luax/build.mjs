@@ -6,7 +6,7 @@
 //
 // `node build.mjs --package` also writes luax/hydronium-luax-<version>.vsix.
 import { build } from "esbuild";
-import { cpSync, rmSync, mkdirSync, readFileSync, existsSync } from "node:fs";
+import { cpSync, rmSync, mkdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -37,6 +37,12 @@ await build({
 cpSync(join(repo, "core/types"), join(dist, "types/core"), { recursive: true });
 cpSync(join(luax, "types"), join(dist, "types/luax"), { recursive: true });
 cpSync(join(repo, "dom/types"), join(dist, "types/dom"), { recursive: true });
+// Library sources (Lua only), so require("hydronium_dom") and require("hydronium.signals")
+// type in folders without a project environment.
+rmSync(join(dist, "lib"), { recursive: true, force: true });
+const luaOnly = (src) => statSync(src).isDirectory() || src.endsWith(".lua");
+cpSync(join(repo, "core/src"), join(dist, "lib/core"), { recursive: true, filter: luaOnly });
+cpSync(join(repo, "dom/src"), join(dist, "lib/dom"), { recursive: true, filter: luaOnly });
 // The wasm Lua engine (luax/editor/luals-web) runs Hydronium's LUAX formatter
 // for Format Document: lua-language-server leaves plugin-lowered .luax alone.
 const engine = join(luax, "editor/luals-web/dist");

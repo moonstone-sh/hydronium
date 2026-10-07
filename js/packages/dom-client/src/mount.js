@@ -74,6 +74,7 @@
 */
 
 import { createDomBridge } from "./dom_bridge.js";
+import { createCanvasBridge } from "./canvas_bridge.js";
 import { installHostCapability } from "./host_capabilities.js";
 import {
   defaultBrowserEngineProvider,
@@ -771,6 +772,8 @@ export async function boot(options) {
     }
     mark("preload:end");
     await installHostCapability(lua, { name: "dom", version: 1, bindings: bridge, legacyPrefix: "__dom_" });
+    // Constructors, frame loops and image loading for hydronium_dom.canvas.
+    await installHostCapability(lua, { name: "canvas", version: 1, bindings: createCanvasBridge() });
 
     // After preload (the module has to be registered before it can be
     // required) and before REQUIRE_LUA (the app module's own top level may

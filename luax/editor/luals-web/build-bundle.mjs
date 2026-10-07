@@ -27,6 +27,17 @@ walk(join(repo, "luax/src"), "/hydronium/luax/src");
 walk(join(repo, "core/types"), "/hydronium/types/core");
 walk(join(repo, "luax/types"), "/hydronium/types/luax");
 walk(join(repo, "dom/types"), "/hydronium/types/dom");
+// Library sources, so `require("hydronium_dom").d`, `require("hydronium.signals")`
+// and friends resolve and type exactly as in a project (Lua files only).
+const walkLua = (disk, vfs) => {
+  for (const name of readdirSync(disk).sort()) {
+    const p = join(disk, name);
+    if (statSync(p).isDirectory()) walkLua(p, `${vfs}/${name}`);
+    else if (name.endsWith(".lua")) add(`${vfs}/${name}`, readFileSync(p));
+  }
+};
+walkLua(join(repo, "core/src"), "/hydronium/lib/core");
+walkLua(join(repo, "dom/src"), "/hydronium/lib/dom");
 add("/luals/boot.lua", readFileSync(join(here, "boot.lua")));
 const blob = Buffer.concat(parts);
 writeFileSync(out, blob);

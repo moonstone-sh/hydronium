@@ -49,7 +49,7 @@ end
 -- header comment for the identical reason.
 local DOM_DEP_ANCHOR = [=[[[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.7"
+constraint = "^0.3.8"
 role = "runtime"]=]
 
 local ROUTER_DEP_BLOCK = [=[

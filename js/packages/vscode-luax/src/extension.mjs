@@ -55,7 +55,10 @@ function luaDefaults(context) {
       plugin: join(root, "src", "hydronium_luax", "luals", "init.lua"),
     },
     workspace: {
-      library: ["core", "luax", "dom"].map((name) => join(root, "dist", "types", name)),
+      library: [
+        ...["core", "luax", "dom"].map((name) => join(root, "dist", "types", name)),
+        ...["core", "dom"].map((name) => join(root, "dist", "lib", name)),
+      ],
       checkThirdParty: false,
     },
     diagnostics: { globals: ["__luax", "__luax_component", "__luax_fragment"] },

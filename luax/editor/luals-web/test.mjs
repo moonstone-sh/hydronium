@@ -5,7 +5,8 @@ import { readFileSync, existsSync } from "node:fs";
 const here = new URL(".", import.meta.url).pathname;
 if (!existsSync(here + "dist/luals.wasm")) { console.log("luals-web: dist/ not built (./build.sh); skipped"); process.exit(0); }
 const { default: createModule } = await import("./dist/luals.mjs");
-const APP = `---@param props { label: string }
+const APP = `local d = require("hydronium_dom").d
+---@param props { label: string }
 local function App(props)
   return (
     <d.div class="app">
@@ -41,7 +42,7 @@ console.log(`booted in ${(performance.now() - t0).toFixed(0)} ms (engine + bundl
 const settings = {
   Lua: {
     runtime: { version: "LuaJIT", path: ["?.lua", "?/init.lua", "?.luax", "?/init.luax"], plugin: "/hydronium/luax/src/hydronium_luax/luals/init.lua" },
-    workspace: { library: ["/hydronium/types/core", "/hydronium/types/luax", "/hydronium/types/dom"], checkThirdParty: false },
+    workspace: { library: ["/hydronium/types/core", "/hydronium/types/luax", "/hydronium/types/dom", "/hydronium/lib/core", "/hydronium/lib/dom"], checkThirdParty: false },
     diagnostics: { globals: ["__luax", "__luax_component", "__luax_fragment"] },
   },
   "files.associations": { "*.luax": "lua" },
@@ -84,14 +85,14 @@ await pump(() => (diagnostics.get(uri) || []).some((d) => d.code === "assign-typ
 console.log(`diagnostics after ${(performance.now() - t).toFixed(0)} ms:`);
 for (const d of diagnostics.get(uri) || []) console.log(`  ${d.range.start.line + 1}:${d.range.start.character + 1} ${d.code} ${d.message.split("\n")[0]}`);
 const curi = "file:///workspace/Complete.luax";
-notify("textDocument/didOpen", { textDocument: { uri: curi, languageId: "lua", version: 1, text: "return <d.\n" } });
+notify("textDocument/didOpen", { textDocument: { uri: curi, languageId: "lua", version: 1, text: 'local d = require("hydronium_dom").d\nreturn <d.\n' } });
 t = performance.now();
-const cid = request("textDocument/completion", { textDocument: { uri: curi }, position: { line: 0, character: 10 }, context: { triggerKind: 2, triggerCharacter: "." } });
+const cid = request("textDocument/completion", { textDocument: { uri: curi }, position: { line: 1, character: 10 }, context: { triggerKind: 2, triggerCharacter: "." } });
 await pump(() => responses.has(cid));
 const items = responses.get(cid)?.result?.items ?? responses.get(cid)?.result ?? [];
 console.log(`completion: ${items.length} items in ${(performance.now() - t).toFixed(0)} ms: ${items.slice(0, 10).map((i) => i.label).join(" ")}`);
 t = performance.now();
-const hid = request("textDocument/hover", { textDocument: { uri }, position: { line: 4, character: 10 } });
+const hid = request("textDocument/hover", { textDocument: { uri }, position: { line: 5, character: 10 } });
 await pump(() => responses.has(hid));
 console.log(`hover in ${(performance.now() - t).toFixed(0)} ms: ${responses.get(hid)?.result?.contents?.value?.split("\n").slice(0, 2).join(" ").slice(0, 140)}`);
 console.log(`wasm memory: ${(M.HEAPU8.length / 1048576).toFixed(0)} MB`);
@@ -107,10 +108,27 @@ console.log("lua formatting:", JSON.stringify(formatted));
 const luaxFormatted = invoke("format_luax", 'return   <d.div   class="a"><d.span>x</d.span></d.div>\n');
 console.log("luax formatting:", JSON.stringify(luaxFormatted));
 
+const auri = "file:///workspace/Attr.luax";
+notify("textDocument/didOpen", { textDocument: { uri: auri, languageId: "lua", version: 1, text: 'local d = require("hydronium_dom").d\nreturn <d.div st class="a"></d.div>\n' } });
+const aid = request("textDocument/completion", { textDocument: { uri: auri }, position: { line: 1, character: 16 } });
+await pump(() => responses.has(aid));
+const attrs = (responses.get(aid)?.result?.items ?? responses.get(aid)?.result ?? []).map((i) => i.label);
+console.log("attribute completion:", attrs.slice(0, 6).join(" "));
+
+const kuri = "file:///workspace/Canvas.lua";
+notify("textDocument/didOpen", { textDocument: { uri: kuri, languageId: "lua", version: 1, text: 'local canvas = require("hydronium_dom.canvas")\nlocal ctx = canvas.context(nil)\nif ctx then ctx:fillRect("x", 0, 1, 1) end\nif ctx then ctx: end\n' } });
+const kid = request("textDocument/completion", { textDocument: { uri: kuri }, position: { line: 3, character: 16 } });
+await pump(() => responses.has(kid) && (diagnostics.get(kuri) || []).length > 0);
+const ctxItems = (responses.get(kid)?.result?.items ?? responses.get(kid)?.result ?? []).map((i) => i.label);
+console.log("canvas completion:", ctxItems.filter((l) => /fillRect|arc|drawImage|getImageData/.test(l)).join(" "));
+
 const fails = [];
+if (!ctxItems.some((l) => /^fillRect/.test(l)) || !ctxItems.some((l) => /^drawImage/.test(l))) fails.push("canvas context completion");
+if (!(diagnostics.get(kuri) || []).some((x) => x.code === "param-type-mismatch")) fails.push("canvas parameter types");
+if (!attrs.some((l) => /^style/.test(l))) fails.push("attribute completion through require('hydronium_dom').d");
 if (!formatted.includes("local x = { 1, 2, 3 }")) fails.push("lua formatting");
 if (!luaxFormatted.includes('<d.div class="a">') || !luaxFormatted.includes("  <d.span>x</d.span>")) fails.push("luax formatting");
-if (!(diagnostics.get(uri) || []).some((d) => d.code === "assign-type-mismatch" && d.range.start.line === 4 && d.range.start.character === 16)) fails.push("diagnostic at 5:17");
+if (!(diagnostics.get(uri) || []).some((d) => d.code === "assign-type-mismatch" && d.range.start.line === 5 && d.range.start.character === 16)) fails.push("diagnostic at 5:17");
 if (!items.some((i) => i.label === "button") || items.length < 100) fails.push("<d. completion");
 if (!/HTMLButtonProps/.test(responses.get(hid)?.result?.contents?.value || "")) fails.push("hover");
 if (fails.length) { console.error("FAIL: " + fails.join(", ")); process.exit(1); }
