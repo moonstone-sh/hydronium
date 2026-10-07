@@ -68,7 +68,14 @@ end
 --- @param options table? Options (e.g. env)
 --- @return string virtual_lua Virtual Lua code for LuaLS
 --- @return table mappings Coordinate mapping table
+--- Byte offsets (1-based) of bare attribute names (`<d.input disabled />`)
+--- seen by the last transform call. The byte-preserving rewrite leaves such a
+--- name as a positional table entry, which Lua reads as a variable; the LuaLS
+--- plugin turns those entries into `name = true` fields in OnTransformAst.
+virtual_source.bare_attributes = {}
+
 function virtual_source.transform(source, filename, options)
+  virtual_source.bare_attributes = {}
   options = options or {}
   local env = options.env or env_mod.get_current()
   filename = filename or "<virtual.luax>"
@@ -419,6 +426,10 @@ function virtual_source.transform(source, filename, options)
             end
           end
 
+          if attr.type == "JSXAttribute" and attr.value and attr.value.type == "BooleanLiteral"
+            and not attr.value.loc and attr.loc and attr.loc.start then
+            table.insert(virtual_source.bare_attributes, attr.loc.start.offset)
+          end
           if attr.type == "JSXAttribute" and attr.value.type == "JSXExpressionContainer" then
             if attr.value.loc and attr.value.loc.start and attr.value.loc["end"] then
               bytes[attr.value.loc.start.offset] = "("
