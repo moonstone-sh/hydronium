@@ -294,6 +294,16 @@ local MOUNT_BOOTSTRAP_ENTRIES = {
   "hydronium.core.reconciler",
 }
 
+local function stub_source(id)
+  return string.format([[
+local id = %q
+local function missing(key)
+  error(id .. " is not part of production browser bundles (hydronium_ballad stubs it); " .. tostring(key) .. " is unavailable here", 3)
+end
+return setmetatable({}, { __index = function(_, key) return function() missing(key) end end })
+]], id)
+end
+
 --- @class HydroniumBalladResolveOptions
 --- @field entries? string[] Module ids to walk from (the app's own root component, typically). `MOUNT_BOOTSTRAP_ENTRIES` above is always added on top of these, automatically. Required unless `project_entries` is set.
 --- @field project_entries? boolean Also walk from every input module the project's source topology stamped (`metadata.hydronium.module_id`, set by `topology.classify`/`luax.compile`) with an included target. Router screens and actions are named by string, so a production bundle needs every declared client/shared module, not only what the root statically requires. Framework files fed in unstamped (e.g. via `depends_on`) are still included only when reachable.
@@ -302,6 +312,7 @@ local MOUNT_BOOTSTRAP_ENTRIES = {
 --- @field enforce_require_discipline? boolean Refuse (ctx.fail) any reachable module outside `REQUIRE_DISCIPLINE_ALLOWLIST`/`require_discipline_allowlist` that contains a non-literal `require()` call or reassigns `require`/`package.loaded`/`package.preload` -- see `scan_require_violations`'s doc comment for why this is exactly the precondition that makes this function's reachability walk a sound module-level tree-shake. Default true.
 --- @field host_capabilities? table[] Declarative host contracts; defaults to dom@1. Provider/effect evidence is serialized in the module graph and retained in chunks. Analysis inventories literal references; capability elimination is disabled.
 --- @field require_discipline_allowlist? string[] Module ids exempt from the above, in addition to the built-in framework allowlist.
+--- @field stub? string[] Module ids (as required, or their real `.init` id) bundled as a stub instead of their source: requiring one succeeds, indexing it returns a function, and calling that function raises an error naming the module. The stub's own requires are not walked. For modules a barrel requires eagerly that never run in a production browser (test host, editor/tooling integrations) -- `hydronium_ballad.client_bundle` passes `hydronium_ballad.BROWSER_STUBS`.
 
 --- @param ctx PluginCtx
 --- @param inputs AssetSet[]
@@ -340,6 +351,11 @@ function M.resolve(ctx, inputs, opts)
   end
   for _, id in ipairs(opts.require_discipline_allowlist or {}) do
     require_discipline_allowlist[id] = true
+  end
+
+  local stubbed = {}
+  for _, id in ipairs(opts.stub or {}) do
+    stubbed[id] = true
   end
 
   local by_id = {}
@@ -400,6 +416,15 @@ function M.resolve(ctx, inputs, opts)
       return
     end
     seen[real_id] = true
+    if stubbed[id] or stubbed[real_id] then
+      local real = by_id[real_id]
+      by_id[real_id] = {
+        module_id = real_id, content = stub_source(id), origin = "stub:" .. real.origin,
+        target = real.target, transform = real.transform, update = real.update,
+      }
+      table.insert(order, real_id)
+      return
+    end
     local mod = by_id[real_id]
     if deny_getinfo and mod.content:find("debug%.getinfo", 1, true) then
       ctx.fail("hydronium_ballad.plugins.client.resolve: module '" .. real_id

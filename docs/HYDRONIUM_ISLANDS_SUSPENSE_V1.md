@@ -629,3 +629,24 @@ investigated further.
 Verified on hydronium.moonstone.sh: docs pages without islands went from
 ~471KB / 4.0s to ~128KB / 0.9s to ready (Slow 4G, 4x CPU), and hydration
 claims every server node (no remounts).
+
+## Update (2026-10-07): deferred islands load less
+
+- **Browser:** `islands.js` imports `mount.js` (the VM boot path: DOM bridge,
+  engine provider) only when the first island's priority fires. A page whose
+  islands all wait for idle or visibility loads `islands.js`,
+  `priority.js` and `boundary_registry.js`, nothing else.
+- **Server:** `ClientBoot` always modulepreloads those three. The boot path,
+  `engine.wasm` and chunk preloads are emitted only when some island hydrates
+  on load, and only for the chunks of those islands; idle/visible islands
+  fetch theirs when they start (the `__HYDRONIUM_BOOT__` list still names
+  every island's chunks).
+- **Build:** `hydronium_ballad.client_bundle` ships `BROWSER_STUBS`
+  (`hydronium.test`, `love_hmr`, `source_topology`, `source_inventory`) as
+  stubs: the `hydronium` barrel still loads, and calling into a stub raises
+  an error naming the module. `client.resolve` exposes this as `opts.stub`.
+
+Measured on hydronium.moonstone.sh's build behind Caddy over HTTP/2 (Slow 4G,
+4x CPU, median of 5): `/engines` ready 1.53s -> 1.34s, `/docs/luax-basics`
+1.51s -> 1.30s; the runtime chunk went from 151.8KB to 128.1KB of Lua source
+(28.8KB -> 24.4KB brotli).

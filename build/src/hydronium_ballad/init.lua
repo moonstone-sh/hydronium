@@ -93,6 +93,19 @@ M.CLIENT_DIR = ".hydronium/client"
 --- Framework namespaces a browser bundle may draw from.
 M.FRAMEWORK_NAMESPACES = { "hydronium", "hydronium_dom", "hydronium_router", "hydronium_query", "hydronium_virtual", "hydronium_table" }
 
+--- Framework modules the `hydronium` barrel requires eagerly that never run
+--- in a production browser page: the test host, LOVE hot reload, and source
+--- discovery (server and dev tooling) -- ~25 KB of Lua source. `client_bundle`
+--- ships them as stubs that raise a named error if called. `hmr`,
+--- `hmr_host`, `module_graph` and `family_loader` stay real: mount.js and the
+--- reconciler reach them directly.
+M.BROWSER_STUBS = {
+  "hydronium.test",
+  "hydronium.core.love_hmr",
+  "hydronium.core.source_topology",
+  "hydronium.core.source_inventory",
+}
+
 --- Production browser bundle: every client/shared module declared in
 --- `hydronium.sources.lua` (compiled from LUAX, minified "safe"), plus only
 --- the framework modules they -- and mount.js's bootstrap -- actually reach,
@@ -151,7 +164,7 @@ function M.client_bundle(p, opts)
     local sets, names = {}, {}
     for index, id in ipairs(config.islands) do
       if type(id) ~= "string" then error("hydronium_ballad.client_bundle: islands[" .. index .. "] must be a module id", 2) end
-      sets[index] = client.minify(client.resolve(project, { entries = { id }, depends_on = framework }), { level = "safe" })
+      sets[index] = client.minify(client.resolve(project, { entries = { id }, depends_on = framework, stub = M.BROWSER_STUBS }), { level = "safe" })
       names[index] = id
     end
     local rest = {}
@@ -162,7 +175,7 @@ function M.client_bundle(p, opts)
     return p.sink.directory(site.manifest(bundled), { out = opts.out or M.CLIENT_DIR })
   end
 
-  local resolved = client.resolve(project, { project_entries = true, depends_on = framework })
+  local resolved = client.resolve(project, { project_entries = true, depends_on = framework, stub = M.BROWSER_STUBS })
   local bundled = client.bundle(client.minify(resolved, { level = "safe" }), { entry = config.entry, chunk_prefix = "" })
   return p.sink.directory(site.manifest(bundled), { out = opts.out or M.CLIENT_DIR })
 end
