@@ -34,6 +34,38 @@ let currentEvent;
 const CURRENT_EVENT = Symbol.for("hydronium.dom.currentEvent");
 const EVENT_PAYLOADS = Symbol.for("hydronium.dom.eventPayloads");
 
+// The event a Lua handler receives: a snapshot taken during dispatch, while
+// currentTarget is still live, of the fields the synthetic event types in
+// dom/types/dom/events.d.lua declare. Primitive fields are copied, so the
+// handler reads what was true when the event fired; target/currentTarget stay
+// live element references. preventDefault/stopPropagation only take effect
+// while the browser is still dispatching (a synchronous engine).
+const EVENT_FIELDS = ["data", "inputType", "key", "code", "repeat", "altKey", "ctrlKey", "metaKey", "shiftKey",
+  "clientX", "clientY", "screenX", "screenY", "pageX", "pageY", "button", "buttons", "deltaX", "deltaY", "deltaZ", "deltaMode"];
+const FORM_CONTROLS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
+
+export function snapshotDomEvent(event) {
+  const target = event.target;
+  const snapshot = {
+    type: event.type,
+    timeStamp: event.timeStamp,
+    target,
+    currentTarget: event.currentTarget,
+    preventDefault: () => event.preventDefault(),
+    stopPropagation: () => event.stopPropagation(),
+    isDefaultPrevented: () => event.defaultPrevented,
+    isPropagationStopped: () => false,
+  };
+  for (const field of EVENT_FIELDS) {
+    if (event[field] !== undefined) snapshot[field] = event[field];
+  }
+  // Form controls: what onInput/onChange handlers almost always need.
+  if (target && typeof target.value === "string") snapshot.value = target.value;
+  if (target && typeof target.checked === "boolean") snapshot.checked = target.checked;
+  if (target && typeof target.name === "string" && target.name) snapshot.name = target.name;
+  return snapshot;
+}
+
 export function getCurrentDomEvent() {
   return currentEvent ?? globalThis[CURRENT_EVENT];
 }
@@ -115,6 +147,20 @@ export function createDomBridge() {
         return;
       }
       if (key === "id") { el.id = String(value); return; }
+      // Live form state is a property, not the attribute: after the user
+      // types, the value attribute no longer changes what the control shows.
+      if (key === "value" && FORM_CONTROLS.has(el.tagName)) {
+        const text = String(value);
+        if (el.value !== text) el.value = text;
+        el.setAttribute(key, text);
+        return;
+      }
+      if ((key === "checked" || key === "selected") && key in el) {
+        el[key] = Boolean(value);
+        if (value) el.setAttribute(key, "");
+        else el.removeAttribute(key);
+        return;
+      }
       if (typeof value === "boolean") {
         if (value) el.setAttribute(key, "");
         else el.removeAttribute(key);
@@ -128,6 +174,8 @@ export function createDomBridge() {
         return;
       }
       if (key === "id") { el.id = ""; return; }
+      if (key === "value" && FORM_CONTROLS.has(el.tagName)) el.value = "";
+      if ((key === "checked" || key === "selected") && key in el) el[key] = false;
       el.removeAttribute(key);
     },
     // Optional (hydronium.host.dom.createDomHost does not require these
@@ -180,8 +228,13 @@ export function createDomBridge() {
         try {
           // Some embedders schedule the Lua callback after this listener
           // returns. Snapshot the event while currentTarget is still live.
+          // A registered adapter wins (forms.js turns submit into a values
+          // literal). submit and navigate otherwise stay argument-free, as
+          // hydronium.forms expects; every other event gets a snapshot.
           const payloadFactory = globalThis[EVENT_PAYLOADS]?.get?.(eventName);
-          const payload = payloadFactory?.(event);
+          const payload = payloadFactory
+            ? payloadFactory(event)
+            : eventName === "submit" || eventName === "navigate" ? undefined : snapshotDomEvent(event);
           const result = typeof fn === "function"
             ? (payload === undefined ? fn() : fn(payload))
             : fn.call(payload === undefined ? [] : [payload]);

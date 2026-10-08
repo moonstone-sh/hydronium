@@ -14,6 +14,9 @@
 ---@field stopPropagation fun(): void # Stops event propagation
 ---@field isDefaultPrevented fun(): boolean # Whether default action was prevented
 ---@field isPropagationStopped fun(): boolean # Whether propagation was stopped
+---@field value string? # The target control's value when the event fired (input, textarea, select)
+---@field checked boolean? # The target checkbox or radio's checked state when the event fired
+---@field name string? # The target control's name attribute
 
 --- Synthetic mouse event representing clicks, mouse movements, and buttons
 ---@class SyntheticMouseEvent<T> : SyntheticEvent<T>
