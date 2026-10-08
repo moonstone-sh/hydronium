@@ -454,6 +454,9 @@ function virtual_source.transform(source, filename, options)
               local s_end = attr.loc["end"].offset
               local arg_start = attr.argument.loc.start.offset
               local arg_end = attr.argument.loc["end"].offset
+              -- The parser can end a call argument on the spread's own `}`
+              -- (`{...attributes(props)}`); the argument always ends before it.
+              if arg_end >= s_end then arg_end = s_end - 1 end
               -- Mask '{...' before argument with ',   ' (or '    ' if first)
               local before_len = arg_start - s_start
               local before_str = (idx > 1 and "," or " ") .. string.rep(" ", math.max(0, before_len - 1))

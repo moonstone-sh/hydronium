@@ -92,12 +92,12 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.9"
+constraint = "^0.2.10"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/luax"
-constraint = "^0.2.10"
+constraint = "^0.2.11"
 role = "runtime"
 
 [[dependencies]]

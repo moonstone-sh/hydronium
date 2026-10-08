@@ -337,7 +337,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.9"
+constraint = "^0.2.10"
 role = "runtime"
 
 [[dependencies]]
@@ -347,7 +347,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/router"
-constraint = "^0.2.3"
+constraint = "^0.2.4"
 role = "runtime"
 ]=], project_name)
 
@@ -419,7 +419,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.9"
+constraint = "^0.2.10"
 role = "runtime"
 
 [[dependencies]]
@@ -429,7 +429,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/router"
-constraint = "^0.2.3"
+constraint = "^0.2.4"
 role = "runtime"
 ]=], project_name)
 
