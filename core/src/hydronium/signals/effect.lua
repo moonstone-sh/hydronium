@@ -6,6 +6,7 @@
 --]]
 
 local symbols = require("hydronium.core.symbols")
+local dev = require("hydronium.core.dev")
 local errors = require("hydronium.core.errors")
 local scopeModule = require("hydronium.core.scope")
 local scheduler = require("hydronium.core.scheduler")
@@ -128,6 +129,7 @@ function Effect:dispose()
 end
 
 function effectModule.createEffect(fn)
+  dev.check_render_creation("createEffect")
   return Effect.new(fn)
 end
 

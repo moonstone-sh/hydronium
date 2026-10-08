@@ -6,6 +6,7 @@
 --]]
 
 local symbols = require("hydronium.core.symbols")
+local dev = require("hydronium.core.dev")
 local errors = require("hydronium.core.errors")
 local scheduler = require("hydronium.core.scheduler")
 local graph = require("hydronium.signals.graph")
@@ -42,6 +43,7 @@ end
 ---@return hydronium.Getter<T> getter Call to read; pass uncalled to bind.
 ---@return fun(value: T | fun(previous: T): T): T setter
 function signalModule.createSignal(initialValue, options)
+  dev.check_render_creation("createSignal")
   local equals = defaultEquals
   if options and options.equals ~= nil then
     if options.equals == false then

@@ -221,7 +221,10 @@ function ComponentInstance:render()
           -- unaffected; begin/finish_generation on an empty registry is
           -- a cheap no-op.
           self.refresh_registry:begin_generation()
-          local initialRes = self.type(self.props, self.scope)
+          self.inSetup = true
+          local setupOk, initialRes = pcall(self.type, self.props, self.scope)
+          self.inSetup = false
+          if not setupOk then error(initialRes, 0) end
           self.refresh_registry:finish_generation()
           if type(initialRes) == "function" then
             self.renderFn = initialRes

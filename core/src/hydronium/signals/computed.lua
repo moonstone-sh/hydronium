@@ -6,6 +6,7 @@
 --]]
 
 local symbols = require("hydronium.core.symbols")
+local dev = require("hydronium.core.dev")
 local errors = require("hydronium.core.errors")
 local graph = require("hydronium.signals.graph")
 
@@ -40,6 +41,7 @@ end
 ---@param options? { equals?: false | fun(a: T, b: T): boolean, name?: string }
 ---@return hydronium.Getter<T> getter Call to read; pass uncalled to bind.
 function computedModule.createComputed(fn, options)
+  dev.check_render_creation("createComputed")
   local equals = defaultEquals
   if options and options.equals ~= nil then
     if options.equals == false then

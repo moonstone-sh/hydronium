@@ -476,6 +476,14 @@ function M.create_router(opts)
     local target = with_base(base, to)
     if nav.replace then history.replace(target, nav.state) else history.push(target, nav.state) end
   end
+  --- The href for an app path (`/about`), with the router's base prepended.
+  function router.to_href(to)
+    return with_base(base, to)
+  end
+  --- A route's app path (`/posts/7?tab=comments`), without the base.
+  function router.route_path(id, params, query)
+    return href_mod.href(route_matcher, id, params, query)
+  end
   function router.href(id, params, query)
     local built = href_mod.href(route_matcher, id, params, query)
     return base == "/" and built or base .. built

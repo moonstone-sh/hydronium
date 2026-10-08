@@ -38,6 +38,7 @@ local Router = {
   RouterContext = router.RouterContext,
   RouteContext = router.RouteContext,
   Outlet = outlet.Outlet,
+  Link = require("hydronium_router.link"),
   RouteResource = route_resource.Resource,
   state = state,
   http = http,
