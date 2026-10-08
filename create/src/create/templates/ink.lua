@@ -33,7 +33,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/luax"
-constraint = "^0.2.7"
+constraint = "^0.2.8"
 role = "runtime"
 
 # Development-only workbench closure. The terminal app never imports these;
