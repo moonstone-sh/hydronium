@@ -9,7 +9,9 @@ function element(tagName, props = {}) {
     tagName,
     attrs,
     listeners,
-    setAttribute(k, v) { attrs.set(k, v); },
+    setAttribute(k, v) { attrs.set(k, String(v)); },
+    getAttribute(k) { return attrs.has(k) ? attrs.get(k) : null; },
+    hasAttribute(k) { return attrs.has(k); },
     removeAttribute(k) { attrs.delete(k); },
     addEventListener(name, fn) { listeners.set(name, fn); },
     removeEventListener(name) { listeners.delete(name); },
@@ -84,6 +86,19 @@ test("value, checked and selected set the live property as well as the attribute
   bridge.set_attr(box, "checked", false);
   assert.equal(box.checked, false);
   assert.equal(box.attrs.has("checked"), false);
+  // Renders re-apply unchanged props; that must not erase what was typed.
+  const typed = element("INPUT", { value: "" });
+  bridge.set_attr(typed, "value", "3");
+  typed.value = "42";
+  bridge.set_attr(typed, "value", "3");
+  assert.equal(typed.value, "42");
+  bridge.set_attr(typed, "value", "7");
+  assert.equal(typed.value, "7");
+  const clicked = element("INPUT", { value: "on", checked: false });
+  bridge.set_attr(clicked, "checked", false);
+  clicked.checked = true;
+  bridge.set_attr(clicked, "checked", false);
+  assert.equal(clicked.checked, true);
   // Other elements keep plain attribute semantics.
   const div = element("DIV");
   bridge.set_attr(div, "value", "x");

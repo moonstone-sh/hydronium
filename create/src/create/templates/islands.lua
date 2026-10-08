@@ -102,7 +102,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.10"
+constraint = "^0.3.11"
 role = "runtime"
 ]=], project_name)
 

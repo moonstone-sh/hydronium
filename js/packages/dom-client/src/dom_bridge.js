@@ -149,16 +149,24 @@ export function createDomBridge() {
       if (key === "id") { el.id = String(value); return; }
       // Live form state is a property, not the attribute: after the user
       // types, the value attribute no longer changes what the control shows.
+      // The attribute records the last value Lua set. Renders re-apply every
+      // prop, so the property is written only when that value changes:
+      // re-applying an unchanged value="3" must not erase what the user typed.
       if (key === "value" && FORM_CONTROLS.has(el.tagName)) {
         const text = String(value);
-        if (el.value !== text) el.value = text;
-        el.setAttribute(key, text);
+        if (el.getAttribute(key) !== text) {
+          el.setAttribute(key, text);
+          if (el.value !== text) el.value = text;
+        }
         return;
       }
       if ((key === "checked" || key === "selected") && key in el) {
-        el[key] = Boolean(value);
-        if (value) el.setAttribute(key, "");
-        else el.removeAttribute(key);
+        const on = Boolean(value);
+        if (el.hasAttribute(key) !== on) {
+          if (on) el.setAttribute(key, "");
+          else el.removeAttribute(key);
+          el[key] = on;
+        }
         return;
       }
       if (typeof value === "boolean") {
