@@ -123,6 +123,13 @@ try {
     if (message.op === "playback") { if (message.intervalMs) await lab.state.setInterval(message.intervalMs); if (message.playing !== undefined) await (message.playing ? lab.play() : lab.pause()); return snapshot(); }
     return snapshot();
   } };
+  // Keep the Lab's timeline (time, frame, play state) in step with this
+  // preview's virtual playback, about ten times a second.
+  let pendingState = null;
+  lab.state.subscribe(() => {
+    if (pendingState) return;
+    pendingState = setTimeout(() => { pendingState = null; parent.postMessage({ type: "hydronium-lab-preview-state", ...snapshot() }, location.origin); }, 100);
+  });
   parent.postMessage({ type: "hydronium-lab-preview-ready" }, location.origin);
   if (status) status.textContent = "Connected";
 } catch (error) {
