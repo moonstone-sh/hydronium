@@ -1,5 +1,5 @@
 import { viewportGroups } from "./preview-settings.js";
-import { installPreviewCanvas, createStoryStore, bindStoryControls, loadProjectPreferences, saveProjectPreferences, installWorkbenchPreferences } from "./workbench.js";
+import { installPreviewCanvas, createStoryStore, bindStoryControls, loadProjectPreferences, saveProjectPreferences, installWorkbenchPreferences, stableJSON } from "./workbench.js";
 
 // A failed dynamic import stays failed for the page's lifetime (the module
 // map caches the error), so after a dev-server restart retry under a fresh
@@ -36,6 +36,12 @@ async function createDomLabInstance({ root, fetchCatalog, previewUrl, loadModule
   let operationTail = Promise.resolve();
   const store = createStoryStore({ send: message => { const next = operationTail.then(async () => (await bridge()).request(message)); operationTail = next.catch(() => {}); return next; } });
   const binding = bindStoryControls({ root, store });
+  // An Ink preview reports its playback as it runs (ink-preview.js).
+  const previewState = event => {
+    if (event.source !== frame.contentWindow || event.origin !== location.origin || event.data?.type !== "hydronium-lab-preview-state") return;
+    if (selected?.renderer === "ink" && event.data.lab) store.accept({ lab: event.data.lab });
+  };
+  window.addEventListener("message", previewState);
   const canvas = installPreviewCanvas(root, () => frame, {preferences, persist});
   const rendererControls = installRendererControls({ root, getFrame: () => frame, preferences, persist, bridge, getStory: () => selected, canvas, report });
   function report(error) { status.textContent = `Update failed — showing last preview: ${error.message}`; }
@@ -133,7 +139,7 @@ async function createDomLabInstance({ root, fetchCatalog, previewUrl, loadModule
 
   let timer;
   function destroy() {
-    stopped=true; clearInterval(timer); canvas.destroy(); rendererControls.destroy(); binding.destroy(); store.destroy();
+    stopped=true; clearInterval(timer); window.removeEventListener("message", previewState); canvas.destroy(); rendererControls.destroy(); binding.destroy(); store.destroy();
     preferenceBinding?.destroy(); root.removeEventListener("click",click); search?.removeEventListener("input",navigate);
     frame.src="about:blank"; instances.delete(root);
   }
@@ -162,7 +168,12 @@ async function createDomLabInstance({ root, fetchCatalog, previewUrl, loadModule
     catalog = next;
     const current = next.catalog.stories.find(story => story.id === selected.id);
     if (!current || current.renderer !== selected.renderer) await select(current || next.catalog.stories[0]);
-    else { const snapshot = store.getSnapshot(); selected = current; store.select(current); store.accept({ lab: snapshot }); navigate(); }
+    // Re-select only when the story's definition changed: re-selecting
+    // rebuilds the inspector, which would take focus from a control being
+    // edited (this runs on every poll).
+    else if (stableJSON([current.title, current.description, current.args, current.controls]) !== stableJSON([selected.title, selected.description, selected.args, selected.controls])) {
+      const snapshot = store.getSnapshot(); selected = current; store.select(current); store.accept({ lab: snapshot }); navigate();
+    } else selected = current;
     if (pendingSelection) {
       const story = next.catalog.stories.find(candidate => candidate.id === pendingSelection);
       pendingSelection = undefined;
@@ -234,7 +245,33 @@ function installRendererControls({root,getFrame,preferences,persist,bridge,getSt
   }),options);
   for(const name of ['color-space','vision','color-scheme'])query(name)?.addEventListener('change',()=>queue(async()=>{await persist({domColorSpace:(query('color-space')?.value || preferences.domColorSpace || 'srgb'),domVision:(query('vision')?.value || preferences.domVision || 'none'),domColorScheme:(query('color-scheme')?.value || preferences.domColorScheme || 'page')});await applyDOM();}),options);
   const applyInk = async settings => { const bounds=await(await bridge()).configure(settings); if(bounds?.width && bounds?.height)canvas.resize(bounds.width,bounds.height); };
-  query('ink-size')?.addEventListener('change',event=>queue(async()=>{const size=inkSizes[Number(event.target.value)];await applyInk(size);await persist({inkSize:size});}),options);
+  // Terminal size: a preset, or custom columns/rows (saved as user presets
+  // in preferences.terminalSizes, as custom DOM viewports are).
+  let inkSize;
+  const setInkSize = async size => {
+    inkSize = {name:size.name || `${size.columns}×${size.rows}`, columns:size.columns, rows:size.rows};
+    const index = inkSizes.findIndex(v=>v.columns===inkSize.columns&&v.rows===inkSize.rows);
+    if(query('ink-size')) query('ink-size').value = String(index);
+    if(query('ink-columns')) query('ink-columns').value = inkSize.columns;
+    if(query('ink-rows')) query('ink-rows').value = inkSize.rows;
+    await applyInk({columns:inkSize.columns, rows:inkSize.rows});
+    await persist({inkSize});
+  };
+  query('ink-size')?.addEventListener('change',event=>queue(()=>setInkSize(inkSizes[Number(event.target.value)])),options);
+  for(const dimension of ['columns','rows'])query('ink-'+dimension)?.addEventListener('change',()=>queue(async()=>{
+    const columns=Number(query('ink-columns')?.value || inkSize?.columns), rows=Number(query('ink-rows')?.value || inkSize?.rows);
+    if(!Number.isInteger(columns)||!Number.isInteger(rows)||columns<10||rows<4||columns>400||rows>200)throw Error('Terminal size must be 10–400 columns and 4–200 rows');
+    await setInkSize({columns, rows});
+  }),options);
+  query('ink-size-save')?.addEventListener('click',()=>queue(async()=>{
+    if(!inkSize) return;
+    const user=(preferences.terminalSizes||[]).filter(v=>v.columns!==inkSize.columns||v.rows!==inkSize.rows);
+    user.push({name:`${inkSize.columns}×${inkSize.rows}`, columns:inkSize.columns, rows:inkSize.rows});
+    await persist({terminalSizes:user});
+    const {terminalSizeGroups}=await loadVirtualTerminal();
+    inkSizes=fill(query('ink-size'),terminalSizeGroups(getStory(),user),v=>`${v.name} · ${v.columns}×${v.rows}`);
+    await setInkSize(inkSize);
+  }),options);
   query('ink-color')?.addEventListener('change',event=>queue(async()=>{await(await bridge()).configure({color:event.target.value});await persist({inkColor:event.target.value});}),options);
   return {async select(story){
     for(const el of root.querySelectorAll('[data-lab-dom-tools]'))el.hidden=story.renderer!=='dom';
@@ -254,7 +291,12 @@ function installRendererControls({root,getFrame,preferences,persist,bridge,getSt
       inkSizes=fill(query('ink-size'),terminalSizeGroups(story,preferences.terminalSizes||[]),v=>`${v.name} · ${v.columns}×${v.rows}`);
       if(query('ink-color'))query('ink-color').value=preferences.inkColor||story.color||'truecolor';
       const saved=preferences.inkSize,index=inkSizes.findIndex(v=>v.columns===saved?.columns&&v.rows===saved?.rows);if(query('ink-size'))query('ink-size').value=String(Math.max(0,index));
-      const bounds = await(await bridge()).configure({...inkSizes[Math.max(0,index)],color:query('ink-color')?.value || preferences.inkColor || story.color || 'truecolor'});
+      // A saved custom size that is not a preset still applies.
+      const start = index >= 0 ? inkSizes[index] : (saved?.columns && saved?.rows ? saved : inkSizes[0]);
+      inkSize = {name:start.name, columns:start.columns, rows:start.rows};
+      if(query('ink-columns')) query('ink-columns').value = inkSize.columns;
+      if(query('ink-rows')) query('ink-rows').value = inkSize.rows;
+      const bounds = await(await bridge()).configure({columns:inkSize.columns,rows:inkSize.rows,color:query('ink-color')?.value || preferences.inkColor || story.color || 'truecolor'});
       if(bounds?.width && bounds?.height){getFrame().style.width=`${bounds.width}px`;getFrame().style.height=`${bounds.height}px`;}
     }
   },destroy(){abort.abort();}};

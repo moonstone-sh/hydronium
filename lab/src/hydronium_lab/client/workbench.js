@@ -168,6 +168,13 @@ export function installWorkbenchPreferences({ root, preferences = {}, persist = 
   };
 }
 
+// JSON with object keys sorted. Catalog responses come from fresh Lua states
+// in release builds, whose table iteration order differs between requests, so
+// plain JSON.stringify would see an unchanged story as changed.
+export const stableJSON = value => JSON.stringify(value, (key, item) =>
+  item && typeof item === "object" && !Array.isArray(item)
+    ? Object.fromEntries(Object.keys(item).sort().map(name => [name, item[name]])) : item);
+
 // Observable state shared by the default workbench and custom control outlets.
 export function createStoryStore({ send, paint = value => value }) {
   let value = { story: null, args: {}, controls: {}, playback: { nowMs: 0, frame: 0, playing: true, intervalMs: 1000 / 60 } };
@@ -212,7 +219,7 @@ export function bindStoryControls({ root, store, onError = error => {
       const storyId = outlet.dataset.labControlsStory;
       outlet.hidden = storyId ? storyId !== state.story : hasCustom;
     }
-    const nextSignature = JSON.stringify(state.controls);
+    const nextSignature = stableJSON(state.controls);
     if (story !== state.story || signature !== nextSignature) {
       story = state.story; signature = nextSignature;
       for (const outlet of root.querySelectorAll("[data-lab-default-controls]")) {

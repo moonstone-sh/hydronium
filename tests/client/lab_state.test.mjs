@@ -25,3 +25,14 @@ test('HMR carries compatible edits and drops values invalid under the new schema
   const story={args:{label:'Default'},controls:{count:{type:'number',max:2},choice:{type:'select',options:[{label:'No',value:false}]}}};
   assert.deepEqual(restoreStoryArgs(story,{label:'Edited',count:9,choice:false,removed:'old'}),{label:'Edited',choice:false});
 });
+
+test("stableJSON ignores key order, so a re-sent unchanged story is not a change", async () => {
+  const { stableJSON } = await import("../../lab/src/hydronium_lab/client/workbench.js");
+  // Release builds answer each catalog poll from a fresh Lua state, whose
+  // table iteration order (and so the JSON key order) differs per request.
+  const a = { title: { type: "text", label: "Title" }, accent: { type: "select", options: ["cyan", "green"] } };
+  const b = { accent: { options: ["cyan", "green"], type: "select" }, title: { label: "Title", type: "text" } };
+  assert.notEqual(JSON.stringify(a), JSON.stringify(b));
+  assert.equal(stableJSON(a), stableJSON(b));
+  assert.notEqual(stableJSON(a), stableJSON({ ...b, accent: { options: ["green", "cyan"], type: "select" } }), "array order still matters");
+});

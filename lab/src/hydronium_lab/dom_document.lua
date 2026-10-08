@@ -31,6 +31,9 @@ M.Vision = widget("select", "vision", { ["aria-label"]="Color vision simulation"
   option("none", "Normal"), option("protanopia", "Protanopia approximation"), option("deuteranopia", "Deuteranopia approximation"), option("tritanopia", "Tritanopia approximation"), option("achromatopsia", "Grayscale") })
 M.GamutSupport = widget("output", "gamut-support")
 M.InkSize = widget("select", "ink-size", { ["aria-label"]="Terminal size preset" })
+M.InkColumns = widget("input", "ink-columns", {type="number", min=10, max=400, ["aria-label"]="Terminal columns"})
+M.InkRows = widget("input", "ink-rows", {type="number", min=4, max=200, ["aria-label"]="Terminal rows"})
+M.SaveInkSize = widget("button", "ink-size-save", {type="button"}, "Save size")
 M.InkColor = widget("select", "ink-color", { ["aria-label"]="Terminal color capability" }, {
   option("ansi16", "ANSI 16"), option("ansi256", "ANSI 256"), option("truecolor", "Truecolor") })
 M.RestartStory = widget("button", "dom-restart", {type="button", ["aria-label"]="Restart story", title="Restart story", class="hydronium-lab__toolbar-icon"}, H.h(Icon, {name="restart_alt"}))
@@ -52,7 +55,10 @@ function M.RendererControls()
         H.h("label", nil, "Width", H.h(M.ViewportWidth)), H.h("label", nil, "Height", H.h(M.ViewportHeight)), H.h(M.SaveViewport))),
       menu("Color & vision", H.h(H.Fragment, nil,
         H.h("label", nil, "Color scheme", H.h(M.ColorScheme)), H.h("label", nil, "Color target", H.h(M.ColorSpace)), H.h("label", nil, "Vision", H.h(M.Vision)), H.h(M.GamutSupport)))),
-    H.h("span", { ["data-lab-ink-tools"]="", class="hydronium-lab__ink-toolbar", hidden=true }, H.h(M.InkSize), H.h(M.InkColor)),
+    H.h("span", { ["data-lab-ink-tools"]="", class="hydronium-lab__ink-toolbar", hidden=true }, H.h(M.InkSize),
+      menu("Size", H.h(H.Fragment, nil, H.h("strong", nil, "Custom size"),
+        H.h("label", nil, "Columns", H.h(M.InkColumns)), H.h("label", nil, "Rows", H.h(M.InkRows)), H.h(M.SaveInkSize))),
+      H.h(M.InkColor)),
     H.h(M.RestartStory))
 end
 function M.Shell(props)

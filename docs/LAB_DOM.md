@@ -53,6 +53,12 @@ moon exec -- hydronium-lab customize --copy-shell
 
 DOM and mixed configurations use `hydronium_lab.dom_document.Document`; Ink uses its existing document. The generated `.lab/Workbench.luax` is ordinary project code. The underlying DOM preview controller is available as `hydronium_lab.dom_preview`.
 
+## Terminal size and playback in the mixed Lab
+
+Ink stories get a size preset picker (story `sizes`, then the standard sizes, then your saved sizes) and a **Size** menu with custom columns and rows; **Save size** keeps the current size as a preset for the project (`terminalSizes` in the Lab preferences). The timeline (Restart, −1, Play/Pause, Step, frame and time) follows the Ink preview's virtual playback: the preview reports its state about ten times a second.
+
+The Lab polls the catalog. It re-selects the current story only when the story's definition changed (compared with key-order-independent JSON), so editing a control keeps focus; in release builds every poll is answered by a fresh Lua state whose table order differs.
+
 ## Ink stories in the browser
 
 By default an Ink story runs as a session on the Lab host (`POST /lab/sessions`), which needs the native Yoga library and keeps one Lua session per viewer. A host can run those sessions in the viewer's browser instead: set `ink_transport` in the Lab config to a same-origin module URL (a path, optionally with a query for cache busting).
