@@ -697,6 +697,11 @@ function Parser:parse_block()
     end
     local stmt = self:parse_statement()
     if stmt then
+      -- The line the statement starts on, for line-aligned output (most
+      -- statement nodes carry no loc).
+      if stmt.start_line == nil then
+        stmt.start_line = tok.line or (tok.loc and tok.loc.start and tok.loc.start.line)
+      end
       table.insert(statements, stmt)
     end
   end
