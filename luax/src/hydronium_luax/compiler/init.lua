@@ -152,8 +152,13 @@ function CodeEmitter:emit_node(node)
                        (node_type:match("Declaration$") ~= nil) or
                        (node_type == "JSXElement")
 
-  if is_statement and self.options.virtual_luals and node.loc and node.loc.start and node.loc.start.line then
-    local orig_line = node.loc.start.line
+  -- Start each statement on its source line (padding with newlines when
+  -- the output is behind), so Lua's own error messages, tracebacks and
+  -- debug.getinfo line numbers point at the .luax source. `align_lines =
+  -- false` turns it off; the LuaLS projection always aligns.
+  local orig_line = node.loc and node.loc.start and node.loc.start.line or node.start_line
+  if orig_line and (is_statement or node_type == "Comment")
+    and (self.options.virtual_luals or self.options.align_lines ~= false) then
     if self.gen_line < orig_line then
       self:write(string.rep("\n", orig_line - self.gen_line))
     end
