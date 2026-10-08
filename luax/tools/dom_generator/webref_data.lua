@@ -19,6 +19,9 @@ data.events = {
       { name = "stopPropagation", type = "fun(): void", doc = "Stops event propagation" },
       { name = "isDefaultPrevented", type = "fun(): boolean", doc = "Whether default action was prevented" },
       { name = "isPropagationStopped", type = "fun(): boolean", doc = "Whether propagation was stopped" },
+      { name = "value", type = "string?", doc = "The target control's value when the event fired (input, textarea, select)" },
+      { name = "checked", type = "boolean?", doc = "The target checkbox or radio's checked state when the event fired" },
+      { name = "name", type = "string?", doc = "The target control's name attribute" },
     },
   },
   {

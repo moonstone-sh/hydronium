@@ -76,6 +76,13 @@ end
     assert.is_not_nil(chunk, "Virtual code failed to parse: " .. tostring(err))
   end)
 
+  it("separates text that ends flush against a braced {expr} at line end", function()
+    local src = 'local d = {}\nlocal x = <d.p>\n  Speaks {n} languages,{" "}\n  <d.strong>{n}</d.strong> here.\n</d.p>\n'
+    local virt = virtual_source.transform(src)
+    local chunk, err = loadstring and loadstring(virt) or load(virt)
+    assert.truthy(chunk, "text,{\" \"} at line end must project to valid Lua: " .. tostring(err) .. "\n" .. virt)
+  end)
+
   it("formats spread attributes with valid table field comma separators", function()
     local src = "local x = <Button a={1} {...props} b={2} />"
     local virtual_code = virtual_source.transform(src)

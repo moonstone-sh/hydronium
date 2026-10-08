@@ -149,14 +149,14 @@
 --- Standard HTML attributes shared across all elements
 ---@class HTMLAttributes : LuaxProps, { [integer]: any }
 ---@field [integer] any
----@field id? string
----@field className? string
----@field class? string
+---@field id? string | hydronium.Getter
+---@field className? string | hydronium.Getter
+---@field class? string | hydronium.Getter
 ---@field style? HydroniumStyleProp
----@field title? string
----@field role? string
----@field tabIndex? integer
----@field hidden? boolean
+---@field title? string | hydronium.Getter
+---@field role? string | hydronium.Getter
+---@field tabIndex? integer | hydronium.Getter
+---@field hidden? boolean | hydronium.Getter
 ---@field key? any
 ---@field ref? any
 ---@field children? any
@@ -185,11 +185,11 @@
 --- Props for <button> element
 ---@class HTMLButtonProps : HTMLAttributes, { [integer]: any }
 ---@field [integer] any
----@field disabled boolean?
----@field type "button" | "submit" | "reset" | string?
----@field value string | number?
----@field name string?
----@field form string?
+---@field disabled? boolean | hydronium.Getter
+---@field type? "button" | "submit" | "reset" | string | hydronium.Getter
+---@field value? string | number | hydronium.Getter
+---@field name? string | hydronium.Getter
+---@field form? string | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLButtonElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLButtonElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLButtonElement>): void
@@ -286,10 +286,10 @@
 
 --- Props for <a> element
 ---@class HTMLAnchorProps : HTMLAttributes
----@field href string?
----@field target "_blank" | "_self" | "_parent" | "_top" | string?
----@field rel string?
----@field download any?
+---@field href? string | hydronium.Getter
+---@field target? "_blank" | "_self" | "_parent" | "_top" | string | hydronium.Getter
+---@field rel? string | hydronium.Getter
+---@field download? any | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLAnchorElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLAnchorElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLAnchorElement>): void
@@ -315,17 +315,17 @@
 --- Props for <input> element
 ---@class HTMLInputProps : HTMLAttributes
 ---@field ref? Ref<HTMLInputElement> | (fun(element: HTMLInputElement): void)
----@field type string?
----@field value any?
----@field checked boolean?
----@field disabled boolean?
----@field placeholder string?
----@field name string?
----@field readOnly boolean?
----@field required boolean?
----@field min number | string?
----@field max number | string?
----@field step number | string?
+---@field type? string | hydronium.Getter
+---@field value? any | hydronium.Getter
+---@field checked? boolean | hydronium.Getter
+---@field disabled? boolean | hydronium.Getter
+---@field placeholder? string | hydronium.Getter
+---@field name? string | hydronium.Getter
+---@field readOnly? boolean | hydronium.Getter
+---@field required? boolean | hydronium.Getter
+---@field min? number | string | hydronium.Getter
+---@field max? number | string | hydronium.Getter
+---@field step? number | string | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLInputElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLInputElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLInputElement>): void
@@ -350,9 +350,9 @@
 
 --- Props for <form> element
 ---@class HTMLFormProps : HTMLAttributes
----@field action string?
----@field method "get" | "post" | string?
----@field noValidate boolean?
+---@field action? string | hydronium.Getter
+---@field method? "get" | "post" | string | hydronium.Getter
+---@field noValidate? boolean | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLFormElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLFormElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLFormElement>): void
@@ -377,11 +377,11 @@
 
 --- Props for <img> element
 ---@class HTMLImageProps : HTMLAttributes
----@field src string?
----@field alt string?
----@field width number | string?
----@field height number | string?
----@field loading "lazy" | "eager" | string?
+---@field src? string | hydronium.Getter
+---@field alt? string | hydronium.Getter
+---@field width? number | string | hydronium.Getter
+---@field height? number | string | hydronium.Getter
+---@field loading? "lazy" | "eager" | string | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLImageElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLImageElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLImageElement>): void
@@ -406,12 +406,12 @@
 
 --- Props for <textarea> element
 ---@class HTMLTextAreaProps : HTMLAttributes
----@field value string?
----@field placeholder string?
----@field rows integer?
----@field cols integer?
----@field disabled boolean?
----@field readOnly boolean?
+---@field value? string | hydronium.Getter
+---@field placeholder? string | hydronium.Getter
+---@field rows? integer | hydronium.Getter
+---@field cols? integer | hydronium.Getter
+---@field disabled? boolean | hydronium.Getter
+---@field readOnly? boolean | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLTextAreaElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLTextAreaElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLTextAreaElement>): void
@@ -436,10 +436,10 @@
 
 --- Props for <select> element
 ---@class HTMLSelectProps : HTMLAttributes
----@field value any?
----@field disabled boolean?
----@field multiple boolean?
----@field name string?
+---@field value? any | hydronium.Getter
+---@field disabled? boolean | hydronium.Getter
+---@field multiple? boolean | hydronium.Getter
+---@field name? string | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLSelectElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLSelectElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLSelectElement>): void
@@ -464,9 +464,9 @@
 
 --- Props for <option> element
 ---@class HTMLOptionProps : HTMLAttributes
----@field value any?
----@field selected boolean?
----@field disabled boolean?
+---@field value? any | hydronium.Getter
+---@field selected? boolean | hydronium.Getter
+---@field disabled? boolean | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLOptionElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLOptionElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLOptionElement>): void
@@ -491,8 +491,8 @@
 
 --- Props for <label> element
 ---@class HTMLLabelProps : HTMLAttributes
----@field htmlFor string?
----@field for string?
+---@field htmlFor? string | hydronium.Getter
+---@field for? string | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLLabelElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLLabelElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLLabelElement>): void
@@ -541,8 +541,8 @@
 
 --- Props for <ol> element
 ---@class HTMLOListProps : HTMLAttributes
----@field start integer?
----@field reversed boolean?
+---@field start? integer | hydronium.Getter
+---@field reversed? boolean | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLOListElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLOListElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLOListElement>): void
@@ -567,7 +567,7 @@
 
 --- Props for <li> element
 ---@class HTMLLIProps : HTMLAttributes
----@field value integer?
+---@field value? integer | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLLIElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLLIElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLLIElement>): void
@@ -1024,8 +1024,8 @@
 
 --- Props for <th> element
 ---@class HTMLTableCellProps : HTMLAttributes
----@field colSpan integer?
----@field rowSpan integer?
+---@field colSpan? integer | hydronium.Getter
+---@field rowSpan? integer | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
@@ -1050,8 +1050,8 @@
 
 --- Props for <td> element
 ---@class HTMLTableCellProps : HTMLAttributes
----@field colSpan integer?
----@field rowSpan integer?
+---@field colSpan? integer | hydronium.Getter
+---@field rowSpan? integer | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLTableCellElement>): void
@@ -1076,8 +1076,8 @@
 
 --- Props for <canvas> element
 ---@class HTMLCanvasProps : HTMLAttributes
----@field width number | string?
----@field height number | string?
+---@field width? number | string | hydronium.Getter
+---@field height? number | string | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLCanvasElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLCanvasElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLCanvasElement>): void
@@ -1102,10 +1102,10 @@
 
 --- Props for <audio> element
 ---@class HTMLAudioProps : HTMLAttributes
----@field src string?
----@field controls boolean?
----@field autoPlay boolean?
----@field loop boolean?
+---@field src? string | hydronium.Getter
+---@field controls? boolean | hydronium.Getter
+---@field autoPlay? boolean | hydronium.Getter
+---@field loop? boolean | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLAudioElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLAudioElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLAudioElement>): void
@@ -1130,12 +1130,12 @@
 
 --- Props for <video> element
 ---@class HTMLVideoProps : HTMLAttributes
----@field src string?
----@field controls boolean?
----@field autoPlay boolean?
----@field loop boolean?
----@field width number | string?
----@field height number | string?
+---@field src? string | hydronium.Getter
+---@field controls? boolean | hydronium.Getter
+---@field autoPlay? boolean | hydronium.Getter
+---@field loop? boolean | hydronium.Getter
+---@field width? number | string | hydronium.Getter
+---@field height? number | string | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLVideoElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLVideoElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLVideoElement>): void
@@ -1208,7 +1208,7 @@
 
 --- Props for <dialog> element
 ---@class HTMLDialogProps : HTMLAttributes
----@field open boolean?
+---@field open? boolean | hydronium.Getter
 ---@field onClick? fun(event: SyntheticMouseEvent<HTMLDialogElement>): void
 ---@field onDoubleClick? fun(event: SyntheticMouseEvent<HTMLDialogElement>): void
 ---@field onMouseDown? fun(event: SyntheticMouseEvent<HTMLDialogElement>): void

@@ -754,6 +754,13 @@ function virtual_source.transform(source, filename, options)
                 bytes[a_end] = ","
               elseif bytes[b_start] == " " then
                 bytes[b_start] = ","
+              elseif a.type == "JSXText" and bytes[a_end] == '"' and bytes[a_end - 1] == " " then
+                -- Text ending flush against a `{expr}` that keeps its
+                -- braces (the last thing on its line, e.g. `text,{" "}`):
+                -- the text is already a quoted string with blanked inside,
+                -- so shorten it by one byte and use that byte for the comma.
+                bytes[a_end - 1] = '"'
+                bytes[a_end] = ","
               end
             end
           end

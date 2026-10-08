@@ -1,0 +1,12 @@
+---@meta
+
+--- A signal or computed getter, as returned by `createSignal` and
+--- `createComputed`. Call it to read the value (inside a render function or
+--- an effect, the read is tracked); a signal getter called with a value
+--- writes it. Pass the getter itself, uncalled, as a child or an element
+--- attribute to bind that one text node or attribute to it.
+---@class hydronium.Getter<T>
+---@overload fun(): T
+---@overload fun(value: T): T
+---@field get fun(): T
+---@field set? fun(value: T): T
