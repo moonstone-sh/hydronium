@@ -55,7 +55,12 @@ function Effect.new(fn)
   if not ok then
     error(err, 0)
   end
-  scheduler.flush()
+  -- Created during a render (in a component's setup), the first pass's writes
+  -- stay queued until that render has finished: flushing now would re-render
+  -- the component tree from inside its own render.
+  if not scheduler.isRendering() then
+    scheduler.flush()
+  end
 
   return self
 end

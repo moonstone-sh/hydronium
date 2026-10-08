@@ -79,8 +79,10 @@ function signalModule.createSignal(initialValue, options)
       return signal.value
     end
 
-    -- Amendment 3: Render-phase mutation guard
-    if scheduler.isRendering() then
+    -- Amendment 3: Render-phase mutation guard. An effect is not a render
+    -- function: one created during a component's setup runs its first pass
+    -- inside the render phase, and its writes take the queued path below.
+    if scheduler.isRendering() and not scheduler.isFlushingEffects() then
       local comp = scheduler.getCurrentRenderingComponent()
       local compName = comp and (comp.name or "Component") or "Component"
       local err = errors.wrapPhaseError(

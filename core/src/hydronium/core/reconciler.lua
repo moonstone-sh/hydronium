@@ -718,6 +718,24 @@ function Reconciler:hydrateRoot(vnode, containerHostNode, parentComponent)
   return hostNode
 end
 
+-- The outermost mount or hydration of a tree flushes what its components'
+-- setup queued: an effect created during setup runs its first pass inside
+-- the render, and any signal it wrote is held until the tree is in place.
+-- Nested calls (children, re-renders during a flush) pass straight through.
+for _, name in ipairs({ "mount", "hydrate" }) do
+  local inner = Reconciler[name]
+  local flag = "_in_" .. name
+  Reconciler[name] = function(self, ...)
+    if self[flag] then return inner(self, ...) end
+    self[flag] = true
+    local ok, first, second = pcall(inner, self, ...)
+    self[flag] = false
+    if not ok then error(first, 0) end
+    if not scheduler.isRendering() then scheduler.flush() end
+    return first, second
+  end
+end
+
 --- Reconcile children lists with Amendment 4 duplicate key hardening.
 function Reconciler:reconcileChildren(parentHostNode, oldChildren, newChildren, parentComponent)
   local oldList, oldLen = getChildrenList({ children = oldChildren })
