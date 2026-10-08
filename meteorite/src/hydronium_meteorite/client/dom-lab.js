@@ -118,13 +118,14 @@ async function createDomLabInstance({ root, fetchCatalog, previewUrl, loadModule
     // Show the new preview before sizing it: xterm does not paint while its
     // frame is hidden, and a terminal resized then stayed blank until Reset.
     if (retired) { frame.setAttribute("data-lab-dom-preview", ""); frame.style.position = retired.style.position; frame.style.visibility = ""; retired.remove(); }
+    // Renderer-specific chrome changes with the visible preview.
+    for (const timeline of root.querySelectorAll("[data-lab-timeline]")) timeline.hidden = story.renderer !== "ink";
     await rendererControls.select(story);
     canvas.fit();
     selected = story;
     store.select(story);
     const activeStory=root.querySelector("[data-lab-active-story]");if(activeStory)activeStory.textContent = story.title;
     navigate(); persist({story: story.id});
-    for (const timeline of root.querySelectorAll("[data-lab-timeline]")) timeline.hidden = story.renderer !== "ink";
     store.accept(await (await bridge()).snapshot());
     status.textContent = "Connected";
   }
