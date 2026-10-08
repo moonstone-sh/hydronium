@@ -82,6 +82,14 @@ function Runtime:_advance(nowMs)
   self.active:step(nowMs)
 end
 function Runtime:_emit(force_full)
+  -- A full frame tells the client to reset its terminal before writing
+  -- `ansi`, so it must carry the whole screen: repaint from scratch first.
+  -- Otherwise a full frame with no new output (a color change, or a resize
+  -- to the same size) blanked the terminal until the next real repaint.
+  if force_full then
+    self.active._host.invalidate()
+    self.active:_flush()
+  end
   local raw = snapshot.from_session(self.active)
   local encoded = frame.encode(self.frame_stream, raw, force_full)
   encoded.ansi = table.concat(self.output or {})

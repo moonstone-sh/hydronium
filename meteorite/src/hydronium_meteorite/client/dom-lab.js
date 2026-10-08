@@ -115,14 +115,11 @@ async function createDomLabInstance({ root, fetchCatalog, previewUrl, loadModule
         retired = previous;
       } catch (error) { candidate.remove(); throw error; }
     }
-    try {
-      await rendererControls.select(story);
-      canvas.fit();
-      if (retired) { frame.setAttribute("data-lab-dom-preview", ""); frame.style.position = retired.style.position; frame.style.visibility = ""; retired.remove(); }
-    } catch (error) {
-      if (retired) { frame.remove(); frame = retired; frame.setAttribute("data-lab-dom-preview", ""); }
-      throw error;
-    }
+    // Show the new preview before sizing it: xterm does not paint while its
+    // frame is hidden, and a terminal resized then stayed blank until Reset.
+    if (retired) { frame.setAttribute("data-lab-dom-preview", ""); frame.style.position = retired.style.position; frame.style.visibility = ""; retired.remove(); }
+    await rendererControls.select(story);
+    canvas.fit();
     selected = story;
     store.select(story);
     const activeStory=root.querySelector("[data-lab-active-story]");if(activeStory)activeStory.textContent = story.title;
@@ -207,6 +204,13 @@ function installRendererControls({root,getFrame,preferences,persist,bridge,getSt
   const query = name => root.querySelector(`[data-lab-${name}]`);
   const fill = (select,groups,format) => {if(!select)return groups.flatMap(group=>group.sizes);select.replaceChildren();let flat=[];for(const group of groups){const node=doc.createElement('optgroup');node.label=group.label;for(const size of group.sizes){const option=doc.createElement('option');option.value=String(flat.length);option.textContent=format(size);node.append(option);flat.push(size);}select.append(node);}return flat;};
   const queue = action => action().catch(report);
+  // A size that matches no preset shows as "Custom · W×H" in the picker.
+  const choose=(select,index,label)=>{
+    if(!select)return; let custom=select.querySelector('option[data-custom]');
+    if(index>=0){ if(custom)custom.remove(); select.value=String(index); return; }
+    if(!custom){custom=doc.createElement('option');custom.dataset.custom='';custom.value='custom';custom.disabled=true;select.prepend(custom);}
+    custom.textContent=label; select.value='custom';
+  };
   // "page" follows the Lab page: its computed color-scheme when it names one
   // scheme (a site theme toggle), otherwise the OS preference.
   const pageScheme = () => {
@@ -231,7 +235,7 @@ function installRendererControls({root,getFrame,preferences,persist,bridge,getSt
   pageObserver.observe(doc.documentElement, { attributes: true });
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', followPage, options);
   abort.signal.addEventListener('abort', () => pageObserver.disconnect());
-  const setViewport = async size => {viewport={...size};const index=presets.findIndex(v=>v.width===size.width&&v.height===size.height);if(query('viewport-preset'))query('viewport-preset').value=String(index);await applyDOM();};
+  const setViewport = async size => {viewport={...size};const index=presets.findIndex(v=>v.width===size.width&&v.height===size.height);choose(query('viewport-preset'),index,`Custom · ${size.width}×${size.height}`);await applyDOM();};
   query('viewport-preset')?.addEventListener('change',event=>queue(()=>setViewport(presets[Number(event.target.value)])),options);
   for(const dimension of ['width','height'])query('viewport-'+dimension)?.addEventListener('change',()=>queue(async()=>{
     const width=Number(query('viewport-width')?.value || viewport.width),height=Number(query('viewport-height')?.value || viewport.height);
@@ -244,16 +248,23 @@ function installRendererControls({root,getFrame,preferences,persist,bridge,getSt
     presets=fill(query('viewport-preset'),viewportGroups(getStory(),user),v=>`${v.name} · ${v.width}×${v.height}`);await setViewport(viewport);
   }),options);
   for(const name of ['color-space','vision','color-scheme'])query(name)?.addEventListener('change',()=>queue(async()=>{await persist({domColorSpace:(query('color-space')?.value || preferences.domColorSpace || 'srgb'),domVision:(query('vision')?.value || preferences.domVision || 'none'),domColorScheme:(query('color-scheme')?.value || preferences.domColorScheme || 'page')});await applyDOM();}),options);
-  const applyInk = async settings => { const bounds=await(await bridge()).configure(settings); if(bounds?.width && bounds?.height)canvas.resize(bounds.width,bounds.height); };
+  let inkCell = null; // CSS pixels per terminal cell, from the preview's bounds
+  const applyInk = async settings => {
+    const bounds=await(await bridge()).configure(settings);
+    if(bounds?.width && bounds?.height){canvas.resize(bounds.width,bounds.height);if(settings.columns&&settings.rows)inkCell={width:bounds.width/settings.columns,height:bounds.height/settings.rows};}
+  };
+  const showInkSize = size => {
+    if(query('ink-columns') && doc.activeElement!==query('ink-columns')) query('ink-columns').value = String(size.columns).padStart(3,'0');
+    if(query('ink-rows') && doc.activeElement!==query('ink-rows')) query('ink-rows').value = String(size.rows).padStart(3,'0');
+  };
   // Terminal size: a preset, or custom columns/rows (saved as user presets
   // in preferences.terminalSizes, as custom DOM viewports are).
   let inkSize;
   const setInkSize = async size => {
     inkSize = {name:size.name || `${size.columns}×${size.rows}`, columns:size.columns, rows:size.rows};
     const index = inkSizes.findIndex(v=>v.columns===inkSize.columns&&v.rows===inkSize.rows);
-    if(query('ink-size')) query('ink-size').value = String(index);
-    if(query('ink-columns')) query('ink-columns').value = inkSize.columns;
-    if(query('ink-rows')) query('ink-rows').value = inkSize.rows;
+    choose(query('ink-size'),index,`Custom · ${inkSize.columns}×${inkSize.rows}`);
+    showInkSize(inkSize);
     await applyInk({columns:inkSize.columns, rows:inkSize.rows});
     await persist({inkSize});
   };
@@ -273,7 +284,58 @@ function installRendererControls({root,getFrame,preferences,persist,bridge,getSt
     await setInkSize(inkSize);
   }),options);
   query('ink-color')?.addEventListener('change',event=>queue(async()=>{await(await bridge()).configure({color:event.target.value});await persist({inkColor:event.target.value});}),options);
+  // Drag the preview's bottom-right corner to resize it: pixels for a DOM
+  // viewport, whole cells for a terminal (as the Ink Lab's resizable box).
+  const handle=doc.createElement('div');handle.className='hydronium-lab__resize-handle';handle.dataset.labResizeHandle='';handle.title='Drag to resize';
+  const readout=doc.createElement('div');readout.className='hydronium-lab__resize-readout';readout.hidden=true;
+  let renderer=null, resizing=null, liveTimer=null;
+  // The handle lives in the stage (not the panned/zoomed world layer) and
+  // follows the preview's on-screen corner.
+  const stage=root.querySelector('[data-lab-stage]');
+  const place=()=>{
+    const frame=getFrame(); if(!frame||!stage) return;
+    if(handle.parentElement!==stage){ if(getComputedStyle(stage).position==='static') stage.style.position='relative'; stage.append(handle,readout); }
+    const stageBox=stage.getBoundingClientRect(), frameBox=frame.getBoundingClientRect();
+    const right=frameBox.right-stageBox.left+stage.scrollLeft, bottom=frameBox.bottom-stageBox.top+stage.scrollTop;
+    handle.style.left=`${right-15}px`;handle.style.top=`${bottom-15}px`;
+    readout.style.left=`${right+8}px`;readout.style.top=`${bottom-11}px`;
+  };
+  // Pan and zoom transform the world layer's style.
+  const worldObserver=new MutationObserver(place);
+  const frameObserver=new ResizeObserver(place);
+  abort.signal.addEventListener('abort',()=>{frameObserver.disconnect();worldObserver.disconnect();handle.remove();readout.remove();});
+  window.addEventListener('resize',place,options);
+  const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
+  const resizeTarget=(width,height)=>renderer==='ink'&&inkCell
+    ? {columns:clamp(Math.round(width/inkCell.width),10,400),rows:clamp(Math.round(height/inkCell.height),4,200)}
+    : {width:clamp(Math.round(width),40,8192),height:clamp(Math.round(height),40,8192)};
+  const applyTarget=target=>target.columns?setInkSize(target):setViewport({name:`${target.width}×${target.height}`,width:target.width,height:target.height});
+  handle.addEventListener('pointerdown',event=>{
+    event.preventDefault();event.stopPropagation();
+    const frame=getFrame(), scale=frame.getBoundingClientRect().width/frame.offsetWidth||1;
+    resizing={id:event.pointerId,x:event.clientX,y:event.clientY,width:frame.offsetWidth,height:frame.offsetHeight,scale};
+    handle.setPointerCapture(event.pointerId);handle.dataset.active='';frame.style.pointerEvents='none';readout.hidden=false;
+  },options);
+  handle.addEventListener('pointermove',event=>{
+    if(!resizing||event.pointerId!==resizing.id)return;
+    const width=resizing.width+(event.clientX-resizing.x)/resizing.scale, height=resizing.height+(event.clientY-resizing.y)/resizing.scale;
+    const target=resizeTarget(width,height); resizing.target=target;
+    readout.textContent=target.columns?`${target.columns} × ${target.rows}`:`${target.width} × ${target.height}`;
+    if(target.columns) showInkSize(target);
+    else { if(query('viewport-width'))query('viewport-width').value=target.width; if(query('viewport-height'))query('viewport-height').value=target.height; }
+    canvas.resize(Math.max(40,width),Math.max(40,height));place();
+    // Apply about eight times a second while dragging; exactly on release.
+    if(!liveTimer) liveTimer=setTimeout(()=>{liveTimer=null;if(resizing?.target)queue(()=>applyTarget(resizing.target));},120);
+  },options);
+  const finishResize=()=>{
+    if(!resizing)return; const target=resizing.target; resizing=null;
+    clearTimeout(liveTimer);liveTimer=null;handle.removeAttribute('data-active');getFrame().style.pointerEvents='';readout.hidden=true;
+    if(target) queue(()=>applyTarget(target)); else place();
+  };
+  handle.addEventListener('pointerup',finishResize,options);handle.addEventListener('pointercancel',finishResize,options);
   return {async select(story){
+    renderer=story.renderer;
+    frameObserver.disconnect();frameObserver.observe(getFrame());worldObserver.disconnect();if(getFrame().parentElement)worldObserver.observe(getFrame().parentElement,{attributes:true,attributeFilter:['style']});queueMicrotask(place);
     for(const el of root.querySelectorAll('[data-lab-dom-tools]'))el.hidden=story.renderer!=='dom';
     for(const el of root.querySelectorAll('[data-lab-ink-tools]'))el.hidden=story.renderer!=='ink';
     domActive=story.renderer==='dom';
@@ -290,14 +352,14 @@ function installRendererControls({root,getFrame,preferences,persist,bridge,getSt
       const {terminalSizeGroups}=await loadVirtualTerminal();
       inkSizes=fill(query('ink-size'),terminalSizeGroups(story,preferences.terminalSizes||[]),v=>`${v.name} · ${v.columns}×${v.rows}`);
       if(query('ink-color'))query('ink-color').value=preferences.inkColor||story.color||'truecolor';
-      const saved=preferences.inkSize,index=inkSizes.findIndex(v=>v.columns===saved?.columns&&v.rows===saved?.rows);if(query('ink-size'))query('ink-size').value=String(Math.max(0,index));
+      const saved=preferences.inkSize,index=inkSizes.findIndex(v=>v.columns===saved?.columns&&v.rows===saved?.rows);
       // A saved custom size that is not a preset still applies.
       const start = index >= 0 ? inkSizes[index] : (saved?.columns && saved?.rows ? saved : inkSizes[0]);
       inkSize = {name:start.name, columns:start.columns, rows:start.rows};
-      if(query('ink-columns')) query('ink-columns').value = inkSize.columns;
-      if(query('ink-rows')) query('ink-rows').value = inkSize.rows;
+      choose(query('ink-size'),index>=0?index:(saved?.columns&&saved?.rows?-1:0),`Custom · ${inkSize.columns}×${inkSize.rows}`);
+      showInkSize(inkSize);
       const bounds = await(await bridge()).configure({columns:inkSize.columns,rows:inkSize.rows,color:query('ink-color')?.value || preferences.inkColor || story.color || 'truecolor'});
-      if(bounds?.width && bounds?.height){getFrame().style.width=`${bounds.width}px`;getFrame().style.height=`${bounds.height}px`;}
+      if(bounds?.width && bounds?.height){getFrame().style.width=`${bounds.width}px`;getFrame().style.height=`${bounds.height}px`;inkCell={width:bounds.width/inkSize.columns,height:bounds.height/inkSize.rows};}
     }
   },destroy(){abort.abort();}};
 }

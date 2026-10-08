@@ -82,6 +82,26 @@ describe("hydronium Ink Lab", function()
     assert.truthy(html:find('src="/tools/components/assets/meteorite.js"', 1, true))
   end)
 
+  it("full frames carry the whole screen, even when nothing changed", function()
+    -- The browser client resets its terminal on a full frame and then writes
+    -- `ansi`; a color change once produced a full frame with no output and
+    -- left the terminal blank until a real repaint.
+    local registry = lab.registry({ lab.story({
+      id = "demo/static", render = function() return hydronium.h(ink.Text, nil, "still here") end,
+      sizes = { { name = "small", columns = 20, rows = 4 } },
+    }) })
+    local runtime = inkLab.new(registry)
+    local opened = runtime:request({ op = "open", story = "demo/static" })
+    assert.truthy(opened.ansi:find("still here", 1, true))
+    for _, request in ipairs({ { op = "color", color = "truecolor" }, { op = "resize", columns = 20, rows = 4 } }) do
+      local frame = runtime:request(request)
+      assert.equal(frame.kind, "full", request.op)
+      assert.truthy(frame.ansi:find("still here", 1, true), request.op .. " must repaint the screen")
+    end
+    local delta = runtime:request({ op = "step", nowMs = 16 })
+    assert.equal(delta.kind, "delta")
+  end)
+
   it("serves canonical styled frames and interactions through the transport-neutral protocol", function()
     local setValue
     local function Demo()

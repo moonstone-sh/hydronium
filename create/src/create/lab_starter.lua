@@ -33,7 +33,7 @@ role = "dev"
 
 [[dependencies]]
 name = "hydronium/ink-lab"
-constraint = "^0.3.4"
+constraint = "^0.3.5"
 role = "dev"
 
 [[dependencies]]

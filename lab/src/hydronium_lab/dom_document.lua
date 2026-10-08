@@ -18,9 +18,18 @@ local function widget(tag, role, defaults, children)
   end
 end
 M.ViewportPreset = widget("select", "viewport-preset", { ["aria-label"]="Viewport preset" })
-M.ViewportWidth = widget("input", "viewport-width", {type="number", min=1, max=8192, ["aria-label"]="Viewport width"})
-M.ViewportHeight = widget("input", "viewport-height", {type="number", min=1, max=8192, ["aria-label"]="Viewport height"})
-M.SaveViewport = widget("button", "viewport-save", {type="button"}, "Save viewport")
+-- Inline "800 × 600" / "080 × 024" fields, as in the Ink Lab: a value is
+-- applied on Enter or blur; dragging the preview's corner also resizes.
+local function dimension(label, length)
+  return {type="text", inputmode="numeric", autocomplete="off", spellcheck="false", maxlength=length,
+    class="hydronium-lab__dimension-input", ["aria-label"]=label, title=label}
+end
+local function save(label)
+  return {type="button", class="hydronium-lab__toolbar-icon", ["aria-label"]=label, title=label}
+end
+M.ViewportWidth = widget("input", "viewport-width", dimension("Viewport width (px)", 4))
+M.ViewportHeight = widget("input", "viewport-height", dimension("Viewport height (px)", 4))
+M.SaveViewport = widget("button", "viewport-save", save("Save this viewport as a preset"), H.h(Icon, {name="bookmark_add"}))
 -- Emulated inside the preview (prefers-color-scheme rules, matchMedia,
 -- light-dark()); "page" follows the Lab page's own scheme.
 M.ColorScheme = widget("select", "color-scheme", { ["aria-label"]="Preferred color scheme" }, {
@@ -31,9 +40,9 @@ M.Vision = widget("select", "vision", { ["aria-label"]="Color vision simulation"
   option("none", "Normal"), option("protanopia", "Protanopia approximation"), option("deuteranopia", "Deuteranopia approximation"), option("tritanopia", "Tritanopia approximation"), option("achromatopsia", "Grayscale") })
 M.GamutSupport = widget("output", "gamut-support")
 M.InkSize = widget("select", "ink-size", { ["aria-label"]="Terminal size preset" })
-M.InkColumns = widget("input", "ink-columns", {type="number", min=10, max=400, ["aria-label"]="Terminal columns"})
-M.InkRows = widget("input", "ink-rows", {type="number", min=4, max=200, ["aria-label"]="Terminal rows"})
-M.SaveInkSize = widget("button", "ink-size-save", {type="button"}, "Save size")
+M.InkColumns = widget("input", "ink-columns", dimension("Terminal columns", 3))
+M.InkRows = widget("input", "ink-rows", dimension("Terminal rows", 3))
+M.SaveInkSize = widget("button", "ink-size-save", save("Save this terminal size as a preset"), H.h(Icon, {name="bookmark_add"}))
 M.InkColor = widget("select", "ink-color", { ["aria-label"]="Terminal color capability" }, {
   option("ansi16", "ANSI 16"), option("ansi256", "ANSI 256"), option("truecolor", "Truecolor") })
 M.RestartStory = widget("button", "dom-restart", {type="button", ["aria-label"]="Restart story", title="Restart story", class="hydronium-lab__toolbar-icon"}, H.h(Icon, {name="restart_alt"}))
@@ -50,15 +59,14 @@ function M.Root(props)
 end
 function M.RendererControls()
   return H.h(H.Fragment, nil,
-    H.h("span", { ["data-lab-dom-tools"]="" }, H.h(M.ViewportPreset),
-      menu("Viewport", H.h(H.Fragment, nil, H.h("strong", nil, "Custom viewport"),
-        H.h("label", nil, "Width", H.h(M.ViewportWidth)), H.h("label", nil, "Height", H.h(M.ViewportHeight)), H.h(M.SaveViewport))),
+    H.h("span", { ["data-lab-dom-tools"]="", class="hydronium-lab__renderer-tools" }, H.h(M.ViewportPreset),
+      H.h("span", { class="hydronium-lab__dimensions" }, H.h(M.ViewportWidth), H.h("span", { class="hydronium-lab__dimension-separator" }, "×"), H.h(M.ViewportHeight)),
+      H.h(M.SaveViewport),
       menu("Color & vision", H.h(H.Fragment, nil,
         H.h("label", nil, "Color scheme", H.h(M.ColorScheme)), H.h("label", nil, "Color target", H.h(M.ColorSpace)), H.h("label", nil, "Vision", H.h(M.Vision)), H.h(M.GamutSupport)))),
-    H.h("span", { ["data-lab-ink-tools"]="", class="hydronium-lab__ink-toolbar", hidden=true }, H.h(M.InkSize),
-      menu("Size", H.h(H.Fragment, nil, H.h("strong", nil, "Custom size"),
-        H.h("label", nil, "Columns", H.h(M.InkColumns)), H.h("label", nil, "Rows", H.h(M.InkRows)), H.h(M.SaveInkSize))),
-      H.h(M.InkColor)),
+    H.h("span", { ["data-lab-ink-tools"]="", class="hydronium-lab__ink-toolbar hydronium-lab__renderer-tools", hidden=true }, H.h(M.InkSize),
+      H.h("span", { class="hydronium-lab__dimensions" }, H.h(M.InkColumns), H.h("span", { class="hydronium-lab__dimension-separator" }, "×"), H.h(M.InkRows)),
+      H.h(M.SaveInkSize), H.h(M.InkColor)),
     H.h(M.RestartStory))
 end
 function M.Shell(props)
