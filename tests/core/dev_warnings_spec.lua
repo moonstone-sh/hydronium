@@ -26,7 +26,7 @@ describe("Core: development warnings for state created outside setup", function(
     assert.equal(#messages, 0, "the first call is setup: no warning yet")
     H.act(function() bump() end)
     assert.equal(#messages, 1)
-    assert.truthy(messages[1]:find("createSignal was called while rendering <", 1, true), messages[1])
+    assert.truthy(messages[1]:find("createSignal was called while rendering the component defined at dev_warnings_spec.lua:", 1, true), messages[1])
     assert.truthy(messages[1]:find("return a render function", 1, true), messages[1])
     -- Reported once, however many renders follow.
     H.act(function() bump() end)

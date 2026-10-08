@@ -23,7 +23,7 @@ lab = "moon exec --dev -- hydronium-lab dev"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.10"
+constraint = "^0.2.11"
 role = "runtime"
 
 [[dependencies]]

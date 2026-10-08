@@ -32,16 +32,27 @@ function dev.reset()
   seen = {}
 end
 
+--- A component for messages: its name when it has one, else where its
+--- function is defined (local functions have no name at run time).
+function dev.describe(component)
+  local name = component.name
+  if name and name ~= "Component" and name ~= "Anonymous" then return "<" .. name .. ">" end
+  local info = type(component.type) == "function" and debug and debug.getinfo and debug.getinfo(component.type, "S")
+  if info and info.short_src and info.linedefined and info.linedefined > 0 then
+    return "the component defined at " .. info.short_src:gsub("^.*[/\\]", "") .. ":" .. info.linedefined
+  end
+  return "<" .. (name or "Component") .. ">"
+end
+
 -- A component's first call is its setup; a primitive created on any later
 -- call (its render function, or a component without setup running again)
 -- is created anew on every render and loses its state.
 function dev.check_render_creation(kind)
   local component = scheduler.getCurrentRenderingComponent()
   if not component or component.inSetup then return end
-  local name = component.name or "Component"
   dev.warn(kind .. "@" .. tostring(component.type), string.format(
-    "%s was called while rendering <%s>, outside its setup, so it is created again on every render (a signal loses its value). Create it in setup: return a render function from %s and call %s before it.",
-    kind, name, name, kind))
+    "%s was called while rendering %s, outside its setup, so it is created again on every render (a signal loses its value). Create it in setup: return a render function from the component and call %s before it.",
+    kind, dev.describe(component), kind))
 end
 
 return dev
