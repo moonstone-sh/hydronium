@@ -420,6 +420,7 @@ local function main()
       "tests/core/error_spec.lua",
       "tests/core/effect_write_spec.lua",
       "tests/core/dev_warnings_spec.lua",
+      "tests/build/client_manifest_spec.lua",
       "tests/core/refresh_spec.lua",
       "tests/core/refresh_component_spec.lua",
       "tests/core/family_hmr_spec.lua",

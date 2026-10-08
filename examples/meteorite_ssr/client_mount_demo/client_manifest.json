@@ -10,6 +10,7 @@
   "hydronium.core.ref": "hydronium/core/ref.lua",
   "hydronium.core.context": "hydronium/core/context.lua",
   "hydronium.core.scheduler": "hydronium/core/scheduler.lua",
+  "hydronium.core.dev": "hydronium/core/dev.lua",
   "hydronium.core.component": "hydronium/core/component.lua",
   "hydronium.core.family_loader": "hydronium/core/family_loader.lua",
   "hydronium.core.family": "hydronium/core/family.lua",
