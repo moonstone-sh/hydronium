@@ -76,6 +76,22 @@ end
     assert.is_not_nil(chunk, "Virtual code failed to parse: " .. tostring(err))
   end)
 
+  it("keeps a multi-line opening tag's brace on the tag's line", function()
+    local src = 'local d = {}\nlocal x = <d.div>\n  <d.input\n    type="checkbox"\n    checked={true}\n  />\n</d.div>\n'
+    local virt = virtual_source.transform(src)
+    assert.truthy(virt:find("d.input{", 1, true), virt)
+    assert.falsy(virt:find("d%.input%s*\n%s*{"), "the { must not start the next line:\n" .. virt)
+    assert.truthy((loadstring or load)(virt), virt)
+  end)
+
+  it("separates self-closing tags from the text that follows them", function()
+    local src = 'local d, P = {}, {}\nlocal x = <d.p>\n  <P label="x" />\n  text before<P />after\n</d.p>\n'
+    local virt = virtual_source.transform(src)
+    assert.truthy((loadstring or load)(virt), virt)
+    -- An element directly followed by a string literal would be a call.
+    assert.falsy(virt:find('}%s*"'), "element followed by text without a comma:\n" .. virt)
+  end)
+
   it("separates text that ends flush against a braced {expr} at line end", function()
     local src = 'local d = {}\nlocal x = <d.p>\n  Speaks {n} languages,{" "}\n  <d.strong>{n}</d.strong> here.\n</d.p>\n'
     local virt = virtual_source.transform(src)
