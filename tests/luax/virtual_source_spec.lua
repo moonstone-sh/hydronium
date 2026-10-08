@@ -76,6 +76,14 @@ end
     assert.is_not_nil(chunk, "Virtual code failed to parse: " .. tostring(err))
   end)
 
+  it("projects a table-literal attribute without parentheses, so LuaLS types its fields", function()
+    local src = 'local d = {}\nlocal x = <d.p style={{ backgroundColor = "red" }}>hi</d.p>\n'
+    local virt = virtual_source.transform(src)
+    assert.falsy(virt:find("style=%(", 1), virt)
+    assert.truthy(virt:find('style= { backgroundColor = "red" }', 1, true), virt)
+    assert.truthy((loadstring or load)(virt), virt)
+  end)
+
   it("keeps a multi-line opening tag's brace on the tag's line", function()
     local src = 'local d = {}\nlocal x = <d.div>\n  <d.input\n    type="checkbox"\n    checked={true}\n  />\n</d.div>\n'
     local virt = virtual_source.transform(src)

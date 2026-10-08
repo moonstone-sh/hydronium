@@ -441,8 +441,12 @@ function virtual_source.transform(source, filename, options)
           end
           if attr.type == "JSXAttribute" and attr.value.type == "JSXExpressionContainer" then
             if attr.value.loc and attr.value.loc.start and attr.value.loc["end"] then
-              bytes[attr.value.loc.start.offset] = "("
-              bytes[attr.value.loc["end"].offset] = ")"
+              -- A table literal (`style={{ ... }}`) needs no parentheses, and
+              -- LuaLS checks and completes its fields against the prop's type
+              -- only when the table is the value itself, not `({ ... })`.
+              local is_table = attr.value.expression and attr.value.expression.type == "TableConstructor"
+              bytes[attr.value.loc.start.offset] = is_table and " " or "("
+              bytes[attr.value.loc["end"].offset] = is_table and " " or ")"
             end
           elseif attr.type == "JSXSpreadAttribute" then
             if attr.loc and attr.loc.start and attr.loc["end"] and attr.argument and attr.argument.loc then

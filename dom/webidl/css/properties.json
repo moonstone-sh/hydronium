@@ -1,0 +1,1938 @@
+{
+ "accent-color": {
+  "syntax": "auto | <color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/accent-color"
+ },
+ "align-content": {
+  "syntax": "normal | <baseline-position> | <content-distribution> | <overflow-position>? <content-position>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/align-content"
+ },
+ "align-items": {
+  "syntax": "normal | stretch | <baseline-position> | [ <overflow-position>? <self-position> ] | anchor-center",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/align-items"
+ },
+ "align-self": {
+  "syntax": "auto | normal | stretch | <baseline-position> | <overflow-position>? <self-position> | anchor-center",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/align-self"
+ },
+ "alignment-baseline": {
+  "syntax": "baseline | alphabetic | ideographic | middle | central | mathematical | text-before-edge | text-after-edge",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/alignment-baseline"
+ },
+ "all": {
+  "syntax": "initial | inherit | unset | revert | revert-layer",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/all"
+ },
+ "animation": {
+  "syntax": "<single-animation>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/animation"
+ },
+ "animation-composition": {
+  "syntax": "<single-animation-composition>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/animation-composition"
+ },
+ "animation-delay": {
+  "syntax": "<time>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/animation-delay"
+ },
+ "animation-direction": {
+  "syntax": "<single-animation-direction>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/animation-direction"
+ },
+ "animation-duration": {
+  "syntax": "[ auto | <time [0s,∞]> ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/animation-duration"
+ },
+ "animation-fill-mode": {
+  "syntax": "<single-animation-fill-mode>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/animation-fill-mode"
+ },
+ "animation-iteration-count": {
+  "syntax": "<single-animation-iteration-count>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/animation-iteration-count"
+ },
+ "animation-name": {
+  "syntax": "[ none | <keyframes-name> ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/animation-name"
+ },
+ "animation-play-state": {
+  "syntax": "<single-animation-play-state>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/animation-play-state"
+ },
+ "animation-timing-function": {
+  "syntax": "<easing-function>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/animation-timing-function"
+ },
+ "animation-trigger": {
+  "syntax": "[ none | [ <dashed-ident> <animation-action>+ ]+ ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation-trigger"
+ },
+ "appearance": {
+  "syntax": "none | auto | <compat-auto> | <compat-special>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/appearance"
+ },
+ "aspect-ratio": {
+  "syntax": "auto || <ratio>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/aspect-ratio"
+ },
+ "backdrop-filter": {
+  "syntax": "none | <filter-value-list>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/backdrop-filter"
+ },
+ "backface-visibility": {
+  "syntax": "visible | hidden",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/backface-visibility"
+ },
+ "background": {
+  "syntax": "<bg-layer>#? , <final-bg-layer>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/background"
+ },
+ "background-attachment": {
+  "syntax": "<attachment>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/background-attachment"
+ },
+ "background-blend-mode": {
+  "syntax": "<blend-mode>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/background-blend-mode"
+ },
+ "background-clip": {
+  "syntax": "<bg-clip>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/background-clip"
+ },
+ "background-color": {
+  "syntax": "<color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/background-color"
+ },
+ "background-image": {
+  "syntax": "<bg-image>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/background-image"
+ },
+ "background-origin": {
+  "syntax": "<visual-box>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/background-origin"
+ },
+ "background-position": {
+  "syntax": "<bg-position>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/background-position"
+ },
+ "background-position-x": {
+  "syntax": "[ center | [ [ left | right | x-start | x-end ]? <length-percentage>? ]! ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/background-position-x"
+ },
+ "background-position-y": {
+  "syntax": "[ center | [ [ top | bottom | y-start | y-end ]? <length-percentage>? ]! ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/background-position-y"
+ },
+ "background-repeat": {
+  "syntax": "<repeat-style>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/background-repeat"
+ },
+ "background-size": {
+  "syntax": "<bg-size>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/background-size"
+ },
+ "baseline-shift": {
+  "syntax": "<length-percentage> | sub | super | baseline",
+  "mdn_url": null
+ },
+ "baseline-source": {
+  "syntax": "auto | first | last",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/baseline-source"
+ },
+ "block-size": {
+  "syntax": "<'width'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/block-size"
+ },
+ "border": {
+  "syntax": "<line-width> || <line-style> || <color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border"
+ },
+ "border-block": {
+  "syntax": "<'border-block-start'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-block"
+ },
+ "border-block-color": {
+  "syntax": "<'border-top-color'>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-block-color"
+ },
+ "border-block-end": {
+  "syntax": "<'border-top-width'> || <'border-top-style'> || <color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-block-end"
+ },
+ "border-block-end-color": {
+  "syntax": "<'border-top-color'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-block-end-color"
+ },
+ "border-block-end-style": {
+  "syntax": "<'border-top-style'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-block-end-style"
+ },
+ "border-block-end-width": {
+  "syntax": "<'border-top-width'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-block-end-width"
+ },
+ "border-block-start": {
+  "syntax": "<'border-top-width'> || <'border-top-style'> || <color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-block-start"
+ },
+ "border-block-start-color": {
+  "syntax": "<'border-top-color'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-block-start-color"
+ },
+ "border-block-start-style": {
+  "syntax": "<'border-top-style'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-block-start-style"
+ },
+ "border-block-start-width": {
+  "syntax": "<'border-top-width'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-block-start-width"
+ },
+ "border-block-style": {
+  "syntax": "<'border-top-style'>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-block-style"
+ },
+ "border-block-width": {
+  "syntax": "<'border-top-width'>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-block-width"
+ },
+ "border-bottom": {
+  "syntax": "<line-width> || <line-style> || <color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-bottom"
+ },
+ "border-bottom-color": {
+  "syntax": "<'border-top-color'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-bottom-color"
+ },
+ "border-bottom-left-radius": {
+  "syntax": "<length-percentage [0,∞]>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-bottom-left-radius"
+ },
+ "border-bottom-right-radius": {
+  "syntax": "<length-percentage [0,∞]>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-bottom-right-radius"
+ },
+ "border-bottom-style": {
+  "syntax": "<line-style>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-bottom-style"
+ },
+ "border-bottom-width": {
+  "syntax": "<line-width>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-bottom-width"
+ },
+ "border-collapse": {
+  "syntax": "separate | collapse",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-collapse"
+ },
+ "border-color": {
+  "syntax": "<color>{1,4}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-color"
+ },
+ "border-end-end-radius": {
+  "syntax": "<'border-top-left-radius'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-end-end-radius"
+ },
+ "border-end-start-radius": {
+  "syntax": "<'border-top-left-radius'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-end-start-radius"
+ },
+ "border-image": {
+  "syntax": "<'border-image-source'> || <'border-image-slice'> [ / <'border-image-width'> | / <'border-image-width'>? / <'border-image-outset'> ]? || <'border-image-repeat'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-image"
+ },
+ "border-image-outset": {
+  "syntax": "[ <length [0,∞]> | <number [0,∞]> ]{1,4}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-image-outset"
+ },
+ "border-image-repeat": {
+  "syntax": "[ stretch | repeat | round | space ]{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-image-repeat"
+ },
+ "border-image-slice": {
+  "syntax": "[ <number [0,∞]> | <percentage [0,∞]> ]{1,4} && fill?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-image-slice"
+ },
+ "border-image-source": {
+  "syntax": "none | <image>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-image-source"
+ },
+ "border-image-width": {
+  "syntax": "[ <length-percentage [0,∞]> | <number [0,∞]> | auto ]{1,4}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-image-width"
+ },
+ "border-inline": {
+  "syntax": "<'border-block-start'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-inline"
+ },
+ "border-inline-color": {
+  "syntax": "<'border-top-color'>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-inline-color"
+ },
+ "border-inline-end": {
+  "syntax": "<'border-top-width'> || <'border-top-style'> || <color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-inline-end"
+ },
+ "border-inline-end-color": {
+  "syntax": "<'border-top-color'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-inline-end-color"
+ },
+ "border-inline-end-style": {
+  "syntax": "<'border-top-style'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-inline-end-style"
+ },
+ "border-inline-end-width": {
+  "syntax": "<'border-top-width'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-inline-end-width"
+ },
+ "border-inline-start": {
+  "syntax": "<'border-top-width'> || <'border-top-style'> || <color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-inline-start"
+ },
+ "border-inline-start-color": {
+  "syntax": "<'border-top-color'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-inline-start-color"
+ },
+ "border-inline-start-style": {
+  "syntax": "<'border-top-style'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-inline-start-style"
+ },
+ "border-inline-start-width": {
+  "syntax": "<'border-top-width'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-inline-start-width"
+ },
+ "border-inline-style": {
+  "syntax": "<'border-top-style'>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-inline-style"
+ },
+ "border-inline-width": {
+  "syntax": "<'border-top-width'>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-inline-width"
+ },
+ "border-left": {
+  "syntax": "<line-width> || <line-style> || <color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-left"
+ },
+ "border-left-color": {
+  "syntax": "<color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-left-color"
+ },
+ "border-left-style": {
+  "syntax": "<line-style>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-left-style"
+ },
+ "border-left-width": {
+  "syntax": "<line-width>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-left-width"
+ },
+ "border-radius": {
+  "syntax": "<length-percentage [0,∞]>{1,4} [ / <length-percentage [0,∞]>{1,4} ]?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-radius"
+ },
+ "border-right": {
+  "syntax": "<line-width> || <line-style> || <color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-right"
+ },
+ "border-right-color": {
+  "syntax": "<color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-right-color"
+ },
+ "border-right-style": {
+  "syntax": "<line-style>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-right-style"
+ },
+ "border-right-width": {
+  "syntax": "<line-width>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-right-width"
+ },
+ "border-spacing": {
+  "syntax": "<length>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-spacing"
+ },
+ "border-start-end-radius": {
+  "syntax": "<'border-top-left-radius'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-start-end-radius"
+ },
+ "border-start-start-radius": {
+  "syntax": "<'border-top-left-radius'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-start-start-radius"
+ },
+ "border-style": {
+  "syntax": "<line-style>{1,4}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-style"
+ },
+ "border-top": {
+  "syntax": "<line-width> || <line-style> || <color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-top"
+ },
+ "border-top-color": {
+  "syntax": "<color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-top-color"
+ },
+ "border-top-left-radius": {
+  "syntax": "<length-percentage [0,∞]>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-top-left-radius"
+ },
+ "border-top-right-radius": {
+  "syntax": "<length-percentage [0,∞]>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-top-right-radius"
+ },
+ "border-top-style": {
+  "syntax": "<line-style>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-top-style"
+ },
+ "border-top-width": {
+  "syntax": "<line-width>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-top-width"
+ },
+ "border-width": {
+  "syntax": "<line-width>{1,4}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/border-width"
+ },
+ "bottom": {
+  "syntax": "auto | <length-percentage> | <anchor()> | <anchor-size()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/bottom"
+ },
+ "box-decoration-break": {
+  "syntax": "slice | clone",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/box-decoration-break"
+ },
+ "box-shadow": {
+  "syntax": "none | <shadow>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/box-shadow"
+ },
+ "box-sizing": {
+  "syntax": "content-box | border-box",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/box-sizing"
+ },
+ "break-after": {
+  "syntax": "auto | avoid | always | all | avoid-page | page | left | right | recto | verso | avoid-column | column | avoid-region | region",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/break-after"
+ },
+ "break-before": {
+  "syntax": "auto | avoid | always | all | avoid-page | page | left | right | recto | verso | avoid-column | column | avoid-region | region",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/break-before"
+ },
+ "break-inside": {
+  "syntax": "auto | avoid | avoid-page | avoid-column | avoid-region",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/break-inside"
+ },
+ "caption-side": {
+  "syntax": "top | bottom",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/caption-side"
+ },
+ "caret": {
+  "syntax": "<'caret-color'> || <'caret-animation'> || <'caret-shape'>",
+  "mdn_url": null
+ },
+ "caret-animation": {
+  "syntax": "auto | manual",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/caret-animation"
+ },
+ "caret-color": {
+  "syntax": "auto | <color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/caret-color"
+ },
+ "caret-shape": {
+  "syntax": "auto | bar | block | underscore",
+  "mdn_url": null
+ },
+ "clear": {
+  "syntax": "none | left | right | both | inline-start | inline-end",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/clear"
+ },
+ "clip-path": {
+  "syntax": "<clip-source> | [ <basic-shape> || <geometry-box> ] | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/clip-path"
+ },
+ "clip-rule": {
+  "syntax": "nonzero | evenodd",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/clip-rule"
+ },
+ "color": {
+  "syntax": "<color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/color"
+ },
+ "color-interpolation-filters": {
+  "syntax": "auto | sRGB | linearRGB",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/color-interpolation-filters"
+ },
+ "color-scheme": {
+  "syntax": "normal | [ light | dark | <custom-ident> ]+ && only?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/color-scheme"
+ },
+ "column-count": {
+  "syntax": "<integer> | auto",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/column-count"
+ },
+ "column-fill": {
+  "syntax": "auto | balance",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/column-fill"
+ },
+ "column-gap": {
+  "syntax": "normal | <length-percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/column-gap"
+ },
+ "column-height": {
+  "syntax": "auto | <length [0,∞]>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/column-height"
+ },
+ "column-rule": {
+  "syntax": "<'column-rule-width'> || <'column-rule-style'> || <'column-rule-color'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/column-rule"
+ },
+ "column-rule-color": {
+  "syntax": "<color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/column-rule-color"
+ },
+ "column-rule-style": {
+  "syntax": "<'border-style'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/column-rule-style"
+ },
+ "column-rule-width": {
+  "syntax": "<'border-width'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/column-rule-width"
+ },
+ "column-span": {
+  "syntax": "none | all",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/column-span"
+ },
+ "column-width": {
+  "syntax": "auto | <length [0,∞]>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/column-width"
+ },
+ "column-wrap": {
+  "syntax": "auto | nowrap | wrap",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/column-wrap"
+ },
+ "columns": {
+  "syntax": "[ <'column-width'> || <'column-count'> ] [ / <'column-height'> ]?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/columns"
+ },
+ "contain": {
+  "syntax": "none | strict | content | [ [ size || inline-size ] || layout || style || paint ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/contain"
+ },
+ "contain-intrinsic-block-size": {
+  "syntax": "auto? [ none | <length> ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/contain-intrinsic-block-size"
+ },
+ "contain-intrinsic-height": {
+  "syntax": "auto? [ none | <length> ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/contain-intrinsic-height"
+ },
+ "contain-intrinsic-inline-size": {
+  "syntax": "auto? [ none | <length> ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/contain-intrinsic-inline-size"
+ },
+ "contain-intrinsic-size": {
+  "syntax": "[ auto? [ none | <length> ] ]{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/contain-intrinsic-size"
+ },
+ "contain-intrinsic-width": {
+  "syntax": "auto? [ none | <length> ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/contain-intrinsic-width"
+ },
+ "container": {
+  "syntax": "<'container-name'> [ / <'container-type'> ]?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/container"
+ },
+ "container-name": {
+  "syntax": "none | <custom-ident>+",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/container-name"
+ },
+ "container-type": {
+  "syntax": "normal | [ [ size | inline-size ] || scroll-state ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/container-type"
+ },
+ "content": {
+  "syntax": "normal | none | [ <content-replacement> | <content-list> ] [ / [ <string> | <counter> | <attr()> ]+ ]?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/content"
+ },
+ "content-visibility": {
+  "syntax": "visible | auto | hidden",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/content-visibility"
+ },
+ "corner-block-end-shape": {
+  "syntax": "<corner-shape-value>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-block-end-shape"
+ },
+ "corner-block-start-shape": {
+  "syntax": "<corner-shape-value>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-block-start-shape"
+ },
+ "corner-bottom-left-shape": {
+  "syntax": "<corner-shape-value>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-bottom-left-shape"
+ },
+ "corner-bottom-right-shape": {
+  "syntax": "<corner-shape-value>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-bottom-right-shape"
+ },
+ "corner-bottom-shape": {
+  "syntax": "<corner-shape-value>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-bottom-shape"
+ },
+ "corner-end-end-shape": {
+  "syntax": "<corner-shape-value>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-end-end-shape"
+ },
+ "corner-end-start-shape": {
+  "syntax": "<corner-shape-value>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-end-start-shape"
+ },
+ "corner-inline-end-shape": {
+  "syntax": "<corner-shape-value>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-inline-end-shape"
+ },
+ "corner-inline-start-shape": {
+  "syntax": "<corner-shape-value>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-inline-start-shape"
+ },
+ "corner-left-shape": {
+  "syntax": "<corner-shape-value>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-left-shape"
+ },
+ "corner-right-shape": {
+  "syntax": "<corner-shape-value>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-right-shape"
+ },
+ "corner-shape": {
+  "syntax": "<corner-shape-value>{1,4}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-shape"
+ },
+ "corner-start-end-shape": {
+  "syntax": "<corner-shape-value>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-start-end-shape"
+ },
+ "corner-start-start-shape": {
+  "syntax": "<corner-shape-value>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-start-start-shape"
+ },
+ "corner-top-left-shape": {
+  "syntax": "<corner-shape-value>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-top-left-shape"
+ },
+ "corner-top-right-shape": {
+  "syntax": "<corner-shape-value>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-top-right-shape"
+ },
+ "corner-top-shape": {
+  "syntax": "<corner-shape-value>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/corner-top-shape"
+ },
+ "counter-increment": {
+  "syntax": "[ <counter-name> <integer>? ]+ | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/counter-increment"
+ },
+ "counter-reset": {
+  "syntax": "[ <counter-name> <integer>? | <reversed-counter-name> <integer>? ]+ | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/counter-reset"
+ },
+ "counter-set": {
+  "syntax": "[ <counter-name> <integer>? ]+ | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/counter-set"
+ },
+ "cursor": {
+  "syntax": "[ [ <url> [ <x> <y> ]? , ]* <cursor-predefined> ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/cursor"
+ },
+ "cx": {
+  "syntax": "<length> | <percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/cx"
+ },
+ "cy": {
+  "syntax": "<length> | <percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/cy"
+ },
+ "d": {
+  "syntax": "none | path(<string>)",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/d"
+ },
+ "direction": {
+  "syntax": "ltr | rtl",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/direction"
+ },
+ "display": {
+  "syntax": "[ <display-outside> || <display-inside> ] | <display-listitem> | <display-internal> | <display-box> | <display-legacy>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/display"
+ },
+ "dominant-baseline": {
+  "syntax": "auto | text-bottom | alphabetic | ideographic | middle | central | mathematical | hanging | text-top",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/dominant-baseline"
+ },
+ "dynamic-range-limit": {
+  "syntax": "standard | no-limit | constrained | <dynamic-range-limit-mix()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/dynamic-range-limit"
+ },
+ "empty-cells": {
+  "syntax": "show | hide",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/empty-cells"
+ },
+ "fill": {
+  "syntax": "<paint>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/fill"
+ },
+ "fill-opacity": {
+  "syntax": "<'opacity'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/fill-opacity"
+ },
+ "fill-rule": {
+  "syntax": "nonzero | evenodd",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/fill-rule"
+ },
+ "filter": {
+  "syntax": "none | <filter-value-list>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/filter"
+ },
+ "flex": {
+  "syntax": "none | [ <'flex-grow'> <'flex-shrink'>? || <'flex-basis'> ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/flex"
+ },
+ "flex-basis": {
+  "syntax": "content | <'width'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/flex-basis"
+ },
+ "flex-direction": {
+  "syntax": "row | row-reverse | column | column-reverse",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/flex-direction"
+ },
+ "flex-flow": {
+  "syntax": "<'flex-direction'> || <'flex-wrap'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/flex-flow"
+ },
+ "flex-grow": {
+  "syntax": "<number>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/flex-grow"
+ },
+ "flex-shrink": {
+  "syntax": "<number>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/flex-shrink"
+ },
+ "flex-wrap": {
+  "syntax": "nowrap | wrap | wrap-reverse",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/flex-wrap"
+ },
+ "float": {
+  "syntax": "left | right | none | inline-start | inline-end",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/float"
+ },
+ "flood-color": {
+  "syntax": "<color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/flood-color"
+ },
+ "flood-opacity": {
+  "syntax": "<'opacity'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/flood-opacity"
+ },
+ "font": {
+  "syntax": "[ [ <'font-style'> || <font-variant-css2> || <'font-weight'> || <font-width-css3> ]? <'font-size'> [ / <'line-height'> ]? <'font-family'># ] | <system-family-name>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font"
+ },
+ "font-family": {
+  "syntax": "[ <family-name> | <generic-family> ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-family"
+ },
+ "font-feature-settings": {
+  "syntax": "normal | <feature-tag-value>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-feature-settings"
+ },
+ "font-kerning": {
+  "syntax": "auto | normal | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-kerning"
+ },
+ "font-language-override": {
+  "syntax": "normal | <string>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-language-override"
+ },
+ "font-optical-sizing": {
+  "syntax": "auto | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-optical-sizing"
+ },
+ "font-palette": {
+  "syntax": "normal | light | dark | <palette-identifier> | <palette-mix()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-palette"
+ },
+ "font-size": {
+  "syntax": "<absolute-size> | <relative-size> | <length-percentage [0,∞]> | math",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-size"
+ },
+ "font-size-adjust": {
+  "syntax": "none | [ ex-height | cap-height | ch-width | ic-width | ic-height ]? [ from-font | <number> ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-size-adjust"
+ },
+ "font-style": {
+  "syntax": "normal | italic | oblique <angle>?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-style"
+ },
+ "font-synthesis": {
+  "syntax": "none | [ weight || style || small-caps || position]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-synthesis"
+ },
+ "font-synthesis-small-caps": {
+  "syntax": "auto | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-synthesis-small-caps"
+ },
+ "font-synthesis-style": {
+  "syntax": "auto | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-synthesis-style"
+ },
+ "font-synthesis-weight": {
+  "syntax": "auto | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-synthesis-weight"
+ },
+ "font-variant": {
+  "syntax": "normal | none | [ <common-lig-values> || <discretionary-lig-values> || <historical-lig-values> || <contextual-alt-values> || stylistic( <feature-value-name> ) || historical-forms || styleset( <feature-value-name># ) || character-variant( <feature-value-name># ) || swash( <feature-value-name> ) || ornaments( <feature-value-name> ) || annotation( <feature-value-name> ) || [ small-caps | all-small-caps | petite-caps | all-petite-caps | unicase | titling-caps ] || <numeric-figure-values> || <numeric-spacing-values> || <numeric-fraction-values> || ordinal || slashed-zero || <east-asian-variant-values> || <east-asian-width-values> || ruby ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-variant"
+ },
+ "font-variant-alternates": {
+  "syntax": "normal | [ stylistic( <feature-value-name> ) || historical-forms || styleset( <feature-value-name># ) || character-variant( <feature-value-name># ) || swash( <feature-value-name> ) || ornaments( <feature-value-name> ) || annotation( <feature-value-name> ) ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-variant-alternates"
+ },
+ "font-variant-caps": {
+  "syntax": "normal | small-caps | all-small-caps | petite-caps | all-petite-caps | unicase | titling-caps",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-variant-caps"
+ },
+ "font-variant-east-asian": {
+  "syntax": "normal | [ <east-asian-variant-values> || <east-asian-width-values> || ruby ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-variant-east-asian"
+ },
+ "font-variant-emoji": {
+  "syntax": "normal | text | emoji | unicode",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-variant-emoji"
+ },
+ "font-variant-ligatures": {
+  "syntax": "normal | none | [ <common-lig-values> || <discretionary-lig-values> || <historical-lig-values> || <contextual-alt-values> ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-variant-ligatures"
+ },
+ "font-variant-numeric": {
+  "syntax": "normal | [ <numeric-figure-values> || <numeric-spacing-values> || <numeric-fraction-values> || ordinal || slashed-zero ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-variant-numeric"
+ },
+ "font-variant-position": {
+  "syntax": "normal | sub | super",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-variant-position"
+ },
+ "font-variation-settings": {
+  "syntax": "normal | [ <string> <number> ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-variation-settings"
+ },
+ "font-weight": {
+  "syntax": "<font-weight-absolute> | bolder | lighter",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/font-weight"
+ },
+ "forced-color-adjust": {
+  "syntax": "auto | none | preserve-parent-color",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/forced-color-adjust"
+ },
+ "gap": {
+  "syntax": "<'row-gap'> <'column-gap'>?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/gap"
+ },
+ "grid": {
+  "syntax": "<'grid-template'> | <'grid-template-rows'> / [ auto-flow && dense? ] <'grid-auto-columns'>? | [ auto-flow && dense? ] <'grid-auto-rows'>? / <'grid-template-columns'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid"
+ },
+ "grid-area": {
+  "syntax": "<grid-line> [ / <grid-line> ]{0,3}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid-area"
+ },
+ "grid-auto-columns": {
+  "syntax": "<track-size>+",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid-auto-columns"
+ },
+ "grid-auto-flow": {
+  "syntax": "[ row | column ] || dense",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid-auto-flow"
+ },
+ "grid-auto-rows": {
+  "syntax": "<track-size>+",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid-auto-rows"
+ },
+ "grid-column": {
+  "syntax": "<grid-line> [ / <grid-line> ]?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid-column"
+ },
+ "grid-column-end": {
+  "syntax": "<grid-line>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid-column-end"
+ },
+ "grid-column-start": {
+  "syntax": "<grid-line>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid-column-start"
+ },
+ "grid-row": {
+  "syntax": "<grid-line> [ / <grid-line> ]?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid-row"
+ },
+ "grid-row-end": {
+  "syntax": "<grid-line>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid-row-end"
+ },
+ "grid-row-start": {
+  "syntax": "<grid-line>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid-row-start"
+ },
+ "grid-template": {
+  "syntax": "none | [ <'grid-template-rows'> / <'grid-template-columns'> ] | [ <line-names>? <string> <track-size>? <line-names>? ]+ [ / <explicit-track-list> ]?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid-template"
+ },
+ "grid-template-areas": {
+  "syntax": "none | <string>+",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid-template-areas"
+ },
+ "grid-template-columns": {
+  "syntax": "none | <track-list> | <auto-track-list> | subgrid <line-name-list>?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid-template-columns"
+ },
+ "grid-template-rows": {
+  "syntax": "none | <track-list> | <auto-track-list> | subgrid <line-name-list>?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/grid-template-rows"
+ },
+ "hanging-punctuation": {
+  "syntax": "none | [ first || [ force-end | allow-end ] || last ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/hanging-punctuation"
+ },
+ "height": {
+  "syntax": "auto | <length-percentage [0,∞]> | min-content | max-content | fit-content | fit-content(<length-percentage [0,∞]>) | <calc-size()> | <anchor-size()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/height"
+ },
+ "hyphenate-character": {
+  "syntax": "auto | <string>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/hyphenate-character"
+ },
+ "hyphenate-limit-chars": {
+  "syntax": "[ auto | <integer> ]{1,3}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/hyphenate-limit-chars"
+ },
+ "hyphens": {
+  "syntax": "none | manual | auto",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/hyphens"
+ },
+ "image-orientation": {
+  "syntax": "from-image | <angle> | [ <angle>? flip ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/image-orientation"
+ },
+ "image-rendering": {
+  "syntax": "auto | crisp-edges | pixelated | smooth",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/image-rendering"
+ },
+ "initial-letter": {
+  "syntax": "normal | [ <number> <integer>? ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/initial-letter"
+ },
+ "inline-size": {
+  "syntax": "<'width'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/inline-size"
+ },
+ "inset": {
+  "syntax": "<'top'>{1,4}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/inset"
+ },
+ "inset-block": {
+  "syntax": "<'top'>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/inset-block"
+ },
+ "inset-block-end": {
+  "syntax": "<'top'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/inset-block-end"
+ },
+ "inset-block-start": {
+  "syntax": "<'top'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/inset-block-start"
+ },
+ "inset-inline": {
+  "syntax": "<'top'>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/inset-inline"
+ },
+ "inset-inline-end": {
+  "syntax": "<'top'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/inset-inline-end"
+ },
+ "inset-inline-start": {
+  "syntax": "<'top'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/inset-inline-start"
+ },
+ "interactivity": {
+  "syntax": "auto | inert",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/interactivity"
+ },
+ "interest-delay": {
+  "syntax": "<'interest-delay-start'>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/interest-delay-end"
+ },
+ "interest-delay-end": {
+  "syntax": "normal | <time>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/interest-delay-end"
+ },
+ "interest-delay-start": {
+  "syntax": "normal | <time>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/interest-delay-start"
+ },
+ "isolation": {
+  "syntax": "auto | isolate",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/isolation"
+ },
+ "justify-content": {
+  "syntax": "normal | <content-distribution> | <overflow-position>? [ <content-position> | left | right ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/justify-content"
+ },
+ "justify-items": {
+  "syntax": "normal | stretch | <baseline-position> | <overflow-position>? [ <self-position> | left | right ] | legacy | legacy && [ left | right | center ] | anchor-center",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/justify-items"
+ },
+ "justify-self": {
+  "syntax": "auto | normal | stretch | <baseline-position> | <overflow-position>? [ <self-position> | left | right ] | anchor-center",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/justify-self"
+ },
+ "left": {
+  "syntax": "auto | <length-percentage> | <anchor()> | <anchor-size()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/left"
+ },
+ "letter-spacing": {
+  "syntax": "normal | <length>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/letter-spacing"
+ },
+ "lighting-color": {
+  "syntax": "<color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/lighting-color"
+ },
+ "line-break": {
+  "syntax": "auto | loose | normal | strict | anywhere",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/line-break"
+ },
+ "line-clamp": {
+  "syntax": "none | <integer>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/line-clamp"
+ },
+ "line-height": {
+  "syntax": "normal | <number> | <length> | <percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/line-height"
+ },
+ "list-style": {
+  "syntax": "<'list-style-type'> || <'list-style-position'> || <'list-style-image'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/list-style"
+ },
+ "list-style-image": {
+  "syntax": "<image> | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/list-style-image"
+ },
+ "list-style-position": {
+  "syntax": "inside | outside",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/list-style-position"
+ },
+ "list-style-type": {
+  "syntax": "<counter-style> | <string> | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/list-style-type"
+ },
+ "margin": {
+  "syntax": "<'margin-top'>{1,4}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/margin"
+ },
+ "margin-block": {
+  "syntax": "<'margin-top'>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/margin-block"
+ },
+ "margin-block-end": {
+  "syntax": "<'margin-top'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/margin-block-end"
+ },
+ "margin-block-start": {
+  "syntax": "<'margin-top'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/margin-block-start"
+ },
+ "margin-bottom": {
+  "syntax": "<length-percentage> | auto | <anchor-size()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/margin-bottom"
+ },
+ "margin-inline": {
+  "syntax": "<'margin-top'>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/margin-inline"
+ },
+ "margin-inline-end": {
+  "syntax": "<'margin-top'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/margin-inline-end"
+ },
+ "margin-inline-start": {
+  "syntax": "<'margin-top'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/margin-inline-start"
+ },
+ "margin-left": {
+  "syntax": "<length-percentage> | auto | <anchor-size()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/margin-left"
+ },
+ "margin-right": {
+  "syntax": "<length-percentage> | auto | <anchor-size()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/margin-right"
+ },
+ "margin-top": {
+  "syntax": "<length-percentage> | auto | <anchor-size()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/margin-top"
+ },
+ "marker": {
+  "syntax": "none | <url>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/marker"
+ },
+ "marker-end": {
+  "syntax": "none | <url>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/marker-end"
+ },
+ "marker-mid": {
+  "syntax": "none | <url>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/marker-mid"
+ },
+ "marker-start": {
+  "syntax": "none | <url>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/marker-start"
+ },
+ "mask": {
+  "syntax": "<mask-layer>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask"
+ },
+ "mask-border": {
+  "syntax": "<'mask-border-source'> || <'mask-border-slice'> [ / <'mask-border-width'>? [ / <'mask-border-outset'> ]? ]? || <'mask-border-repeat'> || <'mask-border-mode'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-border"
+ },
+ "mask-border-mode": {
+  "syntax": "luminance | alpha",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-border-mode"
+ },
+ "mask-border-outset": {
+  "syntax": "[ <length> | <number> ]{1,4}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-border-outset"
+ },
+ "mask-border-repeat": {
+  "syntax": "[ stretch | repeat | round | space ]{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-border-repeat"
+ },
+ "mask-border-slice": {
+  "syntax": "<number-percentage>{1,4} fill?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-border-slice"
+ },
+ "mask-border-source": {
+  "syntax": "none | <image>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-border-source"
+ },
+ "mask-border-width": {
+  "syntax": "[ <length-percentage> | <number> | auto ]{1,4}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-border-width"
+ },
+ "mask-clip": {
+  "syntax": "[ <coord-box> | no-clip ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-clip"
+ },
+ "mask-composite": {
+  "syntax": "<compositing-operator>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-composite"
+ },
+ "mask-image": {
+  "syntax": "<mask-reference>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-image"
+ },
+ "mask-mode": {
+  "syntax": "<masking-mode>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-mode"
+ },
+ "mask-origin": {
+  "syntax": "<coord-box>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-origin"
+ },
+ "mask-position": {
+  "syntax": "<position>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-position"
+ },
+ "mask-repeat": {
+  "syntax": "<repeat-style>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-repeat"
+ },
+ "mask-size": {
+  "syntax": "<bg-size>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-size"
+ },
+ "mask-type": {
+  "syntax": "luminance | alpha",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mask-type"
+ },
+ "math-depth": {
+  "syntax": "auto-add | add(<integer>) | <integer>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/math-depth"
+ },
+ "math-style": {
+  "syntax": "normal | compact",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/math-style"
+ },
+ "max-block-size": {
+  "syntax": "<'max-width'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/max-block-size"
+ },
+ "max-height": {
+  "syntax": "none | <length-percentage [0,∞]> | min-content | max-content | fit-content | fit-content(<length-percentage [0,∞]>) | <calc-size()> | <anchor-size()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/max-height"
+ },
+ "max-inline-size": {
+  "syntax": "<'max-width'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/max-inline-size"
+ },
+ "max-width": {
+  "syntax": "none | <length-percentage [0,∞]> | min-content | max-content | fit-content | fit-content(<length-percentage [0,∞]>) | <calc-size()> | <anchor-size()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/max-width"
+ },
+ "min-block-size": {
+  "syntax": "<'min-width'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/min-block-size"
+ },
+ "min-height": {
+  "syntax": "auto | <length-percentage [0,∞]> | min-content | max-content | fit-content | fit-content(<length-percentage [0,∞]>) | <calc-size()> | <anchor-size()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/min-height"
+ },
+ "min-inline-size": {
+  "syntax": "<'min-width'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/min-inline-size"
+ },
+ "min-width": {
+  "syntax": "auto | <length-percentage [0,∞]> | min-content | max-content | fit-content | fit-content(<length-percentage [0,∞]>) | <calc-size()> | <anchor-size()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/min-width"
+ },
+ "mix-blend-mode": {
+  "syntax": "<blend-mode> | plus-darker | plus-lighter",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/mix-blend-mode"
+ },
+ "object-fit": {
+  "syntax": "fill | contain | cover | none | scale-down",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/object-fit"
+ },
+ "object-position": {
+  "syntax": "<position>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/object-position"
+ },
+ "offset": {
+  "syntax": "[ <'offset-position'>? [ <'offset-path'> [ <'offset-distance'> || <'offset-rotate'> ]? ]? ]! [ / <'offset-anchor'> ]?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/offset"
+ },
+ "offset-anchor": {
+  "syntax": "auto | <position>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/offset-anchor"
+ },
+ "offset-distance": {
+  "syntax": "<length-percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/offset-distance"
+ },
+ "offset-path": {
+  "syntax": "none | <offset-path> || <coord-box>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/offset-path"
+ },
+ "offset-position": {
+  "syntax": "normal | auto | <position>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/offset-position"
+ },
+ "offset-rotate": {
+  "syntax": "[ auto | reverse ] || <angle>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/offset-rotate"
+ },
+ "opacity": {
+  "syntax": "<opacity-value>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/opacity"
+ },
+ "order": {
+  "syntax": "<integer>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/order"
+ },
+ "orphans": {
+  "syntax": "<integer>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/orphans"
+ },
+ "outline": {
+  "syntax": "<'outline-width'> || <'outline-style'> || <'outline-color'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/outline"
+ },
+ "outline-color": {
+  "syntax": "auto | <color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/outline-color"
+ },
+ "outline-offset": {
+  "syntax": "<length>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/outline-offset"
+ },
+ "outline-style": {
+  "syntax": "auto | <outline-line-style>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/outline-style"
+ },
+ "outline-width": {
+  "syntax": "<line-width>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/outline-width"
+ },
+ "overflow": {
+  "syntax": "[ visible | hidden | clip | scroll | auto ]{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/overflow"
+ },
+ "overflow-anchor": {
+  "syntax": "auto | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/overflow-anchor"
+ },
+ "overflow-block": {
+  "syntax": "visible | hidden | clip | scroll | auto",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/overflow-block"
+ },
+ "overflow-clip-margin": {
+  "syntax": "<visual-box> || <length [0,∞]>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/overflow-clip-margin"
+ },
+ "overflow-inline": {
+  "syntax": "visible | hidden | clip | scroll | auto",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/overflow-inline"
+ },
+ "overflow-wrap": {
+  "syntax": "normal | break-word | anywhere",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/overflow-wrap"
+ },
+ "overflow-x": {
+  "syntax": "visible | hidden | clip | scroll | auto",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/overflow-x"
+ },
+ "overflow-y": {
+  "syntax": "visible | hidden | clip | scroll | auto",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/overflow-y"
+ },
+ "overscroll-behavior": {
+  "syntax": "[ contain | none | auto ]{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/overscroll-behavior"
+ },
+ "overscroll-behavior-block": {
+  "syntax": "contain | none | auto",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/overscroll-behavior-block"
+ },
+ "overscroll-behavior-inline": {
+  "syntax": "contain | none | auto",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/overscroll-behavior-inline"
+ },
+ "overscroll-behavior-x": {
+  "syntax": "contain | none | auto",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/overscroll-behavior-x"
+ },
+ "overscroll-behavior-y": {
+  "syntax": "contain | none | auto",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/overscroll-behavior-y"
+ },
+ "padding": {
+  "syntax": "<'padding-top'>{1,4}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/padding"
+ },
+ "padding-block": {
+  "syntax": "<'padding-top'>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/padding-block"
+ },
+ "padding-block-end": {
+  "syntax": "<'padding-top'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/padding-block-end"
+ },
+ "padding-block-start": {
+  "syntax": "<'padding-top'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/padding-block-start"
+ },
+ "padding-bottom": {
+  "syntax": "<length-percentage [0,∞]>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/padding-bottom"
+ },
+ "padding-inline": {
+  "syntax": "<'padding-top'>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/padding-inline"
+ },
+ "padding-inline-end": {
+  "syntax": "<'padding-top'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/padding-inline-end"
+ },
+ "padding-inline-start": {
+  "syntax": "<'padding-top'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/padding-inline-start"
+ },
+ "padding-left": {
+  "syntax": "<length-percentage [0,∞]>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/padding-left"
+ },
+ "padding-right": {
+  "syntax": "<length-percentage [0,∞]>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/padding-right"
+ },
+ "padding-top": {
+  "syntax": "<length-percentage [0,∞]>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/padding-top"
+ },
+ "page": {
+  "syntax": "auto | <custom-ident>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/page"
+ },
+ "paint-order": {
+  "syntax": "normal | [ fill || stroke || markers ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/paint-order"
+ },
+ "perspective": {
+  "syntax": "none | <length>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/perspective"
+ },
+ "perspective-origin": {
+  "syntax": "<position>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/perspective-origin"
+ },
+ "place-content": {
+  "syntax": "<'align-content'> <'justify-content'>?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/place-content"
+ },
+ "place-items": {
+  "syntax": "<'align-items'> <'justify-items'>?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/place-items"
+ },
+ "place-self": {
+  "syntax": "<'align-self'> <'justify-self'>?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/place-self"
+ },
+ "pointer-events": {
+  "syntax": "auto | none | visiblePainted | visibleFill | visibleStroke | visible | painted | fill | stroke | all | inherit",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/pointer-events"
+ },
+ "position": {
+  "syntax": "static | relative | absolute | sticky | fixed",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/position"
+ },
+ "print-color-adjust": {
+  "syntax": "economy | exact",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/print-color-adjust"
+ },
+ "quotes": {
+  "syntax": "none | auto | [ <string> <string> ]+",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/quotes"
+ },
+ "r": {
+  "syntax": "<length> | <percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/r"
+ },
+ "reading-flow": {
+  "syntax": "normal | source-order | flex-visual | flex-flow | grid-rows | grid-columns | grid-order",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/reading-flow"
+ },
+ "reading-order": {
+  "syntax": "<integer>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/reading-order"
+ },
+ "resize": {
+  "syntax": "none | both | horizontal | vertical | block | inline",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/resize"
+ },
+ "right": {
+  "syntax": "auto | <length-percentage> | <anchor()> | <anchor-size()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/right"
+ },
+ "rotate": {
+  "syntax": "none | <angle> | [ x | y | z | <number>{3} ] && <angle>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/rotate"
+ },
+ "row-gap": {
+  "syntax": "normal | <length-percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/row-gap"
+ },
+ "ruby-align": {
+  "syntax": "start | center | space-between | space-around",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/ruby-align"
+ },
+ "ruby-overhang": {
+  "syntax": "auto | none",
+  "mdn_url": null
+ },
+ "ruby-position": {
+  "syntax": "[ alternate || [ over | under ] ] | inter-character",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/ruby-position"
+ },
+ "rx": {
+  "syntax": "<length> | <percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/rx"
+ },
+ "ry": {
+  "syntax": "<length> | <percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/ry"
+ },
+ "scale": {
+  "syntax": "none | [ <number> | <percentage> ]{1,3}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scale"
+ },
+ "scroll-behavior": {
+  "syntax": "auto | smooth",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-behavior"
+ },
+ "scroll-margin": {
+  "syntax": "<length>{1,4}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-margin"
+ },
+ "scroll-margin-block": {
+  "syntax": "<length>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-margin-block"
+ },
+ "scroll-margin-block-end": {
+  "syntax": "<length>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-margin-block-end"
+ },
+ "scroll-margin-block-start": {
+  "syntax": "<length>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-margin-block-start"
+ },
+ "scroll-margin-bottom": {
+  "syntax": "<length>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-margin-bottom"
+ },
+ "scroll-margin-inline": {
+  "syntax": "<length>{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-margin-inline"
+ },
+ "scroll-margin-inline-end": {
+  "syntax": "<length>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-margin-inline-end"
+ },
+ "scroll-margin-inline-start": {
+  "syntax": "<length>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-margin-inline-start"
+ },
+ "scroll-margin-left": {
+  "syntax": "<length>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-margin-left"
+ },
+ "scroll-margin-right": {
+  "syntax": "<length>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-margin-right"
+ },
+ "scroll-margin-top": {
+  "syntax": "<length>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-margin-top"
+ },
+ "scroll-marker-group": {
+  "syntax": "none | before | after",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-marker-group"
+ },
+ "scroll-padding": {
+  "syntax": "[ auto | <length-percentage> ]{1,4}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-padding"
+ },
+ "scroll-padding-block": {
+  "syntax": "[ auto | <length-percentage> ]{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-padding-block"
+ },
+ "scroll-padding-block-end": {
+  "syntax": "auto | <length-percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-padding-block-end"
+ },
+ "scroll-padding-block-start": {
+  "syntax": "auto | <length-percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-padding-block-start"
+ },
+ "scroll-padding-bottom": {
+  "syntax": "auto | <length-percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-padding-bottom"
+ },
+ "scroll-padding-inline": {
+  "syntax": "[ auto | <length-percentage> ]{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-padding-inline"
+ },
+ "scroll-padding-inline-end": {
+  "syntax": "auto | <length-percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-padding-inline-end"
+ },
+ "scroll-padding-inline-start": {
+  "syntax": "auto | <length-percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-padding-inline-start"
+ },
+ "scroll-padding-left": {
+  "syntax": "auto | <length-percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-padding-left"
+ },
+ "scroll-padding-right": {
+  "syntax": "auto | <length-percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-padding-right"
+ },
+ "scroll-padding-top": {
+  "syntax": "auto | <length-percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-padding-top"
+ },
+ "scroll-snap-align": {
+  "syntax": "[ none | start | end | center ]{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-snap-align"
+ },
+ "scroll-snap-stop": {
+  "syntax": "normal | always",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-snap-stop"
+ },
+ "scroll-snap-type": {
+  "syntax": "none | [ x | y | block | inline | both ] [ mandatory | proximity ]?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-snap-type"
+ },
+ "scroll-target-group": {
+  "syntax": "none | auto",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scroll-target-group"
+ },
+ "scrollbar-color": {
+  "syntax": "auto | <color>{2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scrollbar-color"
+ },
+ "scrollbar-gutter": {
+  "syntax": "auto | stable && both-edges?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scrollbar-gutter"
+ },
+ "scrollbar-width": {
+  "syntax": "auto | thin | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/scrollbar-width"
+ },
+ "shape-image-threshold": {
+  "syntax": "<opacity-value>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/shape-image-threshold"
+ },
+ "shape-margin": {
+  "syntax": "<length-percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/shape-margin"
+ },
+ "shape-outside": {
+  "syntax": "none | [ <shape-box> || <basic-shape> ] | <image>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/shape-outside"
+ },
+ "shape-rendering": {
+  "syntax": "auto | optimizeSpeed | crispEdges | geometricPrecision",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/shape-rendering"
+ },
+ "stop-color": {
+  "syntax": "<'color'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/stop-color"
+ },
+ "stop-opacity": {
+  "syntax": "<'opacity'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/stop-opacity"
+ },
+ "stroke": {
+  "syntax": "<paint>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/stroke"
+ },
+ "stroke-dasharray": {
+  "syntax": "none | <dasharray>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/stroke-dasharray"
+ },
+ "stroke-dashoffset": {
+  "syntax": "<length-percentage> | <number>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/stroke-dashoffset"
+ },
+ "stroke-linecap": {
+  "syntax": "butt | round | square",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/stroke-linecap"
+ },
+ "stroke-linejoin": {
+  "syntax": "miter | miter-clip | round | bevel | arcs",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/stroke-linejoin"
+ },
+ "stroke-miterlimit": {
+  "syntax": "<number>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/stroke-miterlimit"
+ },
+ "stroke-opacity": {
+  "syntax": "<'opacity'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/stroke-opacity"
+ },
+ "stroke-width": {
+  "syntax": "<length-percentage> | <number>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/stroke-width"
+ },
+ "tab-size": {
+  "syntax": "<integer> | <length>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/tab-size"
+ },
+ "table-layout": {
+  "syntax": "auto | fixed",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/table-layout"
+ },
+ "text-align": {
+  "syntax": "start | end | left | right | center | justify | match-parent",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-align"
+ },
+ "text-align-last": {
+  "syntax": "auto | start | end | left | right | center | justify",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-align-last"
+ },
+ "text-anchor": {
+  "syntax": "start | middle | end",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-anchor"
+ },
+ "text-autospace": {
+  "syntax": "normal | <autospace> | auto",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-autospace"
+ },
+ "text-box": {
+  "syntax": "normal | <'text-box-trim'> || <'text-box-edge'>",
+  "mdn_url": null
+ },
+ "text-box-edge": {
+  "syntax": "auto | <text-edge>",
+  "mdn_url": null
+ },
+ "text-box-trim": {
+  "syntax": "none | trim-start | trim-end | trim-both",
+  "mdn_url": null
+ },
+ "text-combine-upright": {
+  "syntax": "none | all | [ digits <integer>? ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-combine-upright"
+ },
+ "text-decoration": {
+  "syntax": "<'text-decoration-line'> || <'text-decoration-style'> || <'text-decoration-color'> || <'text-decoration-thickness'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-decoration"
+ },
+ "text-decoration-color": {
+  "syntax": "<color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-decoration-color"
+ },
+ "text-decoration-inset": {
+  "syntax": "<length>{1,2} | auto",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-decoration-inset"
+ },
+ "text-decoration-line": {
+  "syntax": "none | [ underline || overline || line-through || blink ] | spelling-error | grammar-error",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-decoration-line"
+ },
+ "text-decoration-skip-ink": {
+  "syntax": "auto | all | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-decoration-skip-ink"
+ },
+ "text-decoration-style": {
+  "syntax": "solid | double | dotted | dashed | wavy",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-decoration-style"
+ },
+ "text-decoration-thickness": {
+  "syntax": "auto | from-font | <length> | <percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-decoration-thickness"
+ },
+ "text-emphasis": {
+  "syntax": "<'text-emphasis-style'> || <'text-emphasis-color'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-emphasis"
+ },
+ "text-emphasis-color": {
+  "syntax": "<color>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-emphasis-color"
+ },
+ "text-emphasis-position": {
+  "syntax": "auto | [ over | under ] && [ right | left ]?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-emphasis-position"
+ },
+ "text-emphasis-style": {
+  "syntax": "none | [ [ filled | open ] || [ dot | circle | double-circle | triangle | sesame ] ] | <string>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-emphasis-style"
+ },
+ "text-indent": {
+  "syntax": "<length-percentage> && hanging? && each-line?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-indent"
+ },
+ "text-justify": {
+  "syntax": "auto | inter-character | inter-word | none",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-justify"
+ },
+ "text-orientation": {
+  "syntax": "mixed | upright | sideways",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-orientation"
+ },
+ "text-overflow": {
+  "syntax": "[ clip | ellipsis | <string> ]{1,2}",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-overflow"
+ },
+ "text-rendering": {
+  "syntax": "auto | optimizeSpeed | optimizeLegibility | geometricPrecision",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-rendering"
+ },
+ "text-shadow": {
+  "syntax": "none | <shadow-t>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-shadow"
+ },
+ "text-transform": {
+  "syntax": "none | [ capitalize | uppercase | lowercase ] || full-width || full-size-kana | math-auto",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-transform"
+ },
+ "text-underline-offset": {
+  "syntax": "auto | <length> | <percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-underline-offset"
+ },
+ "text-underline-position": {
+  "syntax": "auto | from-font | [ under || [ left | right ] ]",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-underline-position"
+ },
+ "text-wrap": {
+  "syntax": "<'text-wrap-mode'> || <'text-wrap-style'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-wrap"
+ },
+ "text-wrap-mode": {
+  "syntax": "wrap | nowrap",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-wrap-mode"
+ },
+ "text-wrap-style": {
+  "syntax": "auto | balance | stable | pretty",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/text-wrap-style"
+ },
+ "timeline-trigger": {
+  "syntax": "none | [ <'timeline-trigger-name'> <'timeline-trigger-source'> <'timeline-trigger-range'> [ '/' <'timeline-trigger-exit-range'> ]? ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger"
+ },
+ "timeline-trigger-exit-range": {
+  "syntax": "[ <'timeline-trigger-exit-range-start'> <'timeline-trigger-exit-range-end'>? ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-exit-range"
+ },
+ "timeline-trigger-exit-range-end": {
+  "syntax": "[ auto | normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-exit-range-end"
+ },
+ "timeline-trigger-exit-range-start": {
+  "syntax": "[ auto | normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-exit-range-start"
+ },
+ "timeline-trigger-name": {
+  "syntax": "none | <dashed-ident>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-name"
+ },
+ "timeline-trigger-range": {
+  "syntax": "[ <'timeline-trigger-range-start'> <'timeline-trigger-range-end'>? ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-range"
+ },
+ "timeline-trigger-range-end": {
+  "syntax": "[ normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-range-end"
+ },
+ "timeline-trigger-range-start": {
+  "syntax": "[ normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-range-start"
+ },
+ "timeline-trigger-source": {
+  "syntax": "<single-animation-timeline>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-source"
+ },
+ "top": {
+  "syntax": "auto | <length-percentage> | <anchor()> | <anchor-size()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/top"
+ },
+ "touch-action": {
+  "syntax": "auto | none | [ [ pan-x | pan-left | pan-right ] || [ pan-y | pan-up | pan-down ] || pinch-zoom ] | manipulation",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/touch-action"
+ },
+ "transform": {
+  "syntax": "none | <transform-list>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/transform"
+ },
+ "transform-box": {
+  "syntax": "content-box | border-box | fill-box | stroke-box | view-box",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/transform-box"
+ },
+ "transform-origin": {
+  "syntax": "[ <length-percentage> | left | center | right | top | bottom ] | [ [ <length-percentage> | left | center | right ] && [ <length-percentage> | top | center | bottom ] ] <length>?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/transform-origin"
+ },
+ "transform-style": {
+  "syntax": "flat | preserve-3d",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/transform-style"
+ },
+ "transition": {
+  "syntax": "<single-transition>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/transition"
+ },
+ "transition-behavior": {
+  "syntax": "<transition-behavior-value>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/transition-behavior"
+ },
+ "transition-delay": {
+  "syntax": "<time>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/transition-delay"
+ },
+ "transition-duration": {
+  "syntax": "<time>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/transition-duration"
+ },
+ "transition-property": {
+  "syntax": "none | <single-transition-property>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/transition-property"
+ },
+ "transition-timing-function": {
+  "syntax": "<easing-function>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/transition-timing-function"
+ },
+ "translate": {
+  "syntax": "none | <length-percentage> [ <length-percentage> <length>? ]?",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/translate"
+ },
+ "trigger-scope": {
+  "syntax": "none | all | <dashed-ident>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/trigger-scope"
+ },
+ "unicode-bidi": {
+  "syntax": "normal | embed | isolate | bidi-override | isolate-override | plaintext",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/unicode-bidi"
+ },
+ "user-select": {
+  "syntax": "auto | text | none | all",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/user-select"
+ },
+ "vector-effect": {
+  "syntax": "none | non-scaling-stroke | non-scaling-size | non-rotation | fixed-position",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/vector-effect"
+ },
+ "vertical-align": {
+  "syntax": "baseline | sub | super | text-top | text-bottom | middle | top | bottom | <percentage> | <length>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/vertical-align"
+ },
+ "view-transition-class": {
+  "syntax": "none | <custom-ident>+",
+  "mdn_url": null
+ },
+ "view-transition-name": {
+  "syntax": "none | <custom-ident> | match-element",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/view-transition-name"
+ },
+ "visibility": {
+  "syntax": "visible | hidden | collapse",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/visibility"
+ },
+ "white-space": {
+  "syntax": "normal | pre | pre-wrap | pre-line | <'white-space-collapse'> || <'text-wrap-mode'>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/white-space"
+ },
+ "white-space-collapse": {
+  "syntax": "collapse | preserve | preserve-breaks | preserve-spaces | break-spaces",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/white-space-collapse"
+ },
+ "widows": {
+  "syntax": "<integer>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/widows"
+ },
+ "width": {
+  "syntax": "auto | <length-percentage [0,∞]> | min-content | max-content | fit-content | fit-content(<length-percentage [0,∞]>) | <calc-size()> | <anchor-size()>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/width"
+ },
+ "will-change": {
+  "syntax": "auto | <animateable-feature>#",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/will-change"
+ },
+ "word-break": {
+  "syntax": "normal | break-all | keep-all | break-word | auto-phrase",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/word-break"
+ },
+ "word-spacing": {
+  "syntax": "normal | <length>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/word-spacing"
+ },
+ "word-wrap": {
+  "syntax": "normal | break-word",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/overflow-wrap"
+ },
+ "writing-mode": {
+  "syntax": "horizontal-tb | vertical-rl | vertical-lr | sideways-rl | sideways-lr",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/writing-mode"
+ },
+ "x": {
+  "syntax": "<length> | <percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/x"
+ },
+ "y": {
+  "syntax": "<length> | <percentage>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/y"
+ },
+ "z-index": {
+  "syntax": "auto | <integer>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/z-index"
+ },
+ "zoom": {
+  "syntax": "normal | reset | <number [0,∞]> || <percentage [0,∞]>",
+  "mdn_url": "https://developer.mozilla.org/docs/Web/CSS/zoom"
+ }
+}

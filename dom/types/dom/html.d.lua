@@ -144,7 +144,7 @@
 --- `style = { ["background-color"] = "red" }` are equivalent. Server-side
 --- rendering and client-side application share one normalizer
 --- (`hydronium_dom.style`), so the two always produce the same CSS.
----@alias HydroniumStyleProp string | table<string, HydroniumStyleValue>
+---@alias HydroniumStyleProp string | HydroniumStyle
 
 --- Standard HTML attributes shared across all elements
 ---@class HTMLAttributes : LuaxProps, { [integer]: any }
