@@ -18,6 +18,37 @@ test.describe("hydronium/table", function()
     users:toggleSelected("l"); test.assert.truthy(users:isSelected("l"))
   end)
 
+  test.it("sorts descending with a strict order, ties in input order", function()
+    local rows = {}
+    for i, target in ipairs({ "Shared", "Browser", "Terminal", "Shared", "Shared", "Browser", "Shared", "Shared" }) do
+      rows[i] = { id = tostring(i), target = target }
+    end
+    local packages = table_api.createTable({
+      rows = rows, row_id = function(row) return row.id end,
+      columns = { { id = "target", accessor = function(row) return row.target end } },
+    })
+    packages:toggleSort("target") -- ascending
+    packages:toggleSort("target") -- descending: once raised "invalid order function for sorting"
+    local order = {}
+    for _, row in ipairs(packages:getRows()) do order[#order + 1] = row.cells.target .. row.id end
+    test.assert.same(order, { "Terminal3", "Shared1", "Shared4", "Shared5", "Shared7", "Shared8", "Browser2", "Browser6" })
+    packages:toggleSort("target") -- back to input order
+    test.assert.equal(packages:getRows()[1].id, "1")
+  end)
+
+  test.it("uses a custom compare in both directions and falls through on its ties", function()
+    local byLength = function(a, b) return #a < #b end
+    local words = table_api.createTable({
+      rows = { { id = "1", w = "ccc" }, { id = "2", w = "a" }, { id = "3", w = "bb" }, { id = "4", w = "dd" } },
+      row_id = function(row) return row.id end,
+      columns = { { id = "w", accessor = function(row) return row.w end, compare = byLength } },
+    })
+    words:setSorting({ { id = "w", desc = true } })
+    local order = {}
+    for _, row in ipairs(words:getRows()) do order[#order + 1] = row.cells.w end
+    test.assert.same(order, { "ccc", "bb", "dd", "a" }, "equal lengths keep input order")
+  end)
+
   test.it("supports controlled state and manual server row models", function()
     local changes, sorting = {}, {}
     local users = table_api.createTable({

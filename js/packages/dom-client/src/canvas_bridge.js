@@ -23,9 +23,30 @@ function requireGlobal(name) {
   return value;
 }
 
+const TYPED_ARRAYS = ["Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array", "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array"];
+
 /** @returns {Record<string, Function>} */
 export function createCanvasBridge() {
   return {
+    /**
+     * new <kind>(source): a typed array for WebGL/WebGPU buffers, from a Lua
+     * sequence (it arrives as an Array) or a length (zero-filled).
+     */
+    typed(kind, source) {
+      if (!TYPED_ARRAYS.includes(kind)) throw new Error(`canvas.typed: unknown typed array kind ${String(kind)}`);
+      const TypedArray = requireGlobal(kind);
+      if (source == null) return new TypedArray(0);
+      return typeof source === "number" ? new TypedArray(source) : TypedArray.from(source);
+    },
+
+    /** navigator.gpu and the WebGPU flag namespaces, or undefined without WebGPU. */
+    webgpu() {
+      const gpu = globalThis.navigator?.gpu;
+      if (!gpu) return undefined;
+      return { gpu, BufferUsage: globalThis.GPUBufferUsage, TextureUsage: globalThis.GPUTextureUsage,
+        ShaderStage: globalThis.GPUShaderStage, MapMode: globalThis.GPUMapMode, ColorWrite: globalThis.GPUColorWrite };
+    },
+
     /** new Path2D(svgPathData?) or a copy of another Path2D. */
     path(init) {
       const Path2D = requireGlobal("Path2D");

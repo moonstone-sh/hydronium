@@ -97,6 +97,34 @@ describe("hydronium_dom.canvas", function()
     end)
   end)
 
+  it("builds typed arrays and exposes WebGPU through optional host functions", function()
+    local seen
+    with_host({ typed = function(kind, source) seen = { kind, source }; return "typed" end,
+      webgpu = function() return { gpu = "gpu" } end }, function()
+      assert.equal(canvas.typed("Float32Array", { 1, 2 }), "typed")
+      assert.same(seen, { "Float32Array", { 1, 2 } })
+      assert.equal(canvas.webgpu().gpu, "gpu")
+    end)
+    with_host({}, function()
+      assert.equal(canvas.webgpu(), nil, "no WebGPU without the host function")
+      assert.falsy(pcall(canvas.typed, "Float32Array", 1), "typed names the dom-client version it needs")
+    end)
+    assert.equal(canvas.typed("Float32Array", 4), nil, "nil on the server")
+    assert.equal(canvas.webgpu(), nil)
+  end)
+
+  it("treats typed and webgpu as optional bridge functions", function()
+    local contract = require("hydronium_dom.host.canvas_contract")
+    local bridge = {}
+    for _, method in ipairs(contract.manifest().methods) do
+      if method.required then bridge[method.name] = function() end end
+    end
+    assert.equal(contract.validate(bridge), bridge)
+    local optional = {}
+    for _, method in ipairs(contract.manifest().methods) do if not method.required then optional[#optional + 1] = method.name end end
+    assert.same(optional, { "typed", "webgpu" })
+  end)
+
   it("is declared to the bundler: canvas@1 is a known capability", function()
     local source = io.open("dom/src/hydronium_dom/canvas.lua"):read("*a")
     local scan = require("hydronium_ballad.host_capabilities").scan(source, {

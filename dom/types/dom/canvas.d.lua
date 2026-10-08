@@ -17,7 +17,18 @@
 
 -- ---------------------------------------------------------------- element
 
----@alias CanvasContextKind "2d"|"bitmaprenderer"|"webgl"|"webgl2"
+---@alias CanvasContextKind "2d"|"bitmaprenderer"|"webgl"|"webgl2"|"webgpu"
+
+---@alias PredefinedColorSpace "srgb"|"display-p3"
+
+--- What `canvas.webgpu()` returns (hydronium_dom.canvas).
+---@class HydroniumWebGPU
+---@field gpu GPU navigator.gpu
+---@field BufferUsage GPUBufferUsage
+---@field TextureUsage GPUTextureUsage
+---@field ShaderStage GPUShaderStage
+---@field MapMode GPUMapMode
+---@field ColorWrite GPUColorWrite
 
 ---@class CanvasRenderingContext2DSettings
 ---@field alpha? boolean
@@ -25,15 +36,16 @@
 ---@field desynchronized? boolean
 ---@field willReadFrequently? boolean
 
---- WebGL is a separate API; contexts are untyped host references.
----@alias WebGLContext table
+--- WebGL and WebGPU contexts: dom/types/dom/webgl.d.lua and webgpu.d.lua
+--- (generated from the specifications' WebIDL).
+---@alias WebGLContext WebGLRenderingContext|WebGL2RenderingContext
 
 ---@class HTMLCanvasElement : HTMLElement
 ---@field width integer Backing store width in pixels.
 ---@field height integer Backing store height in pixels.
 ---@field clientWidth number CSS width.
 ---@field clientHeight number CSS height.
----@field getContext (fun(self: HTMLCanvasElement, kind: "2d", options?: CanvasRenderingContext2DSettings): CanvasRenderingContext2D|nil) | (fun(self: HTMLCanvasElement, kind: "bitmaprenderer", options?: table): ImageBitmapRenderingContext|nil) | (fun(self: HTMLCanvasElement, kind: "webgl"|"webgl2", options?: table): WebGLContext|nil)
+---@field getContext (fun(self: HTMLCanvasElement, kind: "2d", options?: CanvasRenderingContext2DSettings): CanvasRenderingContext2D|nil) | (fun(self: HTMLCanvasElement, kind: "bitmaprenderer", options?: table): ImageBitmapRenderingContext|nil) | (fun(self: HTMLCanvasElement, kind: "webgl", options?: WebGLContextAttributes): WebGLRenderingContext|nil) | (fun(self: HTMLCanvasElement, kind: "webgl2", options?: WebGLContextAttributes): WebGL2RenderingContext|nil) | (fun(self: HTMLCanvasElement, kind: "webgpu"): GPUCanvasContext|nil)
 ---@field toDataURL fun(self: HTMLCanvasElement, type?: string, quality?: number): string
 ---@field toBlob fun(self: HTMLCanvasElement, callback: fun(blob: any), type?: string, quality?: number)
 ---@field captureStream fun(self: HTMLCanvasElement, frameRate?: number): any MediaStream
@@ -270,7 +282,7 @@
 ---@class OffscreenCanvas
 ---@field width integer
 ---@field height integer
----@field getContext (fun(self: OffscreenCanvas, kind: "2d", options?: CanvasRenderingContext2DSettings): OffscreenCanvasRenderingContext2D|nil) | (fun(self: OffscreenCanvas, kind: "bitmaprenderer", options?: table): ImageBitmapRenderingContext|nil) | (fun(self: OffscreenCanvas, kind: "webgl"|"webgl2", options?: table): WebGLContext|nil)
+---@field getContext (fun(self: OffscreenCanvas, kind: "2d", options?: CanvasRenderingContext2DSettings): OffscreenCanvasRenderingContext2D|nil) | (fun(self: OffscreenCanvas, kind: "bitmaprenderer", options?: table): ImageBitmapRenderingContext|nil) | (fun(self: OffscreenCanvas, kind: "webgl", options?: WebGLContextAttributes): WebGLRenderingContext|nil) | (fun(self: OffscreenCanvas, kind: "webgl2", options?: WebGLContextAttributes): WebGL2RenderingContext|nil) | (fun(self: OffscreenCanvas, kind: "webgpu"): GPUCanvasContext|nil)
 ---@field transferToImageBitmap fun(self: OffscreenCanvas): ImageBitmap
 ---@field convertToBlob fun(self: OffscreenCanvas, options?: { type?: string, quality?: number }): any Promise<Blob>
 

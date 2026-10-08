@@ -23,7 +23,8 @@
 
   Types: dom/types/dom/canvas.d.lua (the MDN Canvas API: HTMLCanvasElement,
   CanvasRenderingContext2D, Path2D, ImageData, CanvasGradient, CanvasPattern,
-  TextMetrics, DOMMatrix, ImageBitmap, OffscreenCanvas).
+  TextMetrics, DOMMatrix, ImageBitmap, OffscreenCanvas), webgl.d.lua and
+  webgpu.d.lua (generated from the specifications' WebIDL), typed_arrays.d.lua.
 --]]
 
 local hosts = require("hydronium.runtime.hosts")
@@ -57,7 +58,9 @@ end
 --- `canvas:getContext(kind, options)`, from an element or a ref.
 ---@overload fun(target: HTMLCanvasElement|Ref<HTMLCanvasElement>|nil, kind?: "2d", options?: CanvasRenderingContext2DSettings): CanvasRenderingContext2D|nil
 ---@overload fun(target: HTMLCanvasElement|Ref<HTMLCanvasElement>|nil, kind: "bitmaprenderer", options?: table): ImageBitmapRenderingContext|nil
----@overload fun(target: HTMLCanvasElement|Ref<HTMLCanvasElement>|nil, kind: "webgl"|"webgl2", options?: table): WebGLContext|nil
+---@overload fun(target: HTMLCanvasElement|Ref<HTMLCanvasElement>|nil, kind: "webgl", options?: WebGLContextAttributes): WebGLRenderingContext|nil
+---@overload fun(target: HTMLCanvasElement|Ref<HTMLCanvasElement>|nil, kind: "webgl2", options?: WebGLContextAttributes): WebGL2RenderingContext|nil
+---@overload fun(target: HTMLCanvasElement|Ref<HTMLCanvasElement>|nil, kind: "webgpu"): GPUCanvasContext|nil
 ---@param target HTMLCanvasElement|OffscreenCanvas|Ref<HTMLCanvasElement>|nil
 ---@param kind? CanvasContextKind
 ---@param options? table
@@ -88,6 +91,37 @@ function M.image_data(bytes, width, height)
   if not h then return nil end
   if type(bytes) == "number" then return h.image_data(bytes, width) end
   return h.image_data_from(bytes, width, height)
+end
+
+--- A typed array for WebGL/WebGPU buffers: `kind` built from a Lua sequence
+--- of numbers, or zero-filled with `source` elements. Index the result from 0.
+---   local vertices = canvas.typed("Float32Array", { 0, 0.5, -0.5, -0.5, 0.5, -0.5 })
+---@overload fun(kind: "Int8Array", source?: number[]|integer): Int8Array|nil
+---@overload fun(kind: "Uint8Array", source?: number[]|integer): Uint8Array|nil
+---@overload fun(kind: "Uint8ClampedArray", source?: number[]|integer): Uint8ClampedArray|nil
+---@overload fun(kind: "Int16Array", source?: number[]|integer): Int16Array|nil
+---@overload fun(kind: "Uint16Array", source?: number[]|integer): Uint16Array|nil
+---@overload fun(kind: "Int32Array", source?: number[]|integer): Int32Array|nil
+---@overload fun(kind: "Uint32Array", source?: number[]|integer): Uint32Array|nil
+---@overload fun(kind: "Float32Array", source?: number[]|integer): Float32Array|nil
+---@param kind "Float64Array"
+---@param source? number[]|integer
+---@return Float64Array|nil
+function M.typed(kind, source)
+  local h = host()
+  if not h then return nil end
+  if not h.typed then error("hydronium_dom.canvas.typed needs the browser client from hydronium/dom 0.3.9 or later", 2) end
+  return h.typed(kind, source)
+end
+
+--- WebGPU: `gpu` (navigator.gpu) and the usage flag namespaces, or nil where
+--- WebGPU is unavailable (the server, or a browser without it).
+---   local webgpu = canvas.webgpu()
+---   local device = webgpu.gpu:requestAdapter():requestDevice()
+---@return HydroniumWebGPU|nil
+function M.webgpu()
+  local h = host()
+  return h and h.webgpu and h.webgpu() or nil
 end
 
 --- `new DOMMatrix(init?)`: a CSS transform string or 6 / 16 numbers.

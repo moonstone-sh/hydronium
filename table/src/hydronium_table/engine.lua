@@ -50,8 +50,20 @@ function M.sort(rows, by_id, sorting)
         local column = by_id[sort.id]
         local av, bv = column.accessor(a.original, a.index), column.accessor(b.original, b.index)
         if av ~= bv then
-          local less = column.compare and column.compare(av, bv, a.original, b.original) or av < bv
-          return sort.desc and not less or less
+          -- A strict order in both directions: descending swaps the operands
+          -- (never `not less`, which is true for ties and makes table.sort
+          -- fail with "invalid order function"), and values the comparator
+          -- calls equal fall through to the next key, then to input order.
+          local less, greater
+          if column.compare then
+            less, greater = column.compare(av, bv, a.original, b.original), column.compare(bv, av, b.original, a.original)
+          else
+            less, greater = av < bv, bv < av
+          end
+          if less ~= greater then
+            if sort.desc then return greater == true end
+            return less == true
+          end
         end
       end
       return a.index < b.index

@@ -94,3 +94,33 @@ test("observe_resize reports CSS size and its disposer disconnects once", async 
     assert.equal(released, 1);
   });
 });
+
+test("typed builds typed arrays from a Lua sequence or a length", () => {
+  const b = createCanvasBridge();
+  const floats = b.typed("Float32Array", [0.5, -1, 2]);
+  assert.ok(floats instanceof Float32Array);
+  assert.deepEqual([...floats], [0.5, -1, 2]);
+  assert.equal(b.typed("Uint16Array", 4).length, 4);
+  assert.equal(b.typed("Uint8Array").length, 0);
+  assert.throws(() => b.typed("Array", [1]), /unknown typed array kind/);
+});
+
+test("webgpu returns navigator.gpu and the flag namespaces, or nothing", async () => {
+  // Node defines a read-only global navigator; replace the property itself.
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const setNavigator = value => Object.defineProperty(globalThis, "navigator", { value, configurable: true, writable: true });
+  try {
+    setNavigator({});
+    assert.equal(createCanvasBridge().webgpu(), undefined);
+    const gpu = { requestAdapter() {} };
+    setNavigator({ gpu });
+    const flags = { GPUBufferUsage: { VERTEX: 32 }, GPUTextureUsage: {}, GPUShaderStage: {}, GPUMapMode: {}, GPUColorWrite: {} };
+    await withGlobals(flags, () => {
+      const webgpu = createCanvasBridge().webgpu();
+      assert.equal(webgpu.gpu, gpu);
+      assert.equal(webgpu.BufferUsage.VERTEX, 32);
+    });
+  } finally {
+    if (saved) Object.defineProperty(globalThis, "navigator", saved); else delete globalThis.navigator;
+  }
+});

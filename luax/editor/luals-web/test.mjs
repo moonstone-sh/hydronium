@@ -44,6 +44,9 @@ const settings = {
     runtime: { version: "LuaJIT", path: ["?.lua", "?/init.lua", "?.luax", "?/init.luax"], plugin: "/hydronium/luax/src/hydronium_luax/luals/init.lua" },
     workspace: { library: ["/hydronium/types/core", "/hydronium/types/luax", "/hydronium/types/dom", "/hydronium/lib/core", "/hydronium/lib/dom"], checkThirdParty: false },
     diagnostics: { globals: ["__luax", "__luax_component", "__luax_fragment"] },
+    // WebGL contexts have ~450 members; LuaLS's default (100) withholds member
+    // completion on larger objects until a prefix is typed.
+    completion: { maxSuggestCount: 1000 },
   },
   "files.associations": { "*.luax": "lua" },
 };
@@ -122,7 +125,20 @@ await pump(() => responses.has(kid) && (diagnostics.get(kuri) || []).length > 0)
 const ctxItems = (responses.get(kid)?.result?.items ?? responses.get(kid)?.result ?? []).map((i) => i.label);
 console.log("canvas completion:", ctxItems.filter((l) => /fillRect|arc|drawImage|getImageData/.test(l)).join(" "));
 
+// WebGL2 and WebGPU types (generated from WebIDL: dom/types/dom/webgl.d.lua, webgpu.d.lua).
+const guri = "file:///workspace/Gpu.lua";
+notify("textDocument/didOpen", { textDocument: { uri: guri, languageId: "lua", version: 1, text: 'local canvas = require("hydronium_dom.canvas")\nlocal gl = canvas.context(nil, "webgl2")\nif gl then gl: end\nlocal webgpu = canvas.webgpu()\nif webgpu then webgpu.gpu: end\n' } });
+const glid = request("textDocument/completion", { textDocument: { uri: guri }, position: { line: 2, character: 14 } });
+const gpuid = request("textDocument/completion", { textDocument: { uri: guri }, position: { line: 4, character: 26 } });
+await pump(() => responses.has(glid) && responses.has(gpuid));
+const glItems = (responses.get(glid)?.result?.items ?? responses.get(glid)?.result ?? []).map((i) => i.label);
+const gpuItems = (responses.get(gpuid)?.result?.items ?? responses.get(gpuid)?.result ?? []).map((i) => i.label);
+console.log("webgl2 completion:", glItems.filter((l) => /^(createShader|bufferData|createVertexArray|drawArrays)/.test(l)).join(" "));
+console.log("webgpu completion:", gpuItems.filter((l) => /^(requestAdapter|getPreferredCanvasFormat)/.test(l)).join(" "));
+
 const fails = [];
+if (!glItems.some((l) => /^createVertexArray/.test(l)) || !glItems.some((l) => /^bufferData/.test(l))) fails.push("webgl2 context completion");
+if (!gpuItems.some((l) => /^requestAdapter/.test(l))) fails.push("webgpu completion");
 if (!ctxItems.some((l) => /^fillRect/.test(l)) || !ctxItems.some((l) => /^drawImage/.test(l))) fails.push("canvas context completion");
 if (!(diagnostics.get(kuri) || []).some((x) => x.code === "param-type-mismatch")) fails.push("canvas parameter types");
 if (!attrs.some((l) => /^style/.test(l))) fails.push("attribute completion through require('hydronium_dom').d");
