@@ -394,6 +394,15 @@ function virtual_source.transform(source, filename, options)
             local replace_end = first_attr_start - 1
             local target_len = replace_end - open_start + 1
             local prefix = " " .. tag_str .. "{"
+            -- Attributes starting on the next line (`<d.input` / `type=...`):
+            -- overwrite_range skips the newline, which would put the `{` on
+            -- the next line, and LuaLS warns about `d.input` / `{...}` as an
+            -- ambiguous call (newfield-call). `<` plus the name holds exactly
+            -- `name{`, so write it there instead, one column left.
+            if source:sub(open_start, replace_end):find("\n", 1, true) then
+              local first_line = source:sub(open_start, replace_end):match("^[^\n]*")
+              if #first_line >= #tag_str + 1 then prefix = tag_str .. "{" end
+            end
             overwrite_range(open_start, replace_end, pad_to_length(prefix, target_len))
           else
             -- No attributes
@@ -754,6 +763,28 @@ function virtual_source.transform(source, filename, options)
                 bytes[a_end] = ","
               elseif bytes[b_start] == " " then
                 bytes[b_start] = ","
+              elseif b.type == "JSXText" and (function()
+                -- Text starting on the next line after an element (`<x />` /
+                -- `  text`): its leading indentation has a space to spare.
+                for p = b_start, b.loc["end"].offset do
+                  if bytes[p] == " " then bytes[p] = ","; return true end
+                  if bytes[p] ~= "\n" and bytes[p] ~= "\t" and bytes[p] ~= "\r" then return false end
+                end
+                return false
+              end)() then
+                -- separator written by the scan above
+              elseif b.type == "JSXText" and bytes[b_start] == '"' and bytes[b_start + 1] == " " then
+                -- Text flush after an element on the same line (`<x />after`):
+                -- move the text's opening quote one byte right for the comma.
+                bytes[b_start] = ","
+                bytes[b_start + 1] = '"'
+              elseif a.type == "JSXText" and bytes[a_end] == '"' and bytes[a_end - 1] == " " then
+                -- Text ending flush against a `{expr}` that keeps its
+                -- braces (the last thing on its line, e.g. `text,{" "}`):
+                -- the text is already a quoted string with blanked inside,
+                -- so shorten it by one byte and use that byte for the comma.
+                bytes[a_end - 1] = '"'
+                bytes[a_end] = ","
               end
             end
           end

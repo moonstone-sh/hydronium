@@ -100,14 +100,14 @@ function generator.generate_html()
   -- Common HTML attributes interface
   table.insert(lines, "--- Standard HTML attributes shared across all elements")
   table.insert(lines, "---@class HTMLAttributes : LuaxProps, { [integer]: any }")
-  table.insert(lines, "---@field id? string")
-  table.insert(lines, "---@field className? string")
-  table.insert(lines, "---@field class? string")
+  table.insert(lines, "---@field id? string | hydronium.Getter")
+  table.insert(lines, "---@field className? string | hydronium.Getter")
+  table.insert(lines, "---@field class? string | hydronium.Getter")
   table.insert(lines, "---@field style? table<string, any> | string")
-  table.insert(lines, "---@field title? string")
-  table.insert(lines, "---@field role? string")
-  table.insert(lines, "---@field tabIndex? integer")
-  table.insert(lines, "---@field hidden? boolean")
+  table.insert(lines, "---@field title? string | hydronium.Getter")
+  table.insert(lines, "---@field role? string | hydronium.Getter")
+  table.insert(lines, "---@field tabIndex? integer | hydronium.Getter")
+  table.insert(lines, "---@field hidden? boolean | hydronium.Getter")
   table.insert(lines, "---@field key? any")
   table.insert(lines, "---@field ref? any")
   table.insert(lines, "---@field children? any")
@@ -123,7 +123,9 @@ function generator.generate_html()
     table.insert(lines, string.format("--- Props for <%s> element", el.tag))
     table.insert(lines, string.format("---@class %s : HTMLAttributes, { [integer]: any }", el.props_name))
     for _, p in ipairs(el.specific_props) do
-      table.insert(lines, string.format("---@field %s %s", p.name, p.type))
+      -- Any attribute also takes a signal/computed getter, bound reactively.
+      local base = p.type:gsub("%?$", "")
+      table.insert(lines, string.format("---@field %s? %s | hydronium.Getter", p.name, base))
     end
     -- Typed event handler overrides with specific element target
     for _, h in ipairs(webref.event_handlers) do
@@ -178,7 +180,9 @@ function generator.generate_svg()
     table.insert(lines, string.format("--- Props for <%s> element", el.tag))
     table.insert(lines, string.format("---@class %s : SVGAttributes", el.props_name))
     for _, p in ipairs(el.specific_props) do
-      table.insert(lines, string.format("---@field %s %s", p.name, p.type))
+      -- Any attribute also takes a signal/computed getter, bound reactively.
+      local base = p.type:gsub("%?$", "")
+      table.insert(lines, string.format("---@field %s? %s | hydronium.Getter", p.name, base))
     end
     table.insert(lines, "")
   end

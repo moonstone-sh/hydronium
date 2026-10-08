@@ -35,6 +35,10 @@ local function notifySubscribers(node)
   end
 end
 
+---@generic T
+---@param fn fun(): T
+---@param options? { equals?: false | fun(a: T, b: T): boolean, name?: string }
+---@return hydronium.Getter<T> getter Call to read; pass uncalled to bind.
 function computedModule.createComputed(fn, options)
   local equals = defaultEquals
   if options and options.equals ~= nil then
