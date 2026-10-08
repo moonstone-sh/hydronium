@@ -418,6 +418,7 @@ local function main()
       "tests/core/reconciler_spec.lua",
       "tests/core/context_ref_spec.lua",
       "tests/core/error_spec.lua",
+      "tests/core/effect_write_spec.lua",
       "tests/core/refresh_spec.lua",
       "tests/core/refresh_component_spec.lua",
       "tests/core/family_hmr_spec.lua",

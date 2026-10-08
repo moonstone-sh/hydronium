@@ -337,12 +337,12 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.7"
+constraint = "^0.2.8"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.9"
+constraint = "^0.3.10"
 role = "runtime"
 
 [[dependencies]]
@@ -419,12 +419,12 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.7"
+constraint = "^0.2.8"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.9"
+constraint = "^0.3.10"
 role = "runtime"
 
 [[dependencies]]

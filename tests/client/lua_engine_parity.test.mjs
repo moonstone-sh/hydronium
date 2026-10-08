@@ -139,3 +139,26 @@ test("documented drift: these differ on purpose (docs/LUA_ENGINES.md)", async ()
   assert.equal(await fallback.run("return type(parity_later())"), "userdata");
   assert.equal(await fallback.run("return parity_later():await()"), 5);
 });
+
+test("Lua event handlers read the DOM bridge's event snapshot on both engines", async () => {
+  const { createDomBridge } = await import("../../js/packages/dom-client/src/dom_bridge.js");
+  for (const engine of [api2, fallback]) {
+    await engine.run(`
+      seen = nil
+      handler = function(e)
+        seen = e.type .. "|" .. e.value .. "|" .. tostring(e.checked) .. "|" .. e.key
+        e.preventDefault()
+      end`);
+    const listeners = new Map();
+    const input = { tagName: "INPUT", value: "hello", checked: false, name: "q",
+      addEventListener: (n, fn) => listeners.set(n, fn), removeEventListener() {} };
+    createDomBridge().set_listener(input, "keydown", engine.get("handler"));
+    const domEvent = { type: "keydown", target: input, currentTarget: input, key: "Enter", timeStamp: 0,
+      defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {} };
+    await listeners.get("keydown")(domEvent);
+    // Promise-backed callbacks settle after the listener returns.
+    for (let i = 0; i < 20 && engine.get("seen") == null; i++) await new Promise((r) => setTimeout(r, 5));
+    assert.equal(engine.get("seen"), "keydown|hello|false|Enter");
+    assert.equal(domEvent.defaultPrevented, true);
+  }
+});

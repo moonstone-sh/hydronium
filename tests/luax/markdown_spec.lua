@@ -24,6 +24,15 @@ Use **Hydronium** with [Lab](https://example.test/lab).
     assert.falsy(result.code:find('H.h%("unsafe"'))
   end)
 
+  it("passes a fence's info string after the language as data-meta", function()
+    local result = markdown.compile("```luax try file=App.luax\nreturn 1\n```\n\n```lua\nplain()\n```\n", { filename = "Guide.mdx" })
+    assert.truthy(result.generated_luax:find('class={"language-luax"} data-meta={"try file=App.luax"}', 1, true))
+    assert.truthy(result.generated_luax:find('class={"language-lua"}>', 1, true))
+    local H = require("hydronium")
+    local rendered = require("hydronium_dom.server").renderToString(H.h(load(result.code, "=Guide.mdx", "t", setmetatable({ require = require }, { __index = _G }))()))
+    assert.truthy(rendered:find('data-meta="try file=App.luax"', 1, true))
+  end)
+
   it("compiles Lua setup and standalone LUAX components in mdx", function()
     local result = markdown.compile([[```lua setup
 local Demo = require("Demo")

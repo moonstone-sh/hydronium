@@ -257,7 +257,10 @@ parse_blocks = function(entries, ctx)
         push({ type = "setup", code = code, line = n + 1, fence_line = n,
           last = closed and entries[j].n or entries[#entries].n })
       else
-        push({ type = "code", language = language ~= "" and language or nil, text = code, line = n,
+        -- The rest of the info string (```luax try file=App.luax) is the
+        -- fence's meta, as in MDX; a `pre`/`code` override reads it.
+        push({ type = "code", language = language ~= "" and language or nil,
+          meta = directive ~= "" and directive or nil, text = code, line = n,
           last = closed and entries[j].n or entries[#entries].n })
       end
       i = closed and j + 1 or j
@@ -820,7 +823,8 @@ local function emit_block(w, block, ctx, tight)
     end
   elseif t == "code" then
     element(w, "pre", nil, function()
-      element(w, "code", { { "class", block.language and lit("language-" .. block.language) } },
+      element(w, "code", { { "class", block.language and lit("language-" .. block.language) },
+        { "data-meta", block.meta and lit(block.meta) } },
         function() w:put("{" .. lit(block.text) .. "}") end)
     end)
   elseif t == "hr" then

@@ -54,6 +54,9 @@ This is **interactive** documentation: <Counter initial={2} /> inline, or as a b
 - `lua setup` fences hold the module's requires and setup code. They must come
   before the content (the compiler reports the line otherwise). A plain
   `lua` fence is an ordinary code example.
+- Anything after a fence's language (```` ```luax try file=App.luax ````) is
+  its meta string, rendered as `data-meta` on the `code` element, so a `pre`
+  or `code` override can act on it (as MDX passes `meta`).
 - `{expr}` is a Lua expression, anywhere in prose. `props` is in scope. A
   paragraph that is only `{expr}` or only a component renders without a `<p>`.
 - Component elements (`<Card …/>`, `<ui.Card>`, `<d.div>`) are LUAX. They may
