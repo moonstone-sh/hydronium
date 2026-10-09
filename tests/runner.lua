@@ -498,6 +498,7 @@ local function main()
       "tests/luax/virtual_source_spec.lua",
       "tests/luax/projection_sweep_spec.lua",
       "tests/luax/line_alignment_spec.lua",
+      "tests/luax/comments_spec.lua",
       "tests/luax/luals_bootstrap_spec.lua",
       "tests/luax/type_declarations_spec.lua",
       "tests/luax/isolation_spec.lua",

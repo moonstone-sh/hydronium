@@ -2,7 +2,7 @@ manifest_version = 2
 
 [package]
 name = "hydronium/luax"
-version = "0.2.12"
+version = "0.2.13"
 kind = "lib"
 description = "Hydronium LUAX compiler, formatter, and editor integrations"
 
