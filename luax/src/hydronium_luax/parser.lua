@@ -602,10 +602,17 @@ function Parser:parse_function_call_args()
   return args
 end
 
+-- Comments are tokens; inside a table constructor they may sit between any
+-- two fields, before the first or after the last.
+function Parser:skip_comments()
+  while self:current().type == "COMMENT" do self:advance() end
+end
+
 function Parser:parse_table_constructor()
   local open_tok = self:expect("PUNCT", "{", "Expected '{'")
   local fields = {}
 
+  self:skip_comments()
   while not self:check("PUNCT", "}") and not self:check("EOF") do
     if self:check("PUNCT", "[") then
       -- [key_expr] = val_expr
@@ -628,13 +635,16 @@ function Parser:parse_table_constructor()
       table.insert(fields, ast.TableField(nil, val_expr))
     end
 
+    self:skip_comments()
     if self:match("PUNCT", ",") or self:match("PUNCT", ";") then
       -- optional delimiter
+      self:skip_comments()
     else
       break
     end
   end
 
+  self:skip_comments()
   local close_tok = self:expect("PUNCT", "}", "Expected '}' closing table")
   local loc = ast.create_loc(
     { line = open_tok.line, column = open_tok.col, offset = open_tok.pos },
@@ -665,16 +675,20 @@ function Parser:parse_param_list()
   local params = {}
   local is_vararg = false
 
+  self:skip_comments()
   while not self:check("PUNCT", ")") and not self:check("EOF") do
     if self:match("PUNCT", "...") then
       is_vararg = true
+      self:skip_comments()
       break
     elseif self:check("IDENT") then
       local id_tok = self:advance()
       table.insert(params, ast.Identifier(id_tok.value, self:make_node_loc(id_tok)))
+      self:skip_comments()
       if not self:match("PUNCT", ",") then
         break
       end
+      self:skip_comments()
     else
       self:error("Expected parameter name or '...'", self:current())
     end
