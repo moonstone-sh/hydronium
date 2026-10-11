@@ -22,7 +22,7 @@ run = "lua src/main.lua"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.12"
+constraint = "^0.2.13"
 role = "runtime"
 
 [[dependencies]]
