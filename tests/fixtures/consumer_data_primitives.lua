@@ -26,3 +26,18 @@ list:setViewportSize(30); list:measure(0, 30)
 assert(list:getVirtualItems()[1].key == "ada")
 assert(model:getColumnGroups().left[1].id == "team")
 print("consumer data primitives: ok")
+
+-- Auth must come from its own artifact rather than leaking through Core.
+local auth = require("hydronium_auth")
+local reply, cancelled
+local flow = auth.createFlow({transport=function(_, _, done)
+  reply=done
+  return function()cancelled=true end
+end})
+assert(flow:submit("email", {}))
+assert(flow.state().pending)
+flow:reset()
+reply(nil, {step="complete"})
+assert(cancelled and flow.state().step=="credentials" and not flow.state().pending)
+flow:dispose()
+assert(not flow:submit("email", {}))

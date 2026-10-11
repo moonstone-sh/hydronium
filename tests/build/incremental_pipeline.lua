@@ -1,0 +1,32 @@
+-- Run in an empty temporary working directory with workspace packages on LUA_PATH.
+local fs = require('ballad.fs')
+local process = require('ballad.process')
+local partiture = require('ballad.partiture')
+local hb = require('hydronium_ballad')
+local framework = assert(os.getenv('HYDRONIUM_FRAMEWORK_ROOT'))
+local function write(p, s) fs.mkdir(require('ballad.path').dirname(p)); fs.write_file(p, s) end
+local function stamp(p)
+  return process.capture('python3 -c ' .. process.quote('import os; print(os.stat(' .. string.format('%q', p) .. ').st_mtime_ns)'))
+end
+write('hydronium.sources.lua', [[return {entry='app.App', roots={{path='src',namespace='app',target='client'}},entries={{id='app.App',path='src/App.lua'}}}]])
+write('src/App.lua', 'return {version=1}')
+local function build()
+  partiture.build(function(p)
+    hb.source_inventory(p)
+    hb.client_bundle(p, {framework_root=framework})
+  end):execute()
+end
+build()
+local manifest = '.hydronium/client/hydronium-manifest.json'
+local before = fs.read_file(manifest)
+assert(before)
+local time = stamp(manifest)
+build()
+assert(time == stamp(manifest), 'unchanged manifest was rewritten')
+write('src/App.lua', 'return {version=2}')
+build()
+assert(before ~= fs.read_file(manifest), 'client source edit did not invalidate the bundle')
+write('.hydronium/client/stale.lua', 'obsolete')
+build()
+assert(not fs.read_file('.hydronium/client/stale.lua'), 'stale output survived')
+print('PASS: Hydronium real Ballad inventory and client bundle, warm build, edit and pruning')

@@ -389,11 +389,12 @@ function create.scaffold(opts, ctx)
   local files = template_spec.module.files({
     name = project_name,
     interpreter = interpreter,
+    tailwind = opts.tailwind == true,
     router = template_id == "spa" and (router_choice or "hydronium") or nil,
   })
 
   if template_id == "islands" and router_choice == "hydronium" then
-    files = router_mode.apply_islands(files, { name = project_name })
+    files = router_mode.apply_islands(files, { name = project_name, tailwind = opts.tailwind == true })
   end
 
   -- Package manager: tied to VITE (any ssr/spa/islands scaffold), not to

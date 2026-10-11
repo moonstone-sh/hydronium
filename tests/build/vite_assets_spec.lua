@@ -75,6 +75,15 @@ describe("hydronium_ballad.plugins.vite_assets", function()
     os.remove(manifest_path)
   end)
 
+  it("rejects a manifest whose referenced output is missing", function()
+    local store = graph.Graph.new()
+    local filename = write_temp_file('{' .. '"src/app.js":{"file":"assets/missing.js"}' .. '}', ".json")
+    local asset = file_asset(store, ".vite/manifest.json", filename)
+    local ok = pcall(vite_assets.ingest, fake_ctx(), {{assets={asset}}}, {})
+    os.remove(filename)
+    assert.falsy(ok, "incomplete Vite output must fail the build")
+  end)
+
   it("drops the manifest.json itself from the output (build-internal, not a servable asset)", function()
     local store = graph.Graph.new()
     local manifest_path = write_temp_file("{}", ".json")
@@ -91,7 +100,7 @@ describe("hydronium_ballad.plugins.vite_assets", function()
     local js_path = write_temp_file("console.log('hi')", ".js")
     local css_path = write_temp_file("body{color:red}", ".css")
     local manifest_json = string.format(
-      [[{"src/main.js":{"file":"assets/main-deadbeef.js","isEntry":true,"css":["assets/main-cafe0.css"]}}]]
+      [[{"src/main.js":{"file":"assets/main-deadbeef.js","isEntry":true,"classes":{"card":"card_123"},"css":["assets/main-cafe0.css"]}}]]
     )
     local manifest_path = write_temp_file(manifest_json, ".json")
 
@@ -108,6 +117,8 @@ describe("hydronium_ballad.plugins.vite_assets", function()
     end
     assert.truthy(by_source["src/main.js"])
     assert.equal(by_source["src/main.js"].metadata.hydronium.url, "/assets/main-deadbeef.js")
+    assert.equal(by_source["src/main.js"].metadata.hydronium.classes.card,"card_123")
+    assert.equal(by_source["src/main.js"].metadata.hydronium.css[1],"/assets/main-cafe0.css")
     assert.truthy(by_source["assets/main-cafe0.css"])
     assert.equal(by_source["assets/main-cafe0.css"].metadata.hydronium.url, "/assets/main-cafe0.css")
 

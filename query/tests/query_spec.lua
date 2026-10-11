@@ -36,6 +36,22 @@ test.describe("hydronium/query", function()
     stop()
   end)
 
+  test.it("settles mutations once and ignores completion after cancellation", function()
+    local client = q.createClient()
+    local reply, calls, cancellations = nil, 0, 0
+    local mutate = client:mutation({ mutate = function(_, done)
+      reply = done
+      return function() cancellations = cancellations + 1 end
+    end })
+    mutate(nil, function() calls = calls + 1 end)
+    reply(nil, true); reply("late failure")
+    test.assert.equal(calls, 1)
+    local cancel = mutate(nil, function() calls = calls + 1 end)
+    cancel(); cancel(); reply(nil, true)
+    test.assert.equal(calls, 1)
+    test.assert.equal(cancellations, 1)
+  end)
+
   test.it("exposes a signal-backed useQuery handle without a global client", function()
     local client, done = q.createClient(), nil
     local handle = client:useQuery({ key = { "profile", 1 }, query = function(_, complete) done = complete end })
@@ -86,4 +102,23 @@ test.describe("hydronium/query", function()
     if not ok then error(err) end
   end)
 
+
+  test.it("expires idle caches using elapsed time instead of CPU time",function()
+    local original=os.time
+    local current=100
+    os.time=function()return current end
+    local ok,err=pcall(function()
+      local starts=0
+      local client=q.createClient({stale_time=5})
+      local options={key="idle",query=function(_,done)starts=starts+1;done(nil,true)end}
+      client:observe(options,function()end)()
+      current=110
+      client:observe(options,function()end)()
+      test.assert.equal(starts,2)
+      current=90
+      test.assert.equal(client.clock(),110)
+    end)
+    os.time=original
+    if not ok then error(err)end
+  end)
 end)

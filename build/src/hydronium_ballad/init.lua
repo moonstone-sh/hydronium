@@ -25,7 +25,7 @@ M.plugins = {
 }
 
 --- Where `source_inventory` writes. A dedicated directory: Ballad's
---- directory sink deletes its `out` before writing.
+--- directory sink owns its `out` exclusively.
 M.INVENTORY_DIR = ".hydronium/ballad"
 
 local function load_config(config_path, caller)
@@ -34,8 +34,7 @@ local function load_config(config_path, caller)
   return chunk()
 end
 
--- Ballad's `**/` needs at least one directory, so direct children get their
--- own pattern.
+-- Include explicit direct-child patterns for older Ballad releases too.
 local function tree_patterns(dirs, exts)
   local patterns = {}
   for _, dir in ipairs(dirs) do
@@ -84,14 +83,14 @@ function M.source_inventory(p, opts)
   local topology = p:use(M.plugins.topology)
   local sources = project_sources(p, config)
   local inventory = topology.inventory(sources, { config = config_path, name = "source-inventory.json" })
-  return p.sink.directory(inventory, { out = opts.out or M.INVENTORY_DIR })
+  return p.sink.directory(inventory, { out = opts.out or M.INVENTORY_DIR, incremental = true })
 end
 
 --- Where `client_bundle` writes. Dedicated, for the same reason as INVENTORY_DIR.
 M.CLIENT_DIR = ".hydronium/client"
 
 --- Framework namespaces a browser bundle may draw from.
-M.FRAMEWORK_NAMESPACES = { "hydronium", "hydronium_dom", "hydronium_router", "hydronium_query", "hydronium_virtual", "hydronium_table" }
+M.FRAMEWORK_NAMESPACES = { "hydronium", "hydronium_auth", "hydronium_dom", "hydronium_router", "hydronium_query", "hydronium_virtual", "hydronium_table" }
 
 --- Framework modules the `hydronium` barrel requires eagerly that never run
 --- in a production browser page: the test host, LOVE hot reload, and source
@@ -177,7 +176,7 @@ function M.client_bundle(p, opts)
 
   local resolved = client.resolve(project, { project_entries = true, depends_on = framework, stub = M.BROWSER_STUBS })
   local bundled = client.bundle(client.minify(resolved, { level = "safe" }), { entry = config.entry, chunk_prefix = "" })
-  return p.sink.directory(site.manifest(bundled), { out = opts.out or M.CLIENT_DIR })
+  return p.sink.directory(site.manifest(bundled), { out = opts.out or M.CLIENT_DIR, incremental = true })
 end
 
 return M

@@ -130,8 +130,8 @@ function M.inventory(ctx, inputs, opts)
   -- embedded in the artifact and is stable for an identical build closure.
   payload.revision = "b3:" .. process.b3sum_string(dkjson.encode(payload, { indent = false }))
   -- Relative to the sink's `out`: sink into a dedicated directory
-  -- (hydronium_ballad.INVENTORY_DIR), since Ballad's directory sink deletes
-  -- `out` before writing.
+  -- (hydronium_ballad.INVENTORY_DIR), since the directory sink owns every file in `out`
+  -- and removes stale members.
   local name = opts.name or "source-inventory.json"
   local lua_name = name:gsub("%.json$", ".lua")
   local metadata = { hydronium = { inventory = "source-topology", private = true, revision = payload.revision } }

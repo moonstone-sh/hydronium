@@ -49,6 +49,7 @@ moon run dev ./my-app --template ssr
 | Directory | Registry package | Purpose |
 | --- | --- | --- |
 | [`core`](core/) | `hydronium/core` | Signals, scopes, components, reconciliation, and the host contract. |
+| [`auth`](auth/) | `hydronium/auth` | Optional reactive authentication flow state with injected transport and validation. |
 | [`dom`](dom/) | `hydronium/dom` | Browser DOM host, SSR renderer, and Meteorite integration. |
 | [`luax`](luax/) | `hydronium/luax` | LUAX compiler, formatter, Tree-sitter grammar, and editor integrations. |
 | [`ink`](ink/) | `hydronium/ink` | Terminal host with `Box`, `Text`, and `Newline` intrinsics. |

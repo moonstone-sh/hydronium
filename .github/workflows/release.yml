@@ -14,7 +14,14 @@ permissions:
   contents: read
 
 jobs:
+  validate:
+    name: Validate release candidate
+    uses: ./.github/workflows/ci.yml
+    with:
+      release_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+
   publish:
+    needs: validate
     name: Publish Hydronium registry packages
     runs-on: ubuntu-latest
     permissions:
@@ -111,25 +118,9 @@ jobs:
           set -euo pipefail
           test -n "$MOONSTONE_TOKEN"
           gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "Hydronium $RELEASE_TAG" --generate-notes
-          # Deliberately NOT exporting MOONSTONE_ARTIFACT_URL: a package's
-          # first-ever publish always lands as visibility=private on the
-          # registry (its own default, independent of anything this repo
-          # controls), and a private package's publish is unconditionally
-          # rejected when its artifact is an external https:// URL
-          # (registry-publish.ts's own rule -- private packages must upload
-          # an internal blob so the registry can gate downloads). Each
-          # publish.sh's blob-upload branch (its `else`, taken whenever
-          # MOONSTONE_ARTIFACT_URL is unset) sidesteps that. The GH release
-          # asset upload below still happens, purely as a human-facing
-          # mirror/download -- moon never fetches from it.
-          #
-          # Packages still land private after this and need a follow-up
-          # visibility flip: apps/registry/scripts/publish-visibility-fixup.ts
-          # in moonstone.sh, run against the registry's own database. Not
-          # automated here -- that script needs direct DB access this
-          # runner doesn't have, and the endpoint that *would* do it over
-          # HTTP (POST /api/registry/packages/manage) requires an
-          # interactive session step-up no CI credential can satisfy.
+          # Upload internal blobs and declare public visibility at creation.
+          # Existing package visibility cannot be changed by publication;
+          # the registry rejects a mismatch instead of bypassing step-up.
           # Every package in dist/orbit publishes on every release run, even
           # when only one of the 8 actually bumped its version -- most runs
           # will re-attempt N-1 already-published versions. The registry
@@ -149,7 +140,12 @@ jobs:
             test -n "$asset"
             gh release upload "$RELEASE_TAG" "$asset" --clobber
             publish_status=0
-            publish_output="$(sh "$publish_script" 2>&1)" || publish_status=$?
+            publish_output="$(curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $MOONSTONE_TOKEN" \
+              -F "descriptor=@$package_dir/package.toml" \
+              -F "readme=@$package_dir/README.md" \
+              -F "blob=@$asset" -F "visibility=public" \
+              "${MOONSTONE_PUBLISH_URL:-https://registry.moonstone.sh/api/registry/v0/publish}" 2>&1)" || publish_status=$?
             if [ "$publish_status" -ne 0 ]; then
               if printf '%s' "$publish_output" | grep -q 'already exists'; then
                 echo "⚠ ${package_name:-$package_dir}: already published at this version, skipping."

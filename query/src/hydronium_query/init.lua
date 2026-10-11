@@ -6,7 +6,13 @@ local M = {}
 local Client = {}
 Client.__index = Client
 
-local function now_seconds() return os.clock() end
+-- CPU time does not advance while the client is idle. The portable fallback
+-- uses elapsed wall seconds, clamped against backward clock adjustments.
+-- Browser/native hosts should inject a monotonic clock for finer precision.
+local function default_clock()
+  local previous = 0
+  return function() previous = math.max(previous, os.time()); return previous end
+end
 
 local function finite_number(value)
   return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
@@ -142,7 +148,10 @@ function Client:mutation(options)
   if type(options) ~= "table" or type(options.mutate) ~= "function" then error("hydronium.query.mutation requires mutate", 2) end
   return function(variables, done)
     done = done or function() end
+    local completed = false
     local function settled(error_value, data)
+      if completed then return end
+      completed = true
       if error_value == nil and options.invalidate then
         for _, key in ipairs(options.invalidate) do self:invalidate(key, { refetch = false }) end
       end
@@ -150,7 +159,12 @@ function Client:mutation(options)
     end
     local ok, cancel = pcall(options.mutate, variables, settled)
     if not ok then settled(cancel) end
-    return type(cancel) == "function" and cancel or nil
+    if type(cancel) ~= "function" or completed then return nil end
+    return function()
+      if completed then return end
+      completed = true
+      cancel()
+    end
   end
 end
 
@@ -189,7 +203,7 @@ end
 
 function M.createClient(options)
   options = options or {}
-  return setmetatable({ entries = {}, schedule = options.schedule, clock = options.clock or now_seconds, default_stale_time = options.stale_time or 0, gc_time = options.gc_time or 300 }, Client)
+  return setmetatable({ entries = {}, schedule = options.schedule, clock = options.clock or default_clock(), default_stale_time = options.stale_time or 0, gc_time = options.gc_time or 300 }, Client)
 end
 
 M.create_client = M.createClient

@@ -419,7 +419,7 @@ test("scaffold dry-run produces expected files for ssr template", function()
   end
   -- Site finding HF-009: the release server must honour PORT at start-up.
   assert(main:find('port_env = "PORT"', 1, true), "SSR main.lua must let the built server read PORT")
-  assert(generated["moonstone.toml"]:find('name = "hydronium/dom"\nconstraint = "^0.3.12"', 1, true),
+  assert(generated["moonstone.toml"]:find('name = "hydronium/dom"\nconstraint = "^0.3.13"', 1, true),
     "SSR apps need hydronium/dom 0.3.4 (lua-wasm engine, fixed-size dev revisions)")
   assert(not generated["src/main.lua"]:find('id:gsub("%%.", "/")', 1, true),
     "SSR must not reconstruct filesystem paths from request IDs")

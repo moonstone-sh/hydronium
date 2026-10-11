@@ -106,10 +106,13 @@ function M.ingest(ctx, inputs, opts)
   -- is only ever emitted once.
   local consumed = { [manifest_vpath] = true }
 
-  local function emit_hy_asset(source_key, file_vpath)
+  local function emit_hy_asset(source_key, file_vpath, entry)
     if consumed[file_vpath] then return end
     local built = by_vpath[file_vpath]
-    if not built or not built.source_path then return end
+    if not built or not built.source_path then
+      ctx.fail("hydronium_ballad.plugins.vite_assets: manifest references missing built file " .. tostring(file_vpath))
+      return
+    end
     consumed[file_vpath] = true
     local digest = process.b3sum(built.source_path)
     out:add(ctx.graph:add_asset({
@@ -121,6 +124,11 @@ function M.ingest(ctx, inputs, opts)
         source = source_key,
         url = "/" .. built.virtual_path,
         integrity = "b3:" .. digest,
+        classes = entry and entry.classes,
+        css = entry and entry.css and (function()
+          local urls = {}; for _, file in ipairs(entry.css) do urls[#urls+1] = "/" .. file end
+          return urls
+        end)() or nil,
       }},
     }))
   end
@@ -139,7 +147,7 @@ function M.ingest(ctx, inputs, opts)
   for _, specifier in ipairs(specifiers) do
     local entry = manifest[specifier]
     if type(entry) == "table" and type(entry.file) == "string" then
-      emit_hy_asset(specifier, entry.file)
+      emit_hy_asset(specifier, entry.file, entry)
       if type(entry.css) == "table" then
         for _, css_vpath in ipairs(entry.css) do
           -- CSS pulled in as a side effect of a JS entry has no specifier

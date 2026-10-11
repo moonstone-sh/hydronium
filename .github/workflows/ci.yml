@@ -1,6 +1,13 @@
 name: Hydronium CI
 
 on:
+  workflow_call:
+    inputs:
+      release_ref:
+        description: Commit or tag to validate before publication
+        required: false
+        default: ""
+        type: string
   pull_request:
   push:
     branches: [main]
@@ -14,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_ref || github.ref }}
       - uses: actions/checkout@v4
         with:
           repository: moonstone-sh/moonstone
@@ -168,7 +177,7 @@ jobs:
           HYDRONIUM_CONSUMER_DEV: 1
           HYDRONIUM_BROWSER_GATE: bun test ./js/tests/consumer_ssr_hmr.browser.test.mjs
         run: bash tests/e2e/consumer_scaffold.sh
-      - name: Published query + virtual + table consumer gate
+      - name: Published auth + query + virtual + table consumer gate
         env:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
         run: bash tests/e2e/data_primitives_consumer.sh
@@ -210,6 +219,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_ref || github.ref }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11
@@ -244,12 +255,15 @@ jobs:
       - name: Vite vendor distribution drift check
         run: node js/scripts/check-vite-vendor-drift.mjs
       - name: Plugin unit tests
-        run: node --test js/packages/vite/tests/plugin.test.mjs
+        run: node --test js/packages/vite/tests/*.test.mjs
       - name: LUAX grammar (every .luax file, against the lexer-mirroring scanner)
         run: node --test js/packages/vscode-luax/test/grammar.test.mjs
       - name: Install Chromium for browser gates
         working-directory: js
         run: pnpm exec playwright install --with-deps chromium
+      - name: Lua stylesheet HMR preserves drafts and focus
+        working-directory: js/packages/vite
+        run: node tests/css-hmr.browser.mjs
       - name: Standalone browser behavior gates
         run: |
           node --test js/tests/router_hash_history.browser.test.mjs
