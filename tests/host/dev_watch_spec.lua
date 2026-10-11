@@ -2,13 +2,12 @@
   hydronium_dom.dev.watch -- per-module change identity (roadmap M2).
 
   Covers the pure, testable half of the M2 protocol addition: reading a
-  fingerprint back apart into its per-file content entries, and naming
-  exactly which watched paths moved between two fingerprints. The SSE
+  legacy fingerprint parsing, compact revisions, and naming exactly
+  which watched paths moved between two snapshots. The SSE
   tests replace Meteorite's per-request stream globals with narrow fakes
   so abandoned-connection behavior remains deterministic here.
 
-  Fingerprint lines have the shape "<hashes> <size> <name>", "|"-joined
-  and sorted.
+  Legacy fingerprint lines have the shape "<hashes> <size> <name>".
 --]]
 
 local runner = require("tests.runner")
@@ -99,9 +98,9 @@ describe("hydronium_dom.dev.watch -- per-file change identity", function()
       f:write("one")
       f:close()
 
-      local first = watch.fingerprint({ path })
-      assert.truthy(first ~= "" and first ~= nil)
-      assert.equal(watch.fingerprint({ path }), first)
+      local first = watch.snapshot({ path })
+      assert.equal(#first.revision, 16)
+      assert.equal(watch.fingerprint({ path }), first.revision)
 
       -- Same length and potentially the same filesystem timestamp: the
       -- content hashes, not metadata, must move the fingerprint.
@@ -110,11 +109,46 @@ describe("hydronium_dom.dev.watch -- per-file change identity", function()
       g:write("two")
       g:close()
 
-      local second = watch.fingerprint({ path })
-      assert.not_equal(second, first)
-      assert.same(watch.changed_files(first, second), { path })
+      local second = watch.snapshot({ path })
+      assert.not_equal(second.revision, first.revision)
+      assert.same(watch.changed_files(first.entries, second.entries), { path })
 
       os.remove(path)
+    end)
+  end)
+
+  describe("compact revisions", function()
+    it("stays 16 hex bytes for 200 files and ignores file-list order", function()
+      local files = {}
+      local prefix = os.tmpname()
+      for index = 1, 200 do
+        files[index] = string.format("%s-%03d.lua", prefix, index)
+        local file = io.open(files[index], "w")
+        assert.truthy(file)
+        file:write("return ", index, "\n")
+        file:close()
+      end
+      local first_snapshot = watch.snapshot(files)
+      local first = first_snapshot.revision
+      assert.equal(#first, 16)
+      assert.truthy(first:match("^[0-9a-f]+$"))
+      local reversed = {}
+      for index = #files, 1, -1 do reversed[#reversed + 1] = files[index] end
+      assert.equal(watch.fingerprint(reversed), first)
+      local edited = io.open(files[200], "w")
+      assert.truthy(edited)
+      edited:write("return 999\n")
+      edited:close()
+      local next_snapshot = watch.snapshot(files)
+      assert.equal(#next_snapshot.revision, 16)
+      assert.not_equal(next_snapshot.revision, first)
+      assert.same(watch.changed_files(first_snapshot.entries, next_snapshot.entries), { files[200] })
+      os.remove(files[200])
+      local deleted_snapshot = watch.snapshot(files)
+      assert.not_equal(deleted_snapshot.revision, next_snapshot.revision)
+      assert.same(watch.changed_files(next_snapshot.entries, deleted_snapshot.entries), { files[200] })
+      for _, path in ipairs(files) do os.remove(path) end
+      os.remove(prefix)
     end)
   end)
 
@@ -171,8 +205,8 @@ end)
 
 describe("hydronium_dom.dev.watch -- abandoned connections", function()
   it("reads protocol controls from Meteorite's callable query table", function()
-    local old_fingerprint = watch.fingerprint
-    watch.fingerprint = function() return "current" end
+    local old_snapshot = watch.snapshot
+    watch.snapshot = function() return { revision = "current", entries = { ["views/App.luax"] = "stamp" } } end
     local frames = {}
     local query = setmetatable({}, {
       __call = function(_, key)
@@ -187,18 +221,47 @@ describe("hydronium_dom.dev.watch -- abandoned connections", function()
         watch.serve_sse({ header = function() end, query = query }, { "unused" })
       end)
     end)
-    watch.fingerprint = old_fingerprint
+    watch.snapshot = old_snapshot
     assert.truthy(ok, err)
     local output = table.concat(frames)
-    assert.truthy(output:find("event: changed", 1, true))
+    assert.truthy(output:find("event: snapshot", 1, true))
     assert.truthy(output:find("event: reload", 1, true))
     assert.falsy(output:find("event: ping", 1, true))
     assert.falsy(output:find("event: bye", 1, true))
   end)
 
+  it("sends changed paths and a fresh snapshot before an in-session reload", function()
+    local old_snapshot = watch.snapshot
+    local calls = 0
+    watch.snapshot = function()
+      calls = calls + 1
+      if calls == 1 then return { revision = "old", entries = { ["views/App.luax"] = "one" } } end
+      return { revision = "new", entries = { ["views/App.luax"] = "two" } }
+    end
+    local frames = {}
+    local ok, err = pcall(function()
+      with_fake_streams(function(chunk)
+        frames[#frames + 1] = chunk
+      end, function()
+        watch.serve_sse({ header = function() end, query = function() end }, { "unused" }, {
+          poll_interval = 0.5,
+          budget = 0.5,
+          sleep = function() end,
+        })
+      end)
+    end)
+    watch.snapshot = old_snapshot
+    assert.truthy(ok, err)
+    local output = table.concat(frames)
+    local changed = output:find("event: changed\ndata: views/App.luax", 1, true)
+    local snapshot = output:find('event: snapshot\ndata: {"views/App.luax":"two"}', 1, true)
+    local reload = output:find("event: reload\ndata: new", 1, true)
+    assert.truthy(changed and snapshot and reload and changed < snapshot and snapshot < reload)
+  end)
+
   it("treats a failed heartbeat write as a normal disconnect", function()
-    local old_fingerprint = watch.fingerprint
-    watch.fingerprint = function() return "same" end
+    local old_snapshot = watch.snapshot
+    watch.snapshot = function() return { revision = "same", entries = {} } end
     local writes = 0
     local ok, err = pcall(function()
       with_fake_streams(function()
@@ -212,14 +275,14 @@ describe("hydronium_dom.dev.watch -- abandoned connections", function()
         })
       end)
     end)
-    watch.fingerprint = old_fingerprint
+    watch.snapshot = old_snapshot
     assert.truthy(ok, err)
-    assert.equal(writes, 3, "retry, hello, then the first heartbeat")
+    assert.equal(writes, 3, "retry, snapshot, then hello")
   end)
 
   it("heartbeats every poll by default", function()
-    local old_fingerprint = watch.fingerprint
-    watch.fingerprint = function() return "same" end
+    local old_snapshot = watch.snapshot
+    watch.snapshot = function() return { revision = "same", entries = {} } end
     local frames = {}
     local ok, err = pcall(function()
       with_fake_streams(function(chunk)
@@ -232,7 +295,7 @@ describe("hydronium_dom.dev.watch -- abandoned connections", function()
         })
       end)
     end)
-    watch.fingerprint = old_fingerprint
+    watch.snapshot = old_snapshot
     assert.truthy(ok, err)
     local pings = 0
     for _, frame in ipairs(frames) do

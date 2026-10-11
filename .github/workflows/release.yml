@@ -14,7 +14,14 @@ permissions:
   contents: read
 
 jobs:
+  validate:
+    name: Validate release candidate
+    uses: ./.github/workflows/ci.yml
+    with:
+      release_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+
   publish:
+    needs: validate
     name: Publish Hydronium registry packages
     runs-on: ubuntu-latest
     permissions:

@@ -151,3 +151,21 @@ provider/effect/cleanup contracts in the module graph and bundle metadata.
 Dynamic or unresolved access conservatively retains providers. This inventory
 is unreleased; capability elimination is disabled. See
 [Host capabilities](../docs/HOST_CAPABILITIES.md) for the limits of the analysis.
+
+### Incremental builds
+
+The `source_inventory` and `client_bundle` helpers use Ballad's incremental
+directory sink. Each output directory belongs exclusively to its helper:
+unchanged files keep their timestamps, changed files are replaced, and obsolete
+chunks are removed. Do not mix manually maintained files into those directories.
+Older Ballad releases ignore the incremental option and replace the directory;
+use the matching updated Ballad package to retain unchanged outputs.
+
+Module discovery still runs on each invocation because resolution can read
+additional files from disk. Compilation, minification and bundling reuse cached
+results when their declared inputs remain unchanged. A metadata or module-path
+change invalidates those results as well as a content change.
+
+From the framework workspace, verify the full pipeline with
+`bash tests/build/test_incremental_pipeline.sh`. It uses the sibling Ballad
+checkout by default; set `BALLAD_ROOT` to select another checkout.

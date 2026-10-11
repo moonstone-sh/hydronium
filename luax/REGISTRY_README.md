@@ -59,3 +59,10 @@ searcher does not itself watch files or enable HMR.
 Add the package's types and LuaLS plugin paths to .luarc.json, or scaffold with
 hydronium/create to generate that setup. The Neovim plugin is shipped under
 nvim/ and exposes require("luax").setup().
+
+For workspace development, new source files need an environment refresh:
+`moon sync --locked --offline`. Existing file links follow edits, but a new
+module has no link until Moonstone rematerializes the package. Do not add those
+links by hand. After packaging, run `bash tests/test_luax_artifact.sh` from the
+Hydronium repository to compare the artifact's source closure and import it
+without workspace fallbacks.

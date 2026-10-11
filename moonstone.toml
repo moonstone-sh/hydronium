@@ -56,6 +56,10 @@ name = "router"
 path = "router"
 
 [[orbits.member]]
+name = "auth"
+path = "auth"
+
+[[orbits.member]]
 name = "query"
 path = "query"
 

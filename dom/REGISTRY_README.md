@@ -286,3 +286,47 @@ provide `createDomHost(bridge)` explicitly. Legacy `__dom_*` globals remain
 supported when the capability is absent. The declarative DOM contract records
 methods, effects and cleanup for build tools. This capability API is unreleased;
 see [Host capabilities](../docs/HOST_CAPABILITIES.md).
+
+### Importing styles from Lua
+
+Declare global styles in the document and component styles beside their owner:
+
+```lua
+local H = require("hydronium")
+local d = require("hydronium_dom").d
+local css = require("hydronium_dom.css")
+local styles = css.import("src/components/Card.module.css")
+
+return function(props)
+  return H.h(H.Fragment, nil,
+    styles:subscribe(),
+    d.section({class = styles.classes.card}, props.children))
+end
+```
+
+`subscribe()` returns stylesheet nodes for the renderer to mount and remove;
+it does not mutate the DOM at module import time. Use `styles.classes` for real
+CSS Modules exports, including composed classes. Existing `css.sheet(path)`
+continues to serve Ballad's deterministic scoped-style pipeline; its computed
+names are a separate contract from Vite CSS Modules.
+
+Enable `luaStyles()` from `@hydronium-js/vite`. It discovers literal
+`css.import("project/path.css")` declarations under `src` and `stories` and
+adds those styles as build inputs. Use `entries` for dynamic declarations or a
+different local alias. The current adapter uses Vite's default PostCSS
+transformer. Production class exports travel in Vite's manifest and survive
+Ballad's `vite_assets` → `site.manifest` conversion. Browser mounts can load
+that Lua manifest through their existing `assetManifestUrl` option.
+
+In development configure the `vite-dev` asset provider with
+`modules_path = ".hydronium/css-modules.json"`; the plugin creates this map
+before the server becomes ready. Global CSS uses Vite's normal HMR. CSS Modules
+edits refresh the class map and reload the page, so mounted DOM cannot retain
+stale class names or composition. Preserving Lua state across those map changes
+will need a browser renderer integration.
+
+CSS Modules use content-independent scoped names by default. Declaration edits
+use Vite CSS HMR and preserve component state and focus. Changes to composition
+or exported class names trigger a full reload so Lua never renders an obsolete
+class mapping. A custom `generateScopedName` is respected; if it changes exports
+on a style edit, that edit also requires a reload.

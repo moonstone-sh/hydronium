@@ -48,8 +48,29 @@ local islands = {}
 ]]
 
 function islands.files(opts)
+  opts = opts or {}
   local project_name = opts.name or "my-hydronium-islands"
+  local use_tailwind = opts.tailwind == true
   local files = {}
+
+  local styles = use_tailwind and {
+    shell = "mx-auto min-h-screen max-w-3xl bg-slate-50 px-5 py-10 text-slate-900 sm:px-8",
+    header = "mb-7",
+    title = "text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl",
+    intro = "mt-2 text-sm leading-6 text-slate-600",
+    main = "grid gap-5",
+    content = "rounded-2xl border border-slate-200 bg-white p-6 shadow-sm",
+    section_title = "text-base font-semibold text-slate-950",
+    section_copy = "mt-2 text-sm leading-6 text-slate-600",
+    island = "rounded-2xl border border-teal-200 bg-teal-50 p-6 text-center shadow-sm",
+    island_title = "text-base font-semibold text-teal-950",
+    button = "mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700",
+  } or {
+    shell = "shell", header = "page-header", title = "page-title", intro = "page-intro",
+    main = "page-main", content = "content", section_title = "section-title",
+    section_copy = "section-copy", island = "island-container", island_title = "section-title",
+    button = "btn btn-primary",
+  }
 
   -- See ssr.lua's own comment on why this must be `[=[ ... ]=]`, not
   -- plain `[[ ... ]]` -- the content contains the literal substring
@@ -91,17 +112,17 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.3"
+constraint = "^0.2.12"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/luax"
-constraint = "^0.2.3"
+constraint = "^0.2.14"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.3"
+constraint = "^0.3.13"
 role = "runtime"
 ]=], project_name)
 
@@ -151,7 +172,7 @@ local d = require("hydronium_dom").d
 -- more than one root element here would make `context.root` an array
 -- instead, which this template's counter.js does not handle).
 local function JsCounter(props)
-  return <button class="btn btn-primary" data-testid="js-counter-btn">Count: {tostring(props.initial or 0)}</button>
+  return <button class="%s" data-testid="js-counter-btn">Count: {tostring(props.initial or 0)}</button>
 end
 
 local function Document(props)
@@ -166,20 +187,20 @@ local function Document(props)
         <link rel="stylesheet" href="/public/style.css" />
       </head>
       <body>
-        <div class="shell">
-          <header>
-            <h1>%s</h1>
-            <p>Server-rendered shell with one real, client-hydrated JS island</p>
+        <div class="%s">
+          <header class="%s">
+            <h1 class="%s">%s</h1>
+            <p class="%s">Server-rendered shell with one real, client-hydrated JS island</p>
           </header>
 
-          <main>
-            <section class="content">
-              <h2>Static Content (0 KB Client JavaScript)</h2>
-              <p>This section is rendered purely on the server; nothing below it ships any client code for it.</p>
+          <main class="%s">
+            <section class="%s">
+              <h2 class="%s">Static Content (0 KB Client JavaScript)</h2>
+              <p class="%s">This section is rendered purely on the server; nothing below it ships any client code for it.</p>
             </section>
 
-            <section class="island-container">
-              <h2>Interactive Island (real hydration)</h2>
+            <section class="%s">
+              <h2 class="%s">Interactive Island (real hydration)</h2>
               <d.js.island module="/js/island/counter.js" hydrate="visible" props={{ initial = initial }}>
                 <JsCounter initial={initial} />
               </d.js.island>
@@ -196,7 +217,8 @@ local function Document(props)
 end
 
 return Document
-]], project_name, project_name)
+]], styles.button, project_name, styles.shell, styles.header, styles.title, project_name, styles.intro,
+    styles.main, styles.content, styles.section_title, styles.section_copy, styles.island, styles.island_title)
 
   -- Compiles views/Document.luax on demand -- same reasoning and structure as
   -- ssr.lua's src/views/Document.lua (Meteorite's hybrid build lifts inline
@@ -700,34 +722,33 @@ export function dispose(context) {
 }
 ]]
 
-  files["public/style.css"] = [[body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #0f172a;
-  color: #f8fafc;
-  padding: 2rem;
-}
-.shell {
-  max-width: 600px;
-  margin: 0 auto;
-}
-.island-container {
-  background: #1e293b;
-  border: 1px solid #38bdf8;
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-top: 1.5rem;
-  text-align: center;
-}
-.btn {
-  padding: 0.6rem 1.5rem;
-  font-size: 1.25rem;
-  font-weight: bold;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-}
-.btn-primary { background: #38bdf8; color: #0f172a; }
+  if use_tailwind then
+    files["public/style.css"] = [[:root { color-scheme: light; font-family: ui-sans-serif, system-ui, sans-serif; color: #0f172a; background: #f8fafc; }
+* { box-sizing: border-box; }
+body { min-width: 320px; min-height: 100vh; margin: 0; }
+button { font: inherit; }
 ]]
+  else
+    files["public/style.css"] = [[:root { color-scheme: light; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17252b; background: #f4f8f7; }
+* { box-sizing: border-box; }
+body { min-width: 320px; min-height: 100vh; margin: 0; background: #f4f8f7; color: #203235; padding: 28px 20px; }
+.shell { width: min(100%, 760px); margin: 0 auto; }
+.page-header { margin-bottom: 24px; }
+.page-title { margin: 0; color: #153432; font-size: clamp(28px, 5vw, 38px); letter-spacing: -.04em; }
+.page-intro, .section-copy { color: #657578; font-size: 14px; line-height: 1.65; }
+.page-intro { margin: 8px 0 0; }
+.page-main { display: grid; gap: 16px; }
+.content, .island-container { border: 1px solid #e0e9e6; border-radius: 17px; background: #fff; padding: 22px; box-shadow: 0 5px 20px #173b3508; }
+.content h2, .island-container h2 { margin: 0 0 10px; color: #203235; font-size: 16px; }
+.content p { margin: 0; color: #657578; font-size: 14px; line-height: 1.65; }
+.island-container { border-color: #c8e8e1; background: #f1faf7; }
+.section-copy { margin: 0; }
+.btn { border: 0; border-radius: 11px; padding: 11px 16px; cursor: pointer; }
+.btn-primary { background: #087f78; color: white; font-size: 14px; font-weight: 650; }
+.btn-primary:hover { background: #076761; }
+.btn-primary:focus-visible { outline: 3px solid #8ad5c8; outline-offset: 3px; }
+]]
+  end
 
   files["README.md"] = string.format([[# %s
 
@@ -796,6 +817,11 @@ increments client-side with no page reload. Editing files under `views/`,
 `src/`, or `public/` triggers a full-page reload, so client state resets;
 state-preserving JavaScript-island HMR is not implemented yet.
 ]], project_name, project_name)
+
+  files["README.md"] = files["README.md"] .. "\n\n## Styling\n\n"
+    .. (use_tailwind
+      and "This scaffold uses Tailwind utility classes in its generated views; Vite builds and links the utility stylesheet."
+      or "The responsive page styles live in `public/style.css`, with no additional component-style runtime.")
 
   return files
 end

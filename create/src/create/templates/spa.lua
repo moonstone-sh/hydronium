@@ -79,39 +79,38 @@ function spa.files(opts)
   opts = opts or {}
   local project_name = opts.name or "my-hydronium-spa"
   local router = opts.router or "hydronium"
+  local use_tailwind = opts.tailwind == true
   if not ROUTER_MODES[router] then
     error("create.templates.spa: unknown router mode '" .. tostring(router) .. "' (expected 'hydronium' or 'meteorite')", 2)
   end
   local files = {}
 
-  files["app.css"] = [[.card {
-  max-width: 420px;
-  margin: 3rem auto;
-  padding: 2rem;
-  border-radius: 12px;
-  background: #1e293b;
-  color: #f8fafc;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  text-align: center;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-}
-
-.card h1 {
-  color: #38bdf8;
-}
-
-.card button {
-  margin-top: 1rem;
-  padding: 0.6rem 1.5rem;
-  font-size: 1rem;
-  font-weight: bold;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  background: #38bdf8;
-  color: #0f172a;
-}
+  local styles_source
+  if use_tailwind then
+    styles_source = [[local styles = {
+  card = "mx-auto my-10 w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-7 text-slate-800 shadow-xl sm:p-9",
+  card_title = "text-3xl font-semibold tracking-tight text-teal-950 sm:text-4xl",
+  card_copy = "mt-3 text-sm leading-6 text-slate-600",
+  card_action = "mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700",
+}]]
+    files["app.css"] = [[:root { color-scheme: light; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17252b; background: #f8fafc; }
+* { box-sizing: border-box; }
+body { min-width: 320px; min-height: 100vh; margin: 0; padding: 16px; }
+button { font: inherit; }
 ]]
+  else
+    styles_source = 'local styles = require("hydronium_dom.css").sheet("app.css")'
+    files["app.css"] = [[:root { color-scheme: light; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17252b; background: #f4f8f7; }
+* { box-sizing: border-box; }
+body { min-width: 320px; min-height: 100vh; margin: 0; background: #f4f8f7; }
+.card { width: min(100% - 2rem, 512px); margin: 10vh auto; border: 1px solid #e0e9e6; border-radius: 18px; background: white; padding: 28px; color: #203235; text-align: left; box-shadow: 0 12px 35px rgba(23, 59, 53, .09); }
+.card-title { margin: 0; color: #153432; font-size: clamp(28px, 5vw, 38px); letter-spacing: -.04em; }
+.card-copy { margin: 12px 0 0; color: #657578; font-size: 14px; line-height: 1.65; }
+.card-action { margin-top: 24px; border: 0; border-radius: 11px; background: #087f78; padding: 11px 16px; color: white; font-weight: 650; cursor: pointer; }
+.card-action:hover { background: #076761; }
+.card-action:focus-visible { outline: 3px solid #8ad5c8; outline-offset: 3px; }
+]]
+  end
 
   if router == "hydronium" then
     files["app.lua"] = string.format([==[-- Real two-route hash-routed static SPA entry -- mirrors
@@ -131,7 +130,7 @@ local dom = require("hydronium_dom")
 local d = dom.d
 local R = require("hydronium_router")
 local hash_history = require("hydronium_router.history.hash")
-local styles = require("hydronium_dom.css").sheet("app.css")
+%s
 
 -- A plain <button>, not <a href> -- dom_bridge.js's set_listener documents
 -- that wasmoon cannot safely marshal a browser Event as a Lua callback
@@ -139,7 +138,7 @@ local styles = require("hydronium_dom.css").sheet("app.css")
 -- to preventDefault() its own default navigation to avoid racing the
 -- router's own history.push, which a plain button sidesteps entirely.
 local function nav_button(id, label, navigate, to)
-  return d.button({ id = id, onClick = function() navigate(to) end }, label)
+  return d.button({ id = id, class = styles.card_action, onClick = function() navigate(to) end }, label)
 end
 
 local function RootLayout(props)
@@ -153,8 +152,8 @@ local function HomeScreen()
   local navigate = R.use_navigate()
   return function()
     return d.div({ id = "home-screen", class = styles.card },
-      d.h1({}, "%s"),
-      d.p({ id = "home-marker" }, "This is the home route -- rendered entirely client-side, no server."),
+      d.h1({ class = styles.card_title }, "%s"),
+      d.p({ id = "home-marker", class = styles.card_copy }, "This is the home route -- rendered entirely client-side, no server."),
       nav_button("go-about", "Go to About", navigate, "/about")
     )
   end
@@ -164,8 +163,8 @@ local function AboutScreen()
   local navigate = R.use_navigate()
   return function()
     return d.div({ id = "about-screen", class = styles.card },
-      d.h1({}, "About"),
-      d.p({ id = "about-marker" }, "This is the about route."),
+      d.h1({ class = styles.card_title }, "About"),
+      d.p({ id = "about-marker", class = styles.card_copy }, "This is the about route."),
       nav_button("go-home", "Go Home", navigate, "/")
     )
   end
@@ -195,7 +194,7 @@ return function(props)
     return H.h(router.Provider, {}, H.h(R.Outlet, {}))
   end
 end
-]==], project_name)
+]==], styles_source, project_name)
 
   else -- router == "meteorite"
     files["app.lua"] = string.format([==[-- Single-screen client mount -- no hydronium_router in the bundle at
@@ -205,13 +204,13 @@ end
 local H = require("hydronium")
 local dom = require("hydronium_dom")
 local d = dom.d
-local styles = require("hydronium_dom.css").sheet("app.css")
+%s
 
 local function Home()
   return function()
     return d.div({ id = "home-screen", class = styles.card },
-      d.h1({}, "%s"),
-      d.p({ id = "home-marker" }, "Rendered entirely client-side, served by Meteorite.")
+      d.h1({ class = styles.card_title }, "%s"),
+      d.p({ id = "home-marker", class = styles.card_copy }, "Rendered entirely client-side, served by Meteorite.")
     )
   end
 end
@@ -221,7 +220,7 @@ return function(props)
     return H.h(Home)
   end
 end
-]==], project_name)
+]==], styles_source, project_name)
   end
 
   files["partiture.lua"] = string.format([==[-- Real hydronium_ballad build: bundles app.lua (+ framework%s) into one
@@ -338,17 +337,17 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/ballad"
-constraint = "^0.2.2"
+constraint = "^0.2.8"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.3"
+constraint = "^0.2.12"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.3"
+constraint = "^0.3.13"
 role = "runtime"
 
 [[dependencies]]
@@ -437,17 +436,17 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/ballad"
-constraint = "^0.2.2"
+constraint = "^0.2.8"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.3"
+constraint = "^0.2.12"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.3"
+constraint = "^0.3.13"
 role = "runtime"
 ]=], project_name)
 
@@ -543,6 +542,11 @@ see templates/spa.lua's own header comment).
    ```
 ]], project_name)
   end
+
+  files["README.md"] = files["README.md"] .. "\n\n## Styling\n\n"
+    .. (use_tailwind
+      and "This scaffold uses Tailwind utility classes from `app.lua`; Vite builds and links the utility stylesheet."
+      or "The app's handwritten styles live in `app.css` and are scoped by the Hydronium style plugin.")
 
   return files
 end

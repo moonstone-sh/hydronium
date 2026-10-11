@@ -28,8 +28,7 @@ local M = {}
 local DEFAULT_POLL_INTERVAL = 0.5
 local DEFAULT_BUDGET = 5
 
---- Snapshots every file in `files` (two content hashes/size/name) into one
---- sorted, "|"-joined string; any create/delete/content change changes it.
+--- Reads per-file content stamps and a fixed-size revision of the watched set.
 ---
 --- This deliberately uses ordinary file reads rather than `io.popen("stat")`.
 --- Meteorite serves requests on multiple threads; forking a shell from that
@@ -37,16 +36,14 @@ local DEFAULT_BUDGET = 5
 --- Reading the files in-process also detects same-size writes made within a
 --- filesystem timestamp tick, which the old mtime/size fingerprint missed.
 ---
---- Sorted so caller order cannot affect the fingerprint. "|"-joined, not
---- newline-joined: a raw newline round-tripped through a query string
---- (percent-encoded as %0A in `since=...`) is rejected by Meteorite's
---- router as a CRLF-injection guard, and a literal embedded newline in
---- an SSE `data:` line is malformed per the SSE spec too (one `data:`
---- prefix per line). "|" sidesteps both, since it never appears in a
---- `stat` line's own content.
-function M.fingerprint(files)
+--- The revision is two independent 32-bit rolling hashes over sorted,
+--- length-prefixed path/stamp records. It remains 16 hex bytes regardless
+--- of the number of watched files; the detailed stamps stay in the SSE
+--- body, never in a response header or request URL.
+function M.snapshot(files)
   local modulo = 4294967296
   local lines = {}
+  local entries = {}
   for _, f in ipairs(files) do
     local file = io.open(f, "rb")
     if file then
@@ -58,22 +55,32 @@ function M.fingerprint(files)
         a = (a * 33 + byte) % modulo
         b = (b * 65599 + byte) % modulo
       end
-      lines[#lines + 1] = string.format("%.0f:%.0f %d %s", a, b, #content, f)
+      local stamp = string.format("%08x%08x:%d", a, b, #content)
+      entries[f] = stamp
+      lines[#lines + 1] = f .. "\0" .. stamp
     end
   end
   table.sort(lines)
-  return table.concat(lines, "|")
+  local a, b = 5381, 0
+  for _, line in ipairs(lines) do
+    local framed = tostring(#line) .. ":" .. line
+    for index = 1, #framed do
+      local byte = framed:byte(index)
+      a = (a * 33 + byte) % modulo
+      b = (b * 65599 + byte) % modulo
+    end
+  end
+  return { revision = string.format("%08x%08x", a, b), entries = entries }
 end
 
---- Splits a fingerprint back into { [path] = "<hashes> <size>" }.
+function M.fingerprint(files)
+  return M.snapshot(files).revision
+end
+
+--- Reads a legacy detailed fingerprint into per-path stamps.
 ---
---- The fingerprint is not an opaque digest -- it is the concatenation of
---- one `stat` line per watched file, so the identity of WHICH file moved
---- is already carried in it and only needs to be read back out. That is
---- what makes per-module change identity (M2) a pure addition here
---- rather than a protocol redesign: no second stat pass, no per-file
---- bookkeeping across requests, and the existing whole-set digest keeps
---- its exact meaning and its exact role as the `since` token.
+--- Kept for callers holding the old wire format. New callers pass the
+--- entry maps from `snapshot` directly to `changed_files`.
 ---
 --- A path may legitimately contain spaces, so the name is everything
 --- after the second field, not the third whitespace-delimited token.
@@ -93,20 +100,19 @@ function M.parse_fingerprint(fp)
   return entries
 end
 
---- Names which watched files actually differ between two fingerprints.
+--- Names which watched files differ between two per-file stamp maps.
 --- Covers all three real cases: modified (content entry changed), created
 --- (absent from `prev`, `stat` having failed and printed nothing), and
 --- deleted (absent from `next`, same reason).
 ---
---- Returns a sorted array so the result is deterministic and does not
---- depend on `pairs` iteration order -- the same reason `fingerprint`
---- itself sorts.
---- @param prev string|nil
---- @param next_fp string|nil
+--- Legacy detailed fingerprint strings are accepted for existing callers.
+--- Returns a sorted array so the result does not depend on `pairs` order.
+--- @param prev table|string|nil
+--- @param next_fp table|string|nil
 --- @return string[] changed paths, sorted
 function M.changed_files(prev, next_fp)
-  local a = M.parse_fingerprint(prev)
-  local b = M.parse_fingerprint(next_fp)
+  local a = type(prev) == "table" and prev or M.parse_fingerprint(prev)
+  local b = type(next_fp) == "table" and next_fp or M.parse_fingerprint(next_fp)
   local seen, changed = {}, {}
   for name, stamp in pairs(b) do
     if a[name] ~= stamp then
@@ -174,14 +180,12 @@ end
 ---     })
 ---   end)
 ---
---- PROTOCOL. Unchanged for existing consumers: `hello`/`reload`/`ping`/
---- `bye` still carry exactly what they always did, and `reload`'s data is
---- still the whole-set fingerprint that doubles as the `since` token. M2
---- adds ONE new frame, `changed`, emitted immediately before each
---- `reload`, whose data is the "|"-joined list of the watched paths that
---- actually moved. An EventSource never dispatches an event type nobody
---- registered a listener for, so a consumer that only knows about
---- `reload` (dev_reload.js through dev_transport.js) is unaffected.
+--- PROTOCOL. `hello`/`reload`/`bye` carry the fixed-size revision used as
+--- the `since` token. A `snapshot` frame precedes `hello` or `reload` and
+--- carries per-file stamps as JSON. The browser diffs consecutive snapshots
+--- to retain exact changed paths across its client-paced SSE requests.
+--- Within one long-lived request we also emit the legacy `changed` frame
+--- before `reload` so older clients can still hot-swap one module.
 ---
 --- `changed` deliberately carries NO `id:` field, unlike every other
 --- frame here. The browser's native EventSource records the last `id:`
@@ -233,17 +237,20 @@ function M.serve_sse(c, files, opts)
     return nil
   end
 
-  -- `id:` is the fingerprint itself (no embedded newlines, per the "|"
-  -- delimiter above, so it's already a valid single-line field value) --
-  -- this is what the browser echoes back as Last-Event-ID.
+  -- The compact revision is safe as one SSE id and as a query value.
   local function emit(event, data)
     return write("id: " .. tostring(data) .. "\nevent: " .. event .. "\ndata: " .. tostring(data) .. "\n\n")
   end
 
   -- No `id:` -- see the PROTOCOL note in this function's doc comment.
-  local function emit_changed(prev, next_fp)
-    local paths = M.changed_files(prev, next_fp)
+  local function emit_changed(prev, next_snapshot)
+    local paths = M.changed_files(prev.entries, next_snapshot.entries)
     return write("event: changed\ndata: " .. table.concat(paths, "|") .. "\n\n")
+  end
+
+  local function emit_snapshot(snapshot)
+    local json = require("hydronium_dom.server.json")
+    return write("event: snapshot\ndata: " .. json.encode(snapshot.entries) .. "\n\n")
   end
 
   local since = c:header("Last-Event-ID") or get_query("since")
@@ -258,26 +265,33 @@ function M.serve_sse(c, files, opts)
   if not pcall(stream_begin, 200, "text/event-stream") then return end
   if not write("retry: 200\n\n") then return end
 
-  local current = M.fingerprint(files, poll_interval, false)
+  local current_snapshot = M.snapshot(files)
+  local current = current_snapshot.revision
 
   if since and since ~= "" and since ~= current then
-    if not emit_changed(since, current) then return end
+    -- The previous per-file stamps live in the browser, not in this
+    -- request-local Lua state. The browser diffs this snapshot against its
+    -- last one, including edits made between SSE requests.
+    if not emit_snapshot(current_snapshot) then return end
     if not emit("reload", current) then return end
     finish()
     return
   end
 
+  if not emit_snapshot(current_snapshot) then return end
   if not emit("hello", current) then return end
 
   local elapsed = 0
   local since_heartbeat = 0
   while elapsed < budget do
     sleep(poll_interval)
-    local next_fp = M.fingerprint(files)
+    local next_snapshot = M.snapshot(files)
+    local next_fp = next_snapshot.revision
     elapsed = elapsed + poll_interval
     since_heartbeat = since_heartbeat + poll_interval
     if next_fp ~= current then
-      if not emit_changed(current, next_fp) then return end
+      if not emit_changed(current_snapshot, next_snapshot) then return end
+      if not emit_snapshot(next_snapshot) then return end
       if not emit("reload", next_fp) then return end
       finish()
       return

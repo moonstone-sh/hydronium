@@ -49,7 +49,7 @@ end
 -- header comment for the identical reason.
 local DOM_DEP_ANCHOR = [=[[[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.3"
+constraint = "^0.3.13"
 role = "runtime"]=]
 
 local ROUTER_DEP_BLOCK = [=[
@@ -67,6 +67,25 @@ role = "runtime"]=]
 function M.apply_islands(files, opts)
   opts = opts or {}
   local project_name = opts.name or "my-hydronium-islands"
+  local use_tailwind = opts.tailwind == true
+  local styles = use_tailwind and {
+    shell = "mx-auto min-h-screen max-w-3xl bg-slate-50 px-5 py-10 text-slate-900 sm:px-8",
+    header = "mb-7",
+    title = "text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl",
+    intro = "mt-2 text-sm leading-6 text-slate-600",
+    main = "grid gap-5",
+    content = "rounded-2xl border border-slate-200 bg-white p-6 shadow-sm",
+    section_title = "text-base font-semibold text-slate-950",
+    section_copy = "mt-2 text-sm leading-6 text-slate-600",
+    island = "rounded-2xl border border-teal-200 bg-teal-50 p-6 text-center shadow-sm",
+    island_title = "text-base font-semibold text-teal-950",
+    button = "mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700",
+  } or {
+    shell = "shell", header = "page-header", title = "page-title", intro = "page-intro",
+    main = "page-main", content = "content", section_title = "section-title",
+    section_copy = "section-copy", island = "island-container", island_title = "section-title",
+    button = "btn btn-primary",
+  }
 
   local toml, err = insert_after(files["moonstone.toml"], DOM_DEP_ANCHOR, ROUTER_DEP_BLOCK)
   if not toml then
@@ -92,7 +111,7 @@ local function Document(props)
         <link rel="stylesheet" href="/public/style.css" />
       </head>
       <body>
-        <div class="shell">{props.page}</div>
+        <div class="%s">{props.page}</div>
 
         {H.h("script", { type = "module" },
           "import { activate } from '/js/bootstrap/bootstrap.js'; activate();")}
@@ -103,7 +122,7 @@ local function Document(props)
 end
 
 return Document
-]=], project_name)
+]=], project_name, styles.shell)
 
   files["src/views/Home.lua"] = [[return require("hydronium_luax").loader.load("views/Home.luax")
 ]]
@@ -124,27 +143,27 @@ local d = require("hydronium_dom").d
 -- it must render as exactly ONE root element (a bare <button>). See
 -- templates/islands.lua's own header comment for why.
 local function JsCounter(props)
-  return <button class="btn btn-primary" data-testid="js-counter-btn">Count: {tostring(props.initial or 0)}</button>
+      return <button class="%s" data-testid="js-counter-btn">Count: {tostring(props.initial or 0)}</button>
 end
 
 local function Home()
   local initial = 10
 
   return (
-    <main>
-      <header>
-        <h1>%s</h1>
-        <p>Server-rendered shell with one real, client-hydrated JS island</p>
+    <main class="%s">
+      <header class="%s">
+        <h1 class="%s">%s</h1>
+        <p class="%s">Server-rendered shell with one real, client-hydrated JS island</p>
         <a href="/about">About this app</a>
       </header>
 
-      <section class="content">
-        <h2>Static Content (0 KB Client JavaScript)</h2>
-        <p>This section is rendered purely on the server; nothing below it ships any client code for it.</p>
+      <section class="%s">
+        <h2 class="%s">Static Content (0 KB Client JavaScript)</h2>
+        <p class="%s">This section is rendered purely on the server; nothing below it ships any client code for it.</p>
       </section>
 
-      <section class="island-container">
-        <h2>Interactive Island (real hydration)</h2>
+      <section class="%s">
+        <h2 class="%s">Interactive Island (real hydration)</h2>
         <d.js.island module="/js/island/counter.js" hydrate="visible" props={{ initial = initial }}>
           <JsCounter initial={initial} />
         </d.js.island>
@@ -154,12 +173,13 @@ local function Home()
 end
 
 return Home
-]=], project_name)
+]=], styles.button, styles.main, styles.header, styles.title, project_name, styles.intro,
+    styles.content, styles.section_title, styles.section_copy, styles.island, styles.island_title)
 
   files["src/views/About.lua"] = [[return require("hydronium_luax").loader.load("views/About.luax")
 ]]
 
-  files["views/About.luax"] = [[-- A second, real page -- exists so the router manifest below has more
+  files["views/About.luax"] = string.format([[-- A second, real page -- exists so the router manifest below has more
 -- than one leaf to demonstrate. Plain server-rendered content, no
 -- signals, no client hooks: this template ships no client-side Lua VM, so
 -- page-to-page navigation is an ordinary full page load via <a href>, not
@@ -171,10 +191,10 @@ local H = require("hydronium")
 
 local function About()
   return (
-    <main>
-      <header>
-        <h1>About</h1>
-        <p>This page is selected by the shared hydronium/router site manifest, not a hand-written route.</p>
+    <main class="%s">
+      <header class="%s">
+        <h1 class="%s">About</h1>
+        <p class="%s">This page is selected by the shared hydronium/router site manifest, not a hand-written route.</p>
         <a href="/">Back home</a>
       </header>
     </main>
@@ -182,7 +202,7 @@ local function About()
 end
 
 return About
-]]
+]], styles.main, styles.header, styles.title, styles.intro)
 
   files["views/Site.lua"] = [[local r = require("hydronium_router")
 

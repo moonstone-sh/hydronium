@@ -90,4 +90,34 @@ function M.sheet(css_path)
   return setmetatable({ __css_path = css_path }, sheet_metatable)
 end
 
+-- A stylesheet dependency declared from Lua. Render subscribe() in the
+-- document head (global styles) or the owning component (component styles).
+-- The asset provider chooses hashed production URLs or Vite's live CSS/HMR.
+-- This deliberately does not mutate the DOM while a module is being required.
+local import_methods = {}
+function import_methods:subscribe()
+  return require("hydronium_dom.assets").tags(self.path)
+end
+function import_methods:url()
+  return require("hydronium_dom.assets").url(self.path)
+end
+
+--- @class HydroniumCSSImport
+--- @field path string
+--- @field classes table<string,string> CSS Modules exports from the active provider.
+--- @field subscribe fun(self: HydroniumCSSImport): table[] Renderable stylesheet nodes.
+--- @field url fun(self: HydroniumCSSImport): string
+
+--- @param css_path string Project-relative stylesheet build entry.
+--- @return HydroniumCSSImport A dependency handle resolved at render time.
+function M.import(css_path)
+  if type(css_path) ~= "string" or not css_path:match("%.css$") then
+    error("hydronium_dom.css.import: expected a .css build entry", 2)
+  end
+  return setmetatable({path = css_path}, {__index = function(_, key)
+    if key == "classes" then return require("hydronium_dom.assets").classes(css_path) end
+    return import_methods[key]
+  end})
+end
+
 return M

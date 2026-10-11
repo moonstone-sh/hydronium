@@ -38,18 +38,28 @@ use --minimal for a one-shot HTML program without a live HMR process.
 
 | Template | Description |
 | :--- | :--- |
-| `ssr` (Default) | Meteorite SSR app with a shared Hydronium route manifest, progressive actions, a persistent browser Lua VM, state-preserving component HMR, and in-place CSS updates. |
+| `ssr` (Default) | Responsive project workspace with loader-backed overview/detail routes, a route error boundary, progressive form action, a reactive counter, and state-preserving component HMR. Plain CSS is the default; `--tailwind` switches the same views to Tailwind utilities. |
 | `islands` | Mostly-static SSR shell with one real, client-hydrated JS island (server-rendered button, client-side click handling). |
 | `--minimal` | One-shot plain-Lua server rendering for scripting and embedding. It exits after printing HTML, so it intentionally has no HMR process. |
 | `ink` | Interactive terminal counter with state-preserving LUAX HMR, Yoga layout, keyboard input, and a ready-to-run browser Component Lab. Requires LuaJIT 2.1 on macOS or glibc Linux. |
 | `love` | LÖVE 11.5 game with frame-boundary HMR and a dependency-closed `.love` packaging pipeline. LÖVE itself is a host prerequisite. |
 | `spa` | Client-only app with a Ballad-bundled Lua entry and Vite-built assets. Uses Hydronium routing by default; `--router meteorite` selects server-backed delivery. |
 
-The SSR template is the complete browser example. `views/Site.lua` owns page
-ids, paths, and component module ids. Hydronium Router uses it in the browser;
-the Meteorite adapter lowers it to explicit server routes. `views/Actions.lua`
-defines shared action descriptors, and `src/app/contact_action.lua` handles the
-same action as JSON-enhanced or native HTML form submission.
+For the three browser templates (`ssr`, `islands`, and `spa`), `--tailwind`
+changes the view markup to use Tailwind utilities. Without it, the SSR and
+islands templates use regular CSS files, and SPA uses `app.css` through the
+Hydronium style plugin. The examples stay specific to their architecture:
+SSR demonstrates loaders and progressive actions, Islands demonstrates a
+small JS hydration boundary, and SPA demonstrates client-only routing/builds.
+
+The SSR template is the complete browser example. `src/views/Site.lua` owns
+page ids, paths, loaders, and component module ids. Hydronium Router uses it in
+the browser; the Meteorite adapter lowers it to explicit server routes.
+`src/views/Actions.lua` defines shared action descriptors, and
+`src/app/contact_action.lua` handles the same action as JSON-enhanced or native
+HTML form submission. Styling stays intentionally ordinary: edit
+`public/style.css`, or scaffold with `--tailwind` to use utility classes in the
+generated views. There is no extra styling runtime to learn.
 
 ## Usage
 

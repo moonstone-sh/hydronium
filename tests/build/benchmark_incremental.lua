@@ -1,0 +1,28 @@
+-- Run in an empty temporary directory; measures elapsed monotonic time.
+local fs=require('ballad.fs')
+local process=require('ballad.process')
+local partiture=require('ballad.partiture')
+local hb=require('hydronium_ballad')
+local function write(path,content)fs.mkdir(require('ballad.path').dirname(path));fs.write_file(path,content)end
+local function now()return tonumber(process.capture("python3 -c 'import time; print(time.monotonic())'"))end
+write('hydronium.sources.lua',[[return {entry='app.App',roots={{path='src',namespace='app',target='client'}}}]])
+write('src/App.lua','return {version=1}')
+write('public/style.css','body {color: red}')
+local function build(label)
+ local start=now()
+ partiture.build(function(p)
+  hb.source_inventory(p)
+  hb.client_bundle(p,{framework_root=assert(os.getenv('HYDRONIUM_FRAMEWORK_ROOT'))})
+  p.sink.directory(p.source.files({'**/*.css'},{root='public'}),{out='assets',incremental=true})
+ end):execute()
+ print(string.format('MEASURE %s %.3f seconds',label,now()-start))
+end
+build('cold')
+local original=fs.read_file('.hydronium/client/hydronium-manifest.json')
+build('warm')
+write('public/style.css','body {color: blue}')
+build('css-only')
+assert(original==fs.read_file('.hydronium/client/hydronium-manifest.json'),'CSS changed Lua client closure')
+write('src/App.lua','return {version=2}')
+build('lua-edit')
+assert(original~=fs.read_file('.hydronium/client/hydronium-manifest.json'),'Lua edit missed')

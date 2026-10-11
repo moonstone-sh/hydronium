@@ -119,7 +119,9 @@ local ssr = {}
 ]]
 
 function ssr.files(opts)
+  opts = opts or {}
   local project_name = opts.name or "my-hydronium-app"
+  local use_tailwind = opts.tailwind == true
 
   local files = {}
 
@@ -165,23 +167,23 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.3"
+constraint = "^0.2.12"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/luax"
-constraint = "^0.2.3"
+constraint = "^0.2.14"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.3"
+constraint = "^0.3.13"
 role = "runtime"
 
 # Ballad plugins: partiture.lua discovers this project's Lua sources.
 [[dependencies]]
 name = "hydronium/ballad"
-constraint = "^0.2.2"
+constraint = "^0.2.8"
 role = "runtime"
 
 [[dependencies]]
@@ -247,9 +249,116 @@ return {
     { id = "views.Document", path = "src/views/Document.luax", target = "server", update = "reload", effects = "restart" },
     { id = "views.Site", path = "src/views/Site.lua", target = "shared", update = "reload", effects = "restart" },
     { id = "views.Actions", path = "src/views/Actions.lua", target = "shared", update = "reload", effects = "restart" },
+    { id = "views.loaders.Overview", path = "src/views/loaders/Overview.lua", target = "shared", update = "reload", effects = "restart" },
+    { id = "views.loaders.Projects", path = "src/views/loaders/Projects.lua", target = "shared", update = "reload", effects = "restart" },
+    { id = "views.loaders.Project", path = "src/views/loaders/Project.lua", target = "shared", update = "reload", effects = "restart" },
+    { id = "views.DemoProjects", path = "src/views/DemoProjects.lua", target = "shared", update = "reload", effects = "restart" },
   },
 }
 ]]
+
+  -- Keep markup identical across styling choices. Tailwind projects get a
+  -- semantic utility-class map scanned from this Lua source; plain projects
+  -- get namespaced classes backed by public/style.css.
+  if use_tailwind then
+    files["src/views/Styles.lua"] = [[return {
+  page = "min-h-screen bg-slate-50 text-slate-900",
+  shell = "mx-auto grid min-h-screen max-w-[1440px] grid-cols-1 md:grid-cols-[232px_minmax(0,1fr)]",
+  sidebar = "sticky top-0 hidden h-screen border-r border-slate-200 bg-white px-5 py-7 md:flex md:flex-col",
+  brand = "mb-10 flex items-center gap-3 text-lg font-semibold tracking-tight text-slate-950",
+  brand_mark = "grid size-10 place-items-center rounded-2xl bg-teal-700 text-sm font-bold text-white",
+  brand_copy = "flex flex-col",
+  brand_hint = "text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400",
+  nav_label = "mb-3 px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400",
+  nav = "flex flex-col gap-1",
+  nav_link = "rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700",
+  nav_link_active = "rounded-xl bg-teal-50 px-3 py-2.5 text-sm font-semibold text-teal-900 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700",
+  sidebar_footer = "mt-auto rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs leading-5 text-slate-500",
+  main_column = "min-w-0",
+  topbar = "flex min-h-16 items-center justify-between border-b border-slate-200 bg-white/90 px-5 sm:px-8",
+  topbar_context = "text-sm font-medium text-slate-500",
+  topbar_badge = "rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-900",
+  mobile_nav = "flex gap-1 overflow-x-auto border-b border-slate-200 bg-white px-4 py-2 md:hidden",
+  content = "mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 lg:py-10",
+  skip_link = "sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-3 focus:text-teal-900 focus:shadow-lg",
+  page_header = "mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between",
+  eyebrow = "mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-teal-800",
+  title = "text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl",
+  description = "mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base",
+  primary_link = "inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700",
+  stats = "mb-6 grid gap-3 sm:grid-cols-3",
+  stat = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm",
+  stat_label = "text-xs font-medium text-slate-500",
+  stat_value = "mt-3 block text-3xl font-semibold tracking-tight text-slate-950",
+  stat_note = "mt-1 block text-xs text-slate-500",
+  columns = "grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(280px,0.9fr)]",
+  panel = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6",
+  panel_header = "mb-5 flex items-center justify-between gap-4",
+  panel_title = "text-base font-semibold tracking-tight text-slate-950",
+  subtle_link = "text-sm font-semibold text-teal-800 underline decoration-teal-300 underline-offset-4 hover:text-teal-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700",
+  project_list = "divide-y divide-slate-100",
+  project_row = "-mx-2 flex items-center justify-between gap-4 rounded-xl px-2 py-4 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700",
+  project_name = "font-semibold text-slate-900",
+  project_description = "mt-1 text-sm leading-5 text-slate-500",
+  project_meta = "mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500",
+  panel_spaced = "mt-5",
+  tag = "rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600",
+  status = "rounded-full px-2.5 py-1 text-xs font-semibold",
+  status_active = "bg-teal-50 text-teal-900",
+  status_review = "bg-amber-50 text-amber-900",
+  status_done = "bg-slate-100 text-slate-600",
+  activity_list = "space-y-4",
+  activity_item = "flex gap-3",
+  activity_dot = "mt-1.5 size-2 shrink-0 rounded-full bg-teal-600 ring-4 ring-teal-50",
+  activity_text = "text-sm leading-5 text-slate-600",
+  focus_row = "mt-5 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3",
+  focus_label = "text-sm font-medium text-slate-600",
+  counter = "flex items-center gap-2",
+  counter_value = "min-w-7 text-center text-sm font-semibold tabular-nums text-slate-900",
+  icon_button = "grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-lg font-medium text-slate-700 hover:border-teal-300 hover:text-teal-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 disabled:cursor-not-allowed disabled:opacity-40",
+  form = "mt-5 space-y-3 border-t border-slate-100 pt-5",
+  field_label = "block text-sm font-medium text-slate-700",
+  input = "mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-100 aria-invalid:border-rose-500 aria-invalid:ring-2 aria-invalid:ring-rose-100",
+  submit = "inline-flex min-h-10 items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 disabled:opacity-50",
+  feedback = "min-h-5 text-sm text-slate-600",
+  detail_grid = "grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,0.8fr)]",
+  detail_metric = "rounded-xl bg-slate-50 p-4",
+  progress = "mt-3 h-2 overflow-hidden rounded-full bg-slate-100",
+  progress_fill = "h-full rounded-full bg-teal-700 transition-[width] duration-300",
+  empty = "rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600",
+  error = "rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-950",
+}
+]]
+    files["public/style.css"] = [[:root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17252b; background: #f6f8f8; }
+* { box-sizing: border-box; }
+body { min-width: 320px; min-height: 100vh; margin: 0; }
+button, input { font: inherit; }
+a { color: inherit; }
+]]
+  else
+    files["src/views/Styles.lua"] = [[return {
+  page = "app-page", shell = "app-shell", sidebar = "app-sidebar", brand = "app-brand",
+  brand_mark = "app-brand-mark", brand_copy = "app-brand-copy", brand_hint = "app-brand-hint",
+  nav_label = "app-nav-label", nav = "app-nav", nav_link = "app-nav-link", nav_link_active = "app-nav-link app-nav-link-active",
+  sidebar_footer = "app-sidebar-footer", main_column = "app-main-column", topbar = "app-topbar",
+  topbar_context = "app-topbar-context", topbar_badge = "app-topbar-badge", mobile_nav = "app-mobile-nav",
+  content = "app-content", skip_link = "app-skip-link", page_header = "app-page-header", eyebrow = "app-eyebrow",
+  title = "app-title", description = "app-description", primary_link = "app-primary-link", stats = "app-stats",
+  stat = "app-stat", stat_label = "app-stat-label", stat_value = "app-stat-value", stat_note = "app-stat-note",
+  columns = "app-columns", panel = "app-panel", panel_header = "app-panel-header", panel_title = "app-panel-title",
+  subtle_link = "app-subtle-link", project_list = "app-project-list", project_row = "app-project-row",
+  project_name = "app-project-name", project_description = "app-project-description", project_meta = "app-project-meta",
+  panel_spaced = "app-panel-spaced", tag = "app-tag", status = "app-status", status_active = "app-status-active", status_review = "app-status-review",
+  status_done = "app-status-done", activity_list = "app-activity-list", activity_item = "app-activity-item",
+  activity_dot = "app-activity-dot", activity_text = "app-activity-text", focus_row = "app-focus-row",
+  focus_label = "app-focus-label", counter = "app-counter", counter_value = "app-counter-value",
+  icon_button = "app-icon-button", form = "app-form", field_label = "app-field-label", input = "app-input",
+  submit = "app-submit", feedback = "app-feedback", detail_grid = "app-detail-grid",
+  detail_metric = "app-detail-metric", progress = "app-progress", progress_fill = "app-progress-fill",
+  empty = "app-empty", error = "app-error",
+}
+]]
+  end
 
   -- Registry packages mount at `.moonstone/env/libexec/<namespace>/<package>`
   -- (Moonstone 0.5.9+; the flat `libexec/meteorite` alias is absent whenever
@@ -421,17 +530,102 @@ return r.createSite({
   root = r.node({
     id = "root",
     path = "/",
+    screen = "views.Layout",
+    error = "views.RouteError",
     children = {
       r.node({
         id = "home",
         path = "",
         screen = "views.Home",
+        load = "views.loaders.Overview",
+        pending = "views.Loading",
         actions = { contact = { id = "contact.submit", ref = "app.contact_action", path = "/actions/contact" } },
       }),
+      r.node({ id = "projects", path = "projects", screen = "views.Projects", load = "views.loaders.Projects", pending = "views.Loading" }),
+      r.node({ id = "project", path = "projects/:projectId", screen = "views.Project", load = "views.loaders.Project", pending = "views.Loading" }),
       r.node({ id = "about", path = "about", screen = "views.About" }),
     },
   }),
 })
+]]
+
+  files["src/views/DemoProjects.lua"] = [[local projects = {
+  {
+    id = "hydronium", name = "Hydronium starter", category = "Framework",
+    description = "A focused example app with routing, reactive UI, and server actions.",
+    status = "In progress", progress = 72, owner = "Mira Chen", updated = "Updated today",
+  },
+  {
+    id = "moonstone", name = "Moonstone package index", category = "Tooling",
+    description = "Make package discovery and release workflows easier to follow.",
+    status = "In review", progress = 48, owner = "Rafael Costa", updated = "Updated yesterday",
+  },
+  {
+    id = "terminal-lab", name = "Terminal Lab refresh", category = "Product",
+    description = "Bring the same clear project flow to the terminal experience.",
+    status = "Complete", progress = 100, owner = "Noor Haddad", updated = "Updated Monday",
+  },
+}
+
+local M = {}
+
+function M.all()
+  local copy = {}
+  for index, project in ipairs(projects) do copy[index] = project end
+  return copy
+end
+
+function M.find(id)
+  for _, project in ipairs(projects) do
+    if project.id == id then return project end
+  end
+  return nil
+end
+
+return M
+]]
+
+  files["src/views/loaders/Overview.lua"] = [[local demo_projects = require("views.DemoProjects")
+
+return function()
+  local projects = demo_projects.all()
+  local stats = { active = 0, in_review = 0, completed = 0 }
+  for _, project in ipairs(projects) do
+    if project.status == "Complete" then
+      stats.completed = stats.completed + 1
+    elseif project.status == "In review" then
+      stats.in_review = stats.in_review + 1
+    else
+      stats.active = stats.active + 1
+    end
+  end
+  return {
+    projects = projects,
+    stats = stats,
+    activity = {
+      { text = "Mira moved Hydronium starter into implementation.", when = "Today, 10:42" },
+      { text = "Rafael requested a review on the package index.", when = "Yesterday" },
+      { text = "Noor completed the terminal layout pass.", when = "Monday" },
+    },
+  }
+end
+]]
+
+  files["src/views/loaders/Projects.lua"] = [[local demo_projects = require("views.DemoProjects")
+
+return function()
+  return { projects = demo_projects.all() }
+end
+]]
+
+  files["src/views/loaders/Project.lua"] = [[local r = require("hydronium_router")
+local demo_projects = require("views.DemoProjects")
+
+return function(ctx)
+  local project = demo_projects.find(ctx.params.projectId)
+  if not project then return r.routeError(404, "That project could not be found.") end
+  return project
+end
 ]]
 
   -- Meteorite owns HTTP; everything here is an ordinary Meteorite route.
@@ -550,61 +744,199 @@ local r = require("hydronium_router")
 local site = require("views.Site")
 local d = require("hydronium_dom").d
 
+-- The site manifest stores logical IDs as strings. Resolve the same
+-- components/loaders explicitly here so the production client bundle has
+-- the complete route closure as well as the server source inventory.
+local screens = {
+  ["views.Layout"] = require("views.Layout"),
+  ["views.Home"] = require("views.Home"),
+  ["views.Projects"] = require("views.Projects"),
+  ["views.Project"] = require("views.Project"),
+  ["views.About"] = require("views.About"),
+  ["views.Loading"] = require("views.Loading"),
+  ["views.RouteError"] = require("views.RouteError"),
+  ["views.NotFound"] = require("views.NotFound"),
+}
+local loaders = {
+  ["views.loaders.Overview"] = require("views.loaders.Overview"),
+  ["views.loaders.Projects"] = require("views.loaders.Projects"),
+  ["views.loaders.Project"] = require("views.loaders.Project"),
+}
+
 local function App()
   local router = site:createRouter({
     history = r.createBrowserHistory(),
-    resolve = require,
-    resolve_loader = require,
+    resolve = function(id) return assert(screens[id], "Unknown screen: " .. tostring(id)) end,
+    resolve_loader = function(id) return assert(loaders[id], "Unknown loader: " .. tostring(id)) end,
   })
 
   return function()
-    return d.lua.mount(H.h(router.Provider, nil, H.h(r.Outlet)), { module = "views.App" })
+    return d.lua.mount(H.h(router.Provider, nil,
+      H.h(r.Outlet, { notFound = screens["views.NotFound"] })
+    ), { module = "views.App" })
   end
 end
 
 return App
 ]]
 
+  files["src/views/Layout.luax"] = [[local H = require("hydronium.core.element")
+local r = require("hydronium_router")
+local styles = require("views.Styles")
+local d = require("hydronium_dom").d
+
+local function Layout(props)
+  local router = r.useRouter()
+  local navigate = r.useNavigate()
+  local function link(path, label, active)
+    return d.a({
+      href = path,
+      class = active and styles.nav_link_active or styles.nav_link,
+      ["aria-current"] = active and "page" or nil,
+      onNavigate = function() navigate(path) end,
+    }, label)
+  end
+
+  return function(current_props)
+    current_props = current_props or props
+    local match = router.match()
+    local active = {
+      overview = match and match.id == "home",
+      projects = match and (match.id == "projects" or match.id == "project"),
+      about = match and match.id == "about",
+    }
+    return d.div({ class = styles.page },
+      d.a({ href = "#main-content", class = styles.skip_link }, "Skip to content"),
+      d.div({ class = styles.shell },
+        d.aside({ class = styles.sidebar },
+          d.a({ href = "/", class = styles.brand, onNavigate = function() navigate("/") end },
+            d.span({ class = styles.brand_mark, ["aria-hidden"] = "true" }, "h"),
+            d.span({ class = styles.brand_copy },
+              d.span({}, "Hydronium"),
+              d.span({ class = styles.brand_hint }, "Project desk")
+            )
+          ),
+          d.p({ class = styles.nav_label }, "WORKSPACE"),
+          d.nav({ class = styles.nav, ["aria-label"] = "Primary navigation" },
+            link("/", "Overview", active.overview),
+            link("/projects", "Projects", active.projects),
+            link("/about", "About", active.about)
+          ),
+          d.p({ class = styles.sidebar_footer }, "A small, working Hydronium app. Explore a route, follow its loader, then try the progressive form.")
+        ),
+        d.div({ class = styles.main_column },
+          d.header({ class = styles.topbar },
+            d.p({ class = styles.topbar_context }, "Workspace  /  Project desk"),
+            d.span({ class = styles.topbar_badge }, "LOCAL DEMO")
+          ),
+          d.nav({ class = styles.mobile_nav, ["aria-label"] = "Primary navigation" },
+            link("/", "Overview", active.overview),
+            link("/projects", "Projects", active.projects),
+            link("/about", "About", active.about)
+          ),
+          d.main({ id = "main-content", class = styles.content }, current_props.outlet)
+        )
+      )
+    )
+  end
+end
+
+return Layout
+]]
+
   files["src/views/Home.luax"] = string.format([[local H = require("hydronium.core.element")
-local dom = require("hydronium_dom")
+local r = require("hydronium_router")
+local styles = require("views.Styles")
 local Counter = require("views.Counter")
 local actions = require("views.Actions")
-local d = dom.d
+local d = require("hydronium_dom").d
 
 local function Home()
-  local navigate = require("hydronium_router").useNavigate()
+  local data = r.useRouteData("home")
+  local navigate = r.useNavigate()
   local form = require("hydronium.core.form").useForm(actions.contact, { enhance = true })
 
-  local go_about = function() navigate("/about") end
-
   return function()
-    return (
-      <d.main class="container">
-        <d.header class="hero">
-          <d.h1>Welcome to %s</d.h1>
-          <d.p class="subtitle">One route manifest, used by Hydronium and Meteorite.</d.p>
-          <d.a href="/about" onNavigate={go_about}>About this app</d.a>
-        </d.header>
+    local loaded = data:value() or { projects = {}, stats = {}, activity = {} }
+    local projects, activity = {}, {}
+    for _, project in ipairs(loaded.projects or {}) do
+      local status_class = project.status == "Complete" and styles.status_done
+        or project.status == "In review" and styles.status_review or styles.status_active
+      projects[#projects + 1] = d.a({
+        key = project.id, href = "/projects/" .. project.id, class = styles.project_row,
+        onNavigate = function() navigate("/projects/" .. project.id) end,
+      },
+        d.div({},
+          d.p({ class = styles.project_name }, project.name),
+          d.p({ class = styles.project_description }, project.description),
+          d.p({ class = styles.project_meta },
+            d.span({ class = styles.tag }, project.category),
+            d.span({}, project.updated)
+          )
+        ),
+        d.span({ class = styles.status .. " " .. status_class }, project.status)
+      )
+    end
+    for index, item in ipairs(loaded.activity or {}) do
+      activity[#activity + 1] = d.li({ key = index, class = styles.activity_item },
+        d.span({ class = styles.activity_dot, ["aria-hidden"] = "true" }),
+        d.div({},
+          d.p({ class = styles.activity_text }, item.text),
+          d.p({ class = styles.stat_note }, item.when)
+        )
+      )
+    end
 
-        <d.section class="card">
-          <d.h2>Reactive Signal Counter</d.h2>
-          <Counter initial={0} />
-        </d.section>
-
-        <d.section class="card">
-          <d.h2>Progressive action</d.h2>
-          <d.form method={form.props.method} action={form.props.action} onSubmit={form.props.onSubmit}>
-            <d.label for="name">Name</d.label>
-            <d.input id="name" name="name" />
-            <d.button type="submit" disabled={form:pending()}>Send</d.button>
-            <d.p class="form-error">{function() return form:error("name") or form:error("_form") or "" end}</d.p>
-            <d.p class="form-result">{function()
-              local result = form:data()
-              return result and result.greeting or ""
-            end}</d.p>
-          </d.form>
-        </d.section>
-      </d.main>
+    return d.div({},
+      d.header({ class = styles.page_header },
+        d.div({},
+          d.p({ class = styles.eyebrow }, "YOUR WORK, IN ONE PLACE"),
+          d.h1({ class = styles.title }, "Welcome to %s"),
+          d.p({ class = styles.description }, "A compact project workspace that demonstrates Hydronium routes, loader data, reactive state, and server actions.")
+        ),
+        d.a({ href = "/projects", class = styles.primary_link, onNavigate = function() navigate("/projects") end }, "Browse projects")
+      ),
+      d.section({ class = styles.stats, ["aria-label"] = "Workspace summary" },
+        d.article({ class = styles.stat }, d.span({ class = styles.stat_label }, "Active projects"), d.strong({ class = styles.stat_value }, tostring(loaded.stats.active or 0)), d.span({ class = styles.stat_note }, "Across your workspace")),
+        d.article({ class = styles.stat }, d.span({ class = styles.stat_label }, "In review"), d.strong({ class = styles.stat_value }, tostring(loaded.stats.in_review or 0)), d.span({ class = styles.stat_note }, "Ready for a second look")),
+        d.article({ class = styles.stat }, d.span({ class = styles.stat_label }, "Completed"), d.strong({ class = styles.stat_value }, tostring(loaded.stats.completed or 0)), d.span({ class = styles.stat_note }, "Small steps add up"))
+      ),
+      d.div({ class = styles.columns },
+        d.section({ class = styles.panel },
+          d.div({ class = styles.panel_header },
+            d.h2({ class = styles.panel_title }, "Recent projects"),
+            d.a({ href = "/projects", class = styles.subtle_link, onNavigate = function() navigate("/projects") end }, "View all")
+          ),
+          #projects > 0 and d.div({ class = styles.project_list }, (table.unpack or unpack)(projects))
+            or d.p({ class = styles.empty }, "No projects yet. Add one to get started.")
+        ),
+        d.div({},
+          d.section({ class = styles.panel },
+            d.div({ class = styles.panel_header }, d.h2({ class = styles.panel_title }, "Latest activity")),
+            d.ul({ class = styles.activity_list }, (table.unpack or unpack)(activity))
+          ),
+          d.section({ class = styles.panel .. " " .. styles.panel_spaced },
+            d.div({ class = styles.panel_header },
+              d.div({}, d.h2({ class = styles.panel_title }, "Focus blocks"), d.p({ class = styles.stat_note }, "A tiny reactive signal example"))
+            ),
+            d.div({ class = styles.focus_row }, d.span({ class = styles.focus_label }, "Today"), H.h(Counter, { initial = 3 }))
+          ),
+          d.section({ class = styles.panel .. " " .. styles.panel_spaced },
+            d.div({ class = styles.panel_header }, d.h2({ class = styles.panel_title }, "Send a quick hello")),
+            d.form({ class = styles.form, method = form.props.method, action = form.props.action, onSubmit = form.props.onSubmit },
+              d.label({ class = styles.field_label }, "Your name",
+              d.input({
+                id = "name", name = "name", autocomplete = "name", placeholder = "e.g. Alex", class = styles.input,
+                ["aria-describedby"] = "contact-feedback",
+                ["aria-invalid"] = form:error("name") and "true" or nil,
+              })
+              ),
+              d.button({ class = styles.submit, type = "submit", disabled = form:pending() }, function() return form:pending() and "Sending…" or "Send hello" end),
+              d.p({ id = "contact-feedback", class = styles.feedback, role = "status", ["aria-live"] = "polite" }, function() return form:error("name") or form:error("_form") or (form:data() and form:data().greeting) or "" end)
+            )
+          )
+        )
+      )
     )
   end
 end
@@ -612,21 +944,127 @@ end
 return Home
 ]], project_name)
 
-  files["src/views/About.luax"] = [[local H = require("hydronium.core.element")
+  files["src/views/Projects.luax"] = [[local r = require("hydronium_router")
+local styles = require("views.Styles")
+local d = require("hydronium_dom").d
+
+local function Projects()
+  local data = r.useRouteData("projects")
+  local navigate = r.useNavigate()
+  return function()
+    local rows = {}
+    for _, project in ipairs((data:value() or {}).projects or {}) do
+      rows[#rows + 1] = d.a({ key = project.id, href = "/projects/" .. project.id, class = styles.project_row,
+        onNavigate = function() navigate("/projects/" .. project.id) end },
+        d.div({}, d.p({ class = styles.project_name }, project.name), d.p({ class = styles.project_description }, project.description)),
+        d.span({ class = styles.tag }, project.category)
+      )
+    end
+    return d.section({},
+      d.header({ class = styles.page_header }, d.div({}, d.p({ class = styles.eyebrow }, "THE WORKSPACE"), d.h1({ class = styles.title }, "Projects"), d.p({ class = styles.description }, "Open a project to see route parameters and loader-backed detail data."))),
+      d.div({ class = styles.panel }, #rows > 0 and d.div({ class = styles.project_list }, (table.unpack or unpack)(rows)) or d.p({ class = styles.empty }, "No projects are available."))
+    )
+  end
+end
+
+return Projects
+]]
+
+  files["src/views/Project.luax"] = [[local r = require("hydronium_router")
+local styles = require("views.Styles")
+local d = require("hydronium_dom").d
+
+local function Project()
+  local data = r.useRouteData("project")
+  local navigate = r.useNavigate()
+  return function()
+    local project = data:value()
+    if not project then return d.p({ class = styles.empty, ["aria-live"] = "polite" }, "Loading project…") end
+    local status_class = project.status == "Complete" and styles.status_done
+      or project.status == "In review" and styles.status_review or styles.status_active
+    return d.section({},
+      d.p({}, d.a({ href = "/projects", class = styles.subtle_link, onNavigate = function() navigate("/projects") end }, "← All projects")),
+      d.header({ class = styles.page_header },
+        d.div({}, d.p({ class = styles.eyebrow }, project.category), d.h1({ class = styles.title }, project.name), d.p({ class = styles.description }, project.description)),
+        d.span({ class = styles.status .. " " .. status_class }, project.status)
+      ),
+      d.div({ class = styles.detail_grid },
+        d.section({ class = styles.panel },
+          d.h2({ class = styles.panel_title }, "Project pulse"),
+          d.p({ class = styles.description }, "This page is selected by the route manifest. The loader reads the project ID from the URL and returns the matching record."),
+          d.div({ class = styles.focus_row }, d.span({ class = styles.focus_label }, "Progress"), d.strong({}, tostring(project.progress) .. "%")),
+          d.div({
+            class = styles.progress, role = "progressbar", ["aria-label"] = "Project completion",
+            ["aria-valuemin"] = 0, ["aria-valuemax"] = 100, ["aria-valuenow"] = project.progress,
+          }, d.div({ class = styles.progress_fill, style = { width = tostring(project.progress) .. "%" } }))
+        ),
+        d.aside({ class = styles.panel },
+          d.h2({ class = styles.panel_title }, "Project details"),
+          d.div({ class = styles.detail_metric }, d.p({ class = styles.stat_label }, "Project lead"), d.p({ class = styles.project_name }, project.owner)),
+          d.p({ class = styles.stat_note }, project.updated)
+        )
+      )
+    )
+  end
+end
+
+return Project
+]]
+
+  files["src/views/Loading.luax"] = [[local styles = require("views.Styles")
+local d = require("hydronium_dom").d
+
+return function()
+  return d.p({ class = styles.empty, role = "status", ["aria-live"] = "polite" }, "Loading workspace data…")
+end
+]]
+
+  files["src/views/RouteError.luax"] = [[local styles = require("views.Styles")
+local d = require("hydronium_dom").d
+
+return function(props)
+  local message = props.error and props.error.message or "Something went wrong while loading this page."
+  return d.section({ class = styles.error, role = "alert" },
+    d.p({ class = styles.eyebrow }, "ROUTE ERROR"),
+    d.h1({ class = styles.panel_title }, "We could not open that page"),
+    d.p({}, message),
+    d.a({ href = "/", class = styles.subtle_link }, "Return to the overview")
+  )
+end
+]]
+
+  files["src/views/NotFound.luax"] = [[local styles = require("views.Styles")
+local d = require("hydronium_dom").d
+
+return function(props)
+  local path = props.location and props.location.path or "this address"
+  return d.section({ class = styles.error, role = "status" },
+    d.p({ class = styles.eyebrow }, "404 · NOT FOUND"),
+    d.h1({ class = styles.panel_title }, "That page is not here"),
+    d.p({}, "No route matches " .. path .. ". Check the URL or head back to the overview."),
+    d.a({ href = "/", class = styles.subtle_link }, "Return to the overview")
+  )
+end
+]]
+
+  files["src/views/About.luax"] = [[local r = require("hydronium_router")
+local styles = require("views.Styles")
 local d = require("hydronium_dom").d
 
 local function About()
-  local navigate = require("hydronium_router").useNavigate()
-  local go_home = function() navigate("/") end
-  return (
-    <d.main class="container">
-      <d.header class="hero">
-        <d.h1>About</d.h1>
-        <d.p class="subtitle">This page is selected by the shared site declaration.</d.p>
-        <d.a href="/" onNavigate={go_home}>Back home</d.a>
-      </d.header>
-    </d.main>
-  )
+  local navigate = r.useNavigate()
+  return function()
+    return d.section({},
+      d.header({ class = styles.page_header },
+        d.div({}, d.p({ class = styles.eyebrow }, "BUILT WITH HYDRONIUM"), d.h1({ class = styles.title }, "A small app, real framework paths"), d.p({ class = styles.description }, "The pages, data, and form on this starter are ordinary Hydronium modules—not a screenshot or a mock UI.")),
+        d.a({ href = "/", class = styles.primary_link, onNavigate = function() navigate("/") end }, "Back to overview")
+      ),
+      d.div({ class = styles.columns },
+        d.article({ class = styles.panel }, d.h2({ class = styles.panel_title }, "Routes and loaders"), d.p({ class = styles.description }, "The shared site manifest drives server routes and browser navigation. Project pages use route parameters and loader resources.")),
+        d.article({ class = styles.panel }, d.h2({ class = styles.panel_title }, "Progressive actions"), d.p({ class = styles.description }, "The hello form submits as ordinary HTML first, then uses the same validated action without a page navigation after hydration."))
+      )
+    )
+  end
 end
 
 return About
@@ -655,13 +1093,13 @@ return {
 }
 ]]
 
-  -- The real, client-executed component -- compiled on demand by
-  -- src/main.lua's /__hydronium/dev/module route, fetched over HTTP by
-  -- mount.js, and run live in the browser via wasmoon.
+-- The real, client-executed component -- compiled on demand by
+-- src/main.lua's /__hydronium/dev/module route, fetched over HTTP by
+-- mount.js, and run live in the browser Lua VM.
   --
   -- Edit this file while `moon run dev` is up and the running page is
-  -- hot-swapped in place: the counter keeps its current value and its
-  -- DOM nodes are never remounted. Try changing `+ 1` to `+ 5`.
+  -- hot-swapped in place: the signal keeps its current value and its DOM
+  -- nodes are never remounted. Try changing the increment.
   --
   -- Note what this file does NOT contain: any HMR annotation. The state
   -- is declared as an ordinary `signals.createSignal(...)`, and
@@ -691,6 +1129,7 @@ return {
   files["src/views/Counter.luax"] = [[local H = require("hydronium.core.element")
 local dom = require("hydronium_dom")
 local signals = require("hydronium.signals")
+local styles = require("views.Styles")
 local d = dom.d
 
 local function Counter(props, scope)
@@ -698,12 +1137,10 @@ local function Counter(props, scope)
 
   return function()
     return (
-      <d.div class="counter-box">
-        <d.span class="count-display">{"Count: "}{count}</d.span>
-        <d.div class="button-group">
-          <d.button class="btn btn-secondary" onClick={function() setCount(count() - 1) end}>-</d.button>
-          <d.button class="btn btn-primary" onClick={function() setCount(count() + 1) end}>+</d.button>
-        </d.div>
+      <d.div class={styles.counter}>
+        <d.button class={styles.icon_button} type="button" aria-label="Decrease focus blocks" disabled={count() <= 0} onClick={function() setCount(count() - 1) end}>−</d.button>
+      <d.output class={styles.counter_value} aria-live="polite">{count}</d.output>
+      <d.button class={styles.icon_button} type="button" aria-label="Increase focus blocks" onClick={function() setCount(count() + 1) end}>+</d.button>
       </d.div>
     )
   end
@@ -712,123 +1149,126 @@ end
 return Counter
 ]]
 
-  files["public/style.css"] = [[* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+  if not use_tailwind then
+    files["public/style.css"] = [[:root {
+  color-scheme: light;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #17252b;
+  background: #f5f8f7;
+  --ink: #17252b;
+  --muted: #66777b;
+  --line: #e1e9e7;
+  --surface: #fff;
+  --accent: #087f78;
+  --accent-soft: #e4f4f1;
 }
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background: #0f172a;
-  color: #f8fafc;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
+* { box-sizing: border-box; }
+body { min-width: 320px; min-height: 100vh; margin: 0; background: #f5f8f7; }
+button, input { font: inherit; }
+a { color: inherit; text-decoration: none; }
+h1, h2, p { margin-top: 0; }
+.app-page { min-height: 100vh; color: var(--ink); }
+.app-shell { display: grid; min-height: 100vh; max-width: 1440px; margin: 0 auto; grid-template-columns: 232px minmax(0, 1fr); }
+.app-sidebar { position: sticky; top: 0; display: flex; height: 100vh; flex-direction: column; border-right: 1px solid var(--line); background: var(--surface); padding: 28px 20px; }
+.app-brand { display: flex; align-items: center; gap: 12px; margin: 0 0 42px; color: #152729; font-size: 18px; font-weight: 700; letter-spacing: -.03em; }
+.app-brand-mark { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 15px; background: var(--accent); color: white; font-size: 17px; }
+.app-brand-copy { display: flex; flex-direction: column; gap: 3px; }
+.app-brand-hint, .app-nav-label { color: #859394; font-size: 10px; font-weight: 700; letter-spacing: .15em; }
+.app-nav-label { margin: 0 0 12px 12px; }
+.app-nav { display: flex; flex-direction: column; gap: 4px; }
+.app-nav-link { display: flex; align-items: center; min-height: 42px; border-radius: 12px; padding: 0 12px; color: #5c6c70; font-size: 14px; font-weight: 600; transition: background .15s, color .15s; }
+.app-nav-link:hover, .app-nav-link-active { background: var(--accent-soft); color: #075d59; }
+.app-nav-link:focus-visible, .app-mobile-nav a:focus-visible, .app-primary-link:focus-visible, .app-subtle-link:focus-visible, .app-project-row:focus-visible, .app-icon-button:focus-visible, .app-submit:focus-visible { outline: 3px solid #54b9ae; outline-offset: 2px; }
+.app-sidebar-footer { margin-top: auto; border: 1px solid var(--line); border-radius: 16px; background: #f7faf9; padding: 14px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.app-main-column { min-width: 0; }
+.app-topbar { display: flex; min-height: 64px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.92); padding: 0 34px; }
+.app-topbar-context { margin: 0; color: #768487; font-size: 13px; font-weight: 550; }
+.app-topbar-badge { border: 1px solid #cce7e2; border-radius: 999px; background: #eff9f7; padding: 6px 11px; color: #116a63; font-size: 10px; font-weight: 750; letter-spacing: .09em; }
+.app-mobile-nav { display: none; }
+.app-content { width: min(100%, 1160px); margin: 0 auto; padding: 38px 34px 56px; }
+.app-skip-link { position: absolute; left: -9999px; top: 8px; z-index: 10; }
+.app-skip-link:focus { left: 8px; border-radius: 8px; background: white; padding: 12px 16px; box-shadow: 0 4px 20px #0002; color: #075d59; }
+.app-page-header { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+.app-eyebrow { margin: 0 0 8px; color: #08766e; font-size: 10px; font-weight: 750; letter-spacing: .15em; }
+.app-title { margin: 0; color: #17252b; font-size: clamp(28px, 4vw, 38px); font-weight: 680; letter-spacing: -.045em; line-height: 1.12; }
+.app-description { max-width: 620px; margin: 10px 0 0; color: #68797c; font-size: 14px; line-height: 1.65; }
+.app-primary-link, .app-submit { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; border: 0; border-radius: 12px; background: #116f68; padding: 0 16px; color: white; font-size: 13px; font-weight: 700; cursor: pointer; transition: background .15s, transform .15s; }
+.app-primary-link:hover, .app-submit:hover { background: #0b5f59; transform: translateY(-1px); }
+.app-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+.app-stat, .app-panel { border: 1px solid var(--line); border-radius: 17px; background: var(--surface); box-shadow: 0 4px 14px rgba(25, 57, 55, .035); }
+.app-stat { padding: 18px 20px; }
+.app-stat-label { color: #77878a; font-size: 12px; font-weight: 550; }
+.app-stat-value { display: block; margin-top: 12px; color: #1a3032; font-size: 30px; font-weight: 680; letter-spacing: -.04em; line-height: 1; }
+.app-stat-note { margin: 6px 0 0; color: #899597; font-size: 11px; line-height: 1.5; }
+.app-columns { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(265px, .85fr); align-items: start; gap: 17px; }
+.app-panel { min-width: 0; padding: 20px; }
+.app-panel-spaced { margin-top: 16px; }
+.app-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.app-panel-title { margin: 0; color: #1b2d30; font-size: 15px; font-weight: 680; letter-spacing: -.015em; }
+.app-subtle-link { color: #08766e; font-size: 12px; font-weight: 700; text-decoration: underline; text-decoration-color: #b4dcd5; text-underline-offset: 4px; }
+.app-project-list { display: flex; flex-direction: column; }
+.app-project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 -8px; border-radius: 12px; padding: 15px 8px; transition: background .15s; }
+.app-project-row + .app-project-row { border-top: 1px solid #edf1f0; }
+.app-project-row:hover { background: #f8fbfa; }
+.app-project-name { margin: 0; color: #233538; font-size: 13px; font-weight: 650; }
+.app-project-description { margin: 4px 0 0; color: #78878a; font-size: 12px; line-height: 1.5; }
+.app-project-meta { display: flex; align-items: center; gap: 8px; margin: 9px 0 0; color: #929e9f; font-size: 10px; }
+.app-tag { border-radius: 999px; background: #f0f4f3; padding: 4px 8px; color: #637377; font-weight: 650; }
+.app-status { flex: 0 0 auto; border-radius: 999px; padding: 6px 9px; font-size: 10px; font-weight: 700; }
+.app-status-active { background: #e8f6f1; color: #197158; }
+.app-status-review { background: #fff4df; color: #8c6417; }
+.app-status-done { background: #eff2f1; color: #687779; }
+.app-activity-list { display: flex; flex-direction: column; gap: 17px; margin: 0; padding: 0; list-style: none; }
+.app-activity-item { display: flex; gap: 11px; }
+.app-activity-dot { flex: 0 0 auto; width: 7px; height: 7px; margin: 5px 2px 0; border-radius: 50%; background: #16877e; box-shadow: 0 0 0 4px #e6f4f1; }
+.app-activity-text { margin: 0; color: #58696d; font-size: 12px; line-height: 1.5; }
+.app-focus-row { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; border-radius: 12px; background: #f6f9f8; padding: 9px 12px; }
+.app-focus-label { color: #66777b; font-size: 12px; font-weight: 600; }
+.app-counter { display: flex; align-items: center; gap: 8px; }
+.app-counter-value { min-width: 24px; color: #1b3032; font-size: 13px; font-weight: 700; text-align: center; }
+.app-icon-button { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid #dfe8e6; border-radius: 9px; background: white; color: #44575a; font-size: 16px; cursor: pointer; }
+.app-icon-button:hover { border-color: #9ccfc7; color: #08766e; }
+.app-icon-button:disabled { cursor: not-allowed; opacity: .4; }
+.app-form { display: grid; gap: 10px; margin-top: 16px; border-top: 1px solid #edf1f0; padding-top: 16px; }
+.app-field-label { display: grid; gap: 7px; color: #526367; font-size: 12px; font-weight: 650; }
+.app-input { width: 100%; min-height: 42px; border: 1px solid #d8e2df; border-radius: 10px; background: white; padding: 0 12px; color: #17252b; font-size: 13px; }
+.app-input::placeholder { color: #a2adad; }
+.app-input:focus { border-color: #16877e; outline: 3px solid #def2ee; }
+.app-input[aria-invalid="true"] { border-color: #d35e5b; }
+.app-submit { justify-self: start; min-height: 38px; background: #24383b; font-size: 12px; }
+.app-submit:hover { background: #10282a; }
+.app-submit:disabled { cursor: wait; opacity: .55; }
+.app-feedback { min-height: 18px; margin: 0; color: #617276; font-size: 12px; }
+.app-detail-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, .8fr); gap: 18px; }
+.app-detail-metric { margin-top: 16px; border-radius: 12px; background: #f6f9f8; padding: 15px; }
+.app-progress { height: 8px; overflow: hidden; margin-top: 12px; border-radius: 999px; background: #edf2f0; }
+.app-progress-fill { height: 100%; border-radius: inherit; background: #16877e; transition: width .3s; }
+.app-empty { border: 1px dashed #cbd9d5; border-radius: 13px; background: #f7faf9; padding: 18px; color: #647477; font-size: 13px; }
+.app-error { border: 1px solid #f2c9c4; border-radius: 16px; background: #fff6f4; padding: 22px; color: #743d37; }
+@media (max-width: 820px) {
+  .app-shell { grid-template-columns: minmax(0, 1fr); }
+  .app-sidebar { display: none; }
+  .app-mobile-nav { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); background: white; padding: 8px 16px; }
+  .app-mobile-nav a { flex: 0 0 auto; border-radius: 9px; padding: 9px 12px; color: #5c6c70; font-size: 12px; font-weight: 650; }
+  .app-mobile-nav a:hover, .app-mobile-nav a.app-nav-link-active { background: var(--accent-soft); color: #075d59; }
+  .app-topbar { padding: 0 20px; }
+  .app-content { padding: 28px 20px 40px; }
 }
-
-.container {
-  max-width: 640px;
-  width: 100%;
-  padding: 2rem;
-}
-
-.hero {
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-.hero h1 {
-  font-size: 2.5rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #38bdf8, #818cf8);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  margin-bottom: 0.5rem;
-}
-
-.subtitle {
-  color: #94a3b8;
-  font-size: 1.1rem;
-}
-
-.card {
-  background: #1e293b;
-  border-radius: 12px;
-  padding: 2rem;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-  border: 1px solid #334155;
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-.card h2 {
-  font-size: 1.3rem;
-  margin-bottom: 1.5rem;
-  color: #e2e8f0;
-}
-
-.counter-box {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1.25rem;
-}
-
-.count-display {
-  font-size: 2rem;
-  font-weight: 600;
-  color: #38bdf8;
-}
-
-.button-group {
-  display: flex;
-  gap: 1rem;
-}
-
-.btn {
-  padding: 0.6rem 1.5rem;
-  font-size: 1.25rem;
-  font-weight: bold;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  transition: transform 0.1s ease, background-color 0.2s ease;
-}
-
-.btn:hover {
-  transform: translateY(-2px);
-}
-
-.btn-primary {
-  background: #38bdf8;
-  color: #0f172a;
-}
-
-.btn-primary:hover {
-  background: #7dd3fc;
-}
-
-.btn-secondary {
-  background: #334155;
-  color: #f8fafc;
-}
-
-.btn-secondary:hover {
-  background: #475569;
-}
-
-footer {
-  text-align: center;
-  color: #64748b;
-  font-size: 0.9rem;
+@media (max-width: 640px) {
+  .app-stats { grid-template-columns: 1fr; }
+  .app-stat { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 5px 12px; padding: 14px 16px; }
+  .app-stat-value { grid-column: 2; grid-row: 1 / span 2; margin: 0; font-size: 25px; }
+  .app-stat-note { margin: 0; }
+  .app-columns, .app-detail-grid { grid-template-columns: minmax(0, 1fr); }
+  .app-page-header { align-items: flex-start; flex-direction: column; }
+  .app-panel { padding: 17px; }
 }
 ]]
+  end
 
   files["README.md"] = string.format([[# %s
 
-Full-stack SSR application built with [Hydronium](https://moonstone.sh/packages/hydronium) and [Meteorite](https://moonstone.sh/packages/meteorite).
+Full-stack SSR application built with [Hydronium](https://moonstone.sh/packages/hydronium) and [Meteorite](https://moonstone.sh/packages/meteorite). The first screen is a small project workspace, not a blank shell: it has loader-backed overview/project routes, a progressive form action, and a compact reactive signal example.
 
 The generated manifest uses registry packages. No sibling source checkout is
 required. If you are testing unreleased packages, add a local Moonstone
@@ -857,15 +1297,28 @@ submits in the background, consumes a JSON action result without navigation,
 and exposes pending,
 field-error, and result state through `useForm`.
 
-## The counter, and hot reloading
+`views/loaders/Overview.lua`, `Projects.lua`, and `Project.lua` provide local
+demo data to the `/`, `/projects`, and `/projects/:projectId` routes. The
+project detail loader handles an unknown ID as a route error. This seed data is
+intentionally in-memory example data, not a persistent database integration.
+
+## Styling
+
+The default scaffold uses semantic class names and `public/style.css`, with a
+small token palette and responsive layout. If you scaffold with `--tailwind`,
+the same view components use Tailwind utility classes from `views/Styles.lua`
+and Vite scans that Lua source. Edit the generated implementation you chose;
+there is no component-style runtime or hidden CSS abstraction.
+
+## Reactive UI and hot reloading
 
 `src/views/App.luax` is the hot application root and `src/views/Counter.luax` is
 its child. Both run **in your browser**, as Lua. `src/views/Document.luax` is
 the stable server-rendered shell that boots the VM, analogous to Vite's
 `index.html`.
 
-With `moon run dev` running, edit `src/views/Counter.luax` -- change `+ 1` to
-`+ 5` -- and save. The page does **not** reload. The counter keeps the
+With `moon run dev` running, edit `src/views/Counter.luax` and save. The page
+does **not** reload. The signal keeps the
 value it was already showing, its DOM nodes are never remounted, and the
 next click uses the new logic.
 

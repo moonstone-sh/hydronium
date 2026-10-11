@@ -289,7 +289,12 @@ function Table:pageCount()
   return math.max(1, math.ceil(count / self._page_size))
 end
 function Table:page() return self:_state_value("page", self._page) end
-function Table:setPage(value) self:_set_state("page", math.max(0, math.min(value, self:pageCount() - 1)), self._set_page) end
+function Table:setPage(value)
+  if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge or value ~= math.floor(value) then
+    error("hydronium.table page must be a finite integer", 2)
+  end
+  self:_set_state("page", math.max(0, math.min(value, self:pageCount() - 1)), self._set_page)
+end
 Table.set_page = Table.setPage
 function Table:getPageRows()
   local rows = self:getRows()

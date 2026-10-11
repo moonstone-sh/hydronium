@@ -337,6 +337,7 @@ local function apply_islands(files, opts)
 
   files["vite.config.js"] = [[import { defineConfig } from "vite";
 import { hydronium } from "@hydronium-js/vite";
+import { luaStyles } from "@hydronium-js/vite";
 
 // Real Vite build: this project's JS island(s) (fetched at runtime by
 // public/js/bootstrap/bootstrap.js -- nothing in Vite's own module graph
@@ -351,6 +352,7 @@ import { hydronium } from "@hydronium-js/vite";
 // ssr/spa builds this template used to share).
 export default defineConfig({
   plugins: [
+    luaStyles(),
     hydronium({ islands: ["src/islands/counter.js", "src/styles.css"] }), // hydronium-vite-plugin
   ],
   publicDir: false,
@@ -467,6 +469,7 @@ local function apply_ssr(files, opts)
 
   files["vite.config.js"] = [[import { defineConfig } from "vite";
 import { hydronium } from "@hydronium-js/vite";
+import { luaStyles } from "@hydronium-js/vite";
 
 // Real Vite build for this project's CSS entry, bundled, minified, and
 // content-hashed (this template has no JS island of its own -- its
@@ -478,6 +481,7 @@ import { hydronium } from "@hydronium-js/vite";
 // the whole `public/` tree under `public/dist/`.
 export default defineConfig({
   plugins: [
+    luaStyles(),
     hydronium({ islands: ["src/styles.css"] }), // hydronium-vite-plugin
   ],
   publicDir: false,

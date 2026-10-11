@@ -406,8 +406,30 @@ test("scaffold dry-run produces expected files for ssr template", function()
   for path, source in pairs(generated) do
     assert(not tostring(source):find("__dom_", 1, true), path .. " must not reference legacy __dom_* globals")
   end
-  assert(generated["moonstone.toml"]:find('name = "hydronium/dom"\nconstraint = "^0.3.3"', 1, true),
-    "SSR apps need hydronium/dom 0.3.3 (the lua-wasm engine with table results)")
+  local dom_floor = generated["moonstone.toml"]:match('name = "hydronium/dom"\nconstraint = "%^([^"]+)"')
+  assert(dom_floor and satisfies_caret(dom_floor, "^0.3.3"),
+    "SSR apps need DOM 0.3.3 or later for the lua-wasm engine with table results")
+  assert(generated["src/views/Projects.luax"] and generated["src/views/Project.luax"],
+    "the starter should include a project index and parameterized detail screen")
+  assert(generated["src/views/loaders/Overview.lua"] and generated["src/views/loaders/Projects.lua"]
+      and generated["src/views/loaders/Project.lua"], "the starter should demonstrate route loaders")
+  assert(generated["src/views/Site.lua"]:find('load = "views.loaders.Project"', 1, true)
+      and generated["src/views/Site.lua"]:find('error = "views.RouteError"', 1, true),
+    "the shared route manifest should connect loader data and an error boundary")
+  assert(generated["src/views/NotFound.luax"] and generated["src/views/App.luax"]:find('notFound = screens["views.NotFound"]', 1, true),
+    "the client router should render a useful not-found page")
+  assert(generated["src/views/Layout.luax"]:find('aria-current', 1, true),
+    "navigation should reflect the active route accessibly")
+  assert(generated["src/views/Styles.lua"]:find('app-page', 1, true)
+      and generated["public/style.css"]:find('@media (max-width: 820px)', 1, true),
+    "the default starter should use its responsive plain-CSS implementation")
+  local tailwind_generated = require("create.templates.ssr").files({ name = "test-ssr-app", tailwind = true })
+  assert(tailwind_generated["src/views/Styles.lua"]:find('bg-slate-50', 1, true),
+    "--tailwind must switch the actual view markup to Tailwind utility classes")
+  assert(not tailwind_generated["public/style.css"]:find('.app-page', 1, true),
+    "the Tailwind variant should not carry the plain-CSS component implementation")
+  assert(tailwind_generated["README.md"]:find('If you scaffold with `--tailwind`', 1, true),
+    "the generated README should explain its selected styling implementation")
   assert(not generated["src/main.lua"]:find('id:gsub("%%.", "/")', 1, true),
     "SSR must not reconstruct filesystem paths from request IDs")
 end)
@@ -1048,6 +1070,49 @@ test("tailwind.apply layers Tailwind v4 on top of an already-vite-applied ssr/is
     "islands' .luax views live one level above src/, unlike ssr's")
 end)
 
+test("Tailwind selection changes each browser template's actual markup", function()
+  local islands_template = require("create.templates.islands")
+  local spa_template = require("create.templates.spa")
+
+  local islands_css = islands_template.files({ name = "style-check" })
+  assert(islands_css["views/Document.luax"]:find('class="shell"', 1, true),
+    "plain islands should keep semantic CSS classes")
+  assert(islands_css["public/style.css"]:find(".island-container", 1, true),
+    "plain islands should ship its stylesheet")
+
+  local islands_tw = islands_template.files({ name = "style-check", tailwind = true })
+  assert(islands_tw["views/Document.luax"]:find("bg-teal-50", 1, true),
+    "Tailwind islands should use utility classes in its actual document")
+  assert(not islands_tw["public/style.css"]:find(".island-container", 1, true),
+    "Tailwind islands should not ship the unused component stylesheet")
+
+  local router_mode = require("create.router_mode")
+  local routed_tw = router_mode.apply_islands(
+    islands_template.files({ name = "style-check", tailwind = true }),
+    { name = "style-check", tailwind = true })
+  assert(routed_tw["views/Home.luax"]:find("bg-teal-50", 1, true),
+    "Tailwind must remain active when islands opts into the Hydronium Router")
+  assert(routed_tw["src/main.lua"]:find('name = "style-check"', 1, true),
+    "router-mode styling must not replace the generated application name")
+
+  for _, router in ipairs({ "hydronium", "meteorite" }) do
+    local plain = spa_template.files({ name = "style-check", router = router })
+    assert(plain["app.lua"]:find('require("hydronium_dom.css").sheet("app.css")', 1, true),
+      "plain SPA/" .. router .. " should use the app.css style sheet")
+    assert(plain["app.lua"]:find("styles.card_title", 1, true),
+      "plain SPA/" .. router .. " class names should match its CSS module selectors")
+    assert(plain["app.css"]:find(".card-title", 1, true), "plain SPA should ship view styles")
+
+    local tw = spa_template.files({ name = "style-check", router = router, tailwind = true })
+    assert(tw["app.lua"]:find("bg-teal-800", 1, true),
+      "Tailwind SPA/" .. router .. " should use utility classes in app.lua")
+    assert(not tw["app.lua"]:find('require("hydronium_dom.css").sheet("app.css")', 1, true),
+      "Tailwind SPA/" .. router .. " should not use the CSS-module runtime")
+    assert(not tw["app.css"]:find(".card-title", 1, true),
+      "Tailwind SPA/" .. router .. " should not carry unused component CSS")
+  end
+end)
+
 test("tailwind.apply layers Tailwind v4 on top of an already-vite-applied spa template, both router variants", function()
   for _, router in ipairs({ "hydronium", "meteorite" }) do
     local files = require("create.templates.spa").files({ name = "x", router = router })
@@ -1273,6 +1338,8 @@ test("tailwind and router-mode generated content actually parses/compiles", func
     { dir = "/tmp/test-hydronium-content-gate-islands-tailwind", template = "islands", tailwind = true },
     { dir = "/tmp/test-hydronium-content-gate-islands-router", template = "islands", router = "hydronium" },
     { dir = "/tmp/test-hydronium-content-gate-islands-router-tailwind", template = "islands", router = "hydronium", tailwind = true },
+    { dir = "/tmp/test-hydronium-content-gate-spa-router-tailwind", template = "spa", router = "hydronium", tailwind = true },
+    { dir = "/tmp/test-hydronium-content-gate-spa-meteorite-tailwind", template = "spa", router = "meteorite", tailwind = true },
   }
 
   local node_available = os.execute("node --version >/dev/null 2>&1")
@@ -1307,6 +1374,8 @@ test("tailwind and router-mode generated content actually parses/compiles", func
           return luax.compile(content, { filename = f.path, runtime = "hydronium", development = false })
         end)
         assert(ok, combo.dir .. " " .. f.path .. " failed to compile: " .. tostring(compile_result))
+        local compiled_chunk, compiled_err = load_fn(compile_result.code, "@" .. f.full_path .. ".lua")
+        assert(compiled_chunk, combo.dir .. " " .. f.path .. " emitted invalid Lua: " .. tostring(compiled_err))
         checked_luax = checked_luax + 1
       elseif f.path:match("%.js$") and node_available then
         local result = os.execute(string.format('node --check "%s" >/dev/null 2>&1', f.full_path))
@@ -1315,7 +1384,9 @@ test("tailwind and router-mode generated content actually parses/compiles", func
       end
     end
     assert(checked_lua > 0, combo.dir .. ": no .lua files were checked")
-    assert(checked_luax > 0, combo.dir .. ": no .luax files were checked")
+    if combo.template ~= "spa" then
+      assert(checked_luax > 0, combo.dir .. ": no .luax files were checked")
+    end
     if combo.tailwind and node_available then
       assert(checked_js > 0, combo.dir .. ": vite.config.js was not syntax-checked")
     end

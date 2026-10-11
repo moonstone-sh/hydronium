@@ -52,3 +52,9 @@ values; functions, cyclic tables and sparse arrays are not valid keys.
 
 See [async ownership](https://github.com/moonstone-sh/hydronium/blob/main/docs/ASYNC_DATA.md)
 for choosing a resource, route loader or client cache.
+
+Cache lifetimes use elapsed seconds. The portable fallback is `os.time()`,
+clamped against backward wall-clock changes, with one-second precision. Inject
+`clock=function() return performance_seconds() end` from the host for monotonic,
+subsecond timing. `os.clock()` measures CPU time and must not be used for cache
+expiry. Cancellation suppresses late mutation callbacks; completion settles once.

@@ -148,3 +148,20 @@ assert(hosts.get("demo", 1) == nil)
 Expected output: Hello, Ada. The registry belongs to one Lua VM; installation
 in another VM is separate. Dispose resources owned by a real host before
 release. See [Host capabilities](https://github.com/moonstone-sh/hydronium/blob/feat/host-capabilities/docs/HOST_CAPABILITIES.md).
+
+## Application configuration
+
+`require("hydronium.config").require(fields, environment)` decodes explicit
+string, boolean and integer environment fields at startup. Descriptors accept
+`env`, `default`, `required`, integer `min`/`max`, `values`, and a Standard Schema
+`schema` such as a Valua schema. Use `read` to receive all validation issues
+instead of raising. Errors identify fields without echoing their values.
+
+```lua
+local config = require("hydronium.config").require({
+  port = {env="PORT", kind="integer", default=3000, min=1, max=65535},
+  development = {env="DEV", kind="boolean", default=false},
+})
+```
+
+Authentication flow state is available separately in the optional `hydronium/auth` package.
