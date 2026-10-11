@@ -105,3 +105,35 @@ context) return rows end }`. Models run as pure transforms after normal local
 filtering and sorting, but before cell construction. This keeps grouping or
 expansion policy out of the DOM and makes it testable without a renderer. Set
 the corresponding `manual_*` flag when the server owns a base stage.
+
+## Server-backed grids
+
+Install `hydronium/query` alongside this package and inject its client into
+`require("hydronium_table.remote").create`:
+
+```lua
+local grid = require("hydronium_table.remote").create({
+  client = require("hydronium_query").createClient({clock=monotonic_seconds}),
+  key = {"packages"},
+  page_size = 20,
+  columns = {{id="name", accessor=function(row) return row.name end}},
+  query = function(params, context, done)
+    return fetch_packages(params, context.signal, done)
+  end,
+})
+```
+
+The application supplies `monotonic_seconds` and `fetch_packages`. The transport
+receives `page` (zero based), `page_size`, `sorting`, `filters` and `search`,
+and completes with `done(error, {rows=..., total=...})`. It may return a
+cancellation function. The server must apply operations before pagination and
+report the matching total. Include account/tenant identity in the key when
+results depend on it. Add search debouncing before `model:setGlobalFilter`
+when appropriate.
+
+Render `grid.model` using your own semantic table or accessible grid. Read
+`grid.state()` for loading, empty, error and success states; call
+`grid:refetch()` to retry. Call `grid:dispose()` outside a component scope;
+inside a scope cleanup is automatic. Search, filtering and sorting reset the
+page and use distinct query keys. Obsolete replies are ignored. The model
+preserves server ordering and never filters or sorts a partial page locally.

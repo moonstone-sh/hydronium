@@ -60,7 +60,13 @@ Pass a callback scheduler that starts observations after the host has
 finished hydration. Standalone handles start immediately; component
 observations are deferred past render. SSR owns no live observation.
 Use a wall-clock `clock` function when cache freshness should include time
-spent waiting for requests (the standalone default uses Lua `os.clock`).
+spent waiting for requests (the standalone default uses elapsed wall time).
 
 The website provides its browser scheduler through the mount globals,
 then starts it after its root mount resolves. This API is not yet published.
+
+Cache lifetimes use elapsed seconds. The portable fallback is `os.time()`,
+clamped against backward wall-clock changes, with one-second precision. Inject
+`clock=function() return performance_seconds() end` from the host for monotonic,
+subsecond timing. `os.clock()` measures CPU time and must not be used for cache
+expiry. Cancellation suppresses late mutation callbacks; completion settles once.

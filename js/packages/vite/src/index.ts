@@ -20,3 +20,4 @@ export { resolveDevOrigin, devCorsConfig } from "./dev-origin.js";
 // package's own package.json description), not just type-checked. See
 // its own header for why.
 export { runDualDevServer } from "./supervisor.mjs";
+export { luaStyles, type LuaStylesOptions } from "./lua-styles.js";

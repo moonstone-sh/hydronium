@@ -68,3 +68,10 @@ The package ships the canonical TextMate grammars under
 `source.luax` scope with Monaco's TextMate integration. This is the same grammar
 used by the editor integration; it provides highlighting, not semantic Lua
 completion or diagnostics. Those need LuaLS and the LUAX virtual-source plugin.
+
+For workspace development, new source files need an environment refresh:
+`moon sync --locked --offline`. Existing file links follow edits, but a new
+module has no link until Moonstone rematerializes the package. Do not add those
+links by hand. After packaging, run `bash tests/test_luax_artifact.sh` from the
+Hydronium repository to compare the artifact's source closure and import it
+without workspace fallbacks.

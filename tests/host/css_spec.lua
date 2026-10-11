@@ -59,3 +59,62 @@ describe("hydronium_dom.css -- scoped class computation", function()
     assert.equal(s1.title, s2.title)
   end)
 end)
+
+
+describe("Lua stylesheet imports", function()
+  local assets = require("hydronium_dom.assets")
+  it("resolves its subscription through the active provider at render time", function()
+    local styles = css.import("src/global.css")
+    assets.configure_provider({provider="vite-manifest", base="/public/dist", manifest_table={
+      ["src/global.css"]={file="assets/global-123.css"},
+    }})
+    assert.equal(styles:url(), "/public/dist/assets/global-123.css")
+    local nodes = styles:subscribe()
+    assert.equal(#nodes, 1)
+    assert.equal(nodes[1].props.href, "/public/dist/assets/global-123.css")
+    assets.reset()
+  end)
+  it("subscribes to Vite's live stylesheet and HMR in development", function()
+    assets.configure_provider({provider="vite-dev",vite_origin="http://localhost:5173"})
+    local nodes = css.import("src/global.css"):subscribe()
+    assert.equal(#nodes, 2)
+    assert.equal(nodes[2].props.href, "http://localhost:5173/src/global.css")
+    assets.reset()
+  end)
+  it("rejects a non-stylesheet import", function()
+    assert.falsy(pcall(css.import, "src/app.js"))
+  end)
+end)
+
+
+describe("Lua CSS Modules imports", function()
+  local assets = require("hydronium_dom.assets")
+  it("uses the build's actual class exports, including composition", function()
+    local styles = css.import("src/Card.module.css")
+    assets.configure_provider({provider="vite-manifest",manifest_table={
+      ["src/Card.module.css"]={file="assets/card.css",classes={card="_card_123 _base_456"}},
+    }})
+    assert.equal(styles.classes.card, "_card_123 _base_456")
+    assets.reset()
+  end)
+  it("uses development module exports and rejects a missing map", function()
+    assets.configure_provider({provider="vite-dev",vite_origin="http://localhost:5173",
+      module_classes={["src/Card.module.css"]={card="_card_dev"}}})
+    assert.equal(css.import("src/Card.module.css").classes.card, "_card_dev")
+    assets.reset()
+    assert.falsy(pcall(function() return css.import("src/Card.module.css").classes end))
+  end)
+end)
+
+
+describe("browser CSS Modules manifest", function()
+  it("retains classes and stylesheet subscriptions in a serialized static manifest", function()
+    local assets = require("hydronium_dom.assets")
+    assets.configure_table({assets={["src/Card.module.css"]={url="/assets/card.js",
+      classes={card="card_123"},css={"/assets/card.css"}}}})
+    local styles = css.import("src/Card.module.css")
+    assert.equal(styles.classes.card,"card_123")
+    assert.equal(styles:subscribe()[1].props.href,"/assets/card.css")
+    assets.reset()
+  end)
+end)

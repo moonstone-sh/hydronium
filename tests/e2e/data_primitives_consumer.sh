@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Proves query, virtual and table can be installed from exported artifacts.
+# Proves auth, query, virtual and table can be installed from exported artifacts.
 set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 moon=${MOON_BIN:?Set MOON_BIN to the Moonstone executable under test}
@@ -36,6 +36,7 @@ cp "$root/tests/fixtures/consumer_data_primitives.lua" "$app/main.lua"
 (
   cd "$app"
   "$moon" registry add hydronium-data-primitives "file://$registry"
+  "$moon" add hydronium-data-primitives:hydronium/auth
   "$moon" add hydronium-data-primitives:hydronium/query
   "$moon" add hydronium-data-primitives:hydronium/virtual
   "$moon" add hydronium-data-primitives:hydronium/table
@@ -45,4 +46,4 @@ cp "$root/tests/fixtures/consumer_data_primitives.lua" "$app/main.lua"
   if grep -nE 'constraint = "path:|registry = "path"' moonstone.toml moonstone.lock; then fail "consumer retained a path dependency"; fi
   "$moon" exec -- luajit main.lua
 )
-echo "data primitives consumer gate passed: exported registry -> locked sync -> executable query/table/virtual model"
+echo "data primitives consumer gate passed: exported registry -> locked sync -> executable auth/query/table/virtual model"

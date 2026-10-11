@@ -187,7 +187,7 @@ function M.manifest(ctx, inputs, opts)
       local h = asset.metadata and asset.metadata.hydronium
       if h then
         if asset.kind == "hy_asset" and h.source then
-          assets_map[h.source] = { url = h.url, integrity = h.integrity }
+          assets_map[h.source] = { url = h.url, integrity = h.integrity, classes = h.classes, css = h.css }
         elseif asset.kind == "hy_style_bundle" then
           styles_info = { url = h.url, sheet_count = h.sheet_count, reset = h.reset }
         elseif asset.kind == "hy_module" and h.module_id then
@@ -299,8 +299,7 @@ return {
   version = "0.1.0",
   methods = {
     -- cacheable=false: this node embeds a run-wide view assembled from
-    -- every other asset's metadata (never hashed by ballad's cache key,
-    -- see docs/HYDRONIUM_BALLAD_ARCHITECTURE_PLAN.md section 3.1) -- a
+    -- other assets beyond its explicit inputs -- a
     -- stale hit here would be a silent wrong-manifest failure, and the
     -- node itself does negligible work, so there is no real cost to
     -- always re-running it.

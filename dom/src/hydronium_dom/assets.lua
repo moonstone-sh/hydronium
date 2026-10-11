@@ -106,6 +106,7 @@ local dev_origin = nil -- trailing-slash-trimmed origin string, e.g. "http://loc
 -- manifest.json (entry key -> { file, css, imports, isEntry, ... }).
 local vite_manifest = nil
 local vite_manifest_base = "/"
+local module_classes = nil
 
 --- @return string the active provider name ("static" is the default).
 function M.provider()
@@ -118,6 +119,7 @@ end
 
 --- @param manifest_path string Real path to a build's own `hydronium-manifest.lua` (NOT the `.json` sibling -- see docs/LUAX_BALLAD_CSS_ASSETS_PLAN.md section 3.3 for why this codebase prefers a plain Lua table literal over a hand-rolled JSON reader: zero runtime dependencies, matching every other part of hydronium).
 function M.configure(manifest_path)
+  module_classes = nil
   current_provider = "static"
   local chunk = loadfile(manifest_path)
   if not chunk then
@@ -134,6 +136,7 @@ end
 --- missing manifest file: the dev fallback, not an error.
 --- @param manifest_table table A loaded `hydronium-manifest.lua` result.
 function M.configure_table(manifest_table)
+  module_classes = nil
   current_provider = "static"
   manifest = type(manifest_table) == "table" and manifest_table or false
 end
@@ -143,6 +146,8 @@ end
 --- @field manifest_path? string "static": passed to `configure()`. "vite-manifest": a real `dist/.vite/manifest.json` path, read and JSON-decoded now.
 --- @field manifest_table? table "static": passed to `configure_table()`. "vite-manifest": an already-decoded manifest table (e.g. a test fixture, or a caller that already read the file itself).
 --- @field vite_origin? string "vite-dev" only, REQUIRED: Vite's dev server origin, e.g. "http://localhost:5173" (see @hydronium-js/vite's `resolveDevOrigin`, js/packages/vite/src/dev-origin.ts, which computes exactly this string on the JS side of one dev session).
+--- @field module_classes? table<string, table<string,string>> CSS Modules exports for browser/dev providers.
+--- @field modules_path? string Development JSON class-map file emitted by luaStyles().
 --- @field base? string "vite-manifest" only: URL prefix built files are served under. Default "/".
 
 --- The single entry point STEP 1 adds: selects and configures one of the
@@ -152,9 +157,19 @@ end
 --- @param config HydroniumAssetsProviderConfig|nil
 function M.configure_provider(config)
   config = config or {}
+  module_classes = config.module_classes
+  if config.modules_path then
+    local file = io.open(config.modules_path, "r")
+    if file then
+      local raw = file:read("*a"); file:close()
+      local ok, decoded = pcall(require("hydronium_dom.server.json").decode, raw)
+      if ok and type(decoded) == "table" then module_classes = decoded end
+    end
+  end
   local provider = config.provider or "static"
 
   if provider == "static" then
+    local classes = module_classes
     if config.manifest_table ~= nil then
       M.configure_table(config.manifest_table)
     elseif config.manifest_path then
@@ -163,6 +178,7 @@ function M.configure_provider(config)
       current_provider = "static"
       manifest = nil
     end
+    module_classes = classes
     return
   end
 
@@ -210,6 +226,7 @@ function M.reset()
   dev_origin = nil
   vite_manifest = nil
   vite_manifest_base = "/"
+  module_classes = nil
 end
 
 -- ===========================================================================
@@ -257,6 +274,25 @@ function M.url(source_path)
   return static_url(source_path)
 end
 
+--- CSS Modules class exports produced by the active build provider.
+--- Names are read at render time so a development edit can replace the map.
+function M.classes(source_path)
+  local names = module_classes and module_classes[source_path]
+  if not names and current_provider == "vite-manifest" and type(vite_manifest) == "table" then
+    local entry = vite_manifest[source_path]
+    names = type(entry) == "table" and entry.classes or nil
+  end
+  if not names and current_provider == "static" and type(manifest) == "table" then
+    local entry = manifest.assets and manifest.assets[source_path]
+    names = type(entry) == "table" and entry.classes or nil
+  end
+  if type(names) ~= "table" then
+    error("hydronium_dom.assets.classes: no CSS Modules exports for " .. tostring(source_path)
+      .. " -- enable luaStyles() and configure the provider's modules_path in development", 2)
+  end
+  return names
+end
+
 -- ===========================================================================
 -- tags() -- entry markup, provider-dispatched. See module header for why
 -- this is the one place that raises on a genuine misconfiguration rather
@@ -272,7 +308,11 @@ local function tag_for_file(url)
 end
 
 local function static_tags(entry)
-  return { tag_for_file(static_url(entry)) }
+  local out = {}
+  local record = manifest and manifest.assets and manifest.assets[entry]
+  for _, url in ipairs(record and record.css or {}) do out[#out + 1] = tag_for_file(url) end
+  out[#out + 1] = tag_for_file(static_url(entry))
+  return out
 end
 
 local function dev_tags(entry)

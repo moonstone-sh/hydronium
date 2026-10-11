@@ -60,6 +60,10 @@ name = "i18n"
 path = "i18n"
 
 [[orbits.member]]
+name = "auth"
+path = "auth"
+
+[[orbits.member]]
 name = "query"
 path = "query"
 

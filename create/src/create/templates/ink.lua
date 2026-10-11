@@ -23,7 +23,7 @@ lab = "moon exec --dev -- hydronium-lab dev"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.11"
+constraint = "^0.2.12"
 role = "runtime"
 
 [[dependencies]]
@@ -33,7 +33,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "hydronium/luax"
-constraint = "^0.2.13"
+constraint = "^0.2.14"
 role = "runtime"
 
 # Development-only workbench closure. The terminal app never imports these;

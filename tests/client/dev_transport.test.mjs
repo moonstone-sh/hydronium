@@ -205,6 +205,40 @@ function installFakeEventSourceAndTimers() {
   };
 }
 
+test("compact revisions retain exact changed paths across client-paced polls", () => {
+  const env = installFakeEventSourceAndTimers();
+  try {
+    const transport = createDevTransport("/__hydronium/watch");
+    const events = [];
+    transport.subscribe((event) => events.push(event));
+
+    env.sources[0].emit("snapshot", JSON.stringify({
+      "views/App.luax": "old",
+      "views/My Counter|Demo.luax": "same",
+      toString: "old",
+    }));
+    env.sources[0].emit("hello", "0123456789abcdef");
+    env.sources[0].emit("bye", "0123456789abcdef");
+    env.timers[0].fn();
+    assert.match(env.sources[1].url, /since=0123456789abcdef/);
+
+    env.sources[1].emit("snapshot", JSON.stringify({
+      "views/App.luax": "new",
+      "views/My Counter|Demo.luax": "same",
+      "views/New.luax": "created",
+    }));
+    env.sources[1].emit("reload", "fedcba9876543210");
+    assert.deepEqual(events.at(-1), {
+      type: "reload",
+      fingerprint: "fedcba9876543210",
+      paths: ["toString", "views/App.luax", "views/New.luax"],
+    });
+    transport.close();
+  } finally {
+    env.restore();
+  }
+});
+
 test("a real edit (one reload, then convergence) keeps reconnecting instantly, unchanged", () => {
   const env = installFakeEventSourceAndTimers();
   try {

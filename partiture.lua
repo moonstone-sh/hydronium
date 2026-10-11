@@ -14,6 +14,7 @@ return ballad.partiture(function(p)
                 "README.md",
                 "REGISTRY_README.md",
                 "src/**",
+                "types/**",
                 "client/**",
                 "native/**",
                 "nvim/**",
@@ -28,6 +29,7 @@ return ballad.partiture(function(p)
 
     local release = layout.directory({
         { from = package_orbit("core"), to = "core" },
+        { from = package_orbit("auth"), to = "auth" },
         { from = package_orbit("dom"), to = "dom" },
         { from = package_orbit("luax"), to = "luax" },
         { from = package_orbit("oklab-utils"), to = "oklab-utils" },

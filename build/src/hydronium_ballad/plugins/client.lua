@@ -480,7 +480,7 @@ function M.resolve(ctx, inputs, opts)
   -- hy_module_graph: a canonical, deterministic serialization of the
   -- whole resolution result (sorted module ids, entries, aliases). Its
   -- CONTENT is what makes bundle()/minify() safe to mark cacheable=true
-  -- despite ballad never hashing Asset.metadata -- any join-key change
+  -- including with older Ballad releases that omit Asset.metadata -- any join-key change
   -- (e.g. a partiture flipping a module's `target`) changes this asset's
   -- content, which IS hashed, and therefore changes bundle's cache key
   -- transitively. See the bundler plan's §3 for the full reasoning.
@@ -1049,11 +1049,8 @@ return {
   name = "hydronium_ballad.plugins.client",
   version = "0.1.0",
   methods = {
-    -- cacheable=false: ballad's cache key hashes Asset content, never
-    -- Asset.metadata -- and every join key resolve() depends on
-    -- (module_id/target/origin) lives in metadata. A metadata-only change
-    -- (e.g. flipping a module's target) would silently produce a stale
-    -- cache hit if this were cacheable. See the bundler plan's §3.
+    -- Resolution also reads modules from disk outside the explicit input set.
+    -- Keep discovery live until that entire closure is declared as inputs.
     resolve = { inputs = { "asset_set" }, outputs = { "asset_set" }, cacheable = false, parallel_safe = true },
     -- cacheable=true is safe: minify_source is a pure function of
     -- content plus opts (level/preserve_lines, both plain data -- see
