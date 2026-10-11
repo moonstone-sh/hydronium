@@ -722,16 +722,18 @@ end
 -- setup queued: an effect created during setup runs its first pass inside
 -- the render, and any signal it wrote is held until the tree is in place.
 -- Nested calls (children, re-renders during a flush) pass straight through.
-for _, name in ipairs({ "mount", "hydrate" }) do
+for _, name in ipairs({ "mount", "hydrate", "hydrateRoot" }) do
   local inner = Reconciler[name]
-  local flag = "_in_" .. name
   Reconciler[name] = function(self, ...)
-    if self[flag] then return inner(self, ...) end
-    self[flag] = true
+    -- Hydration can mount on a mismatch (or insert an empty text binding).
+    -- These operations share one commit boundary: a nested mount must not
+    -- flush renders while siblings still lack their claimed host nodes.
+    local depth = self._treeCommitDepth or 0
+    self._treeCommitDepth = depth + 1
     local ok, first, second = pcall(inner, self, ...)
-    self[flag] = false
+    self._treeCommitDepth = depth
     if not ok then error(first, 0) end
-    if not scheduler.isRendering() then scheduler.flush() end
+    if depth == 0 and not scheduler.isRendering() then scheduler.flush() end
     return first, second
   end
 end

@@ -94,6 +94,38 @@ describe("Core: Reconciler & Child Diffing", function()
       assert.equal(root:text(), "")
     end)
 
+    it("removes expanded detail siblings without corrupting neighboring records", function()
+      local root = H.create_test_root()
+      local function view(open)
+        local rows = {}
+        for i = 1, 4 do
+          rows[#rows + 1] = H.h("div", { key = "record:" .. i, id = "record_" .. i },
+            H.h("span", nil, "package " .. i), H.h("span", nil, "actor " .. i))
+          if open == i then
+            rows[#rows + 1] = H.h("div", { key = "detail:" .. i, id = "detail" },
+              H.h("section", nil, "details " .. i))
+          end
+        end
+        return H.h("div", { id = "records" }, rows)
+      end
+      root:render(view(nil))
+      local identities = {}
+      for i = 1, 4 do identities[i] = root:find({ id = "record_" .. i }) end
+      for _, index in ipairs({ 1, 1, 2, 4, 3 }) do
+        root:update(view(index))
+        assert.equal(#root:find({ id = "records" }).children, 5)
+        root:update(view(nil))
+        assert.is_nil(root:find({ id = "detail" }))
+        local records = root:find({ id = "records" }).children
+        assert.equal(#records, 4)
+        for i = 1, 4 do
+          assert.equal(records[i], identities[i])
+          assert.equal(#records[i].children, 2)
+        end
+        assert.equal(root:text(), "package 1actor 1package 2actor 2package 3actor 3package 4actor 4")
+      end
+    end)
+
     it("handles keyed reversing", function()
       local root = H.create_test_root()
 

@@ -83,3 +83,48 @@ describe("Core: a mounted tree shows what its effects wrote during setup", funct
     assert.equal(shown, "after")
   end)
 end)
+
+
+describe("Core: hydration commit boundary", function()
+  it("defers setup writes until mismatch mounts and trailing siblings are claimed", function()
+    local host = H.test.createTestHost()
+    local rec = H.Reconciler.new(host)
+    local container = host.getRoot()
+    rec:mount(H.h("div", nil, H.h("span", nil, "server"), H.h("b", nil, "tail")), container)
+    local tail = container.children[1].children[2]
+    local commitUpdate = host.commitUpdate
+    host.commitUpdate = function(node, ...)
+      assert.is_not_nil(node, "must claim a host node before updating it")
+      return commitUpdate(node, ...)
+    end
+    local function App()
+      local ready, setReady = H.createSignal(false)
+      H.createEffect(function() setReady(true) end)
+      return function()
+        return H.h("div", nil, H.h("i", nil, ready() and "ready" or "pending"), H.h("b", nil, "tail"))
+      end
+    end
+    local vnode = H.h(App)
+    rec:hydrateRoot(vnode, container)
+    assert.equal(vnode.componentInstance.subTree.children[1].children[1].text, "ready")
+    assert.equal(container.children[1].children[2], tail)
+    assert.equal(#container.children[1].children, 2)
+    assert.equal(rec._treeCommitDepth, 0)
+  end)
+end)
+
+
+describe("Core: failed tree commit cleanup", function()
+  it("restores commit depth when hydration throws", function()
+    local host = H.test.createTestHost()
+    local rec = H.Reconciler.new(host)
+    local original = host.createInstance
+    host.createInstance = function() error("host failure") end
+    local ok = pcall(function() rec:hydrateRoot(H.h("div"), host.getRoot()) end)
+    assert.equal(ok, false)
+    assert.equal(rec._treeCommitDepth, 0)
+    host.createInstance = original
+    rec:mount(H.h("span", nil, "recovered"), host.getRoot())
+    assert.equal(#host.getRoot().children, 1)
+  end)
+end)
