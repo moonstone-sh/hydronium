@@ -100,6 +100,6 @@ reply behavior without source paths. The web job runs the Lua stylesheet
 adapter tests and the Chromium draft/focus preservation check.
 
 Use the monorepo's normal `v*` tag release; use workflow dispatch with that
-existing tag for retries. Keep registry publishing credentials in CI. The
-existing first-publication visibility follow-up documented by the release
-workflow still applies to new coordinates such as Auth.
+existing tag for retries. Keep registry publishing credentials in CI. First publication explicitly requests public visibility through the Registry
+API, including Auth. Existing private packages cannot be flipped by a publish
+request; the server continues to enforce that boundary.
