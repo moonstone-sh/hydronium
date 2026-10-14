@@ -17,6 +17,7 @@ local Hydronium = {
   createElement = core.createElement,
   create_element = core.createElement,
   createTextVNode = core.createTextVNode,
+  spread = core.spread,
   Fragment = core.Fragment,
 
   -- Reactivity Primitives

@@ -43,3 +43,44 @@ describe("LUAX Spread Operator Runtime", function()
     assert.equal(result.a, 999)
   end)
 end)
+
+describe("LUAX spread in compiled output", function()
+  local dialects = require("hydronium_luax.dialects")
+
+  local function assert_load(code, env)
+    local chunk, err = require("hydronium_luax.compat").load(code, "=compiled", env)
+    if not chunk then error(err .. "\n" .. code, 0) end
+    return chunk
+  end
+
+  -- A browser VM loads hydronium but never hydronium_luax.runtime, so the
+  -- compiled component must not depend on the `__luax` global.
+  local function load_without_luax_global(code, env_extra)
+    local env = setmetatable(env_extra or {}, { __index = function(_, key)
+      if key == "__luax" then return nil end
+      return _G[key]
+    end })
+    local chunk = assert_load(code, env)
+    return chunk()
+  end
+
+  it("takes spread from the hydronium factory's table, not a hidden global", function()
+    local code = dialects.compile('local H = require("hydronium")\nreturn function(props) return <div id="a" {...props}>x</div> end\n',
+      { filename = "C.luax", runtime = "hydronium" }).code
+    assert.truthy(code:find("(H.spread or __luax.spread)(", 1, true), code)
+    local C = load_without_luax_global(code)
+    local vnode = C({ class = "b" })
+    assert.equal(vnode.props.id, "a")
+    assert.equal(vnode.props.class, "b")
+  end)
+
+  it("calls a pragma's `X.spread or __luax.spread` instead of returning it", function()
+    local code = dialects.compile('-- @jsx X.h\nreturn function(props) return <div {...props} /> end\n', { filename = "P.luax" }).code
+    local X = { h = function(tag, props) return { tag = tag, props = props } end,
+      spread = require("hydronium").spread }
+    local P = load_without_luax_global(code, { X = X })
+    local node = P({ id = "z" })
+    assert.equal(type(node.props), "table")
+    assert.equal(node.props.id, "z")
+  end)
+end)
