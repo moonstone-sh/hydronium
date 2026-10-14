@@ -17,7 +17,7 @@ local function compile(path, id)
   if dialects.compiles(path) then
     source = dialects.compile(source, { filename = path, development = true }).code
   end
-  local chunk, err = (loadstring or load)(source, "@" .. id)
+  local chunk, err = require("hydronium.compat").load(source, "@" .. id)
   if not chunk then error(err, 0) end
   return source
 end
@@ -62,6 +62,8 @@ function M.sources(config, registry, renderer)
   -- exactly as the app's dev host does; module_roots stays the fallback for
   -- projects without one.
   local topology = require("hydronium_dom.dev.source_registry").try_load_project()
+  -- The bundle runs in a browser Lua 5.4: prefer `@lua54` flavor variants.
+  local flavor_files = require("hydronium.core.flavor_files")
   local function resolve(id)
     local record = topology and topology:module(id)
     if record then project[id] = true; return record.path end
@@ -70,10 +72,10 @@ function M.sources(config, registry, renderer)
       for _, suffix in ipairs({ ".lua", ".luax", ".md", ".mdx", "/init.lua", "/init.luax", "/init.md", "/init.mdx" }) do
         local path = root .. "/" .. mapped .. suffix
         local f = io.open(path, "rb")
-        if f then f:close(); project[id] = true; return path end
+        if f then f:close(); project[id] = true; return flavor_files.browser_path(path) end
       end
     end
-    return package.searchpath(id, package.path)
+    return flavor_files.searchpath(id, package.path)
   end
   local function visit(id)
     if seen[id] or (renderer == "ink" and INK_NATIVE[id]) then return end

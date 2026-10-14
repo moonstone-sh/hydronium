@@ -9,7 +9,7 @@ local errors = require("hydronium.core.errors")
 local suspense = require("hydronium.core.suspense")
 local graph = require("hydronium.signals.graph")
 
-local unpack = table.unpack or unpack
+local unpack = require("hydronium.compat").unpack
 
 local elementModule = {}
 

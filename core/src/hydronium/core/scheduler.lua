@@ -7,7 +7,7 @@
 
 local errors = require("hydronium.core.errors")
 
-local unpack = table.unpack or unpack
+local unpack = require("hydronium.compat").unpack
 
 local scheduler = {}
 

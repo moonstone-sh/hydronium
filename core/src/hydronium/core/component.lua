@@ -14,7 +14,7 @@ local graph = require("hydronium.signals.graph")
 local familyLoader = require("hydronium.core.family_loader")
 local RefreshRegistry = require("hydronium.core.refresh").RefreshRegistry
 
-local unpack = table.unpack or unpack
+local unpack = require("hydronium.compat").unpack
 
 local componentModule = {}
 
@@ -34,12 +34,10 @@ function ComponentInstance.new(vnode, parentComponent, host)
   local compName = "Component"
   if type(vnode.tag) == "table" and vnode.tag.name then
     compName = tostring(vnode.tag.name)
-  elseif type(vnode.tag) == "function" then
-    local info = debug.getinfo(vnode.tag, "n")
-    if info and info.name and info.name ~= "" then
-      compName = info.name
-    end
   end
+  -- No debug.getinfo(fn, "n") fallback: for a function value (not a stack
+  -- level) it never reports a name on any Lua, and it would make this
+  -- browser-shipped module depend on the debug library.
   self.name = compName
 
   self.props = vnode.props or {}

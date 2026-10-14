@@ -405,15 +405,7 @@ local ENTITIES = { amp = "&", lt = "<", gt = ">", quot = '"', apos = "'", nbsp =
   ndash = "\226\128\147", lsquo = "\226\128\152", rsquo = "\226\128\153", ldquo = "\226\128\156",
   rdquo = "\226\128\157", times = "\195\151", middot = "\194\183", rarr = "\226\134\146", larr = "\226\134\144" }
 
-local function utf8_char(code)
-  if code < 0x80 then return string.char(code) end
-  if code < 0x800 then return string.char(0xC0 + math.floor(code / 0x40), 0x80 + code % 0x40) end
-  if code < 0x10000 then
-    return string.char(0xE0 + math.floor(code / 0x1000), 0x80 + math.floor(code / 0x40) % 0x40, 0x80 + code % 0x40)
-  end
-  return string.char(0xF0 + math.floor(code / 0x40000), 0x80 + math.floor(code / 0x1000) % 0x40,
-    0x80 + math.floor(code / 0x40) % 0x40, 0x80 + code % 0x40)
-end
+local utf8_char = require("hydronium_luax.compat").utf8_char
 
 local function entity(s, i)
   local name, stop = s:match("^&([%a][%w]*);()", i)

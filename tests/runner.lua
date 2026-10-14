@@ -468,6 +468,7 @@ local function main()
       "tests/package_load_spec.lua",
       "tests/core/action_form_spec.lua",
       "tests/core/config_spec.lua",
+      "tests/core/compat_spec.lua",
       "auth/tests/auth_flow_spec.lua",
       "tests/luax/no_core_coupling_spec.lua",
       "tests/luax/loader_spec.lua",

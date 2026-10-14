@@ -5,7 +5,7 @@
   Compatible with Lua 5.1, 5.2, 5.3, 5.4, and LuaJIT.
 --]]
 
-local unpack = table.unpack or unpack
+local unpack = require("hydronium.compat").unpack
 
 local graph = {}
 

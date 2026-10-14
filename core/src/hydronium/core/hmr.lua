@@ -7,6 +7,8 @@
 local family_loader = require("hydronium.core.family_loader")
 local module_graph = require("hydronium.core.module_graph")
 
+local compat = require("hydronium.compat")
+
 local M = {}
 
 local function compile(module_id, source)
@@ -16,8 +18,7 @@ local function compile(module_id, source)
   if type(source) ~= "string" then
     error("hydronium.core.hmr: source for '" .. module_id .. "' must be a string", 3)
   end
-  local load_fn = loadstring or load
-  local chunk, err = load_fn(source, "@" .. module_id)
+  local chunk, err = compat.load(source, "@" .. module_id)
   if not chunk then
     error("hydronium.core.hmr: could not compile '" .. module_id .. "': " .. tostring(err), 3)
   end

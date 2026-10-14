@@ -68,6 +68,31 @@ describe("hydronium_ballad client production bundle entries", function()
     assert.truthy(tostring(err):find("helper", 1, true))
   end)
 
+  it("bundles the @lua54 flavor variant under the plain id and drops other variants", function()
+    local store = graph.Graph.new()
+    local project = {
+      store:add_asset({ kind = "hy_module", virtual_path = "views/App.lua", content = 'return require("pkg.compat")',
+        metadata = { hydronium = { module_id = "views.App", target = "client" } } }),
+      store:add_asset({ kind = "hy_module", virtual_path = "views/Own@lua54.lua", content = 'return "own 5.4"',
+        metadata = { hydronium = { module_id = "views.Own@lua54", target = "client" } } }),
+      store:add_asset({ kind = "hy_module", virtual_path = "views/Own.lua", content = 'return "own fallback"',
+        metadata = { hydronium = { module_id = "views.Own", target = "client" } } }),
+    }
+    local framework = {
+      store:add_asset({ kind = "file", virtual_path = "pkg/compat.lua", content = 'return "fallback"' }),
+      store:add_asset({ kind = "file", virtual_path = "pkg/compat@lua54.lua", content = 'return "lua54"' }),
+      store:add_asset({ kind = "file", virtual_path = "pkg/compat@luajit.lua", content = 'return "luajit"' }),
+      store:add_asset({ kind = "file", virtual_path = "pkg/mail@example.lua", content = 'return "not a variant"' }),
+    }
+    local result = client.resolve(fake_ctx(), { { assets = project }, { assets = framework } }, { project_entries = true })
+    assert.same(ids_of(result), { "pkg.compat", "views.App", "views.Own" })
+    for _, asset in ipairs(result.assets) do
+      local id = asset.kind == "hy_module" and asset.metadata.hydronium.module_id
+      if id == "pkg.compat" then assert.equal(asset.content, 'return "lua54"') end
+      if id == "views.Own" then assert.equal(asset.content, 'return "own 5.4"') end
+    end
+  end)
+
   it("still requires explicit entries without project_entries", function()
     assert.has_error(function() client.resolve(fake_ctx(), { { assets = {} } }, {}) end)
   end)

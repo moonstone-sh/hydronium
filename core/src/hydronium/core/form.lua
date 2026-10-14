@@ -3,6 +3,7 @@
 local signals = require("hydronium.signals")
 local context = require("hydronium.core.context")
 local scope = require("hydronium.core.scope")
+local compat = require("hydronium.compat")
 
 local M = {}
 
@@ -42,10 +43,10 @@ local function literal(value, label)
   if type(value) ~= "string" then
     error("hydronium.forms: " .. label .. " bridge returned " .. type(value) .. ", expected a Lua literal string", 3)
   end
-  local compile = loadstring or load
-  local chunk, err = compile("return " .. value, "@hydronium-form-bridge")
+  -- An empty environment on every dialect: the payload is a literal and
+  -- must not reach globals (before compat, 5.2+ ran it against _G).
+  local chunk, err = compat.load("return " .. value, "@hydronium-form-bridge", {})
   if not chunk then error("hydronium.forms: invalid " .. label .. " bridge payload: " .. tostring(err), 3) end
-  if setfenv then setfenv(chunk, {}) end
   local ok, result = pcall(chunk)
   if not ok or type(result) ~= "table" then
     error("hydronium.forms: invalid " .. label .. " bridge payload", 3)

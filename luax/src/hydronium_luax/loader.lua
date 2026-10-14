@@ -113,8 +113,7 @@ function M.load(path, options)
   local compiled = dialects.of(path) == "markdown" and dialects.compile(source, opts) or compiler.compile(source, opts)
   report_missing_scope(path, compiled, opts.quiet)
 
-  local load_fn = loadstring or load
-  local chunk, err = load_fn(compiled.code, "@" .. path)
+  local chunk, err = require("hydronium_luax.compat").load(compiled.code, "@" .. path)
   if not chunk then
     error("hydronium_luax.loader: syntax error loading compiled .luax [" .. path .. "]: " .. tostring(err), 0)
   end
