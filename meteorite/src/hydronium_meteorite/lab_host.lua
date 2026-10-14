@@ -35,10 +35,15 @@ local runtime_package_envs = {
   "MOONSTONE_PACKAGE_ROOT_LUA_CJSON",
 }
 
-local module_source = debug.getinfo(1, "S").source
-if module_source:sub(1, 1) == "@" then module_source = module_source:sub(2) end
-local own_package_root = module_source:match("^(.*)/src/hydronium_meteorite/lab_host%.lua$")
-  or module_source:match("^(.*)/hydronium_meteorite/lab_host%.lua$")
+-- Fallback only, when Moonstone did not export this package's root: derive
+-- it from this file's chunk name (wrong once the file is bundled, hence
+-- lazy and last).
+local function own_package_root()
+  local module_source = debug.getinfo(1, "S").source
+  if module_source:sub(1, 1) == "@" then module_source = module_source:sub(2) end
+  return module_source:match("^(.*)/src/hydronium_meteorite/lab_host%.lua$")
+    or module_source:match("^(.*)/hydronium_meteorite/lab_host%.lua$")
+end
 
 local function package_scope_source()
   local names = {}
@@ -92,7 +97,7 @@ local function runtime_environment(config)
   for _, env_name in ipairs(runtime_package_envs) do
     local root = os.getenv(env_name)
     if (not root or root == "") and env_name == "MOONSTONE_PACKAGE_ROOT_HYDRONIUM_METEORITE" then
-      root = own_package_root
+      root = own_package_root()
     end
     if not root or root == "" then
       error("Hydronium Lab dependency is unavailable: " .. env_name, 0)

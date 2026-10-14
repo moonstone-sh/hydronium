@@ -169,6 +169,8 @@ function M.page(c, contract)
   if not registry then return c:text(503, tostring(registry_error)) end
   local has_dom = config.renderer == "dom" or config.renderer == "mixed"
   for _, story in ipairs(registry.stories) do if story.renderer == "dom" then has_dom = true end end
+  -- `config.document` is a dynamic entry point named by the Lab config
+  -- (docs/QUAVER_READINESS.md). Development tool only.
   if has_dom then
     Document = config.document and require(config.document) or require("hydronium_lab.dom_document").Document
     contract.assets.client = (contract.base_path == "/" and "" or contract.base_path) .. "/assets/dom-lab.js"

@@ -68,14 +68,14 @@ else
     if env == nil then return native_load(source, chunkname, "t") end
     return native_load(source, chunkname, "t", env)
   end
-  if utf8 and utf8.char then
+  if _VERSION == "Lua 5.2" then
+    M.utf8_char = encode -- 5.2 has no utf8 library
+  else
     local char = utf8.char
     function M.utf8_char(code)
       if code < 0 or code > 0x10FFFF then return REPLACEMENT end
       return char(code)
     end
-  else
-    M.utf8_char = encode -- 5.2 has no utf8 library
   end
 end
 

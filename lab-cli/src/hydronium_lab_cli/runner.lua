@@ -314,6 +314,8 @@ function M.plan(opts)
   if not descriptor then return nil, host_err end
   local exposed, expose_err = expose_package_root(descriptor.package)
   if not exposed then return nil, expose_err end
+  -- Dynamic entry point by design: the Lab host adapter is named by the
+  -- project's Lab config (docs/QUAVER_READINESS.md). Development tool only.
   local ok, adapter = pcall(require, descriptor.module)
   if not ok then return nil, "cannot load Lab host adapter '" .. descriptor.module .. "': " .. tostring(adapter) end
   if type(adapter) ~= "table" or type(adapter.plan) ~= "function" then

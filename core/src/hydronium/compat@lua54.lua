@@ -17,4 +17,15 @@ end
 
 M.tointeger = math.tointeger
 
+--- Where a Lua function is defined, for diagnostics: short source and first
+--- line, or nil (C functions, stripped chunks, or no debug library).
+function M.function_location(fn)
+  local getinfo = debug and debug.getinfo
+  local info = getinfo and type(fn) == "function" and getinfo(fn, "S")
+  if info and info.short_src and info.linedefined and info.linedefined > 0 then
+    return info.short_src, info.linedefined
+  end
+  return nil
+end
+
 return M

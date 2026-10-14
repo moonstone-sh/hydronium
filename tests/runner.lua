@@ -432,6 +432,7 @@ local function main()
       "tests/build/site_manifest_spec.lua",
       "tests/build/client_require_discipline_spec.lua",
       "tests/build/client_bundle_entries_spec.lua",
+      "tests/build/quaver_readiness_spec.lua",
       "tests/build/markdown_compile_spec.lua",
       "tests/server/render_page_spec.lua",
       "tests/server/json_decode_spec.lua",

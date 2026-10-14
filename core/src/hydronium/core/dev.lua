@@ -8,6 +8,7 @@
 ]]
 
 local scheduler = require("hydronium.core.scheduler")
+local compat = require("hydronium.compat")
 
 local dev = {}
 local seen = {}
@@ -37,9 +38,9 @@ end
 function dev.describe(component)
   local name = component.name
   if name and name ~= "Component" and name ~= "Anonymous" then return "<" .. name .. ">" end
-  local info = type(component.type) == "function" and debug and debug.getinfo and debug.getinfo(component.type, "S")
-  if info and info.short_src and info.linedefined and info.linedefined > 0 then
-    return "the component defined at " .. info.short_src:gsub("^.*[/\\]", "") .. ":" .. info.linedefined
+  local source, line = compat.function_location(component.type)
+  if source then
+    return "the component defined at " .. source:gsub("^.*[/\\]", "") .. ":" .. line
   end
   return "<" .. (name or "Component") .. ">"
 end

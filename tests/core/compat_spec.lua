@@ -26,7 +26,7 @@ local function compat_files(dir)
 end
 
 local PACKAGES = {
-  { dir = "core/src/hydronium", api = { "load", "tointeger", "unpack" } },
+  { dir = "core/src/hydronium", api = { "function_location", "load", "tointeger", "unpack" } },
   { dir = "luax/src/hydronium_luax", api = { "load", "utf8_char" } },
 }
 
@@ -207,4 +207,17 @@ describe("hydronium.compat (resolved through package.path)", function()
     local compat = require("hydronium.compat")
     assert.equal(compat.unpack, table.unpack or unpack)
   end)
+end)
+
+describe("hydronium.compat.function_location", function()
+  for _, path in ipairs(compat_files("core/src/hydronium")) do
+    it("reports where a Lua function is defined (" .. path .. ")", function()
+      local compat = load_file(path)
+      local source, line = compat.function_location(function() end)
+      assert.truthy(source and source:find("compat_spec.lua", 1, true), tostring(source))
+      assert.equal(type(line), "number")
+      assert.equal(compat.function_location(print), nil)
+      assert.equal(compat.function_location("not a function"), nil)
+    end)
+  end
 end)

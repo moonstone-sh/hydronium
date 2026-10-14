@@ -45,6 +45,9 @@ local function island(module_id, props, opts)
   end
   props = props or {}
   check_props(props, "")
+  -- Dynamic entry point by design (docs/QUAVER_READINESS.md): island ids
+  -- are declared in hydronium.sources.lua `islands`, which the client
+  -- bundle walks as explicit entries. This require is server-side only.
   local Component = require(module_id)
   -- element.h may annotate its props table; the plan keeps the caller's.
   local own = {}

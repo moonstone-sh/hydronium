@@ -24,6 +24,8 @@
                                           the chunk on every dialect
     compat.tointeger(x)                   math.tointeger semantics: the
                                           integer value of `x`, or nil
+    compat.function_location(fn)          short_src, linedefined | nil
+                                          (diagnostics; the only debug use)
 --]]
 
 local M = {}
@@ -79,6 +81,17 @@ else
   end
   -- 5.2 has integers-as-floats only and no math.tointeger.
   M.tointeger = math.tointeger or integral
+end
+
+--- Where a Lua function is defined, for diagnostics: short source and first
+--- line, or nil (C functions, stripped chunks, or no debug library).
+function M.function_location(fn)
+  local getinfo = debug and debug.getinfo
+  local info = getinfo and type(fn) == "function" and getinfo(fn, "S")
+  if info and info.short_src and info.linedefined and info.linedefined > 0 then
+    return info.short_src, info.linedefined
+  end
+  return nil
 end
 
 return M
