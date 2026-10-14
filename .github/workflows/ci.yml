@@ -94,6 +94,8 @@ jobs:
           git -C .ci/ballad checkout --detach "v$ballad_version"
           ln -s "$GITHUB_WORKSPACE/.ci/ballad" "$GITHUB_WORKSPACE/../ballad"
           (cd .ci/ballad && moon sync --locked)
+      - name: Server module incremental build integration
+        run: bash tests/build/test_incremental_pipeline.sh
       - name: Run Hydronium tests
         run: |
           parser_dir="$RUNNER_TEMP/hydronium-parser"

@@ -169,3 +169,24 @@ change invalidates those results as well as a content change.
 From the framework workspace, verify the full pipeline with
 `bash tests/build/test_incremental_pipeline.sh`. It uses the sibling Ballad
 checkout by default; set `BALLAD_ROOT` to select another checkout.
+
+## Precompile production SSR modules
+
+In a Hydronium SSR project, add `hb.server_modules(p)` to the build partiture:
+
+```lua
+local ballad = require("ballad")
+local hb = require("hydronium_ballad")
+return ballad.partiture(function(p)
+  hb.source_inventory(p)
+  hb.client_bundle(p)
+  hb.server_modules(p)
+end)
+```
+
+The generated Lua tree is `.hydronium/server`. Include it in the deployment and
+prepend `.hydronium/server/?.lua;.hydronium/server/?/init.lua;` to the production
+server's `package.path`. This avoids recompiling Luax in each request VM.
+Unchanged outputs keep their timestamps; edits rebuild and removed files are
+pruned. The optional `root` and `out` settings default to `src` and
+`.hydronium/server`. Development should keep the live Luax loader.

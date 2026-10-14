@@ -182,7 +182,7 @@ role = "runtime"
 # Ballad plugins: partiture.lua discovers this project's Lua sources.
 [[dependencies]]
 name = "hydronium/ballad"
-constraint = "^0.2.8"
+constraint = "^0.2.9"
 role = "runtime"
 
 [[dependencies]]
@@ -230,6 +230,7 @@ local hb = require("hydronium_ballad")
 return ballad.partiture(function(p)
   hb.source_inventory(p)
   hb.client_bundle(p)
+  hb.server_modules(p)
 end)
 ]]
 
@@ -372,7 +373,11 @@ return Document
   -- handlers are their own modules and require what they need inside.
   files["src/app/page_handler.lua"] = string.format([[-- Renders every page in src/views/Site.lua on the server. The page tree is
 -- marked as a browser Lua mount, so the same views keep running client-side.
-require("hydronium_luax").loader.install()
+if os.getenv("HYDRONIUM_ASSET_MODE") == "production" then
+  package.path = ".hydronium/server/?.lua;.hydronium/server/?/init.lua;" .. package.path
+else
+  require("hydronium_luax").loader.install()
+end
 local adapter = require("hydronium_router.meteorite")
 local dom = require("hydronium_dom.server.meteorite")
 local site = require("views.Site")
@@ -692,11 +697,18 @@ A component's state survives an edit when it is an ordinary
 `signals.createSignal(...)` declared at the top of a setup function that takes
 `scope` (see `Home.luax`).
 
+## Production server modules
+
+`moon run build` compiles server Luax into `.hydronium/server` through Ballad.
+Deploy that directory with the server and set `HYDRONIUM_ASSET_MODE=production`
+when starting it. The page handler loads compiled Lua instead of compiling
+components in every request VM. Development keeps the live Luax loader.
+
 ## Build
 
 ```bash
 moon run build
-./dist/server
+HYDRONIUM_ASSET_MODE=production ./dist/server
 ```
 
 `PORT=9000 ./dist/server` listens on another port.

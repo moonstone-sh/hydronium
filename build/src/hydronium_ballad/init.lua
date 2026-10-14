@@ -179,4 +179,19 @@ function M.client_bundle(p, opts)
   return p.sink.directory(site.manifest(bundled), { out = opts.out or M.CLIENT_DIR, incremental = true })
 end
 
+--- Compile production server modules once, outside request-scoped Lua VMs.
+--- The dedicated sink owns its files and removes obsolete compiled modules.
+--- Prepend `<out>/?.lua;<out>/?/init.lua;` to package.path in production.
+--- Keep the serve-time LUAX loader for development only.
+--- @param p table
+--- @param opts? {root?: string, out?: string}
+function M.server_modules(p, opts)
+  opts = opts or {}
+  local luax = p:use(M.plugins.luax)
+  local sources = p.source.files({"*.lua", "**/*.lua", "*.luax", "**/*.luax", "*.mdx", "**/*.mdx"}, {root = opts.root or "src"})
+  return p.sink.directory(luax.compile(sources, {target = "server"}), {
+    out = opts.out or ".hydronium/server", incremental = true,
+  })
+end
+
 return M

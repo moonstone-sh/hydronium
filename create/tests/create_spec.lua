@@ -395,6 +395,8 @@ test("scaffold dry-run produces expected files for ssr template", function()
   assert(generated["moonstone.toml"]:find("hydronium dev --watch-sources", 1, true), "SSR dev must keep the Ballad inventory current")
   assert(generated["moonstone.toml"]:find('build = "moon exec -- ballad play build.partiture.lua && ', 1, true), "SSR build must bundle before compiling the server")
   assert(generated["build.partiture.lua"]:find("hb.client_bundle(p)", 1, true), "SSR release build must produce the browser bundle")
+  assert(generated["build.partiture.lua"]:find("hb.server_modules", 1, true), "SSR release build must precompile server modules")
+  assert(generated["src/app/page_handler.lua"]:find(".hydronium/server/?.lua", 1, true), "Production SSR must load compiled modules")
   local main = generated["src/main.lua"]
   assert(main:find('require("hydronium_dom.server.meteorite")', 1, true) and main:find("hydronium.mount(app)", 1, true),
     "SSR must declare framework routes through hydronium.mount")
