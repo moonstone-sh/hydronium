@@ -158,29 +158,9 @@ registry = "moonstone"
 roles = ["tool"]
 
 [[realization]]
-realization_hash = "b3:5ac4527ade78260733eb14ee472c6c56530a84ca8e652311ef6779dd1b14bb4e"
-name = "moonstone/valua"
-version = "0.3.0"
-kind = "bin"
-source_hash = "b3:62ce667312941d8e07da7347bc8ec63222bab9f1fbb14af62c77b5d77f81b75f"
-recipe_hash = "b3:d2e41933ad8630efc51b58105f24854c5b1334a22bcc831468478665240fb5ee"
-artifact_hash = "b3:62ce667312941d8e07da7347bc8ec63222bab9f1fbb14af62c77b5d77f81b75f"
-replay_mode = "portable_source"
-runtime = "5.1"
-lua_abi = "5.4"
-target = "aarch64-macos"
-constellation = "default"
-source = "https://github.com/moonstone-sh/valua/releases/download/v0.3.0/valua-0.3.0-any.tar.gz"
-source_kind = "archive"
-source_payload = "sources/blob.tar.gz"
-resolver = "moonstone"
-registry = "moonstone"
-roles = ["tool"]
-
-[[realization]]
-realization_hash = "b3:3b4b54e57a3b08f3dbffa17ce0a098535373a2bfff8cfcbfe056c814fbb5f21e"
+realization_hash = "b3:4bb2ab204b890d190e8f8143b15485bbda0996c127926116ee9b08abb761abbe"
 name = "hydronium/dom"
-version = "0.3.5"
+version = "0.3.13"
 kind = "lib"
 recipe_hash = ""
 artifact_hash = "path"
@@ -195,9 +175,9 @@ resolver = "path"
 roles = ["runtime"]
 
 [[realization]]
-realization_hash = "b3:26b65dacca659df19815d18d1b883d338a2bb973c5b42d39165bbedb11e37574"
+realization_hash = "b3:e6abb7b5d1c70e32bec0c1447df179819d7d3b7a4ec7c89cdef2620060c502b2"
 name = "hydronium/luax"
-version = "0.2.5"
+version = "0.2.14"
 kind = "lib"
 recipe_hash = ""
 artifact_hash = "path"
@@ -212,9 +192,9 @@ resolver = "path"
 roles = ["runtime"]
 
 [[realization]]
-realization_hash = "b3:99da9e6949aa0cdef21d1bdb3e4269a23cbd11f2480774a270f2146301fc5dd7"
+realization_hash = "b3:6e32967aea57c2462d4ab9a945455080549010d43fd9fd948124ceb3210ca60d"
 name = "hydronium/core"
-version = "0.2.5"
+version = "0.2.13"
 kind = "lib"
 recipe_hash = ""
 artifact_hash = "path"
@@ -229,19 +209,39 @@ resolver = "path"
 roles = ["runtime"]
 
 [[realization]]
-realization_hash = "b3:f2508999f4736e9c1ef191ab64aac778608c4b0a073c8114085cc6623a9fbd43"
+realization_hash = "b3:edae8526e21187e4834d173f41c4f090ae2d734fd2c6f7a7ea2784289b0b187c"
 name = "moonstone/ballad"
-version = "0.4.2"
+version = "0.4.5"
 kind = "bin"
-source_hash = "b3:426cba336e426039253511e1732ed542748af265857378bd8d561e39ef08440a"
-recipe_hash = "b3:b8dfc9e0b7b69affc5adf1d77feb9c1577ef43159ba74f512d046eaee66412bb"
-artifact_hash = "b3:426cba336e426039253511e1732ed542748af265857378bd8d561e39ef08440a"
+source_hash = "b3:488faa3036f40640d9ce90868e1ac34247af617782149c23474c5beb2bbf4af6"
+recipe_hash = "b3:03b01de726eceb2b639267d7d1faba59b48e47cd222d16e38f3debac8184107a"
+artifact_hash = "b3:488faa3036f40640d9ce90868e1ac34247af617782149c23474c5beb2bbf4af6"
 replay_mode = "portable_source"
 runtime = "5.1"
 lua_abi = "5.1"
 target = "aarch64-macos"
 constellation = "default"
-source = "https://github.com/moonstone-sh/ballad/releases/download/v0.4.2/ballad-0.4.2-any.tar.gz"
+source = "https://github.com/moonstone-sh/ballad/releases/download/v0.4.5/ballad-0.4.5-any.tar.gz"
+source_kind = "archive"
+source_payload = "sources/blob.tar.gz"
+resolver = "moonstone"
+registry = "moonstone"
+roles = ["tool"]
+
+[[realization]]
+realization_hash = "b3:20049585c4485ede88c8e746c7405ea1a109e29db3e2de95fb33f91a22932f16"
+name = "moonstone/valua"
+version = "0.3.4"
+kind = "bin"
+source_hash = "b3:5e286d811e175d917b3b526618559f5425721116f4df0381c0c96596d73c81d0"
+recipe_hash = "b3:4a62c48d851bb69f8127252e565e7d91735642a28a200a4ee3e6b7739b5a66f0"
+artifact_hash = "b3:5e286d811e175d917b3b526618559f5425721116f4df0381c0c96596d73c81d0"
+replay_mode = "portable_source"
+runtime = "5.1"
+lua_abi = "5.4"
+target = "aarch64-macos"
+constellation = "default"
+source = "https://github.com/moonstone-sh/valua/releases/download/v0.3.4/valua-0.3.4-any.tar.gz"
 source_kind = "archive"
 source_payload = "sources/blob.tar.gz"
 resolver = "moonstone"
@@ -253,5 +253,5 @@ id = "aarch64-macos+moonstone/luajit+5.1"
 target = "aarch64-macos"
 runtime = "moonstone/luajit"
 lua_abi = "5.1"
-packages = [{ name = "moonstone/luajit", version = "2.1.0", realization_hash = "b3:b273ed93742b3274d926ff850b47337909e6b900321e028fc78e053e95849002" }, { name = "hydronium/dom", version = "0.3.5", realization_hash = "b3:3b4b54e57a3b08f3dbffa17ce0a098535373a2bfff8cfcbfe056c814fbb5f21e" }, { name = "hydronium/luax", version = "0.2.5", realization_hash = "b3:26b65dacca659df19815d18d1b883d338a2bb973c5b42d39165bbedb11e37574" }, { name = "hydronium/core", version = "0.2.5", realization_hash = "b3:99da9e6949aa0cdef21d1bdb3e4269a23cbd11f2480774a270f2146301fc5dd7" }, { name = "moonstone/ballad", version = "0.4.2", realization_hash = "b3:f2508999f4736e9c1ef191ab64aac778608c4b0a073c8114085cc6623a9fbd43" }, { name = "dkjson", version = "2.11-1", realization_hash = "b3:8db16d679ac99eb5b7c3235a5a17011a0a988b1df39dc92b056cd02b6f851868" }, { name = "moonstone/clingy", version = "0.7.0", realization_hash = "b3:289c66271c543a2f61d8eca40c041296e7b1bde49db7c728dcc59ac5c3ef7a70" }, { name = "moonstone/valua", version = "0.3.0", realization_hash = "b3:5ac4527ade78260733eb14ee472c6c56530a84ca8e652311ef6779dd1b14bb4e" }, { name = "moonstone/luals-composer", version = "0.2.1", realization_hash = "b3:d7f0d2704b3452616b33eab0030d884d1b230a7cd1d775ac269d181a384a1699" }, { name = "moonstone/alter", version = "0.2.2", realization_hash = "b3:05e73d8a444fda80c18255907feebf07e3fdbab63fa1f7c496a5afe89edd5bff" }, { name = "moonstone/alter-jsonc", version = "0.2.2", realization_hash = "b3:0bf2cb175a4f1881ee03c86a7b55f766009c7f944f459d551aa9ce0f563e0823" }, { name = "moonstone/alter-json", version = "0.2.2", realization_hash = "b3:d5e50ddcc42f6a079b9cc03505b2e890ef134d48c0bfa1f6eb83c321bbbb30f6" }, { name = "moonstone/lua", version = "5.4.9", realization_hash = "b3:3a7fc20b3d68601c9be511dae05db4666556406b5cbbaa0ace9e2c6f510eeec8" }]
+packages = [{ name = "moonstone/luajit", version = "2.1.0", realization_hash = "b3:b273ed93742b3274d926ff850b47337909e6b900321e028fc78e053e95849002" }, { name = "hydronium/dom", version = "0.3.13", realization_hash = "b3:4bb2ab204b890d190e8f8143b15485bbda0996c127926116ee9b08abb761abbe" }, { name = "hydronium/luax", version = "0.2.14", realization_hash = "b3:e6abb7b5d1c70e32bec0c1447df179819d7d3b7a4ec7c89cdef2620060c502b2" }, { name = "hydronium/core", version = "0.2.13", realization_hash = "b3:6e32967aea57c2462d4ab9a945455080549010d43fd9fd948124ceb3210ca60d" }, { name = "moonstone/ballad", version = "0.4.5", realization_hash = "b3:edae8526e21187e4834d173f41c4f090ae2d734fd2c6f7a7ea2784289b0b187c" }, { name = "dkjson", version = "2.11-1", realization_hash = "b3:8db16d679ac99eb5b7c3235a5a17011a0a988b1df39dc92b056cd02b6f851868" }, { name = "moonstone/clingy", version = "0.7.0", realization_hash = "b3:289c66271c543a2f61d8eca40c041296e7b1bde49db7c728dcc59ac5c3ef7a70" }, { name = "moonstone/valua", version = "0.3.4", realization_hash = "b3:20049585c4485ede88c8e746c7405ea1a109e29db3e2de95fb33f91a22932f16" }, { name = "moonstone/luals-composer", version = "0.2.1", realization_hash = "b3:d7f0d2704b3452616b33eab0030d884d1b230a7cd1d775ac269d181a384a1699" }, { name = "moonstone/alter", version = "0.2.2", realization_hash = "b3:05e73d8a444fda80c18255907feebf07e3fdbab63fa1f7c496a5afe89edd5bff" }, { name = "moonstone/alter-jsonc", version = "0.2.2", realization_hash = "b3:0bf2cb175a4f1881ee03c86a7b55f766009c7f944f459d551aa9ce0f563e0823" }, { name = "moonstone/alter-json", version = "0.2.2", realization_hash = "b3:d5e50ddcc42f6a079b9cc03505b2e890ef134d48c0bfa1f6eb83c321bbbb30f6" }, { name = "moonstone/lua", version = "5.4.9", realization_hash = "b3:3a7fc20b3d68601c9be511dae05db4666556406b5cbbaa0ace9e2c6f510eeec8" }]
 edges = []

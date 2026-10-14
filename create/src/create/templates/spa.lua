@@ -327,7 +327,7 @@ build = "moon exec -- ballad play partiture.lua"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.4.2"
+constraint = "^0.4.5"
 role = "tool"
 
 [[dependencies]]
@@ -409,7 +409,7 @@ role = "tool"
 
 [[dependencies]]
 name = "moonstone/ballad"
-constraint = "^0.4.2"
+constraint = "^0.4.5"
 role = "tool"
 
 [[dependencies]]

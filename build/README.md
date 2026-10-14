@@ -4,6 +4,8 @@ This directory contains Hydronium’s Ballad build plugins.
 
 ## Server modules (0.2.9)
 
+Requires Moonstone Ballad 0.4.5 or newer.
+
 Production SSR modules can be compiled ahead of request handling with
 `require("hydronium_ballad").server_modules(p)` inside a partiture. It emits
 plain Lua under `.hydronium/server`, using the existing incremental compile
