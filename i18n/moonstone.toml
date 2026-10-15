@@ -2,7 +2,7 @@ manifest_version = 2
 
 [package]
 name = "hydronium/i18n"
-version = "0.1.0"
+version = "0.7.0"
 kind = "lib"
 description = "Compiled Inlang messages and explicit locale contexts for Lua and JavaScript"
 
