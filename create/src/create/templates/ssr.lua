@@ -156,7 +156,7 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/cli"
-constraint = "^0.7.0"
+constraint = "^0.8.0"
 role = "tool"
 
 [[dependencies]]
@@ -166,28 +166,28 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.7.0"
+constraint = "^0.8.0"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/luax"
-constraint = "^0.7.0"
+constraint = "^0.8.0"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.7.0"
+constraint = "^0.8.0"
 role = "runtime"
 
 # Ballad plugins: partiture.lua discovers this project's Lua sources.
 [[dependencies]]
 name = "hydronium/ballad"
-constraint = "^0.7.0"
+constraint = "^0.8.0"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/router"
-constraint = "^0.7.0"
+constraint = "^0.8.0"
 role = "runtime"
 ]=], project_name)
 
