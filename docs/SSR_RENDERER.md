@@ -52,8 +52,8 @@ mangled JSON/style helpers, including the page.
 
 Explicit SVG lookup declarations let Quaver main verify export stability without
 assuming initializer loops are pure. The statically retained Strict closure has
-25 modules including the page and verification entry: 56,269 bytes as mangled
-module files, or 57,454 bytes as a standalone bundle. Both artifacts produce the
+25 modules including the page and verification entry: 56,331 bytes as mangled
+module files, or 57,516 bytes as a standalone bundle. Both artifacts produce the
 same HTML, SVG casing, escaping, styles, JSON behavior, and repeated renders.
 No consumer export profiles are supplied; unused features inside retained
 modules are not eliminated. These are fixture source/artifact totals, not browser

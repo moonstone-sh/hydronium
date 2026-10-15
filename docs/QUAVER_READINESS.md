@@ -40,11 +40,17 @@ existing site-facing entrypoint retains integration behavior.
 
 The SVG lookup sets are explicit literal declarations, covered by casing and
 rendering checks. Quaver main now proves the plain renderer's Strict closure:
-56,269 bytes as mangled module files, or 57,454 as a standalone bundle, including
+56,331 bytes as mangled module files, or 57,516 as a standalone bundle, including
 the verification entry. Both execute identically on Lua 5.4 and LuaJIT. This
 selects the dependency closure and mangles local bindings; no consumer export
 profile removes unused features within retained modules. Published Quaver 0.1.2
 lacks the required scanner/class-proof changes.
+Independent consumer-profile probes retain actionable failures: renderer/element
+selection requires proof of conditional compatibility initialization (`QV105`),
+and style selection requires a richer implementation-module selector (`QV101`).
+The verification entry exposes individual functions so it does not artificially
+cause export-table escape diagnostics. Its extra 62 bytes explain the revised
+artifact totals; framework source is unchanged.
 See [SSR renderer boundaries](SSR_RENDERER.md).
 
 The historical measurements below describe the earlier consolidation into one
