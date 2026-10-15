@@ -28,22 +28,22 @@ local DEPENDENCIES = [==[
 # release closure.
 [[dependencies]]
 name = "hydronium/lab"
-constraint = "^0.3.9"
+constraint = "^0.7.0"
 role = "dev"
 
 [[dependencies]]
 name = "hydronium/ink-lab"
-constraint = "^0.3.6"
+constraint = "^0.7.0"
 role = "dev"
 
 [[dependencies]]
 name = "hydronium/meteorite"
-constraint = "^0.3.9"
+constraint = "^0.7.0"
 role = "dev"
 
 [[dependencies]]
 name = "hydronium/lab-cli"
-constraint = "^0.3.4"
+constraint = "^0.7.0"
 role = "tool"
 ]==]
 

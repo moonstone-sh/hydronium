@@ -3,7 +3,7 @@ manifest_version = 2
 [package]
 name = "hydronium/auth"
 registry_name = "hydronium"
-version = "0.1.1"
+version = "0.7.0"
 kind = "lib"
 description = "Optional reactive authentication flow orchestration for Hydronium"
 
