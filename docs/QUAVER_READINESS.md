@@ -17,14 +17,16 @@ diagnostic facilities preserve their existing behavior and error messages.
 
 The Quaver SSR experiment passes on Lua 5.4 and LuaJIT with identical rendered
 HTML, JSON behavior, and style serialization. Its narrow-import compacted source
-measurement drops from 81,947 to 81,148 bytes; with independently mangled JSON
-and style helpers it drops from 80,829 to 80,030 bytes. These are observed loaded
+measurement drops from 81,947 to 80,946 bytes after the capability split and
+removal of legacy sink inference; with independently mangled JSON and style
+helpers it drops from 80,829 to 79,828 bytes. These are observed loaded
 Lua-source bytes for the fixture, not browser or native-server sizes. The
 complete source inventory remains emitted.
 
 The primitive module independently passes Strict mangling (623 to 261 bytes).
 Whole-SSR Strict optimization still stops at `.diagnostics` because development
-warnings and sink compatibility use debug introspection. The split does not
+warnings still use debug introspection. SSR sinks now use an explicit method
+protocol and do not import diagnostics. The split does not
 remove those capabilities or grant permission to assume them harmless.
 
 The historical measurements below describe the earlier consolidation into one
@@ -79,8 +81,8 @@ The DOM host and the virtual host no longer read globals at all: the
 `docs/HOST_CAPABILITIES.md`). `ffi` is accepted only in `ink` (LuaJIT-only by design); `dom` must stay
 portable. `pcall(require, "literal")` counts as a static, optional
 dependency (Q2). `hydronium_dom.server.sink` used to call `debug.getinfo`
-to count a write function's parameters; that now goes through
-`hydronium.compat.function_arity`.
+to count a write function's parameters. That legacy inference has been removed: table sinks must implement `sink:write(chunk)`, while standalone
+function sinks receive the chunk directly.
 
 `d.<tag>` element descriptors are created on demand from the tag name by one
 module (`hydronium_dom.dom`), which also prebuilds the standard tags when it

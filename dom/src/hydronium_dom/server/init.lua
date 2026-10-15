@@ -826,9 +826,9 @@ end
 server.renderPage = server.render_page
 
 --- Streams virtual DOM rendering chunks into a sink.
---- The sink must implement `{ write = fun(chunk: string), flush = fun(), close = fun() }`.
+--- Pass `fun(chunk)` or a table with `:write(chunk)` and optional `:flush()` / `:close()` methods.
 --- @param vnode table Root VNode or Component
---- @param sink table Sink object
+--- @param sink function|HydroniumServerSink Sink callback or object
 --- @param options? table Options
 --- @return boolean ok
 --- @return string|nil err

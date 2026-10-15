@@ -27,7 +27,9 @@ Primitive helpers never import the loader or diagnostics. This keeps ordinary
 UI/signal code out of dynamic compilation and debug-introspection closures.
 The facade eagerly combines the same functions for backwards compatibility;
 internal consumers use focused imports. Diagnostics remain an explicit boundary
-when a caller needs function locations or sink arity inference.
+when a caller needs function locations or explicit introspection. SSR sink
+normalization does not import diagnostics: table sinks use `sink:write(chunk)`,
+and chunk-only callbacks are passed directly as function sinks.
 
 Core's primitive and loader capabilities, the legacy facade, and LUAX compat
 have portable fallbacks and Lua 5.4 variants. Diagnostics are dialect-neutral.
