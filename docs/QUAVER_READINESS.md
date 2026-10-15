@@ -7,6 +7,55 @@ itself would need. Status as of 2026-10-15, against Quaver's
 and the "Quaver implementation status" section of
 `quaver/docs/MOONSTONE_FLAVORS.md`.
 
+## Focused compatibility capabilities
+
+`hydronium.compat` is now a backwards-compatible facade over
+`hydronium.compat.primitives`, `.loader`, and `.diagnostics`. Framework internals
+import only the capability they use. Primitives contain `unpack` and integer
+conversion without `load`, environment mutation, or debug access. Compiler and
+diagnostic facilities preserve their existing behavior and error messages.
+
+The Quaver SSR experiment passes on Lua 5.4 and LuaJIT with identical rendered
+HTML, JSON behavior, and styles. Measured milestones for compacted observed
+Lua-source bytes (including the page) are:
+
+| Import / milestone | Bytes |
+| --- | ---: |
+| Original narrow element + site SSR entrypoint | 81,947 |
+| Compatibility split, explicit sinks, non-reflective warnings | 80,795 |
+| Explicit plain renderer entrypoint | 73,236 |
+| Plain renderer plus independently mangled JSON/style helpers | 72,118 |
+
+These are fixture totals, not browser or native-server sizes; the complete
+source inventory remains emitted. Narrow imports provide the module reduction,
+not automatic Quaver tree-shaking. The primitive module independently passes
+Strict mangling (623 to 261 bytes).
+
+Development warning emission has no diagnostics dependency. Optional
+`hydronium.core.dev_diagnostics.install()` supplies source locations only to a
+development entrypoint. SSR sinks use explicit methods without arity inference.
+The plain `hydronium_dom.server.renderer` also excludes Meteorite and manifest
+loading, accepting an optional per-render JavaScript module resolver. The
+existing site-facing entrypoint retains integration behavior.
+
+The SVG lookup sets are explicit literal declarations, covered by casing and
+rendering checks. Quaver main now proves the plain renderer's Strict closure:
+56,331 bytes as mangled module files, or 57,516 as a standalone bundle, including
+the verification entry. Both execute identically on Lua 5.4 and LuaJIT. This
+selects the dependency closure and mangles local bindings; no consumer export
+profile removes unused features within retained modules. Published Quaver 0.1.2
+lacks the required scanner/class-proof changes.
+Independent consumer-profile probes retain actionable failures: renderer/element
+selection requires proof of conditional compatibility initialization (`QV105`),
+and style selection requires a richer implementation-module selector (`QV101`).
+The verification entry exposes individual functions so it does not artificially
+cause export-table escape diagnostics. Its extra 62 bytes explain the revised
+artifact totals; framework source is unchanged.
+See [SSR renderer boundaries](SSR_RENDERER.md).
+
+The historical measurements below describe the earlier consolidation into one
+compat module; its reflection-owner entry is now the two explicit capabilities.
+
 ## How this was measured
 
 - **Browser closure**: `hydronium_dom.dev.client_manifest.build` seeded with
@@ -56,8 +105,8 @@ The DOM host and the virtual host no longer read globals at all: the
 `docs/HOST_CAPABILITIES.md`). `ffi` is accepted only in `ink` (LuaJIT-only by design); `dom` must stay
 portable. `pcall(require, "literal")` counts as a static, optional
 dependency (Q2). `hydronium_dom.server.sink` used to call `debug.getinfo`
-to count a write function's parameters; that now goes through
-`hydronium.compat.function_arity`.
+to count a write function's parameters. That legacy inference has been removed: table sinks must implement `sink:write(chunk)`, while standalone
+function sinks receive the chunk directly.
 
 `d.<tag>` element descriptors are created on demand from the tag name by one
 module (`hydronium_dom.dom`), which also prebuilds the standard tags when it
@@ -166,12 +215,12 @@ These are aligned with what Quaver already implements: variant selection via
 folding with `assume_runtime_globals`, a private module registry, and
 `externals`.
 
-- **Q1. Per-module reflection allowlist.** `tree_shaker` hard-fails on any
-  bare `load`/`setfenv`/`debug`/`_G`. Hydronium funnels all reflection into
-  `hydronium.compat` (and HMR into `hydronium.core.module_graph`). Please
-  accept something like `reflective = { ["hydronium.compat"] = true }`,
-  mirroring Hydronium's own `REQUIRE_DISCIPLINE_ALLOWLIST`, rather than
-  rejecting the whole graph.
+- **Q1. Explicit runtime boundaries.** Compilation and debug introspection live
+  in `hydronium.compat.loader` and `.diagnostics`; HMR instrumentation stays in
+  `hydronium.core.module_graph`. Preserve these capabilities under their runtime
+  contracts. An allowlist must not become evidence of purity or authorize
+  deleting their effects. Separately owned static regions can be optimized;
+  arbitrary shared-graph partitioning still needs proof.
 - **Q2. Optional edges.** Treat `pcall(require, "<literal>")` as an optional
   dependency: include it if resolvable, otherwise make it an external that
   fails at runtime as before. It is currently "dynamic/aliased require".

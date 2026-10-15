@@ -21,13 +21,17 @@ describe("Hydronium Server Renderer (SSR)", function()
       local closed = false
 
       local sink = {
-        write = function(chunk)
+        marker = "explicit sink",
+        write = function(self, chunk)
+          assert.equal(self.marker, "explicit sink")
           table.insert(chunks, chunk)
         end,
-        flush = function()
+        flush = function(self)
+          assert.equal(self.marker, "explicit sink")
           flushed = true
         end,
-        close = function()
+        close = function(self)
+          assert.equal(self.marker, "explicit sink")
           closed = true
         end,
       }
@@ -40,6 +44,28 @@ describe("Hydronium Server Renderer (SSR)", function()
       assert.truthy(closed, "Sink close must be invoked")
       local full = table.concat(chunks)
       assert.equal(full, '<main id="content"><span>Streamed chunk</span></main>')
+    end)
+
+    it("uses the explicit sink method protocol without debug introspection", function()
+      local protocol = require("hydronium_dom.server.sink")
+      local previous = debug
+      debug = nil
+      local chunks, instance = {}, { marker = "method" }
+      instance.write = function(self, ...)
+        assert.equal(self, instance)
+        assert.equal(select("#", ...), 1)
+        chunks[#chunks + 1] = (...)
+      end
+      local ok, err = pcall(function()
+        local sink = protocol.normalize(instance)
+        sink.write("one")
+        sink.write("two")
+        sink.flush()
+        sink.close()
+      end)
+      debug = previous
+      assert.truthy(ok, tostring(err))
+      assert.equal(table.concat(chunks), "onetwo")
     end)
 
     it("supports optional doctype prepending in server.render", function()
@@ -362,5 +388,18 @@ describe("Hydronium Server Renderer (SSR)", function()
       assert.equal(scopeModule.getScopeStackDepth(), initial_scope_depth, "Scope stack must be restored")
       assert.equal(contextModule.getContextStackDepth(), initial_ctx_depth, "Context stack must be restored")
     end)
+  end)
+end)
+
+
+describe("SSR SVG lookup declarations", function()
+  it("keeps lower and XML-cased names synchronized with the casing map", function()
+    local html = require("hydronium_dom.server.html")
+    for lower, cased in pairs(html.SVG_TAG_CASING) do
+      assert.equal(html.SVG_TAGS[lower], true)
+      assert.equal(html.SVG_TAGS[cased], true)
+      local rendered = server.render_to_string(H.h(cased, {strokeWidth=2}))
+      assert.equal(rendered, "<"..cased..' stroke-width="2"></'..cased..">")
+    end
   end)
 end)

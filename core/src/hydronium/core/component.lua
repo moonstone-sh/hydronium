@@ -14,7 +14,7 @@ local graph = require("hydronium.signals.graph")
 local familyLoader = require("hydronium.core.family_loader")
 local RefreshRegistry = require("hydronium.core.refresh").RefreshRegistry
 
-local unpack = require("hydronium.compat").unpack
+local unpack = require("hydronium.compat.primitives").unpack
 
 local componentModule = {}
 

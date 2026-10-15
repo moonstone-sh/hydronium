@@ -134,7 +134,9 @@ Less than 0.3 ms on average.
 `{ write = fun(chunk: string), flush = fun(), close = fun() }`.
 
 ### Q28: How does `server.render` invoke the sink write method?
-It inspects function arity via `debug.getinfo` to support both `sink:write(chunk)` and `sink.write(chunk)`.
+Table sinks implement `sink:write(chunk)`; optional `flush` and `close` are also
+methods. A chunk-only callback is passed directly as a function sink. Legacy
+arity inference has been removed, so normalization requires no debug reflection.
 
 ### Q29: Can `server.render_to_string` prepend an HTML5 doctype?
 Yes, via `{ doctype = true }` or a custom string in options.

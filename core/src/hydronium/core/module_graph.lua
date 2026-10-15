@@ -8,7 +8,7 @@ local M = {}
 
 -- The browser runs this module on PUC Lua 5.4, where the bare `unpack`
 -- global is nil (docs/BUNDLING.md section 4.1); hydronium.compat owns it.
-local unpack = require("hydronium.compat").unpack
+local unpack = require("hydronium.compat.primitives").unpack
 
 local original_require = require
 local enabled = false

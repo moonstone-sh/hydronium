@@ -44,7 +44,7 @@ local inspector = require("inspector")
 local query = require("query")
 local search_bar = require("ui.search_bar")
 
-local unpack = require("hydronium.compat").unpack
+local unpack = require("hydronium.compat.primitives").unpack
 
 local M = {}
 

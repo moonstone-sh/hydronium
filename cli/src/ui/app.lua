@@ -48,7 +48,7 @@ local query = require("query")
 
 -- This package is LuaJIT-only (hydronium_ink is); going through
 -- hydronium.compat keeps the module loadable under a plain 5.4 too.
-local unpack = require("hydronium.compat").unpack
+local unpack = require("hydronium.compat.primitives").unpack
 
 local M = {}
 

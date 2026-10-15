@@ -1,9 +1,11 @@
 --- Normalizes the small synchronous server sink protocol.
 --- A sink is either `fun(chunk)` or `{ write = fun(self, chunk), flush?,
---- close? }`. A one-argument table write function remains supported for
---- compatibility; new integrations should use the method form.
-local compat = require("hydronium.compat")
-
+--- close? }`. Table callbacks always receive the sink as their first argument.
+--- Use a function sink for a chunk-only callback; no arity inference is done.
+---@class HydroniumServerSink
+---@field write fun(self: HydroniumServerSink, chunk: string)
+---@field flush? fun(self: HydroniumServerSink)
+---@field close? fun(self: HydroniumServerSink)
 local M = {}
 
 local function call_member(sink, method)
@@ -12,6 +14,7 @@ local function call_member(sink, method)
   end
 end
 
+---@param sink fun(chunk: string)|HydroniumServerSink
 function M.normalize(sink)
   if type(sink) == 'function' then
     return {
@@ -25,14 +28,9 @@ function M.normalize(sink)
   end
 
   local write = sink.write
-  local nparams, isvararg = compat.function_arity(write)
-  local takes_chunk_only = nparams == 1 and not isvararg
 
   return {
     write = function(chunk)
-      if takes_chunk_only then
-        return write(chunk)
-      end
       return write(sink, chunk)
     end,
     flush = function() return call_member(sink, 'flush') end,

@@ -11,7 +11,7 @@ local errors = require("hydronium.core.errors")
 local scheduler = require("hydronium.core.scheduler")
 local graph = require("hydronium.signals.graph")
 
-local unpack = require("hydronium.compat").unpack
+local unpack = require("hydronium.compat.primitives").unpack
 
 local signalModule = {}
 

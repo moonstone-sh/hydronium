@@ -9,12 +9,12 @@
 ]]
 
 local scheduler = require("hydronium.core.scheduler")
-local compat = require("hydronium.compat")
 local hosts = require("hydronium.runtime.hosts")
 
 local dev = {}
 local seen = {}
 local handler = nil
+local describers = {}
 
 function dev.set_handler(fn)
   handler = fn
@@ -35,14 +35,35 @@ function dev.reset()
   seen = {}
 end
 
---- A component for messages: its name when it has one, else where its
---- function is defined (local functions have no name at run time).
+--- Install an optional development-only component formatter. Releasing an
+--- owner removes only its own registration, including out-of-order teardown.
+---@param fn fun(component: table): string|nil
+---@return fun(): boolean
+function dev.install_describer(fn)
+  if type(fn) ~= "function" then error("component describer must be a function", 2) end
+  local entry = { fn = fn }
+  describers[#describers + 1] = entry
+  local active = true
+  return function()
+    if not active then return false end
+    active = false
+    for index = #describers, 1, -1 do
+      if describers[index] == entry then table.remove(describers, index); return true end
+    end
+    return false
+  end
+end
+
+--- Ordinary warnings never inspect a function or its debug metadata.
+---@param component table
+---@return string
 function dev.describe(component)
   local name = component.name
   if name and name ~= "Component" and name ~= "Anonymous" then return "<" .. name .. ">" end
-  local source, line = compat.function_location(component.type)
-  if source then
-    return "the component defined at " .. source:gsub("^.*[/\\]", "") .. ":" .. line
+  local entry = describers[#describers]
+  if entry then
+    local description = entry.fn(component)
+    if type(description) == "string" then return description end
   end
   return "<" .. (name or "Component") .. ">"
 end

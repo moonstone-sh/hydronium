@@ -477,6 +477,7 @@ local function main()
       "tests/test_renderer/test_renderer_spec.lua",
       -- Server renderer specs
       "tests/server/ssr_spec.lua",
+      "tests/server/renderer_boundary_spec.lua",
       "tests/server/server_spec.lua",
       "tests/server/islands_suspense_spec.lua",
       "tests/server/client_boot_spec.lua",

@@ -10,7 +10,7 @@ local dev = require("hydronium.core.dev")
 local errors = require("hydronium.core.errors")
 local graph = require("hydronium.signals.graph")
 
-local unpack = require("hydronium.compat").unpack
+local unpack = require("hydronium.compat.primitives").unpack
 
 local computedModule = {}
 
