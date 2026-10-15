@@ -26,7 +26,7 @@ local function compat_files(dir)
 end
 
 local PACKAGES = {
-  { dir = "core/src/hydronium", api = { "function_location", "load", "tointeger", "unpack" } },
+  { dir = "core/src/hydronium", api = { "function_arity", "function_location", "load", "tointeger", "unpack" } },
   { dir = "luax/src/hydronium_luax", api = { "load", "utf8_char" } },
 }
 
@@ -218,6 +218,26 @@ describe("hydronium.compat.function_location", function()
       assert.equal(type(line), "number")
       assert.equal(compat.function_location(print), nil)
       assert.equal(compat.function_location("not a function"), nil)
+    end)
+  end
+end)
+
+describe("hydronium.compat.function_arity", function()
+  for _, path in ipairs(compat_files("core/src/hydronium")) do
+    it("reports declared parameters where the runtime can (" .. path .. ")", function()
+      local compat = load_file(path)
+      local n, vararg = compat.function_arity(function(a, b) return a, b end)
+      if n == nil then
+        -- PUC 5.1's debug.getinfo has no nparams; callers treat nil as unknown.
+        assert.equal(_VERSION, "Lua 5.1")
+      else
+        assert.equal(n, 2)
+        assert.equal(vararg, false)
+        local m, rest = compat.function_arity(function(a, ...) return a, ... end)
+        assert.equal(m, 1)
+        assert.equal(rest, true)
+      end
+      assert.equal(compat.function_arity("not a function"), nil)
     end)
   end
 end)
