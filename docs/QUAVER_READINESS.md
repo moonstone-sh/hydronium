@@ -38,10 +38,13 @@ The plain `hydronium_dom.server.renderer` also excludes Meteorite and manifest
 loading, accepting an optional per-render JavaScript module resolver. The
 existing site-facing entrypoint retains integration behavior.
 
-With Quaver's member-name scanner fix, Strict dependency discovery now reaches
-export verification. The next blocker is `hydronium_dom.server.html`'s SVG
-lookup sets, populated by initializer loops (`QV104`). Those loops need a proof
-or a deliberate static representation; their effects are not silently dropped.
+The SVG lookup sets are explicit literal declarations, covered by casing and
+rendering checks. Quaver main now proves the plain renderer's Strict closure:
+56,269 bytes as mangled module files, or 57,454 as a standalone bundle, including
+the verification entry. Both execute identically on Lua 5.4 and LuaJIT. This
+selects the dependency closure and mangles local bindings; no consumer export
+profile removes unused features within retained modules. Published Quaver 0.1.2
+lacks the required scanner/class-proof changes.
 See [SSR renderer boundaries](SSR_RENDERER.md).
 
 The historical measurements below describe the earlier consolidation into one

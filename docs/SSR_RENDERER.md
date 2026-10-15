@@ -45,14 +45,17 @@ existing synchronous, non-reentrant render/page state contract.
 
 ## Optimization status
 
-The Quaver fixture uses the complete supplied source inventory and ordinary
-module files. Selecting the plain-renderer API reduces observed loaded framework
-modules to 23, with 73,236 compacted Lua-source bytes including the page, or
-72,118 bytes with independently mangled JSON/style helpers. These are fixture
-source totals, not a deployed binary size or browser transfer claim.
+The Quaver fixture compares the original page with emitted Strict artifacts on
+Lua 5.4 and LuaJIT. Its plain-renderer imports load 23 framework modules:
+154,346 original source bytes, 74,230 compacted, or 73,112 with independently
+mangled JSON/style helpers, including the page.
 
-Strict dependency discovery now reaches the renderer without entering Meteorite
-or filesystem assets. Export verification stops at HTML's SVG lookup tables,
-which are populated by module-initialization loops (`QV104`). Those loops do not
-by themselves imply bad architecture, but Quaver cannot yet prove their export
-stability. No purity flag or reflection exception bypasses that proof.
+Explicit SVG lookup declarations let Quaver main verify export stability without
+assuming initializer loops are pure. The statically retained Strict closure has
+25 modules including the page and verification entry: 56,269 bytes as mangled
+module files, or 57,454 bytes as a standalone bundle. Both artifacts produce the
+same HTML, SVG casing, escaping, styles, JSON behavior, and repeated renders.
+No consumer export profiles are supplied; unused features inside retained
+modules are not eliminated. These are fixture source/artifact totals, not browser
+transfer or native-server sizes. Quaver 0.1.2 does not include the scanner and
+class-proof changes needed for this result.

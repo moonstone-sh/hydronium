@@ -390,3 +390,16 @@ describe("Hydronium Server Renderer (SSR)", function()
     end)
   end)
 end)
+
+
+describe("SSR SVG lookup declarations", function()
+  it("keeps lower and XML-cased names synchronized with the casing map", function()
+    local html = require("hydronium_dom.server.html")
+    for lower, cased in pairs(html.SVG_TAG_CASING) do
+      assert.equal(html.SVG_TAGS[lower], true)
+      assert.equal(html.SVG_TAGS[cased], true)
+      local rendered = server.render_to_string(H.h(cased, {strokeWidth=2}))
+      assert.equal(rendered, "<"..cased..' stroke-width="2"></'..cased..">")
+    end
+  end)
+end)
