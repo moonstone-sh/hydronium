@@ -2,12 +2,15 @@
   Development warnings: mistakes that do not raise an error but quietly
   misbehave. Each distinct warning is reported once per Lua state.
 
-  Output goes to the handler installed with dev.set_handler(fn), else to a
-  host-provided global `__hydronium_dev_warn(message)` (the docs site's
-  playground shows these under the result), else to print.
+  Output goes to the handler installed with dev.set_handler(fn), else to the
+  host's dev@1 capability, `warn(message)` (the docs site's playground
+  installs one to show these under the result), else to print. The former
+  `__hydronium_dev_warn` global was removed.
 ]]
 
 local scheduler = require("hydronium.core.scheduler")
+local compat = require("hydronium.compat")
+local hosts = require("hydronium.runtime.hosts")
 
 local dev = {}
 local seen = {}
@@ -21,9 +24,9 @@ function dev.warn(key, message)
   if seen[key] then return end
   seen[key] = true
   local text = "[hydronium] " .. message
-  local host = rawget(_G, "__hydronium_dev_warn")
+  local host = hosts.get("dev", 1)
   if handler then handler(text)
-  elseif host then host(text)
+  elseif host and type(host.warn) == "function" then host.warn(text)
   elseif print then print(text) end
 end
 
@@ -37,9 +40,9 @@ end
 function dev.describe(component)
   local name = component.name
   if name and name ~= "Component" and name ~= "Anonymous" then return "<" .. name .. ">" end
-  local info = type(component.type) == "function" and debug and debug.getinfo and debug.getinfo(component.type, "S")
-  if info and info.short_src and info.linedefined and info.linedefined > 0 then
-    return "the component defined at " .. info.short_src:gsub("^.*[/\\]", "") .. ":" .. info.linedefined
+  local source, line = compat.function_location(component.type)
+  if source then
+    return "the component defined at " .. source:gsub("^.*[/\\]", "") .. ":" .. line
   end
   return "<" .. (name or "Component") .. ">"
 end

@@ -1,6 +1,8 @@
 -- Host-neutral GET transport for route loaders. The server uses Meteorite's
--- named HTTP capability; the browser uses the abortable fetch bridge.
+-- named HTTP capability; the browser uses the router.http@1 host capability
+-- (router/client/http.js's createHttpCapability()).
 local json = require("hydronium_router.history.state")
+local hosts = require("hydronium.runtime.hosts")
 
 local M = {}
 
@@ -17,11 +19,12 @@ function M.get(ctx, capability, path, done)
     return nil
   end
 
-  local bridge = _G.__router_http_get
-  if type(bridge) ~= "function" then
-    error("hydronium_router.http.get needs Meteorite request:http or createHttpGlobals() in the browser", 2)
+  local http = hosts.get("router.http", 1)
+  if not http or type(http.get) ~= "function" then
+    error("hydronium_router.http.get needs Meteorite request:http, or createHttpCapability() in "
+      .. "mount({ hostCapabilities }) in the browser (the __router_http_get global was removed)", 2)
   end
-  return bridge(path, function(payload)
+  return http.get(path, function(payload)
     local ok, response = pcall(json.decode, payload)
     if not ok or type(response) ~= "table" then
       done(nil, "invalid HTTP bridge response")

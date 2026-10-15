@@ -20,7 +20,7 @@ function M.manifest()
   local methods = {}
   for name, d in pairs(definitions) do
     methods[#methods + 1] = { name = name, group = d[1], effect = d[2], required = d[3] == true,
-      cleanup = d[4], legacy_global = "__dom_" .. name }
+      cleanup = d[4] }
   end
   table.sort(methods, function(a, b) return a.name < b.name end)
   return { name = M.name, version = M.version, methods = methods,

@@ -67,7 +67,7 @@ local function render_result(result)
   return 0
 end
 
-local VERSION = "0.5.25"
+local VERSION = "0.6.0"
 local app
 app = c.create({
   name = "hydronium-create",

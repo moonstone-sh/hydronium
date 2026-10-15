@@ -9,7 +9,7 @@ local errors = require("hydronium.core.errors")
 local suspense = require("hydronium.core.suspense")
 local graph = require("hydronium.signals.graph")
 
-local unpack = table.unpack or unpack
+local unpack = require("hydronium.compat").unpack
 
 local elementModule = {}
 
@@ -405,6 +405,22 @@ elementModule.h = elementModule.createElement
 elementModule.create_element = elementModule.createElement
 elementModule.Fragment = symbols.FRAGMENT
 elementModule.createTextVNode = createTextVNode
+
+--- Merge prop tables left to right (`<div {...a} id="x" {...b}>`), skipping
+--- non-table arguments. Compiled LUAX calls this as `H.spread`, so a
+--- component needs no hidden global and a bundler sees a real dependency.
+--- @param ... table|nil
+--- @return table
+function elementModule.spread(...)
+  local result = {}
+  for i = 1, select("#", ...) do
+    local props = select(i, ...)
+    if type(props) == "table" then
+      for k, v in pairs(props) do result[k] = v end
+    end
+  end
+  return result
+end
 elementModule.flattenChildren = flattenChildren
 elementModule.reactiveText = reactiveText
 elementModule.isReactiveAccessor = isReactiveAccessor

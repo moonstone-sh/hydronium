@@ -22,7 +22,17 @@ describe("VM-local host capabilities", function()
     assert.has_error(function() a.install("dom", 1, { ping = 3 }) end, "named functions")
     assert.equal(#a.describe(), 0)
   end)
-  it("resolves the DOM host from its registry with no legacy globals", function()
+  it("refuses to build a DOM host from globals, naming how to provide dom@1", function()
+    _G.__dom_create_element = function() error("must not be called") end
+    local ok, err = pcall(function() return dom.createDomHost() end)
+    _G.__dom_create_element = nil
+    assert.falsy(ok)
+    assert.truthy(tostring(err):find("no dom@1 host is installed", 1, true), tostring(err))
+    assert.truthy(tostring(err):find("__dom_* globals were removed", 1, true), tostring(err))
+    local virtual = require("hydronium_dom.virtual")
+    assert.has_error(function() virtual.createVirtualHost({ current = {} }) end, "dom@1 with the virtual methods is not installed")
+  end)
+  it("resolves the DOM host from its registry", function()
     local bridge = {}
     for _, method in ipairs(contract.manifest().methods) do bridge[method.name] = function() end end
     bridge.create_element = function(tag) return { tag = tag } end
@@ -37,6 +47,6 @@ describe("VM-local host capabilities", function()
     local listener
     for _, method in ipairs(manifest.methods) do if method.name == "set_listener" then listener = method end end
     assert.equal(listener.effect, "dom.listen"); assert.equal(listener.cleanup, "remove_listener")
-    assert.equal(listener.legacy_global, "__dom_set_listener")
+    assert.equal(listener.legacy_global, nil)
   end)
 end)

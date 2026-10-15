@@ -12,7 +12,7 @@ local scopeModule = require("hydronium.core.scope")
 local scheduler = require("hydronium.core.scheduler")
 local graph = require("hydronium.signals.graph")
 
-local unpack = table.unpack or unpack
+local unpack = require("hydronium.compat").unpack
 
 local effectModule = {}
 

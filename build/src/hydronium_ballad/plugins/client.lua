@@ -369,22 +369,31 @@ function M.resolve(ctx, inputs, opts)
   -- package.path), so the bundle must synthesize this alias itself. See
   -- docs/HYDRONIUM_CLIENT_BUNDLER_MINIFIER_PLAN.md's "Hazard 1."
   local init_alias_target = {}
+  -- Moonstone flavor variants (`compat@lua54.lua`): the browser runs Lua
+  -- 5.4, so a `@lua54` module replaces its untagged twin and every other
+  -- variant is dropped (hydronium.core.flavor_files).
+  local candidates = {}
   for _, input_set in ipairs(inputs or {}) do
     for _, asset in ipairs(input_set.assets) do
       local norm = normalize_module_asset(asset)
       if norm and include[norm.target] then
-        local stamped = asset.metadata and asset.metadata.hydronium and asset.metadata.hydronium.module_id
-        if opts.project_entries and stamped then table.insert(entries, norm.module_id) end
-        if by_id[norm.module_id] and by_id[norm.module_id].content ~= norm.content then
-          ctx.warn("hydronium_ballad.plugins.client.resolve: module '" .. norm.module_id
-            .. "' provided more than once with different content -- keeping the first one seen")
-        end
-        by_id[norm.module_id] = by_id[norm.module_id] or norm
-        local base = norm.module_id:match("^(.*)%.init$")
-        if base and not init_alias_target[base] then
-          init_alias_target[base] = norm.module_id
-        end
+        norm.stamped = asset.metadata and asset.metadata.hydronium and asset.metadata.hydronium.module_id
+        candidates[#candidates + 1] = norm
       end
+    end
+  end
+  for _, norm in ipairs(require("hydronium.core.flavor_files").select_browser_modules(candidates)) do
+    local stamped = norm.stamped
+    norm.stamped = nil
+    if opts.project_entries and stamped then table.insert(entries, norm.module_id) end
+    if by_id[norm.module_id] and by_id[norm.module_id].content ~= norm.content then
+      ctx.warn("hydronium_ballad.plugins.client.resolve: module '" .. norm.module_id
+        .. "' provided more than once with different content -- keeping the first one seen")
+    end
+    by_id[norm.module_id] = by_id[norm.module_id] or norm
+    local base = norm.module_id:match("^(.*)%.init$")
+    if base and not init_alias_target[base] then
+      init_alias_target[base] = norm.module_id
     end
   end
 
@@ -497,6 +506,16 @@ function M.resolve(ctx, inputs, opts)
   local module_records = {}
   for _, id in ipairs(order) do
     local mod = by_id[id]
+    local capabilities, removed = host_capabilities.scan(mod.content, contracts)
+    if #removed > 0 then
+      local uses = {}
+      for _, hit in ipairs(removed) do uses[#uses + 1] = id .. ":" .. hit.line .. ": " .. hit.name end
+      error("hydronium client bundle: the host bridge globals were removed.\n  "
+        .. table.concat(uses, "\n  ")
+        .. "\nResolve the host capability instead: require(\"hydronium.runtime.hosts\").require(name, 1).<method>, "
+        .. "with name dom, canvas, router.history, router.hash_history, router.http, form or dev; "
+        .. "page strings come from hosts.require(\"page\", 1).read(key). See docs/HOST_CAPABILITIES.md.", 0)
+    end
     table.insert(module_records, {
       id = id,
       origin = mod.origin,
@@ -505,7 +524,7 @@ function M.resolve(ctx, inputs, opts)
       update = mod.update,
       requires = scan_requires(mod.content),
       revision = process.b3sum_string(mod.content),
-      host_capabilities = host_capabilities.scan(mod.content, contracts),
+      host_capabilities = capabilities,
     })
   end
   local host_manifest = host_capabilities.manifest(module_records, contracts)
@@ -515,7 +534,7 @@ function M.resolve(ctx, inputs, opts)
     aliases = sorted_aliases,
     module_records = module_records,
     host_capabilities = host_manifest,
-  }, { indent = false, keyorder = { "entries", "modules", "aliases", "module_records", "host_capabilities", "schema", "contracts", "providers", "retain_all", "elimination", "id", "origin", "target", "transform", "update", "requires", "revision", "analysis", "references", "unresolved", "name", "version", "methods", "provider", "language", "package", "module", "export", "lifecycle", "registration_effect", "method", "group", "effect", "required", "cleanup", "legacy_global", "line", "access", "source", "reason", "base", "real" } })
+  }, { indent = false, keyorder = { "entries", "modules", "aliases", "module_records", "host_capabilities", "schema", "contracts", "providers", "retain_all", "elimination", "id", "origin", "target", "transform", "update", "requires", "revision", "analysis", "references", "unresolved", "name", "version", "methods", "provider", "language", "package", "module", "export", "lifecycle", "registration_effect", "method", "group", "effect", "required", "cleanup", "line", "access", "source", "reason", "base", "real" } })
 
   out:add(ctx.graph:add_asset({
     kind = "hy_module_graph",

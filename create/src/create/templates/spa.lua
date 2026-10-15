@@ -163,8 +163,8 @@ return App
 ]==], project_name)
 
   files["public/ui/starter.js"] = look.SCRIPT .. [[
-import { createHashHistoryGlobals } from "/js/router/hash_history.js";
-export function createGlobals() { return createHashHistoryGlobals(); }
+import { createHashHistoryCapability } from "/js/router/hash_history.js";
+export function createHostCapabilities() { return [createHashHistoryCapability()]; }
 ]]
 
   files["src/views/Home.luax"] = [==[-- Everything runs in the browser: the counter is reactive Lua, and "Say
@@ -295,7 +295,7 @@ return ballad.partiture(function(p)
     mount = {
       title = "%s",
       hydrate = false,
-      lua_globals = { module = "/ui/starter.js", import = "createGlobals" },
+      host_capabilities = { module = "/ui/starter.js", import = "createHostCapabilities" },
       vendor = {
         { dir = "public/ui", url_prefix = "ui" },
         { dir = pkg_root("MOONSTONE_PACKAGE_ROOT_HYDRONIUM_DOM", ".moonstone/env/libexec/dom") .. "/hydronium_dom/client", url_prefix = "js/bootstrap" },
@@ -332,22 +332,22 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/ballad"
-constraint = "^0.2.9"
+constraint = "^0.3.0"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.13"
+constraint = "^0.3.0"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.13"
+constraint = "^0.4.0"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/router"
-constraint = "^0.2.4"
+constraint = "^0.3.0"
 role = "runtime"
 ]=], project_name)
 
@@ -404,7 +404,7 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/cli"
-constraint = "^0.4.2"
+constraint = "^0.4.3"
 role = "tool"
 
 [[dependencies]]
@@ -414,22 +414,22 @@ role = "tool"
 
 [[dependencies]]
 name = "hydronium/ballad"
-constraint = "^0.2.9"
+constraint = "^0.3.0"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/core"
-constraint = "^0.2.13"
+constraint = "^0.3.0"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.13"
+constraint = "^0.4.0"
 role = "runtime"
 
 [[dependencies]]
 name = "hydronium/router"
-constraint = "^0.2.4"
+constraint = "^0.3.0"
 role = "runtime"
 ]=], project_name)
 

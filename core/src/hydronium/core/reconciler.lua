@@ -19,7 +19,7 @@ local scheduler = require("hydronium.core.scheduler")
 -- require here -- element.lua does not depend on the reconciler.
 local elementModule = require("hydronium.core.element")
 
-local unpack = table.unpack or unpack
+local unpack = require("hydronium.compat").unpack
 
 local reconcilerModule = {}
 

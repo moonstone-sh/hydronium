@@ -165,7 +165,8 @@ See the [DOM package guide](dom/REGISTRY_README.md#meteorite-ssr) for the
 routes `mount` declares and its options.
 
 The generated SSR app composes browser history, abortable loader GETs, and
-form transport through `mount({ luaGlobals = ... })`. `r.http.get` uses a named
+form transport as host capabilities, `mount({ hostCapabilities = ... })`, and
+hands SSR state over as `pageData`. `r.http.get` uses a named
 Meteorite HTTP capability on the server and the browser fetch bridge after
 hydration. Forms remain usable as native HTML POSTs before hydration or when
 JavaScript is disabled.

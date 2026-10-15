@@ -84,25 +84,35 @@ describe("Core: actions and scoped forms", function()
     assert.equal(two:values().name, "two")
   end)
 
-  it("enhances native form props through optional browser globals", function()
-    local previous_values = _G.__hydronium_form_values
-    local previous_request = _G.__hydronium_form_request
-    local previous_redirect = _G.__hydronium_form_redirect
+  it("enhances native form props through the form@1 host capability", function()
+    local hosts = require("hydronium.runtime.hosts")
     local sent, redirected
+    local _, release = hosts.install("form", 1, {
+      values = function() return '{ name = "Ada" }' end,
+      request = function(url, method, body, id, done)
+        sent = { url, method, body, id }
+        done(201, '{ ok = true, data = { id = 7 }, redirect = "/done" }')
+      end,
+      redirect = function(url) redirected = url end,
+    })
+    local ok, err = pcall(function()
+      local form = H.useForm(H.action({ id = "users.create", path = "/users" }))
+      assert.equal(type(form.props.onSubmit), "function")
+      form.props.onSubmit('{ name = "Ada" }')
+      assert.equal(sent[3], "name=Ada")
+      assert.equal(form:data().id, 7)
+      assert.equal(redirected, "/done")
+    end)
+    release()
+    assert.truthy(ok, tostring(err))
+  end)
+
+  it("ignores the removed __hydronium_form_* globals", function()
     _G.__hydronium_form_values = function() return '{ name = "Ada" }' end
-    _G.__hydronium_form_request = function(url, method, body, id, done)
-      sent = { url, method, body, id }
-      done(201, '{ ok = true, data = { id = 7 }, redirect = "/done" }')
-    end
-    _G.__hydronium_form_redirect = function(url) redirected = url end
-    local form = H.useForm(H.action({ id = "users.create", path = "/users" }))
-    assert.equal(type(form.props.onSubmit), "function")
-    form.props.onSubmit('{ name = "Ada" }')
-    assert.equal(sent[3], "name=Ada")
-    assert.equal(form:data().id, 7)
-    assert.equal(redirected, "/done")
-    _G.__hydronium_form_values = previous_values
-    _G.__hydronium_form_request = previous_request
-    _G.__hydronium_form_redirect = previous_redirect
+    _G.__hydronium_form_request = function() error("must not be called") end
+    local ok, form = pcall(H.useForm, H.action({ id = "users.ignored", path = "/users" }))
+    _G.__hydronium_form_values, _G.__hydronium_form_request = nil, nil
+    assert.truthy(ok, tostring(form))
+    assert.equal(form.props.onSubmit, nil)
   end)
 end)

@@ -74,7 +74,7 @@ describe("hydronium_ballad.plugins.site manifest", function()
     assert.truthy(html.content:find('hydrate: false', 1, true))
   end)
 
-  it("wires the stylesheet link and lua_globals import when both are present", function()
+  it("wires the stylesheet link and host_capabilities import when both are present", function()
     local store = graph.Graph.new()
     local chunk = chunk_asset(store, "client/runtime-abc123.lua", "app")
     local style_bundle = store:add_asset({
@@ -83,13 +83,24 @@ describe("hydronium_ballad.plugins.site manifest", function()
     })
     local result = site.manifest(ctx(), { { assets = { chunk, style_bundle } } }, {
       mount = {
-        lua_globals = { module = "/js/router/hash_history.js", import = "createHashHistoryGlobals" },
+        host_capabilities = { module = "/js/router/hash_history.js", import = "createHashHistoryCapability" },
       },
     })
     local html = find_asset(result, "index.html").content
     assert.truthy(html:find('<link rel="stylesheet" href="/assets/app-xyz.css">', 1, true))
-    assert.truthy(html:find('import { createHashHistoryGlobals } from "/js/router/hash_history.js"', 1, true))
-    assert.truthy(html:find("luaGlobals: createHashHistoryGlobals()", 1, true))
+    assert.truthy(html:find('import { createHashHistoryCapability } from "/js/router/hash_history.js"', 1, true))
+    assert.truthy(html:find("hostCapabilities: [].concat(createHashHistoryCapability())", 1, true))
+    assert.falsy(html:find("luaGlobals", 1, true))
+  end)
+
+  it("rejects the removed lua_globals option with the migration", function()
+    local store = graph.Graph.new()
+    local chunk = chunk_asset(store, "client/runtime-abc123.lua", "app")
+    local ok, err = pcall(site.manifest, ctx(), { { assets = { chunk } } }, {
+      mount = { lua_globals = { module = "/x.js", import = "createGlobals" } },
+    })
+    assert.falsy(ok)
+    assert.truthy(tostring(err):find("host_capabilities", 1, true), tostring(err))
   end)
 
   it("skips index.html silently when mount is requested but no chunk declares an entry", function()

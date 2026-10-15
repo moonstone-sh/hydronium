@@ -84,8 +84,8 @@ end
 --- @field hydrate? boolean Passed straight through to mount()'s `hydrate`. Default false (a static SPA has no SSR markup to claim).
 --- @field js_bootstrap_url? string URL of the real `mount.js` (`@hydronium-js/dom-client`) the page imports. Default "/js/bootstrap/mount.js" -- this plugin does not vendor that file into the sink itself; the project is responsible for serving it at that URL (or overriding this to wherever it does).
 --- @field asset_manifest_url? string Passed as mount()'s `assetManifestUrl`. Default "/<name>.lua" (the Lua-table sibling this same node emits, since wasmoon has no filesystem for `loadfile()`).
---- @field lua_globals? { module: string, import: string } Optional extra ESM import whose named export is CALLED (`import()()`) and passed as mount()'s `luaGlobals` -- e.g. `{ module = "/js/router/hash_history.js", import = "createHashHistoryGlobals" }` for an app that uses hydronium_router's hash history adapter. This plugin has no router awareness of its own; a partiture that needs one supplies it explicitly.
---- @field vendor? { dir: string, url_prefix: string }[] Real, on-disk directory trees to copy into the sink VERBATIM (recursively, preserving relative paths) under `url_prefix` (a site-relative path with no leading "/", e.g. "js/bootstrap"). Exists because `index.html` references `js_bootstrap_url`/`lua_globals.module` as absolute site paths, and this plugin does not assume anything serves those bytes except what the build itself produces (a plain `ballad play`'s dist/ must be deployable to a dumb static file server with nothing else running -- docs/HYDRONIUM_SPA_MODE_PLAN.md section 2.1). Declared here, not copied by a CLI, for the same reason `mount` itself is declared here: the partiture that knows it needs `/js/bootstrap/mount.js` and `/js/router/hash_history.js` is the one that says where those real files live on disk, e.g. `{ dir = "../../dom/src/hydronium_dom/client", url_prefix = "js/bootstrap" }`. No default: an app that serves its own bootstrap JS some other way (a CDN, a bundler-owned path) is not forced to vendor anything.
+--- @field host_capabilities? { module: string, import: string } Optional extra ESM import whose named export is CALLED (`import()()`) and returns one host capability or an array of them, passed as mount()'s `hostCapabilities` -- e.g. `{ module = "/js/router/hash_history.js", import = "createHashHistoryCapability" }` for an app that uses hydronium_router's hash history adapter. This plugin has no router awareness of its own; a partiture that needs one supplies it explicitly. (Replaces the removed `lua_globals`.)
+--- @field vendor? { dir: string, url_prefix: string }[] Real, on-disk directory trees to copy into the sink VERBATIM (recursively, preserving relative paths) under `url_prefix` (a site-relative path with no leading "/", e.g. "js/bootstrap"). Exists because `index.html` references `js_bootstrap_url`/`host_capabilities.module` as absolute site paths, and this plugin does not assume anything serves those bytes except what the build itself produces (a plain `ballad play`'s dist/ must be deployable to a dumb static file server with nothing else running -- docs/HYDRONIUM_SPA_MODE_PLAN.md section 2.1). Declared here, not copied by a CLI, for the same reason `mount` itself is declared here: the partiture that knows it needs `/js/bootstrap/mount.js` and `/js/router/hash_history.js` is the one that says where those real files live on disk, e.g. `{ dir = "../../dom/src/hydronium_dom/client", url_prefix = "js/bootstrap" }`. No default: an app that serves its own bootstrap JS some other way (a CDN, a bundler-owned path) is not forced to vendor anything.
 
 --- @class HydroniumBalladSiteManifestOptions
 --- @field name? string Default "hydronium-manifest". Both emitted files share this basename (`.json`/`.lua`).
@@ -122,11 +122,16 @@ local function render_index_html(chunk_urls, app_module_id, styles_url, opts, ma
     chunk_urls_js[#chunk_urls_js + 1] = string.format("%q", url)
   end
 
-  local extra_import, lua_globals_expr = "", "undefined"
   if opts.lua_globals then
-    extra_import = "\n  import { " .. opts.lua_globals.import .. " } from "
-      .. string.format("%q", opts.lua_globals.module) .. ";"
-    lua_globals_expr = opts.lua_globals.import .. "()"
+    error("hydronium_ballad.plugins.site.manifest: mount.lua_globals was removed with mount()'s luaGlobals; "
+      .. "use mount.host_capabilities = { module = ..., import = ... } whose export returns a capability "
+      .. "or an array of them, e.g. import = \"createHashHistoryCapability\"", 0)
+  end
+  local extra_import, capabilities_expr = "", "[]"
+  if opts.host_capabilities then
+    extra_import = "\n  import { " .. opts.host_capabilities.import .. " } from "
+      .. string.format("%q", opts.host_capabilities.module) .. ";"
+    capabilities_expr = "[].concat(" .. opts.host_capabilities.import .. "())"
   end
 
   local style_link = ""
@@ -148,7 +153,7 @@ local function render_index_html(chunk_urls, app_module_id, styles_url, opts, ma
     "    container: " .. string.format("%q", container) .. ",",
     "    hydrate: " .. tostring(opts.hydrate == true) .. ",",
     "    assetManifestUrl: " .. string.format("%q", manifest_url) .. ",",
-    "    luaGlobals: " .. lua_globals_expr .. ",",
+    "    hostCapabilities: " .. capabilities_expr .. ",",
     "  }).then(() => { window.__hydroniumMounted = true; })",
     "    .catch((e) => {",
     "      window.__hydroniumMountError = String((e && e.stack) || e);",
@@ -257,7 +262,7 @@ function M.manifest(ctx, inputs, opts)
         metadata = { hydronium = { manifest = "site", format = "html" } },
       }))
 
-      -- The shell above references js_bootstrap_url/lua_globals.module as
+      -- The shell above references js_bootstrap_url/host_capabilities.module as
       -- absolute site paths; without this, they 404 on any host that only
       -- serves this sink's own output (verified for real: `python3 -m
       -- http.server` inside a build's dist/ 404s on both before this).

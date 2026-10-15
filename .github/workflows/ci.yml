@@ -32,7 +32,9 @@ jobs:
           # consumer scaffold gate asserts.
           # v0.5.9+ mounts libexec namespaced (libexec/<scope>/<name>/), which the
           # scaffolds' build.zig and the DOM asset probes resolve first.
-          ref: v0.5.9
+          # v0.6.0+ projects Lua flavor variants and accepts `@` in artifact
+          # paths, which packaging core/luax `compat@lua54.lua` requires.
+          ref: v0.6.0
           path: .ci/moonstone
       - uses: actions/checkout@v4
         with:

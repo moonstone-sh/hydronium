@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createFormGlobals, valuesFromForm } from "../../js/packages/dom-client/src/forms.js";
+import { createFormCapability, valuesFromForm } from "../../js/packages/dom-client/src/forms.js";
 import { createDomBridge, shouldHandleNavigation } from "../../js/packages/dom-client/src/dom_bridge.js";
 
 class FakeFormData {
@@ -17,7 +17,7 @@ test("DOM event props run with a prevent-default bridge atom", () => {
   let called = false;
   let payload;
   let prevented = false;
-  createFormGlobals({ FormData: FakeFormData, fetch: async () => ({}) });
+  createFormCapability({ FormData: FakeFormData, fetch: async () => ({}) });
   const bridge = createDomBridge();
   bridge.set_listener(element, "submit", (captured) => {
     called = true;
@@ -60,7 +60,7 @@ test("form globals compose a cancellable JSON action request", async () => {
   let request;
   let redirected;
   let prevented = false;
-  const globals = createFormGlobals({
+  const { name, bindings: form } = createFormCapability({
     FormData: FakeFormData,
     navigate: (url) => { redirected = url; },
     fetch: async (url, options) => {
@@ -76,19 +76,20 @@ test("form globals compose a cancellable JSON action request", async () => {
     currentTarget: { entries: [["name", "sad pepe"], ["tag", "lua"], ["tag", "zig"]] },
     preventDefault() { prevented = true; },
   };
-  globals.__hydronium_form_prevent_default(event);
-  const literal = globals.__hydronium_form_values(event);
+  assert.equal(name, "form");
+  form.prevent_default(event);
+  const literal = form.values(event);
   assert.equal(prevented, true);
   assert.match(literal, /tag = \{ "lua", "zig" \}/);
 
   const settled = new Promise((resolve) => {
-    globals.__hydronium_form_request("/actions/profile", "POST", "name=sad%20pepe", "profile.save", (status, body) => resolve({ status, body }));
+    form.request("/actions/profile", "POST", "name=sad%20pepe", "profile.save", (status, body) => resolve({ status, body }));
   });
   const result = await settled;
   assert.equal(request.url, "/actions/profile");
   assert.equal(request.options.headers["x-hydronium-action"], "profile.save");
   assert.equal(result.status, 422);
   assert.match(result.body, /Required/);
-  globals.__hydronium_form_redirect("/done");
+  form.redirect("/done");
   assert.equal(redirected, "/done");
 });

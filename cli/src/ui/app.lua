@@ -46,10 +46,9 @@ local search_field = require("ui.search_field")
 local search_bar = require("ui.search_bar")
 local query = require("query")
 
--- LuaJIT/5.1 spell it `unpack`; 5.2+ moved it to `table.unpack`. This
--- package is LuaJIT-only (hydronium_ink is), but the two-line guard costs
--- nothing and keeps the module loadable under a plain 5.4 for inspection.
-local unpack = unpack or table.unpack
+-- This package is LuaJIT-only (hydronium_ink is); going through
+-- hydronium.compat keeps the module loadable under a plain 5.4 too.
+local unpack = require("hydronium.compat").unpack
 
 local M = {}
 

@@ -1,5 +1,6 @@
 {
   "hydronium": "hydronium/init.lua",
+  "hydronium.compat": "hydronium/compat@lua54.lua",
   "hydronium.core": "hydronium/core/init.lua",
   "hydronium.core.symbols": "hydronium/core/symbols.lua",
   "hydronium.core.errors": "hydronium/core/errors.lua",
@@ -39,6 +40,5 @@
   "hydronium_dom.host.dom": "hydronium_dom/host/dom.lua",
   "hydronium_dom.style": "hydronium_dom/style.lua",
   "hydronium.runtime.hosts": "hydronium/runtime/hosts.lua",
-  "hydronium_dom.host.contract": "hydronium_dom/host/contract.lua",
-  "hydronium_dom.host.legacy": "hydronium_dom/host/legacy.lua"
+  "hydronium_dom.host.contract": "hydronium_dom/host/contract.lua"
 }

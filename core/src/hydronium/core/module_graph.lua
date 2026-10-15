@@ -6,13 +6,9 @@
 
 local M = {}
 
--- Lua 5.1/LuaJIT expose `unpack` as a global; 5.2+ moved it to
--- `table.unpack`. The browser runs this module on PUC Lua 5.4 (wasmoon),
--- so the bare global is nil there -- see docs/BUNDLING.md section 4.1, and
--- the 18 sibling modules under core/src/hydronium/ carrying this same line.
--- Missing it is invisible to `luajit tests/runner.lua` (where the global
--- does exist) and fails only in a real browser.
-local unpack = table.unpack or unpack
+-- The browser runs this module on PUC Lua 5.4, where the bare `unpack`
+-- global is nil (docs/BUNDLING.md section 4.1); hydronium.compat owns it.
+local unpack = require("hydronium.compat").unpack
 
 local original_require = require
 local enabled = false

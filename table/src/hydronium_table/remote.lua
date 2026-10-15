@@ -20,7 +20,7 @@ function M.create(options)
   local total, set_total = H.createSignal(0)
   local stop, alive, generation = nil, true, 0
   local change
-  local function load(force)
+  local function fetch_page(force)
     if not alive then return end
     generation = generation + 1
     local current = generation
@@ -55,7 +55,7 @@ function M.create(options)
     next_params[name]=value
     if name ~= "page" then next_params.page=0;set_total(0) end
     params=next_params;set_parameters(params)
-    load(force)
+    fetch_page(force)
   end
   local model=tables.createTable({
     columns=options.columns, row_id=options.row_id, page_size=size,
@@ -70,14 +70,14 @@ function M.create(options)
       global_filter=function(value)change("search",value or "")end},
   })
   local handle={model=model,state=state,total=total}
-  function handle:refetch()load(true)end
+  function handle:refetch()fetch_page(true)end
   function handle:dispose()
     if not alive then return end
     alive=false;generation=generation+1
     if stop then stop();stop=nil end
   end
   if H.getScope() then H.onCleanup(function()handle:dispose()end)end
-  load()
+  fetch_page()
   return handle
 end
 return M

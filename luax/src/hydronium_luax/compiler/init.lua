@@ -73,7 +73,12 @@ function CodeEmitter.new(source_filename, source_content, env, options)
   elseif runtime_target == "hydronium" then
     self.factory_name = options.h or "H.h"
     self.fragment_name = options.fragment and (options.h .. "(" .. options.fragment) or "H.h(H.Fragment"
-    self.spread_name = options.jsxSpread or "__luax.spread"
+    -- The factory's own table already has to be in scope; take spread from
+    -- it so the output needs no `__luax` global (which only exists once
+    -- something has required hydronium_luax.runtime, never in a browser
+    -- bundle). The global stays as a fallback for older cores.
+    local base = self.factory_name:match("^(.-)%.[%w_]+$") or "H"
+    self.spread_name = options.jsxSpread or (base .. ".spread or __luax.spread")
   elseif runtime_target == "direct" then
     self.factory_name = "direct"
     self.fragment_name = options.fragment or "H.Fragment"
@@ -405,7 +410,13 @@ function CodeEmitter:emit_jsx_props(attributes, loc)
   end
 
   -- Group into chunks of static attributes and spread arguments
-  self:write(self.spread_name .. "(")
+  -- `A.spread or __luax.spread` must be parenthesized before the call, or
+  -- it evaluates to the function `A.spread` instead of calling it.
+  local spread_callee = self.spread_name
+  if spread_callee:find(" or ", 1, true) and spread_callee:sub(1, 1) ~= "(" then
+    spread_callee = "(" .. spread_callee .. ")"
+  end
+  self:write(spread_callee .. "(")
   local chunks = {}
   local current_static = {}
 

@@ -1,18 +1,16 @@
 /*
   hydronium_router.client.history -- the browser-side implementation of
-  `hydronium_router.history.browser`'s six-function `__router_*` bridge
-  contract (see that module's own doc comment for the contract).
+  `hydronium_router.history.browser`'s six-function bridge contract (see
+  that module's own doc comment), provided as the `router.history@1` host
+  capability:
 
-  Same shape as `hydronium-dom`'s `createDomBridge()`: a factory
-  returning a plain object whose keys are exactly the bridge function
-  names the Lua side expects, so it can be handed to wasmoon per-key:
-
-    const bridge = createHistoryBridge();
-    for (const [name, fn] of Object.entries(bridge)) {
-      lua.global.set("__router_" + name, fn);
-    }
+    mount({ ..., hostCapabilities: [createHistoryCapability()] });
     // then, in Lua:
     //   require("hydronium_router.history.browser").create_browser_history()
+
+  `createHistoryBridge()` returns the bare bindings, for tests or an
+  embedding that installs the capability itself. The `__router_*` globals
+  of earlier releases were removed.
 */
 
 const STATE_KEY = "__hydronium_router_state_v1";
@@ -64,12 +62,10 @@ export function createHistoryBridge(win = window) {
 }
 
 /**
- * Produces the exact object accepted by hydronium-dom mount's `luaGlobals`.
- * Keeping prefixing here prevents every application from reimplementing the
- * JS-to-Lua bridge naming contract.
+ * The `router.history@1` host capability, for hydronium-dom mount's
+ * `hostCapabilities` list. `hydronium_router.history.browser.create()`
+ * resolves it from hydronium.runtime.hosts.
  */
-export function createHistoryGlobals(win = window) {
-  return Object.fromEntries(
-    Object.entries(createHistoryBridge(win)).map(([name, fn]) => [`__router_${name}`, fn])
-  );
+export function createHistoryCapability(win = window) {
+  return { name: "router.history", version: 1, bindings: createHistoryBridge(win) };
 }

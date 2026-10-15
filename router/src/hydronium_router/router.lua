@@ -7,6 +7,7 @@ local history_mod = require("hydronium_router.history")
 local route_resource = require("hydronium_router.resource")
 local result_mod = require("hydronium_router.result")
 local hydration_state = require("hydronium_router.state")
+local hosts = require("hydronium.runtime.hosts")
 
 local M = {}
 
@@ -370,7 +371,10 @@ function M.create_router(opts)
   end
 
   local hydrated = false
-  local hydration = opts.hydration or rawget(_G, "__hydronium_router_state")
+  -- SSR state reaches the browser as page data: mount({ pageData = {
+  -- hydronium_router_state = ... } }), read through the page@1 capability.
+  local page = hosts.get("page", 1)
+  local hydration = opts.hydration or (page and page.read("hydronium_router_state"))
   if hydration ~= nil then
     hydration = hydration_state.decode(hydration)
     local same_location = hydration.canonical_url == seed.href

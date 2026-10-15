@@ -18,8 +18,9 @@
 
   The embedding provides dom@1 through hydronium.runtime.hosts. mount()
   registers it after module preloading and passes it explicitly to
-  createDomHost(bridge). The no-argument form resolves that registry first,
-  then supports old __dom_* globals through the compatibility adapter.
+  createDomHost(bridge). The no-argument form resolves that registry and
+  nothing else: the `__dom_*` globals of earlier releases are gone, and
+  nothing in Hydronium reads the global environment for a bridge.
 
   hydronium_dom.host.contract is the shared declaration of required and
   optional functions, the JavaScript provider, effects and cleanup. Explicit
@@ -34,10 +35,8 @@
   functions above.
 
   `createDomHost` validates the bridge eagerly and errors with a clear,
-  named list of what's missing rather than the cryptic
-  "attempt to call a nil value (global '__dom_create_element')" a bare
-  missing global previously produced with zero indication of what was
-  even supposed to supply it.
+  named list of what's missing, or with how to provide dom@1 when nothing
+  was registered at all.
 --]]
 
 -- The one and only normalization of a `style` prop into real CSS
@@ -54,7 +53,6 @@ local M = {}
 
 local hosts = require("hydronium.runtime.hosts")
 local contract = require("hydronium_dom.host.contract")
-local legacy = require("hydronium_dom.host.legacy")
 
 -- Props this module never forwards to the DOM as an attribute or event
 -- listener -- structural VNode bookkeeping the reconciler itself
@@ -68,7 +66,7 @@ end
 
 local function eventNameFor(propKey)
   -- "onClick" -> "click", "onMouseEnter" -> "mouseenter" (DOM addEventListener
-  -- event names are lowercase; the host bridge's __dom_set_listener is
+  -- event names are lowercase; the dom@1 bridge's set_listener is
   -- expected to call addEventListener with this string directly).
   return propKey:sub(3):lower()
 end
@@ -225,10 +223,14 @@ end
 --- there is no per-root state here beyond the bridge table itself,
 --- matching TestHost's own shape.
 --- @param bridge? table Explicit bridge table (see module doc comment).
----   Omit to resolve dom@1 from the VM-local registry, with legacy globals
----   as a compatibility fallback.
+---   Omit to resolve dom@1 from the VM-local registry.
 function M.createDomHost(bridge)
-  bridge = bridge or hosts.get("dom", 1) or legacy.read(_G)
+  bridge = bridge or hosts.get("dom", 1)
+  if bridge == nil then
+    error("hydronium.host.dom.createDomHost: no dom@1 host is installed. Register one with "
+      .. "require(\"hydronium.runtime.hosts\").install(\"dom\", 1, bridge) (mount() does this), "
+      .. "or pass the bridge: createDomHost(bridge). The __dom_* globals were removed.", 2)
+  end
   contract.validate(bridge)
 
   local host = {}

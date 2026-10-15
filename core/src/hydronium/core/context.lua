@@ -7,7 +7,7 @@
 local symbols = require("hydronium.core.symbols")
 local element = require("hydronium.core.element")
 
-local unpack = table.unpack or unpack
+local unpack = require("hydronium.compat").unpack
 
 local contextModule = {}
 

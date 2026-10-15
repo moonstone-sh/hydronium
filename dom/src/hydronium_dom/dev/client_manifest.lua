@@ -55,10 +55,12 @@ end
 local function resolve(id)
   local namespace = id:match("^([%w_]+)")
   if not M.NAMESPACES[namespace] then return nil end
-  local path = package.searchpath(id, package.path)
+  -- The browser runs Lua 5.4: prefer a `@lua54` flavor variant.
+  local path = require("hydronium.core.flavor_files").searchpath(id, package.path)
   if not path then return nil end
   local relative = id:gsub("%.", "/")
-  for _, candidate in ipairs({ relative .. ".lua", relative .. "/init.lua" }) do
+  for _, candidate in ipairs({ relative .. ".lua", relative .. "/init.lua",
+    relative .. "@lua54.lua", relative .. "/init@lua54.lua" }) do
     if path:sub(-#candidate) == candidate then return path, candidate end
   end
   return nil

@@ -11,7 +11,7 @@
   islands never starts an engine (bootIslands returns before importing one).
 
     import { bootIslands } from "/js/bootstrap/islands.js";
-    const { hydrated } = await bootIslands({ luaGlobals });
+    const { hydrated } = await bootIslands({ hostCapabilities, pageData });
 
   Release pages carry __HYDRONIUM_BOOT__ (hydronium_dom.server.client_boot)
   listing exactly the chunks their islands need. Development pages read the
@@ -107,7 +107,8 @@ function report(island, error) {
 /**
  * Boots one VM and hydrates `islands` (client-plan records). Every other
  * option is passed to mount.js `boot()` (chunkUrls, or the unbundled
- * hydroniumBaseUrl/manifestUrl/moduleUrls trio, engineProvider, luaGlobals,
+ * hydroniumBaseUrl/manifestUrl/moduleUrls trio, engineProvider, hostCapabilities,
+ * pageData,
  * hmr, ...).
  *
  * @returns {Promise<{ lua: object, timings: object, islands: object[],
@@ -203,7 +204,8 @@ export async function hydrateIslands({ islands, root = document, container, ...b
  * no Lua islands, otherwise loads exactly what they need and hydrates them.
  *
  * @param {object} [options]
- * @param {object} [options.luaGlobals] JS values exposed as Lua globals.
+ * @param {object[]} [options.hostCapabilities] Extra host capabilities (see mount.js).
+ * @param {object} [options.pageData] Page strings for the page@1 capability (see mount.js).
  * @param {object} [options.engineProvider] Override the default Lua 5.4 engine.
  * @param {object} [options.updates] Extra HMR update policies merged over the manifest's.
  * @param {string} [options.sourceManifestUrl] Dev module manifest.
@@ -211,7 +213,9 @@ export async function hydrateIslands({ islands, root = document, container, ...b
  *   islands has no VM for HMR, so it reloads on changes (dev_reload.js).
  */
 export async function bootIslands({
-  luaGlobals = {},
+  luaGlobals,
+  hostCapabilities = [],
+  pageData = {},
   engineProvider,
   updates = {},
   root = document,
@@ -220,6 +224,9 @@ export async function bootIslands({
   manifestUrl = "/__hydronium/client_manifest.json",
   liveReload = false,
 } = {}) {
+  if (luaGlobals !== undefined) {
+    throw new TypeError("hydronium.client.islands: luaGlobals was removed; pass hostCapabilities and pageData (see mount.js).");
+  }
   const islands = luaIslands(readJson("__HYDRONIUM_CLIENT_PLAN__"));
   if (islands.length === 0) {
     if (liveReload) await import("./dev_reload.js");
@@ -250,7 +257,7 @@ export async function bootIslands({
   const hmr = manifest !== null && manifest.hmr !== false;
 
   const result = await hydrateIslands({
-    islands, root, luaGlobals, hmr, ...sources, ...(engineProvider ? { engineProvider } : {}),
+    islands, root, hostCapabilities, pageData, hmr, ...sources, ...(engineProvider ? { engineProvider } : {}),
   });
   if (hmr) {
     const { installHmr } = await import("./hmr.js");

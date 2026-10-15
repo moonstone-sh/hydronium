@@ -42,7 +42,7 @@ function M.snapshot(opts)
   local config_path = opts.config_path or M.CONFIG_PATH
   local content = read(config_path)
   if not content then return nil, "cannot read " .. config_path end
-  local chunk, load_err = (loadstring or load)(content, "@" .. config_path)
+  local chunk, load_err = require("hydronium.compat").load(content, "@" .. config_path)
   if not chunk then return nil, load_err end
   local ok, config = pcall(chunk)
   if not ok or type(config) ~= "table" then return nil, config_path .. " must return a table" end

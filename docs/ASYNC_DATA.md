@@ -86,14 +86,14 @@ bridges accept this same factory:
 
 ```js
 import { createBrowserRequest } from "/js/bootstrap/fetch.js";
-import { createHttpGlobals } from "/js/router/http.js";
-import { createFormGlobals } from "/js/bootstrap/forms.js";
+import { createHttpCapability } from "/js/router/http.js";
+import { createFormCapability } from "/js/bootstrap/forms.js";
 
 const request = createBrowserRequest();
-mount({ luaGlobals: {
-  ...createHttpGlobals({ request }),
-  ...createFormGlobals({ request }),
-}});
+mount({ hostCapabilities: [
+  createHttpCapability({ request }),
+  createFormCapability({ request }),
+]});
 ```
 
 HTTP failures are still responses. Router loaders map them to route errors;

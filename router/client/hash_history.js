@@ -1,20 +1,16 @@
 /*
   hydronium_router.client.hash_history -- the browser-side implementation of
-  `hydronium_router.history.hash`'s five-function `__router_hash_*` bridge
-  contract (see that module's own doc comment for the contract).
+  `hydronium_router.history.hash`'s five-function bridge contract (see
+  that module's own doc comment), provided as the `router.hash_history@1`
+  host capability:
 
-  Same shape as ./history.js's `createHistoryBridge()` (which backs the
-  pushState-based `hydronium_router.history.browser`'s `__router_*`
-  bridge): a factory returning a plain object whose keys are exactly the
-  bridge function names the Lua side expects, so it can be handed to
-  wasmoon per-key:
-
-    const bridge = createHashHistoryBridge();
-    for (const [name, fn] of Object.entries(bridge)) {
-      lua.global.set("__router_hash_" + name, fn);
-    }
+    mount({ ..., hostCapabilities: [createHashHistoryCapability()] });
     // then, in Lua:
     //   require("hydronium_router.history.hash").create_hash_history()
+
+  `createHashHistoryBridge()` returns the bare bindings, like
+  ./history.js's `createHistoryBridge()`. The `__router_hash_*` globals of
+  earlier releases were removed.
 
   UNLIKE pushState, assigning `location.hash` fires a real "hashchange"
   event for the navigation it just caused (queued as a task, not
@@ -70,12 +66,10 @@ export function createHashHistoryBridge(win = window) {
 }
 
 /**
- * Produces the exact object accepted by hydronium-dom mount's `luaGlobals`.
- * Keeping prefixing here prevents every application from reimplementing the
- * JS-to-Lua bridge naming contract.
+ * The `router.hash_history@1` host capability, for hydronium-dom mount's
+ * `hostCapabilities` list. `hydronium_router.history.hash.create()`
+ * resolves it from hydronium.runtime.hosts.
  */
-export function createHashHistoryGlobals(win = window) {
-  return Object.fromEntries(
-    Object.entries(createHashHistoryBridge(win)).map(([name, fn]) => [`__router_hash_${name}`, fn])
-  );
+export function createHashHistoryCapability(win = window) {
+  return { name: "router.hash_history", version: 1, bindings: createHashHistoryBridge(win) };
 }

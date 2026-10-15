@@ -89,9 +89,10 @@ says exactly this ("no re-entry into hydronium.core.reconciler").
 ## Part III — What `src/hydronium/host/dom.lua` actually is
 
 A real implementation of all seven methods against a real DOM, via a
-small, generic bridge contract (`__dom_create_element`, `__dom_set_attr`,
-`__dom_set_listener`, etc. -- documented in full in the module's own doc
-comment) that a host page implements with ordinary
+small, generic bridge contract (`create_element`, `set_attr`,
+`set_listener`, etc. -- declared in `hydronium_dom.host.contract` and
+provided as the `dom@1` host capability; the `__dom_*` globals this
+originally used were removed) that a host page implements with ordinary
 `document.createElement`/`setAttribute`/`addEventListener` calls. No
 Counter-specific string anywhere in this file. Prop application is
 generic: any `onXxx` prop whose value is a function becomes a real

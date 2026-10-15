@@ -33,6 +33,8 @@
   tradeoff, not an oversight.
 --]]
 
+local compat = require("hydronium.compat")
+
 local M = {}
 
 -- A DJB2-style polynomial string hash, NOT a bitwise FNV-1a, DELIBERATELY:
@@ -57,11 +59,9 @@ local function scope_hash(str)
   -- both spellings produce the same eight hex digits. LuaJIT has no
   -- math.maxinteger, so its established numeric conversion remains intact.
   if math.maxinteger and hash > math.maxinteger then hash = hash - 4294967296 end
-  -- PUC Lua 5.4's `%x` needs an integer, while LuaJIT 5.1 represents all
-  -- numbers as doubles. Convert explicitly when the runtime supports it;
-  -- otherwise floor preserves the integer-valued LuaJIT number.
-  local integer = math.tointeger and math.tointeger(hash) or math.floor(hash)
-  return string.format("%08x", integer)
+  -- PUC Lua 5.4's `%x` needs an integer subtype; LuaJIT's integral double
+  -- formats as is.
+  return string.format("%08x", compat.tointeger(hash))
 end
 
 --- @param css_path string Project-relative path to the .css file, e.g. "src/views/Header.css".

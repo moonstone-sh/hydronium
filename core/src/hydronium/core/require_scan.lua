@@ -95,11 +95,11 @@ end
 
 --- Breadth-first closure over the literal require graph.
 --- @param seeds string[] module ids to start from
---- @param load fun(id: string): string|nil source for an id, or nil to skip it
+--- @param read_source fun(id: string): string|nil source for an id, or nil to skip it
 --- @param extra_sources? string[] source texts whose requires also seed the walk
 --- @return string[] order module ids that loaded, in visit order
 --- @return table<string,string> sources id -> source
-function M.closure(seeds, load, extra_sources)
+function M.closure(seeds, read_source, extra_sources)
   local pending, seen, order, sources = {}, {}, {}, {}
   for _, id in ipairs(seeds or {}) do pending[#pending + 1] = id end
   for _, source in ipairs(extra_sources or {}) do
@@ -111,7 +111,7 @@ function M.closure(seeds, load, extra_sources)
     index = index + 1
     if not seen[id] then
       seen[id] = true
-      local source = load(id)
+      local source = read_source(id)
       if source then
         order[#order + 1] = id
         sources[id] = source

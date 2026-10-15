@@ -2,6 +2,8 @@
 --- A sink is either `fun(chunk)` or `{ write = fun(self, chunk), flush?,
 --- close? }`. A one-argument table write function remains supported for
 --- compatibility; new integrations should use the method form.
+local compat = require("hydronium.compat")
+
 local M = {}
 
 local function call_member(sink, method)
@@ -23,8 +25,8 @@ function M.normalize(sink)
   end
 
   local write = sink.write
-  local info = debug and debug.getinfo and debug.getinfo(write, 'u')
-  local takes_chunk_only = info and info.nparams == 1 and not info.isvararg
+  local nparams, isvararg = compat.function_arity(write)
+  local takes_chunk_only = nparams == 1 and not isvararg
 
   return {
     write = function(chunk)

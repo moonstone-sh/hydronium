@@ -44,6 +44,7 @@ return {
   h = element.h,
   createElement = element.createElement,
   createTextVNode = element.createTextVNode,
+  spread = element.spread,
 
   -- Scopes & Lifecycles
   Scope = scope.Scope,

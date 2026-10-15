@@ -50,33 +50,7 @@ local EXPR_PRECEDING_PUNCTS = {
   ["=="] = true, ["~="] = true,
 }
 
--- UTF-8 character encoder compatible with Lua 5.1, 5.2, 5.3, 5.4, and LuaJIT
-local function utf8_char(code)
-  if utf8 and utf8.char then
-    local ok, res = pcall(utf8.char, code)
-    if ok then return res end
-  end
-  if code < 0 or code > 0x10FFFF then
-    return "\239\191\189" -- Unicode replacement character U+FFFD
-  elseif code <= 0x7F then
-    return string.char(code)
-  elseif code <= 0x7FF then
-    local b1 = 0xC0 + math.floor(code / 0x40)
-    local b2 = 0x80 + (code % 0x40)
-    return string.char(b1, b2)
-  elseif code <= 0xFFFF then
-    local b1 = 0xE0 + math.floor(code / 0x1000)
-    local b2 = 0x80 + (math.floor(code / 0x40) % 0x40)
-    local b3 = 0x80 + (code % 0x40)
-    return string.char(b1, b2, b3)
-  else
-    local b1 = 0xF0 + math.floor(code / 0x40000)
-    local b2 = 0x80 + (math.floor(code / 0x1000) % 0x40)
-    local b3 = 0x80 + (math.floor(code / 0x40) % 0x40)
-    local b4 = 0x80 + (code % 0x40)
-    return string.char(b1, b2, b3, b4)
-  end
-end
+local utf8_char = require("hydronium_luax.compat").utf8_char
 
 local ENTITIES = {
   ["lt"] = "<",

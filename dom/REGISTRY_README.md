@@ -202,8 +202,8 @@ mount the editable application beneath it:
 ```js
 import { mount } from "/js/bootstrap/mount.js";
 import { createBrowserRequest } from "/js/bootstrap/fetch.js";
-import { createFormGlobals } from "/js/bootstrap/forms.js";
-import { createHistoryGlobals } from "/js/router/history.js";
+import { createFormCapability } from "/js/bootstrap/forms.js";
+import { createHistoryCapability } from "/js/router/history.js";
 
 const request = createBrowserRequest();
 const { lua } = await mount({
@@ -218,10 +218,9 @@ const { lua } = await mount({
   props: { initial: 0 },
   hydrate: true,
   hmr: true,
-  luaGlobals: {
-    ...createHistoryGlobals(),
-    ...createFormGlobals({ request }),
-  },
+  hostCapabilities: [createHistoryCapability(), createFormCapability({ request })],
+  // Strings for Lua, e.g. serialized SSR state: hosts.require("page", 1).read(key)
+  pageData: {},
 });
 ```
 
@@ -250,7 +249,7 @@ file with no browser effect. An unlisted path is reported as `unhandled` and
 does not discard application state. A failed requested hot swap reloads as a
 safety fallback because the displayed tree can no longer be proven current.
 
-`createFormGlobals()` supplies progressive action transport. The DOM host
+`createFormCapability()` supplies progressive action transport as `form@1`. The DOM host
 captures form values during the native submit event, before the browser clears
 `currentTarget`, and passes a Lua-safe snapshot to `useForm`. Native POST still
 works when JavaScript or the browser Lua VM is unavailable.
@@ -282,8 +281,9 @@ not create runtime globals. `table` and `select` remain lexical-only as
 
 Browser bootstrap installs `dom@1` in `hydronium.runtime.hosts` before
 loading the application. Custom embeddings may install the same capability or
-provide `createDomHost(bridge)` explicitly. Legacy `__dom_*` globals remain
-supported when the capability is absent. The declarative DOM contract records
+provide `createDomHost(bridge)` explicitly. The `__dom_*` globals of earlier
+releases were removed: nothing publishes or reads them, and the client build
+fails on code that still uses them. The declarative DOM contract records
 methods, effects and cleanup for build tools. This capability API is unreleased;
 see [Host capabilities](../docs/HOST_CAPABILITIES.md).
 

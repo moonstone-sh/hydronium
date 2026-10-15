@@ -1,4 +1,4 @@
-/* Browser enhancement for hydronium.forms, composed through mount.luaGlobals. */
+/* Browser enhancement for hydronium.forms: the form@1 host capability, passed to mount({ hostCapabilities }). */
 
 import { getCurrentDomEvent } from "./dom_bridge.js";
 import { createBrowserRequest, readResponse } from "./fetch.js";
@@ -35,11 +35,11 @@ function valuesFromForm(form, FormDataImpl) {
 }
 
 /**
- * Return globals accepted directly by hydronium-dom's mount({ luaGlobals }).
+ * The `form@1` host capability for hydronium-dom's mount({ hostCapabilities }).
  * The server should answer enhanced requests with a JSON action outcome;
  * an ordinary browser submission still uses the form's method/action.
  */
-export function createFormGlobals(options = {}) {
+export function createFormCapability(options = {}) {
   const request = options.request ?? createBrowserRequest({ fetch: options.fetch });
   const FormDataImpl = options.FormData ?? globalThis.FormData;
   const navigate = options.navigate ?? ((url) => globalThis.location?.assign?.(url));
@@ -63,18 +63,18 @@ export function createFormGlobals(options = {}) {
       .finally(() => callback?.release?.());
   };
 
-  return {
-    __hydronium_form_prevent_default(event) {
+  return { name: "form", version: 1, bindings: {
+    prevent_default(event) {
       event ??= getCurrentDomEvent();
       event?.preventDefault?.();
     },
-    __hydronium_form_values(event) {
+    values(event) {
       event ??= getCurrentDomEvent();
       const form = event?.currentTarget ?? event?.target ?? event;
       if (!form) throw new Error("hydronium.forms: submit event has no form target");
       return toLuaLiteral(valuesFromForm(form, FormDataImpl));
     },
-    __hydronium_form_request(url, method, body, actionId, done) {
+    request(url, method, body, actionId, done) {
       const pending = request(url, {
         method,
         body,
@@ -99,10 +99,10 @@ export function createFormGlobals(options = {}) {
       });
       return pending.abort;
     },
-    __hydronium_form_redirect(url) {
+    redirect(url) {
       navigate(String(url));
     },
-  };
+  } };
 }
 
 export { toLuaLiteral, valuesFromForm };

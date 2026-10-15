@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHistoryBridge, createHistoryGlobals } from "../../router/client/history.js";
+import { createHistoryBridge, createHistoryCapability } from "../../router/client/history.js";
 
 function fakeWindow() {
   const listeners = new Map();
@@ -34,16 +34,18 @@ test("router browser bridge preserves URL punctuation and exposes prefixed Lua g
   bridge.replace_state("/stage:prod", "null");
   assert.equal(bridge.location_state(), "null");
 
-  const globals = createHistoryGlobals(win);
-  assert.deepEqual(Object.keys(globals).sort(), [
-    "__router_go",
-    "__router_location_href",
-    "__router_location_state",
-    "__router_on_popstate",
-    "__router_push_state",
-    "__router_replace_state",
+  const capability = createHistoryCapability(win);
+  assert.equal(capability.name, "router.history");
+  assert.equal(capability.version, 1);
+  assert.deepEqual(Object.keys(capability.bindings).sort(), [
+    "go",
+    "location_href",
+    "location_state",
+    "on_popstate",
+    "push_state",
+    "replace_state",
   ]);
-  assert.equal(globals.__router_location_href(), "/a:b?q=x%20y#top");
+  assert.equal(capability.bindings.location_href(), "/a:b?q=x%20y#top");
 });
 
 test("router browser bridge ignores foreign state and rejects opaque objects", () => {

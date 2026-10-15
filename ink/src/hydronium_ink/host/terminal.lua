@@ -1513,7 +1513,7 @@ end
 ---   Injectable specifically so tests (and anything else that wants
 ---   deterministic, non-terminal capture) can pass a Lua-side collector
 ---   instead of writing to real stdout -- the same seam
----   hydronium.host.dom uses for its __dom_* bridge functions, applied
+---   hydronium_dom.host.dom uses for its injected dom@1 bridge, applied
 ---   here to the one function this host actually needs from its
 ---   environment.
 function M.createTerminalHost(writeFn, opts)
