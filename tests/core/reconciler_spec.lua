@@ -6,6 +6,53 @@ local assert = h.assert
 
 describe("Core: Reconciler & Child Diffing", function()
 
+  describe("Sibling order without needless moves", function()
+    local function moves(host)
+      local n = 0
+      for _, entry in ipairs(host.get_log()) do
+        if entry.op == "append_child" or entry.op == "insert_before" then n = n + 1 end
+      end
+      return n
+    end
+
+    -- Re-inserting a node that is already in place removes and re-adds it,
+    -- which blurs a focused <input>: typing into a form lost focus on the
+    -- first re-render after hydration.
+    it("does not move children whose order is unchanged", function()
+      local root = H.create_test_root()
+      local function view(value)
+        return H.h("label", { class = "field" },
+          H.h("span", nil, "Search"),
+          H.h("input", { id = "q", type = "search", value = value }))
+      end
+      root:render(view(""))
+      local input = root:find({ id = "q" })
+      root.host.clear_log()
+      root:update(view("ab"))
+      assert.equal(moves(root.host), 0)
+      assert.equal(root:find({ id = "q" }).id, input.id)
+    end)
+
+    it("still restores order after a keyed reorder, reusing the nodes", function()
+      local root = H.create_test_root()
+      local function list(keys)
+        local items = {}
+        for _, key in ipairs(keys) do items[#items + 1] = H.h("li", { key = key, id = "node_" .. key }, key) end
+        local spread = table.unpack or unpack
+        return H.h("ul", nil, spread(items))
+      end
+      root:render(list({ "a", "b", "c" }))
+      local ids = { a = root:find({ id = "node_a" }).id, b = root:find({ id = "node_b" }).id, c = root:find({ id = "node_c" }).id }
+      root.host.clear_log()
+      root:update(list({ "c", "a", "b" }))
+      local ul = root:find("ul")
+      assert.equal(ul.children[1].id, ids.c)
+      assert.equal(ul.children[2].id, ids.a)
+      assert.equal(ul.children[3].id, ids.b)
+      assert.truthy(moves(root.host) <= 2, "moved " .. moves(root.host) .. " nodes for one rotation")
+    end)
+  end)
+
   describe("Keyed child diffing & host node reuse", function()
     it("preserves host node identity when reordering items", function()
       local root = H.create_test_root()
