@@ -35,6 +35,34 @@ and the "Quaver implementation status" section of
 `tests/build/quaver_readiness_spec.lua` keeps the reflective-name and
 literal-require columns from regressing.
 
+### Every `dom` and `ink` module
+
+The browser closure doesn't reach the server half of `dom` or any of `ink`,
+so the same spec also scans every module of those two packages (44 modules;
+all parse at both the LuaJIT and 5.4 grammars). The exceptions it accepts are
+listed in the spec with their reasons, and an exception that stops occurring
+fails the test, so the list below stays current:
+
+| module | uses | why it stays |
+|---|---|---|
+| `hydronium_dom.assets`, `.server.client_boot`, `.server.meteorite_routes`, `.dev.source_registry` | `loadfile` | reads a generated manifest at runtime on the server: data, not code; a bundler treats it as an external file |
+| `hydronium_dom.server.island` | non-literal `require` | island ids are dynamic entry points (Q5) |
+| `hydronium_dom.host.dom`, `hydronium_dom.virtual` | `_G` | `legacy.read(_G)` for the old JS bridge globals (API work, below) |
+| `hydronium_dom.server.meteorite` | `rawget(_G, …)` | read-only `METEORITE_BUILD_MODE` (Q3) |
+| `hydronium_dom.dev.watch` | `_G` | dev-only sleep hook from Meteorite |
+| `hydronium_ink.yoga_ffi` | `debug` | finds the Yoga library beside itself when `MOONSTONE_PACKAGE_ROOT_HYDRONIUM_INK` is unset; a bundled ink app must set that variable and ship the library |
+
+`ffi` is accepted only in `ink` (LuaJIT-only by design); `dom` must stay
+portable. `pcall(require, "literal")` counts as a static, optional
+dependency (Q2). `hydronium_dom.server.sink` used to call `debug.getinfo`
+to count a write function's parameters; that now goes through
+`hydronium.compat.function_arity`.
+
+`d.<tag>` element descriptors are created on demand from the tag name by one
+module (`hydronium_dom.dom`), which also prebuilds the standard tags when it
+loads. There is nothing per element to shake: a bundle carries that one
+module whatever tags it uses.
+
 ## Fixed on this branch
 
 - **Dialect checks consolidated** (`a76be72`): `hydronium.compat` and

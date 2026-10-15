@@ -92,3 +92,101 @@ describe("browser closure is ready for a token-level bundler", function()
     assert.equal(#problems, 0, table.concat(problems, "\n"))
   end)
 end)
+
+-- Every module of the dom and ink packages, server and terminal code
+-- included, not just what the browser closure reaches. Each accepted
+-- exception is named with its reason; an exception that no longer occurs
+-- fails too, so this list stays an honest inventory (docs/QUAVER_READINESS.md).
+local PACKAGE_EXCEPTIONS = {
+  -- Generated manifests read at runtime on the server: data, not code.
+  ["hydronium_dom.assets"] = { loadfile = true },
+  ["hydronium_dom.server.client_boot"] = { loadfile = true },
+  ["hydronium_dom.server.meteorite_routes"] = { loadfile = true },
+  ["hydronium_dom.dev.source_registry"] = { loadfile = true },
+  -- Island ids are dynamic entry points by design.
+  ["hydronium_dom.server.island"] = { ["dynamic require"] = true },
+  -- Legacy JS bridge globals; moving them onto hydronium.runtime.hosts is API work.
+  ["hydronium_dom.host.dom"] = { _G = true },
+  ["hydronium_dom.virtual"] = { _G = true },
+  -- Read-only build-mode global set by Meteorite.
+  ["hydronium_dom.server.meteorite"] = { _G = true, rawget = true },
+  -- Dev-only sleep hook provided by Meteorite's dev server.
+  ["hydronium_dom.dev.watch"] = { _G = true },
+  -- Locates the Yoga library beside itself when MOONSTONE_PACKAGE_ROOT_HYDRONIUM_INK is unset.
+  ["hydronium_ink.yoga_ffi"] = { debug = true },
+}
+-- ink is LuaJIT-only (terminal and Yoga through the FFI); dom must stay portable.
+local FFI_PACKAGES = { hydronium_ink = true }
+
+local function package_modules(dir)
+  local ids = {}
+  local handle = io.popen('find "' .. dir .. '" -name "*.lua" -not -name "*@*"')
+  for path in handle:lines() do
+    local id = path:sub(#dir + 2, -5):gsub("/init$", ""):gsub("/", ".")
+    ids[#ids + 1] = { id = id, path = path }
+  end
+  handle:close()
+  table.sort(ids, function(a, b) return a.id < b.id end)
+  return ids
+end
+
+local function findings_of(path)
+  local found = {}
+  local tokens = tokens_of(path)
+  for i, t in ipairs(tokens) do
+    local before = tokens[i - 1] and tokens[i - 1].value
+    local after = tokens[i + 1]
+    if t.type == "IDENT" and before ~= "." and before ~= ":" then
+      local key = (before == "{" or before == "," or before == ";") and after and after.value == "="
+      if REFLECTIVE[t.value] and not key and before ~= "local" then found[t.value] = t.line end
+      if t.value == "_G" or t.value == "_ENV" or t.value == "rawget" or t.value == "rawset" then found[t.value] = t.line end
+      if t.value == "require" then
+        local b, c = tokens[i + 2], tokens[i + 3]
+        local call = after and after.value == "(" and b and b.type == "STRING" and c and c.value == ")"
+        local short = after and after.type == "STRING"
+        -- pcall(require, "literal"): an optional dependency, still static.
+        local optional = before == "(" and tokens[i - 2] and tokens[i - 2].value == "pcall"
+          and after and after.value == "," and b and b.type == "STRING"
+        if not (call or short or optional) then found["dynamic require"] = t.line end
+        local name = (call or optional) and b.value or (short and after.value)
+        if name and name:match("^[\"']ffi[\"']$") then found.ffi = t.line end
+      end
+    end
+  end
+  return found
+end
+
+describe("dom and ink packages are ready for a token-level bundler", function()
+  for _, dir in ipairs({ "dom/src", "ink/src" }) do
+    it("allows only the listed exceptions in " .. dir, function()
+      local problems, used = {}, {}
+      local modules = package_modules(dir)
+      assert.truthy(#modules > 10, "expected the package's modules, got " .. #modules)
+      for _, m in ipairs(modules) do
+        local allowed = PACKAGE_EXCEPTIONS[m.id] or {}
+        for name, line in pairs(findings_of(m.path)) do
+          local root = m.id:match("^[^.]+")
+          if name == "ffi" and FFI_PACKAGES[root] then
+            -- expected
+          elseif allowed[name] then
+            used[m.id .. " " .. name] = true
+          else
+            problems[#problems + 1] = m.id .. ":" .. tostring(line) .. " uses " .. name
+          end
+        end
+      end
+      local package_root = "hydronium_" .. dir:match("^(%w+)")
+      for id, names in pairs(PACKAGE_EXCEPTIONS) do
+        if id:match("^[^.]+") == package_root then
+          for name in pairs(names) do
+            if not used[id .. " " .. name] then
+              problems[#problems + 1] = "stale exception: " .. id .. " no longer uses " .. name
+            end
+          end
+        end
+      end
+      table.sort(problems)
+      assert.equal(#problems, 0, table.concat(problems, "\n"))
+    end)
+  end
+end)
