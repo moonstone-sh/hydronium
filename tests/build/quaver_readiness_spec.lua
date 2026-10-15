@@ -1,7 +1,7 @@
 -- Keeps the browser-shipped framework closure readable by a token-level
 -- bundler/tree-shaker such as Quaver (docs/QUAVER_READINESS.md):
 --   * reflective loaders and environment access (load, loadstring, loadfile,
---     dofile, setfenv, getfenv, debug) appear only in hydronium.compat;
+--     dofile, setfenv, getfenv, debug) appear only in hydronium.compat.loader/diagnostics;
 --   * every require takes one string literal, except in the audited HMR
 --     module that wraps `require` on purpose.
 --   * no module names _G/_ENV (host bridges are hosts capabilities), except
@@ -16,7 +16,7 @@ local REFLECTIVE = {
   load = true, loadstring = true, loadfile = true, dofile = true,
   setfenv = true, getfenv = true, debug = true,
 }
-local REFLECTION_OWNERS = { ["hydronium.compat"] = true }
+local REFLECTION_OWNERS = { ["hydronium.compat.loader"] = true, ["hydronium.compat.diagnostics"] = true }
 -- Wraps _G.require to observe module instantiation for HMR (dev only).
 local REQUIRE_WRAPPERS = { ["hydronium.core.module_graph"] = true }
 -- What Hydronium's own client bundle replaces with stubs.
@@ -53,7 +53,7 @@ describe("browser closure is ready for a token-level bundler", function()
     assert.truthy(#ids > 40, "expected the full client closure, got " .. #ids)
   end)
 
-  it("confines reflective loaders and environments to hydronium.compat", function()
+  it("confines reflection to explicit loader and diagnostic capabilities", function()
     local problems = {}
     for _, id in ipairs(ids) do
       if not REFLECTION_OWNERS[id] then

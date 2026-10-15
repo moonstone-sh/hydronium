@@ -241,3 +241,65 @@ describe("hydronium.compat.function_arity", function()
     end)
   end
 end)
+
+-- Focused imports must not instantiate optional compiler/debug capabilities.
+describe("focused compatibility capabilities", function()
+  it("loads primitive helpers without loader or diagnostics dependencies", function()
+    local ids = { "hydronium.compat.primitives", "hydronium.compat.loader", "hydronium.compat.diagnostics" }
+    local saved, preloads = {}, {}
+    for _, id in ipairs(ids) do saved[id], preloads[id] = package.loaded[id], package.preload[id]; package.loaded[id] = nil end
+    package.preload[ids[2]] = function() error("primitive import reached text compilation") end
+    package.preload[ids[3]] = function() error("primitive import reached debug reflection") end
+    local ok, primitives = pcall(require, ids[1])
+    local untouched = package.loaded[ids[2]] == nil and package.loaded[ids[3]] == nil
+    for _, id in ipairs(ids) do package.loaded[id], package.preload[id] = saved[id], preloads[id] end
+    assert.truthy(ok, tostring(primitives))
+    assert.truthy(untouched)
+    assert.same(sorted_keys(primitives), { "tointeger", "unpack" })
+    assert.equal(primitives.unpack, table.unpack or unpack)
+    assert.equal(select("#", primitives.unpack({ 1, nil, 3 }, 1, 3)), 3)
+    assert.equal(primitives.tointeger(3.5), nil)
+    assert.equal(primitives.tointeger(math.huge), nil)
+    assert.equal(primitives.tointeger(0/0), nil)
+  end)
+
+  it("keeps the facade's functions identical to the focused exports", function()
+    local compat = require("hydronium.compat")
+    local primitives = require("hydronium.compat.primitives")
+    local loader = require("hydronium.compat.loader")
+    local diagnostics = require("hydronium.compat.diagnostics")
+    assert.equal(compat.unpack, primitives.unpack)
+    assert.equal(compat.tointeger, primitives.tointeger)
+    assert.equal(compat.load, loader.load)
+    assert.equal(compat.function_location, diagnostics.function_location)
+    assert.equal(compat.function_arity, diagnostics.function_arity)
+  end)
+
+  it("has equivalent Lua 5.4 primitive and loader variants", function()
+    if not IS_LUA54 then return end
+    local primitives = load_file("core/src/hydronium/compat/primitives@lua54.lua")
+    local loader = load_file("core/src/hydronium/compat/loader@lua54.lua")
+    assert.same(sorted_keys(primitives), { "tointeger", "unpack" })
+    assert.same(sorted_keys(loader), { "load" })
+    assert.equal(primitives.unpack, table.unpack)
+    assert.equal(primitives.tointeger, math.tointeger)
+    local fn = loader.load("return value, print", "=focused", { value=7 })
+    local value, global = fn()
+    assert.equal(value, 7)
+    assert.equal(global, nil)
+    assert.equal(loader.load(string.dump(function() end)), nil)
+  end)
+
+  it("diagnostics continue to degrade without a debug library", function()
+    local diagnostics = require("hydronium.compat.diagnostics")
+    local previous = debug
+    debug = nil
+    local ok, location, arity = pcall(function()
+      return diagnostics.function_location(function() end), diagnostics.function_arity(function() end)
+    end)
+    debug = previous
+    assert.truthy(ok)
+    assert.equal(location, nil)
+    assert.equal(arity, nil)
+  end)
+end)

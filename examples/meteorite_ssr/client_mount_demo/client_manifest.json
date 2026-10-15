@@ -1,6 +1,9 @@
 {
   "hydronium": "hydronium/init.lua",
   "hydronium.compat": "hydronium/compat@lua54.lua",
+  "hydronium.compat.primitives": "hydronium/compat/primitives@lua54.lua",
+  "hydronium.compat.loader": "hydronium/compat/loader@lua54.lua",
+  "hydronium.compat.diagnostics": "hydronium/compat/diagnostics.lua",
   "hydronium.core": "hydronium/core/init.lua",
   "hydronium.core.symbols": "hydronium/core/symbols.lua",
   "hydronium.core.errors": "hydronium/core/errors.lua",

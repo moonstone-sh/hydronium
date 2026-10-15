@@ -7,7 +7,7 @@
 
 local scheduler = require("hydronium.core.scheduler")
 
-local unpack = require("hydronium.compat").unpack
+local unpack = require("hydronium.compat.primitives").unpack
 
 local actModule = {}
 

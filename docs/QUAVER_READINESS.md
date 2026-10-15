@@ -7,6 +7,29 @@ itself would need. Status as of 2026-10-15, against Quaver's
 and the "Quaver implementation status" section of
 `quaver/docs/MOONSTONE_FLAVORS.md`.
 
+## Focused compatibility capabilities
+
+`hydronium.compat` is now a backwards-compatible facade over
+`hydronium.compat.primitives`, `.loader`, and `.diagnostics`. Framework internals
+import only the capability they use. Primitives contain `unpack` and integer
+conversion without `load`, environment mutation, or debug access. Compiler and
+diagnostic facilities preserve their existing behavior and error messages.
+
+The Quaver SSR experiment passes on Lua 5.4 and LuaJIT with identical rendered
+HTML, JSON behavior, and style serialization. Its narrow-import compacted source
+measurement drops from 81,947 to 81,148 bytes; with independently mangled JSON
+and style helpers it drops from 80,829 to 80,030 bytes. These are observed loaded
+Lua-source bytes for the fixture, not browser or native-server sizes. The
+complete source inventory remains emitted.
+
+The primitive module independently passes Strict mangling (623 to 261 bytes).
+Whole-SSR Strict optimization still stops at `.diagnostics` because development
+warnings and sink compatibility use debug introspection. The split does not
+remove those capabilities or grant permission to assume them harmless.
+
+The historical measurements below describe the earlier consolidation into one
+compat module; its reflection-owner entry is now the two explicit capabilities.
+
 ## How this was measured
 
 - **Browser closure**: `hydronium_dom.dev.client_manifest.build` seeded with
@@ -166,12 +189,12 @@ These are aligned with what Quaver already implements: variant selection via
 folding with `assume_runtime_globals`, a private module registry, and
 `externals`.
 
-- **Q1. Per-module reflection allowlist.** `tree_shaker` hard-fails on any
-  bare `load`/`setfenv`/`debug`/`_G`. Hydronium funnels all reflection into
-  `hydronium.compat` (and HMR into `hydronium.core.module_graph`). Please
-  accept something like `reflective = { ["hydronium.compat"] = true }`,
-  mirroring Hydronium's own `REQUIRE_DISCIPLINE_ALLOWLIST`, rather than
-  rejecting the whole graph.
+- **Q1. Explicit runtime boundaries.** Compilation and debug introspection live
+  in `hydronium.compat.loader` and `.diagnostics`; HMR instrumentation stays in
+  `hydronium.core.module_graph`. Preserve these capabilities under their runtime
+  contracts. An allowlist must not become evidence of purity or authorize
+  deleting their effects. Separately owned static regions can be optimized;
+  arbitrary shared-graph partitioning still needs proof.
 - **Q2. Optional edges.** Treat `pcall(require, "<literal>")` as an optional
   dependency: include it if resolvable, otherwise make it an external that
   fails at runtime as before. It is currently "dynamic/aliased require".

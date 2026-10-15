@@ -3,7 +3,7 @@
 local signals = require("hydronium.signals")
 local context = require("hydronium.core.context")
 local scope = require("hydronium.core.scope")
-local compat = require("hydronium.compat")
+local compat = require("hydronium.compat.loader")
 local hosts = require("hydronium.runtime.hosts")
 
 local M = {}

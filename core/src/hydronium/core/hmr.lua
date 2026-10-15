@@ -7,7 +7,7 @@
 local family_loader = require("hydronium.core.family_loader")
 local module_graph = require("hydronium.core.module_graph")
 
-local compat = require("hydronium.compat")
+local compat = require("hydronium.compat.loader")
 
 local M = {}
 

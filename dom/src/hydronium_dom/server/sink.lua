@@ -2,7 +2,7 @@
 --- A sink is either `fun(chunk)` or `{ write = fun(self, chunk), flush?,
 --- close? }`. A one-argument table write function remains supported for
 --- compatibility; new integrations should use the method form.
-local compat = require("hydronium.compat")
+local compat = require("hydronium.compat.diagnostics")
 
 local M = {}
 

@@ -9,7 +9,7 @@
 ]]
 
 local scheduler = require("hydronium.core.scheduler")
-local compat = require("hydronium.compat")
+local compat = require("hydronium.compat.diagnostics")
 local hosts = require("hydronium.runtime.hosts")
 
 local dev = {}

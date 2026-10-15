@@ -17,7 +17,7 @@ local function compile(path, id)
   if dialects.compiles(path) then
     source = dialects.compile(source, { filename = path, development = true }).code
   end
-  local chunk, err = require("hydronium.compat").load(source, "@" .. id)
+  local chunk, err = require("hydronium.compat.loader").load(source, "@" .. id)
   if not chunk then error(err, 0) end
   return source
 end

@@ -33,7 +33,7 @@
   tradeoff, not an oversight.
 --]]
 
-local compat = require("hydronium.compat")
+local compat = require("hydronium.compat.primitives")
 
 local M = {}
 

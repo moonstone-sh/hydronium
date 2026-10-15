@@ -10,24 +10,36 @@ the package root).
 
 | package | module | API |
 |---|---|---|
-| core | `hydronium.compat` | `unpack`, `load(source, chunkname?, env?)`, `tointeger`, `function_location` |
+| core | `hydronium.compat.primitives` | `unpack`, `tointeger` (no compilation or debug access) |
+| core | `hydronium.compat.loader` | text-only `load(source, chunkname?, env?)` |
+| core | `hydronium.compat.diagnostics` | `function_location`, `function_arity` |
+| core | `hydronium.compat` | backward-compatible facade exposing all five functions |
 | luax | `hydronium_luax.compat` | `load(source, chunkname?, env?)`, `utf8_char` |
 
 luax keeps its own module because it must not depend on core
 (`tests/luax/no_core_coupling_spec.lua`). Every other package that needs a
-shim depends on core and uses `hydronium.compat`. Add new dialect checks
-there, not at call sites. `compat.load` compiles text only, and `env`
+shim depends on core and imports the focused capability it uses. Existing
+`hydronium.compat` imports still work. Add dialect checks to those capability
+modules, not at call sites. `compat.load` compiles text only, and `env`
 sandboxes the chunk on every dialect.
 
-Each compat module has two files:
+Primitive helpers never import the loader or diagnostics. This keeps ordinary
+UI/signal code out of dynamic compilation and debug-introspection closures.
+The facade eagerly combines the same functions for backwards compatibility;
+internal consumers use focused imports. Diagnostics remain an explicit boundary
+when a caller needs function locations or sink arity inference.
 
-- `compat.lua`, the untagged fallback. It works on every supported Lua and
-  picks a branch once, with plain `jit ~= nil` / `_VERSION == "Lua 5.x"`
-  comparisons. Quaver's `specialize` (with `assume_runtime_globals`) folds
-  each one to a single branch per flavor; this was checked against Quaver's
-  current pass.
-- `compat@lua54.lua`, a Moonstone flavor variant: the same API with the 5.4
-  answers written out and no checks.
+Core's primitive and loader capabilities, the legacy facade, and LUAX compat
+have portable fallbacks and Lua 5.4 variants. Diagnostics are dialect-neutral.
+The variant structure is:
+
+- `compat/primitives.lua` and `compat/loader.lua` are portable fallbacks,
+  with dialect selection kept inside each capability. Their `@lua54` siblings
+  provide the same APIs without dialect checks.
+- `compat.lua` and `compat@lua54.lua` both compose the focused capabilities.
+  Moonstone projects the nested capability variants for the target runtime;
+  browser collectors choose Lua 5.4 variants independently of the host.
+- LUAX retains its independent `compat.lua` / `compat@lua54.lua` pair.
 
 `tests/core/compat_spec.lua` loads every file the running interpreter can use
 and checks it against the same expectations. Run it under both interpreters:

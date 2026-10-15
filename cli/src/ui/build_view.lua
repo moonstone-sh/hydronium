@@ -33,7 +33,7 @@ local ink = require("hydronium_ink")
 local hooks = require("hydronium_ink.hooks")
 local render = require("hydronium_ink.render")
 
-local unpack = require("hydronium.compat").unpack
+local unpack = require("hydronium.compat.primitives").unpack
 
 local M = {}
 
