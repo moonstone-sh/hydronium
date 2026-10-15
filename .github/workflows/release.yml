@@ -108,6 +108,22 @@ jobs:
           bun install --frozen-lockfile
           bun run build
           git diff --exit-code -- src/hydronium_ink_lab/client/virtual_terminal.js src/hydronium_ink_lab/client/ink.css src/hydronium_ink_lab/client/XTERM-LICENSES.txt
+      - name: Verify lockstep versions match the tag
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="${RELEASE_TAG#v}"
+          # Every package shares the tag's version from v0.7.0 on
+          # (docs/VERSIONING.md); earlier tags predate lockstep.
+          if [ "$(printf '%s\n' 0.7.0 "$tag" | sort -V | head -1)" = "0.7.0" ]; then
+            workspace="$(sed -n 's/^version = "\(.*\)"$/\1/p' moonstone.toml | head -1)"
+            if [ "$tag" != "$workspace" ]; then
+              echo "tag $RELEASE_TAG but moonstone.toml is $workspace; run: moon exec -- luajit tools/version.lua set $tag" >&2
+              exit 1
+            fi
+            moon exec -- luajit tools/version.lua check --lockstep
+          fi
       - name: Export all registry packages
         run: moon exec -- ballad play partiture.lua
       - name: Upload and publish every registry package
