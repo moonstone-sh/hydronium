@@ -36,7 +36,8 @@ jobs:
           # Includes artifact export and target-profile lock validation fixes
           # required by this multi-package workspace.
           # v0.5.9+ mounts libexec namespaced, which the scaffolds rely on.
-          ref: v0.5.9
+          # v0.6.0+ accepts `@` in artifact paths (core/luax `compat@lua54.lua`).
+          ref: v0.6.0
           path: .ci/moonstone
       - uses: actions/checkout@v4
         with:

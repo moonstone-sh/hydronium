@@ -49,14 +49,14 @@ end
 -- header comment for the identical reason.
 local DOM_DEP_ANCHOR = [=[[[dependencies]]
 name = "hydronium/dom"
-constraint = "^0.3.13"
+constraint = "^0.4.0"
 role = "runtime"]=]
 
 local ROUTER_DEP_BLOCK = [=[
 
 [[dependencies]]
 name = "hydronium/router"
-constraint = "^0.2.4"
+constraint = "^0.3.0"
 role = "runtime"]=]
 
 --- Mutates `files` in place (and returns it) to replace `islands`'s single

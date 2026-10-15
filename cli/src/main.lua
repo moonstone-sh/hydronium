@@ -179,7 +179,7 @@ local json = require("hydronium_router.history.state")
 
 local M = {}
 
-M.VERSION = "0.4.2"
+M.VERSION = "0.4.3"
 
 M.USAGE = table.concat({
   "hydronium " .. M.VERSION,
