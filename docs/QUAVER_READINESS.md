@@ -17,17 +17,22 @@ diagnostic facilities preserve their existing behavior and error messages.
 
 The Quaver SSR experiment passes on Lua 5.4 and LuaJIT with identical rendered
 HTML, JSON behavior, and style serialization. Its narrow-import compacted source
-measurement drops from 81,947 to 80,946 bytes after the capability split and
+measurement drops from 81,947 to 80,795 bytes after the capability split and
 removal of legacy sink inference; with independently mangled JSON and style
-helpers it drops from 80,829 to 79,828 bytes. These are observed loaded
+helpers it drops from 80,829 to 79,677 bytes. These are observed loaded
 Lua-source bytes for the fixture, not browser or native-server sizes. The
 complete source inventory remains emitted.
 
 The primitive module independently passes Strict mangling (623 to 261 bytes).
-Whole-SSR Strict optimization still stops at `.diagnostics` because development
-warnings still use debug introspection. SSR sinks now use an explicit method
-protocol and do not import diagnostics. The split does not
-remove those capabilities or grant permission to assume them harmless.
+Development warning emission now has no diagnostics dependency. Optional
+`hydronium.core.dev_diagnostics.install()` supplies source locations only to a
+development entrypoint; normal warnings still report component names and causes.
+SSR sinks also use their explicit protocol without debug introspection.
+
+With Quaver's member-name scanner fix, narrow SSR now reaches the lazy Meteorite
+adapter before Strict analysis stops: that adapter reads `_G` for the build mode.
+The root facade still reaches the dynamic compilation capability via HMR/forms.
+Neither boundary is waived or called pure.
 
 The historical measurements below describe the earlier consolidation into one
 compat module; its reflection-owner entry is now the two explicit capabilities.

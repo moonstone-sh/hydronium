@@ -23,6 +23,29 @@ Pass extra capabilities as `mount({ hostCapabilities: [...] })` (or `bootIslands
 
 The shared declarative contract is `hydronium_dom.host.contract`. It identifies `@hydronium-js/dom-client`'s `dom_bridge.js#createDomBridge` provider, required and optional methods, effects, lifecycle and cleanup. For example, `set_listener` has effect `dom.listen` and cleanup `remove_listener`; virtual observers return disposers. Its method list must match the JavaScript bridge.
 
+## Development warning descriptions
+
+`hydronium.core.dev` emits and deduplicates warnings without debug reflection.
+Named components use their name; unnamed components use `<Component>` or
+`<Anonymous>`. The existing warning handler and `dev@1` capability still receive
+those messages.
+
+A separate development entrypoint can enable source locations:
+
+```lua
+local release = require("hydronium.core.dev_diagnostics").install()
+-- Run the development session, then release its formatter on teardown.
+release()
+```
+
+Keep that import out of production entrypoints. Importing the adapter alone has
+no registration effects; `install()` is explicit. The release function is
+idempotent and scoped to its registration, so an old session cannot remove a
+new formatter. Custom tooling can register its own non-reflective formatter with
+`dev.install_describer(function(component) return "description" end)`, which
+returns the same release contract. Without a debug library the optional adapter
+falls back to the normal name-based description.
+
 ## Ballad evidence
 
 The Hydronium client resolver serializes `hydronium.host-capabilities.v1` into its `hy_module_graph` content, not only asset metadata. Each module records references and unresolved accesses with source lines. Provider evidence survives minification and both single/shared chunk bundling in `metadata.hydronium.host_capabilities`. Partitures may supply additional declarative contracts through `client.resolve`'s `host_capabilities` option.
