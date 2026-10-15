@@ -312,11 +312,19 @@ local function route_file(name)
   return path
 end
 
---- True when Meteorite is compiling a release build (release-hybrid,
---- release-static). Meteorite sets METEORITE_BUILD_MODE before main.lua runs.
+--- Read build facts captured on the app by Meteorite's graph loader.
+--- @param app table
 --- @return boolean
-function meteorite_adapter.is_release_build()
-  return tostring(rawget(_G, "METEORITE_BUILD_MODE") or ""):match("^release") ~= nil
+function meteorite_adapter.is_release_build(app)
+  local context = type(app) == "table" and app.build_context
+  if type(context) ~= "table" or type(context.mode) ~= "string" then
+    error("Hydronium requires app.build_context from Meteorite; upgrade Meteorite or pass an explicit hmr option", 2)
+  end
+  local mode = context.mode
+  if mode ~= "dev" and mode ~= "hybrid_dev" and mode ~= "hybrid" and mode ~= "static" and mode ~= "release-hybrid" and mode ~= "release-static" then
+    error("Hydronium: unsupported Meteorite build context mode " .. mode, 2)
+  end
+  return mode == "release-hybrid" or mode == "release-static"
 end
 
 --- Declare Hydronium's framework routes on a Meteorite app.
@@ -420,9 +428,9 @@ function meteorite_adapter.mount(app, opts)
 
   -- Module delivery stays in release builds (pages still load app modules
   -- unbundled); only the HMR stream is development-only. Meteorite sets
-  -- METEORITE_BUILD_MODE before evaluating main.lua.
+  -- app.build_context before evaluating framework mounts.
   local hmr = opts.hmr
-  if hmr == nil then hmr = not meteorite_adapter.is_release_build() end
+  if hmr == nil then hmr = not meteorite_adapter.is_release_build(app) end
   if opts.dev ~= false then
     get("/__hydronium/dev/manifest.json", { id = "hydronium_dev_manifest", summary = "Hydronium: project module manifest" },
       lua(hmr and "dev_manifest" or "release_manifest"))
