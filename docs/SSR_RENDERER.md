@@ -59,3 +59,18 @@ No consumer export profiles are supplied; unused features inside retained
 modules are not eliminated. These are fixture source/artifact totals, not browser
 transfer or native-server sizes. Quaver 0.1.2 does not include the scanner and
 class-proof changes needed for this result.
+
+## Meteorite build context
+
+The Meteorite mount adapter reads `app.build_context.mode` to set HMR defaults.
+It never reads `METEORITE_BUILD_MODE` or `_G`. Meteorite's CLI/Ballad graph loader
+captures that context on each app; programmatic callers can pass
+`meteorite.app({build_context=meteorite.build_context.create('release-hybrid')})`.
+Release-hybrid/static modes omit the watch stream by default. An explicit
+`hmr=true` or `hmr=false` still wins. Missing/unknown build contexts produce a
+migration error rather than accidentally exposing development routes.
+
+This integration requires the matching Meteorite build-context API; upgrade
+both packages together. It removes the global-mode boundary, not the adapter's
+filesystem discovery or dynamic route/module loading. Strict whole-site
+optimization still requires separate verification of those behaviors.

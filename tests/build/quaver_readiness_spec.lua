@@ -126,7 +126,6 @@ local PACKAGE_EXCEPTIONS = {
   -- Island ids are dynamic entry points by design.
   ["hydronium_dom.server.island"] = { ["dynamic require"] = true },
   -- Read-only build-mode global set by Meteorite.
-  ["hydronium_dom.server.meteorite"] = { _G = true, rawget = true },
   -- Dev-only sleep hook provided by Meteorite's dev server.
   ["hydronium_dom.dev.watch"] = { _G = true },
   -- Last-resort, checkout-only lookup of the Yoga library beside its own source,
