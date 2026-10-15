@@ -123,7 +123,7 @@ describe("Router: history.hash", function()
       local ok, err = pcall(create, {})
       assert.falsy(ok)
       err = tostring(err)
-      assert.truthy(err:find("__router_hash_", 1, true), err)
+      assert.truthy(err:find("router.hash_history@1", 1, true), err)
       assert.truthy(err:find("hash_history.js", 1, true), err)
     end)
 
@@ -131,9 +131,21 @@ describe("Router: history.hash", function()
       assert.has_error(function() create("nope") end, "bridge must be a table")
     end)
 
-    it("falls back to __router_hash_* globals when no bridge is passed", function()
-      assert.is_nil(_G.__router_hash_read, "test precondition: no router hash globals set")
-      assert.has_error(function() create() end, "missing required bridge function")
+        it("ignores the removed __router_hash_* globals and asks for router.hash_history@1", function()
+      _G.__router_hash_read = function() error("must not be called") end
+      local ok, err = pcall(create)
+      _G.__router_hash_read = nil
+      assert.falsy(ok)
+      assert.truthy(tostring(err):find("no router.hash_history@1 host is installed", 1, true), tostring(err))
+    end)
+
+    it("resolves router.hash_history@1 from the host registry when no bridge is passed", function()
+      local hosts = require("hydronium.runtime.hosts")
+      local _, release = hosts.install("router.hash_history", 1, fake_window("#/users/7").bridge)
+      local ok, hist = pcall(create)
+      release()
+      assert.truthy(ok, tostring(hist))
+      assert.equal(hist.current().path, "/users/7")
     end)
   end)
 

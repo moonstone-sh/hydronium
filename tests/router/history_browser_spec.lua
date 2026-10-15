@@ -92,7 +92,7 @@ describe("Router: history.browser", function()
       local ok, err = pcall(create, {})
       assert.falsy(ok)
       err = tostring(err)
-      assert.truthy(err:find("__router_", 1, true), err)
+      assert.truthy(err:find("router.history@1", 1, true), err)
       assert.truthy(err:find("history.js", 1, true), err)
     end)
 
@@ -100,12 +100,21 @@ describe("Router: history.browser", function()
       assert.has_error(function() create("nope") end, "bridge must be a table")
     end)
 
-    --- The no-argument form reads `__router_*` globals. With none set,
-    --- it must fail with the same named-function error rather than a
-    --- cryptic nil call later.
-    it("falls back to __router_* globals when no bridge is passed", function()
-      assert.is_nil(_G.__router_push_state, "test precondition: no router globals set")
-      assert.has_error(function() create() end, "missing required bridge function")
+    it("ignores the removed __router_* globals and asks for router.history@1", function()
+      _G.__router_push_state = function() error("must not be called") end
+      local ok, err = pcall(create)
+      _G.__router_push_state = nil
+      assert.falsy(ok)
+      assert.truthy(tostring(err):find("no router.history@1 host is installed", 1, true), tostring(err))
+    end)
+
+    it("resolves router.history@1 from the host registry when no bridge is passed", function()
+      local hosts = require("hydronium.runtime.hosts")
+      local _, release = hosts.install("router.history", 1, fake_window("/users/7").bridge)
+      local ok, hist = pcall(create)
+      release()
+      assert.truthy(ok, tostring(hist))
+      assert.equal(hist.current().path, "/users/7")
     end)
   end)
 

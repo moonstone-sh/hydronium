@@ -86,7 +86,8 @@ end
 ```
 
 Without a browser transport, the form remains an ordinary HTML POST. With
-`createFormGlobals()` from `hydronium-dom`, `onSubmit` validates locally,
+the `form@1` capability from `hydronium-dom`'s `createFormCapability()` (passed
+to `mount({ hostCapabilities })`), `onSubmit` validates locally,
 sends an encoded request, and updates `pending`, `status`, `errors`, `values`,
 and `data` without replacing the page. Repeated fields remain arrays. File
 controls require an explicit upload transport.

@@ -4,6 +4,7 @@ local signals = require("hydronium.signals")
 local context = require("hydronium.core.context")
 local scope = require("hydronium.core.scope")
 local compat = require("hydronium.compat")
+local hosts = require("hydronium.runtime.hosts")
 
 local M = {}
 
@@ -54,12 +55,19 @@ local function literal(value, label)
   return result
 end
 
+-- The browser's form@1 capability (dom-client forms.js createFormCapability()),
+-- resolved when used: hosts are installed after modules are preloaded. The
+-- __hydronium_form_* globals of earlier releases were removed.
+local function form_host()
+  return hosts.get("form", 1)
+end
+
 local function browser_transport(request, done)
   if request.encoding ~= "form" then
     error("hydronium.forms: the default browser transport supports form encoding only; pass opts.transport for "
       .. tostring(request.encoding), 3)
   end
-  return _G.__hydronium_form_request(
+  return form_host().request(
     request.url,
     request.method,
     encode_form(request.values),
@@ -224,8 +232,9 @@ function M.useForm(action, opts)
       if outcome.data ~= nil then set_data(outcome.data) end
     end)
     cancel = nil
-    if outcome.redirect ~= nil and type(_G.__hydronium_form_redirect) == "function" then
-      _G.__hydronium_form_redirect(outcome.redirect)
+    local host = form_host()
+    if outcome.redirect ~= nil and host and type(host.redirect) == "function" then
+      host.redirect(outcome.redirect)
     end
     return true
   end
@@ -236,7 +245,8 @@ function M.useForm(action, opts)
     local ok = self:validate(subject)
     if not ok then return false end
     local transport = opts.transport or context.useContext(M.TransportContext)
-    if type(transport) ~= "function" and _G.__hydronium_form_request ~= nil then
+    local host = form_host()
+    if type(transport) ~= "function" and host and type(host.request) == "function" then
       transport = browser_transport
     end
     if type(transport) ~= "function" then
@@ -285,12 +295,17 @@ function M.useForm(action, opts)
     end)
   end
 
-  if opts.enhance == true or (_G.__hydronium_form_values ~= nil and _G.__hydronium_form_request ~= nil) then
+  local host = form_host()
+  if opts.enhance == true or (host and type(host.values) == "function" and type(host.request) == "function") then
     form.props.onSubmit = function(values_literal)
       -- The DOM host supplies a snapshot captured during event dispatch.
-      -- Other hosts may omit it and provide __hydronium_form_values instead.
+      -- Other hosts may omit it and provide form@1's values() instead.
       if values_literal == nil then
-        values_literal = _G.__hydronium_form_values()
+        local current = form_host()
+        if not current or type(current.values) ~= "function" then
+          error("hydronium.forms: no submitted values and no form@1 host with values()", 2)
+        end
+        values_literal = current.values()
       end
       return form:submit(literal(values_literal, "values"))
     end

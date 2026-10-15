@@ -2142,11 +2142,12 @@ test("isolated header diorama animates and follows its own terminal size", funct
   session:close()
 end)
 
-test("SPA Meteorite serves shared starter globals alongside its client bundle", function()
+test("SPA Meteorite serves the shared starter host capabilities alongside its client bundle", function()
   local files = require("create.templates.spa").files({ name = "spa-assets", router = "meteorite" })
-  assert(files["public/ui/starter.js"]:find("createHashHistoryGlobals", 1, true))
-  assert(files["partiture.lua"]:find('module = "/ui/starter.js"', 1, true))
-  assert(files["src/main.lua"]:find('["/ui/:path*"] = { dir = "dist/ui", param = "path" }', 1, true), "Meteorite must serve emitted globals module")
+  assert(files["public/ui/starter.js"]:find("createHashHistoryCapability", 1, true))
+  assert(not files["public/ui/starter.js"]:find("Globals", 1, true), "starter must not use the removed *Globals helpers")
+  assert(files["partiture.lua"]:find('host_capabilities = { module = "/ui/starter.js"', 1, true))
+  assert(files["src/main.lua"]:find('["/ui/:path*"] = { dir = "dist/ui", param = "path" }', 1, true), "Meteorite must serve the emitted starter module")
 end)
 
 test("Vite dev launchers honour VITE_PORT and refuse silent port fallback", function()

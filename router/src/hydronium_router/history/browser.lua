@@ -3,8 +3,8 @@
   `window.history`, reached through an injectable bridge.
 
   BRIDGE CONTRACT -- six functions, either passed explicitly as a table
-  to `create_browser_history(bridge)` or (if omitted) read from plain Lua
-  globals named `__router_<name>`:
+  to `create_browser_history(bridge)` or (if omitted) resolved as the
+  `router.history@1` host capability from hydronium.runtime.hosts:
 
     push_state(url: string, state_json: string)
     replace_state(url: string, state_json: string)
@@ -14,15 +14,14 @@
     on_popstate(fn) -> unsubscribe|nil -- fn is called with no arguments
                                           after the browser navigates
 
-  `hydronium_dom.host.dom`'s `createDomHost` once had the same
-  injectable-table-or-global-fallback shape (its `__dom_*` globals are
-  now removed), and for the same reason: the explicit-table form is what makes
-  this module unit-testable with a fake bridge, with no browser, no
-  wasmoon, and no mutation of `_G`. Both forms produce an identical
-  history; this module cannot tell which one supplied it.
+  The explicit-table form is what makes this module unit-testable with a
+  fake bridge, with no browser and no wasmoon. Both forms produce an
+  identical history. The `__router_*` globals of earlier releases were
+  removed; nothing reads them.
 
-  `router/client/history.js` is the real browser-side shim that
-  implements the five functions against `window.history` and
+  `router/client/history.js`'s `createHistoryCapability()` is the real
+  browser-side provider, passed to mount({ hostCapabilities }); it
+  implements the six functions against `window.history` and
   `window.addEventListener("popstate", ...)`.
 
   --- AN HONEST LIMITATION ------------------------------------------------
@@ -39,6 +38,7 @@
 --]]
 
 local hydronium = require("hydronium.core")
+local hosts = require("hydronium.runtime.hosts")
 local history = require("hydronium_router.history")
 local state_codec = require("hydronium_router.history.state")
 
@@ -48,25 +48,19 @@ M.REQUIRED_BRIDGE_FNS = {
   "push_state", "replace_state", "go", "location_href", "location_state", "on_popstate",
 }
 
-local function default_bridge()
-  return {
-    push_state = _G.__router_push_state,
-    replace_state = _G.__router_replace_state,
-    go = _G.__router_go,
-    location_href = _G.__router_location_href,
-    location_state = _G.__router_location_state,
-    on_popstate = _G.__router_on_popstate,
-  }
-end
-
 --- Create a browser-backed history.
 ---
 --- @param bridge? table  Explicit bridge table (see the module doc
----   comment). Omit to read the `__router_*` globals instead -- the
----   real-browser-page default.
+---   comment). Omit to resolve `router.history@1` from
+---   hydronium.runtime.hosts -- the real-browser-page default.
 --- @return table history  implements hydronium_router.History
 function M.create_browser_history(bridge)
-  bridge = bridge or default_bridge()
+  bridge = bridge or hosts.get("router.history", 1)
+  if bridge == nil then
+    error("hydronium_router.history.browser.create_browser_history: no router.history@1 host is installed. "
+      .. "Pass createHistoryCapability() (router/client/history.js) in mount({ hostCapabilities }), "
+      .. "or pass a bridge table. The __router_* globals were removed.", 2)
+  end
 
   if type(bridge) ~= "table" then
     error("hydronium_router.history.browser.create_browser_history: bridge must be a table, got "
@@ -83,9 +77,8 @@ function M.create_browser_history(bridge)
     error(
       "hydronium_router.history.browser.create_browser_history: missing required bridge function(s): "
       .. table.concat(missing, ", ")
-      .. " -- either pass a bridge table (create_browser_history({ push_state = ..., ... })), "
-      .. "or set the corresponding __router_<name> globals before calling it with no argument. "
-      .. "router/client/history.js installs exactly these six.",
+      .. " -- the bridge table or router.history@1 capability must provide all six "
+      .. "(router/client/history.js's createHistoryCapability() does).",
       2
     )
   end

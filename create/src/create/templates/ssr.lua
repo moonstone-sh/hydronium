@@ -299,9 +299,9 @@ local function Document(props)
         <script type="module">{[[
           import { mount } from "/js/bootstrap/mount.js";
           import { installHmr } from "/js/bootstrap/hmr.js";
-          import { createHistoryGlobals } from "/js/router/history.js";
-          import { createHttpGlobals } from "/js/router/http.js";
-          import { createFormGlobals } from "/js/bootstrap/forms.js";
+          import { createHistoryCapability } from "/js/router/history.js";
+          import { createHttpCapability } from "/js/router/http.js";
+          import { createFormCapability } from "/js/bootstrap/forms.js";
 
           window.__bootId = Math.random().toString(36).slice(2);
           const pageStateText = document.getElementById("__HYDRONIUM_STATE__")?.textContent;
@@ -341,12 +341,10 @@ local function Document(props)
             props: { title: "%s" },
             hydrate: true,
             hmr: true,
-            luaGlobals: {
-              ...createHistoryGlobals(),
-              ...createHttpGlobals(),
-              ...createFormGlobals(),
-              __hydronium_router_state: routerState || undefined,
-              __hydronium_greeting_outcome: pageState.hydronium_greeting
+            hostCapabilities: [createHistoryCapability(), createHttpCapability(), createFormCapability()],
+            pageData: {
+              hydronium_router_state: routerState,
+              greeting_outcome: pageState.hydronium_greeting
                 ? JSON.stringify(pageState.hydronium_greeting) : undefined,
             },
           });
@@ -508,10 +506,13 @@ local d = require("hydronium_dom").d
 local site = require("views.Site")
 local Greeting = require("views.Greeting")
 local codec = require("hydronium_router.history.state")
+local hosts = require("hydronium.runtime.hosts")
 
 return function()
-  local initial = type(_G.__hydronium_greeting_outcome) == "string"
-    and codec.decode(_G.__hydronium_greeting_outcome) or nil
+  -- Page data from mount({ pageData }); absent while rendering on the server.
+  local page = hosts.get("page", 1)
+  local outcome = page and page.read("greeting_outcome")
+  local initial = type(outcome) == "string" and codec.decode(outcome) or nil
   local router = site:createRouter({
     history = r.createBrowserHistory(),
     resolve = require,

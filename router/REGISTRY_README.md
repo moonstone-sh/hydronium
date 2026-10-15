@@ -158,8 +158,8 @@ current route.
 
 `r.http.get` uses the named Meteorite HTTP capability during SSR and an
 abortable browser fetch on client navigation. Install the browser half with
-`createHttpGlobals({ request })` from `hydronium-router/client/http.js` in
-`mount({ luaGlobals })`. A newer navigation aborts the previous fetch. A
+`createHttpCapability({ request })` from `hydronium-router/client/http.js` in
+`mount({ hostCapabilities })` (the `router.http@1` capability). A newer navigation aborts the previous fetch. A
 `request` should be `createBrowserRequest()` from Hydronium DOM; forms use the
 same primitive. A loader that returns a value directly remains synchronous;
 custom transports can instead use `ctx.services` and return a cancellation

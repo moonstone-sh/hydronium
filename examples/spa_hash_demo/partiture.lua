@@ -68,7 +68,7 @@ return ballad.partiture(function(p)
   -- M4: mount is opted into explicitly (site.manifest's default is no
   -- index.html at all -- see its own doc comment) because THIS partiture,
   -- unlike examples/meteorite_ssr's, really is a static SPA with nothing
-  -- else serving "/". lua_globals wires up hydronium_router's hash-history
+  -- else serving "/". host_capabilities wires up hydronium_router's hash-history
   -- adapter, which app.lua actually requires (history/hash.lua's own doc
   -- comment: it is an opt-in adapter an app requires itself, never a
   -- barrel default) -- site.manifest has no router awareness of its own,
@@ -77,7 +77,7 @@ return ballad.partiture(function(p)
     depends_on = { bundled, styles },
     mount = {
       title = "Hydronium SPA hash demo (static, no Meteorite)",
-      lua_globals = { module = "/js/router/hash_history.js", import = "createHashHistoryGlobals" },
+      host_capabilities = { module = "/js/router/hash_history.js", import = "createHashHistoryCapability" },
       -- Ships the real bytes index.html's own <script> tags reference, so
       -- dist/ is deployable to a plain static file server with nothing else
       -- running (docs/HYDRONIUM_SPA_MODE_PLAN.md section 2.1's "one HTML

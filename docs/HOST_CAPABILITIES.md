@@ -6,6 +6,19 @@ A host capability is a versioned table of callable embedding bindings, scoped to
 
 DOM bootstrap registers `dom@1` after Lua module preloading and before evaluating the application. The default Bridge API 2 provider installs bridge functions as yieldable host callbacks; temporary global setters are cleared after registration. The DOM reconciler receives the registry's bridge explicitly. DOM virtual hosts resolve the same capability. Explicit `createDomHost(bridge)` injection continues to work.
 
+**Every host bridge is a capability.** Besides `dom@1` and `canvas@1`:
+
+| capability | provider | Lua consumer |
+|---|---|---|
+| `router.history@1` | `router/client/history.js` `createHistoryCapability()` | `hydronium_router.history.browser` |
+| `router.hash_history@1` | `router/client/hash_history.js` `createHashHistoryCapability()` | `hydronium_router.history.hash` |
+| `router.http@1` | `router/client/http.js` `createHttpCapability()` | `hydronium_router.http` |
+| `form@1` | dom-client `forms.js` `createFormCapability()` | `hydronium.core.form` |
+| `dev@1` | the embedding (`{ warn }`) | `hydronium.core.dev` |
+| `page@1` | `mount({ pageData })` | `read(key)` for page strings, e.g. the router's `hydronium_router_state` |
+
+Pass extra capabilities as `mount({ hostCapabilities: [...] })` (or `bootIslands`, or Ballad's `site.manifest` `mount.host_capabilities`). `mount`'s former `luaGlobals` option, the site plugin's `lua_globals`, and the `__router_*`, `__router_hash_*`, `__router_http_get`, `__hydronium_form_*`, `__hydronium_dev_warn` and `__hydronium_router_state` globals were removed along with the DOM ones below; passing a removed option throws, and the client build fails on code that uses a removed global.
+
 **Removed: the `__dom_*` globals.** Earlier releases also published every bridge function as a `__dom_<method>` global and let the no-argument DOM host fall back to them. That is gone, with no compatibility mode: `mount()` publishes no bridge globals, `installHostCapability` rejects its former `legacyPrefix` option, `createDomHost()` and the virtual host read only the registry (and say how to provide `dom@1` when it is missing), and the contracts no longer name `legacy_global`s. Migrate a custom embedding by registering the bridge (`require("hydronium.runtime.hosts").install("dom", 1, bridge)`) or passing it to `createDomHost(bridge)`, and application code by replacing `_G.__dom_<method>` with `require("hydronium.runtime.hosts").require("dom", 1).<method>`.
 
 The shared declarative contract is `hydronium_dom.host.contract`. It identifies `@hydronium-js/dom-client`'s `dom_bridge.js#createDomBridge` provider, required and optional methods, effects, lifecycle and cleanup. For example, `set_listener` has effect `dom.listen` and cleanup `remove_listener`; virtual observers return disposers. Its method list must match the JavaScript bridge.

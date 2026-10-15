@@ -510,10 +510,11 @@ function M.resolve(ctx, inputs, opts)
     if #removed > 0 then
       local uses = {}
       for _, hit in ipairs(removed) do uses[#uses + 1] = id .. ":" .. hit.line .. ": " .. hit.name end
-      error("hydronium client bundle: the __dom_*/__canvas_* bridge globals were removed.\n  "
+      error("hydronium client bundle: the host bridge globals were removed.\n  "
         .. table.concat(uses, "\n  ")
-        .. "\nUse require(\"hydronium.runtime.hosts\").require(\"dom\", 1).<method> (or \"canvas\", 1), "
-        .. "or pass a bridge to createDomHost(bridge).", 0)
+        .. "\nResolve the host capability instead: require(\"hydronium.runtime.hosts\").require(name, 1).<method>, "
+        .. "with name dom, canvas, router.history, router.hash_history, router.http, form or dev; "
+        .. "page strings come from hosts.require(\"page\", 1).read(key). See docs/HOST_CAPABILITIES.md.", 0)
     end
     table.insert(module_records, {
       id = id,

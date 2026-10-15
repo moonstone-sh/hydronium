@@ -12,8 +12,9 @@ function M.scan(source, contracts)
     if token.type ~= "COMMENT" and token.type ~= "WHITESPACE" and token.type ~= "EOF" then tokens[#tokens + 1] = token end
   end
   local result = { references = array(), unresolved = array(), retain_all = false, analysis = "literal_inventory_v1" }
-  -- The `__dom_*`/`__canvas_*` bridge globals were removed; any use is
-  -- returned separately so the caller can fail the build with its location.
+  -- The host bridge globals were removed (dom, canvas, router history/hash/http,
+  -- forms, dev warnings, router page state); any use is returned separately
+  -- so the caller can fail the build with its location.
   local removed = {}
   local function unknown(t, reason)
     result.retain_all = true
@@ -22,7 +23,11 @@ function M.scan(source, contracts)
   local function removed_global(name, token)
     removed[#removed + 1] = { line = token.line, name = name }
   end
-  local function is_removed(name) return name:match("^__dom_") or name:match("^__canvas_") end
+  local function is_removed(name)
+    return name:match("^__dom_") or name:match("^__canvas_") or name:match("^__router_")
+      or name:match("^__hydronium_form_") or name == "__hydronium_dev_warn"
+      or name == "__hydronium_router_state"
+  end
   local aliases = {}
   for i, t in ipairs(tokens) do
     local next_t, after = tokens[i + 1], tokens[i + 2]

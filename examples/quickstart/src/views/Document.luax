@@ -22,9 +22,9 @@ local function Document(props)
         <script type="module">{[[
           import { mount } from "/js/bootstrap/mount.js";
           import { installHmr } from "/js/bootstrap/hmr.js";
-          import { createHistoryGlobals } from "/js/router/history.js";
-          import { createHttpGlobals } from "/js/router/http.js";
-          import { createFormGlobals } from "/js/bootstrap/forms.js";
+          import { createHistoryCapability } from "/js/router/history.js";
+          import { createHttpCapability } from "/js/router/http.js";
+          import { createFormCapability } from "/js/bootstrap/forms.js";
 
           window.__bootId = Math.random().toString(36).slice(2);
           const pageStateText = document.getElementById("__HYDRONIUM_STATE__")?.textContent;
@@ -61,12 +61,8 @@ local function Document(props)
             props: { title: "Hydronium + Meteorite", initial: 0 },
             hydrate: true,
             hmr: true,
-            luaGlobals: {
-              ...createHistoryGlobals(),
-              ...createHttpGlobals(),
-              ...createFormGlobals(),
-              __hydronium_router_state: routerState || undefined,
-            },
+            hostCapabilities: [createHistoryCapability(), createHttpCapability(), createFormCapability()],
+            pageData: { hydronium_router_state: routerState },
           });
 
           // Release builds serve no HMR stream and say so in the manifest.

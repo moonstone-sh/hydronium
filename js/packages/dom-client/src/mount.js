@@ -301,10 +301,15 @@ export function toLuaLiteral(value) {
  *   which are already past by the time mount() returns. Off by default:
  *   family_loader is documented as opt-in precisely so production pays
  *   nothing and sees no `require` wrapping.
- * @param {{ [name: string]: any }} [options.luaGlobals] Values installed in
- *   the Lua VM before the app module is required. This is the composition
- *   seam for host extensions such as hydronium-router's `__router_*`
- *   history bridge; mount does not need to know each extension by name.
+ * @param {{ name: string, version: number, bindings: Record<string, Function> }[]} [options.hostCapabilities]
+ *   Extra host capabilities registered in hydronium.runtime.hosts before the
+ *   app module is required, next to dom@1 and canvas@1. This is the
+ *   composition seam for host extensions such as hydronium-router's
+ *   `createHistoryCapability()`; mount does not need to know each by name.
+ * @param {{ [key: string]: string }} [options.pageData] Strings the page hands
+ *   to Lua (serialized SSR state, for example), readable through the
+ *   `page@1` capability: `hosts.require("page", 1).read(key)`. Nothing is
+ *   published as a Lua global: the former `luaGlobals` option was removed.
  * @param {{ id?: string, create: (options?: { luaEngineUrl?: string, luaTaskRuntimeUrl?: string, luaWasmUrl?: string, wasmoonUrl?: string, wasmoonWasmUrl?: string, onPhase?: (phase: string) => void }) => Promise<any> }} [options.engineProvider]
  *   Browser Lua engine provider. Defaults to Hydronium's vendored Bridge API 2
  *   PUC Lua 5.4.9 provider; Wasmoon remains available as an explicit fallback.
@@ -627,7 +632,8 @@ export async function boot(options) {
     props = {},
     hydrate = false,
     hmr = false,
-    luaGlobals = {},
+    hostCapabilities = [],
+    pageData = {},
     placeholder,
     engineProvider = defaultBrowserEngineProvider,
     luaEngineUrl = DEFAULT_LUA_ENGINE_URL,
@@ -639,6 +645,18 @@ export async function boot(options) {
     // requires its own after boot.
     entryless = false,
   } = options;
+
+  if (options.luaGlobals !== undefined) {
+    throw new TypeError("hydronium.client.mount: luaGlobals was removed. Pass host bridges as "
+      + "hostCapabilities: [{ name, version, bindings }] (e.g. createHistoryCapability()) and "
+      + "page strings as pageData: { key: string }, read in Lua with hosts.require(\"page\", 1).read(key).");
+  }
+  if (!Array.isArray(hostCapabilities)) throw new TypeError("hydronium.client.mount: hostCapabilities must be an array");
+  for (const [key, value] of Object.entries(pageData)) {
+    if (value !== undefined && typeof value !== "string") {
+      throw new TypeError(`hydronium.client.mount: pageData.${key} must be a string`);
+    }
+  }
 
   const bundled = Array.isArray(chunkUrls) && chunkUrls.length > 0;
   if (!engineProvider || typeof engineProvider.create !== "function") {
@@ -723,9 +741,6 @@ export async function boot(options) {
 
     const bridge = createDomBridge();
     lua.global.set("__hydronium_container", containerEl);
-    for (const [name, value] of Object.entries(luaGlobals)) {
-      lua.global.set(name, value);
-    }
     await lua.doString(INSTALL_LUA_COMPILER);
 
     mark("preload:start");
@@ -774,6 +789,10 @@ export async function boot(options) {
     await installHostCapability(lua, { name: "dom", version: 1, bindings: bridge });
     // Constructors, frame loops and image loading for hydronium_dom.canvas.
     await installHostCapability(lua, { name: "canvas", version: 1, bindings: createCanvasBridge() });
+    // Page strings: read(key) returns the string, or nil when absent.
+    const pageStrings = Object.fromEntries(Object.entries(pageData).filter(([, value]) => value !== undefined));
+    await installHostCapability(lua, { name: "page", version: 1, bindings: { read: (key) => pageStrings[key] } });
+    for (const capability of hostCapabilities) await installHostCapability(lua, capability);
 
     // After preload (the module has to be registered before it can be
     // required) and before REQUIRE_LUA (the app module's own top level may

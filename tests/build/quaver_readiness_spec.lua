@@ -4,7 +4,8 @@
 --     dofile, setfenv, getfenv, debug) appear only in hydronium.compat;
 --   * every require takes one string literal, except in the audited HMR
 --     module that wraps `require` on purpose.
--- `_G.<name>` reads of host bridge globals are documented, not banned here.
+--   * no module names _G/_ENV (host bridges are hosts capabilities), except
+--     the audited HMR module that wraps `require` on purpose.
 local runner = require("tests.runner")
 local describe, it, assert = runner.describe, runner.it, runner.assert
 local lexer = require("hydronium_luax.lexer")
@@ -63,6 +64,25 @@ describe("browser closure is ready for a token-level bundler", function()
           local field = before == "." or before == ":"
           local key = (before == "{" or before == "," or before == ";") and after == "="
           if t.type == "IDENT" and REFLECTIVE[t.value] and not field and not key then
+            problems[#problems + 1] = id .. ":" .. tostring(t.line) .. " uses " .. t.value
+          end
+        end
+      end
+    end
+    assert.equal(#problems, 0, table.concat(problems, "\n"))
+  end)
+
+  it("reads no host bridge through the global environment", function()
+    -- Every host bridge is a hydronium.runtime.hosts capability; browser code
+    -- names _G/_ENV only in the audited HMR require wrapper.
+    local problems = {}
+    for _, id in ipairs(ids) do
+      if not REQUIRE_WRAPPERS[id] then
+        local tokens = tokens_of(flavor_files.searchpath(id, package.path))
+        for i, t in ipairs(tokens) do
+          local before = tokens[i - 1] and tokens[i - 1].value
+          local field = before == "." or before == ":"
+          if t.type == "IDENT" and not field and (t.value == "_G" or t.value == "_ENV") then
             problems[#problems + 1] = id .. ":" .. tostring(t.line) .. " uses " .. t.value
           end
         end

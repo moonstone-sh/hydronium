@@ -1,5 +1,8 @@
-/** Abortable same-origin GET bridge for Hydronium route loaders. */
-export function createHttpGlobals(options = {}) {
+/**
+ * The `router.http@1` host capability: an abortable same-origin GET for
+ * Hydronium route loaders, for hydronium-dom mount's `hostCapabilities`.
+ */
+export function createHttpCapability(options = {}) {
   // `request` is normally createBrowserRequest() from hydronium-dom.  Keep a
   // compatibility fallback for standalone router consumers until their mount
   // setup adopts the shared DOM helper.
@@ -18,8 +21,8 @@ export function createHttpGlobals(options = {}) {
       .finally(() => callback?.release?.());
   };
 
-  return {
-    __router_http_get(path, done) {
+  return { name: "router.http", version: 1, bindings: {
+    get(path, done) {
       if (typeof path !== "string" || !path.startsWith("/")) {
         throw new TypeError("hydronium-router: HTTP path must start with '/'");
       }
@@ -43,5 +46,5 @@ export function createHttpGlobals(options = {}) {
       });
       return pending.abort;
     },
-  };
+  } };
 }

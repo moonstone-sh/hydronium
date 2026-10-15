@@ -29,7 +29,7 @@ and the "Quaver implementation status" section of
 | browser closure, Quaver token rules | before | after |
 |---|---|---|
 | modules naming `load`/`loadstring`/`setfenv`/`debug` | 4 (component, dev, form, hmr) | 1 (`hydronium.compat`; its `@lua54` file names only `load` and `debug`) |
-| modules naming `_G` | 8 | 8 (bridge reads, see below) |
+| modules naming `_G` | 8 | 1 (`module_graph`, HMR; the bridge reads became host capabilities) |
 | non-literal `require` | 1 (`module_graph`, HMR) | 1 (same, audited) |
 
 `tests/build/quaver_readiness_spec.lua` keeps the reflective-name and
@@ -104,13 +104,11 @@ module whatever tags it uses.
 
 ## Remaining in Hydronium (deliberately left)
 
-- **`_G.<name>` bridge reads** in `form.lua`, the router's `history/browser`,
-  `history/hash`, `http` and `router`, and
-  `rawget(_G, …)` in `dev.lua`. These are the legacy JS-bridge globals. The
-  reads are rename-safe because Quaver renames neither globals nor fields. The
-  sound fix is migrating these bridges to the `hydronium.runtime.hosts`
-  registry, as `dom@1`/`canvas@1` already are. That is API work, not a
-  bundler fix, so it was not done here.
+- ~~`_G.<name>` bridge reads~~ **Done.** Every host bridge (router
+  history, hash history and HTTP, forms, dev warnings, router page state)
+  is now a `hydronium.runtime.hosts` capability and the globals are gone
+  (`docs/HOST_CAPABILITIES.md`). The readiness spec now fails if any browser
+  module names `_G`/`_ENV`, apart from `module_graph` below.
 - **`hydronium.core.module_graph`** wraps `_G.require` to observe module
   instantiation for HMR. It is dev-only, and in a Quaver bundle it would
   observe nothing, because the bundle's private `require` is a local.

@@ -163,8 +163,8 @@ return App
 ]==], project_name)
 
   files["public/ui/starter.js"] = look.SCRIPT .. [[
-import { createHashHistoryGlobals } from "/js/router/hash_history.js";
-export function createGlobals() { return createHashHistoryGlobals(); }
+import { createHashHistoryCapability } from "/js/router/hash_history.js";
+export function createHostCapabilities() { return [createHashHistoryCapability()]; }
 ]]
 
   files["src/views/Home.luax"] = [==[-- Everything runs in the browser: the counter is reactive Lua, and "Say
@@ -295,7 +295,7 @@ return ballad.partiture(function(p)
     mount = {
       title = "%s",
       hydrate = false,
-      lua_globals = { module = "/ui/starter.js", import = "createGlobals" },
+      host_capabilities = { module = "/ui/starter.js", import = "createHostCapabilities" },
       vendor = {
         { dir = "public/ui", url_prefix = "ui" },
         { dir = pkg_root("MOONSTONE_PACKAGE_ROOT_HYDRONIUM_DOM", ".moonstone/env/libexec/dom") .. "/hydronium_dom/client", url_prefix = "js/bootstrap" },

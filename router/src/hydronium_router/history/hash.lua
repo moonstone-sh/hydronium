@@ -17,8 +17,8 @@
   EXACT, the same guarantee `memory` makes, not `browser`'s approximation.
 
   BRIDGE CONTRACT -- five functions, either passed explicitly as a table
-  to `create_hash_history(bridge)` or (if omitted) read from plain Lua
-  globals named `__router_hash_<name>`:
+  to `create_hash_history(bridge)` or (if omitted) resolved as the
+  `router.hash_history@1` host capability from hydronium.runtime.hosts:
 
     read() -> string                    -- raw `location.hash`, "#..." or ""
     write(href: string, state_json: string)
@@ -33,14 +33,13 @@
     on_change(fn) -> unsubscribe|nil    -- fn is called with no arguments
                                             after a real "hashchange"
 
-  This is the same injectable-table-or-global-fallback shape
-  `hydronium_router.history.browser` and `hydronium_dom.host.dom`'s
-  `createDomHost` use, and for the same reason: the explicit-table form
-  makes this module unit-testable with a fake bridge, with no browser, no
-  wasmoon, and no mutation of `_G`.
+  The explicit-table form makes this module unit-testable with a fake
+  bridge, with no browser and no wasmoon. The `__router_hash_*` globals
+  of earlier releases were removed; nothing reads them.
 
-  `router/client/hash_history.js` is the real browser-side shim
-  implementing these five functions against `window.location` and
+  `router/client/hash_history.js`'s `createHashHistoryCapability()` is the
+  real browser-side provider, passed to mount({ hostCapabilities }); it
+  implements these five functions against `window.location` and
   `window.addEventListener("hashchange", ...)`.
 
   --- WHY THE ECHO-SUPPRESSION, NOT A COUNTER ----------------------------
@@ -78,21 +77,12 @@
 
 local hydronium = require("hydronium.core")
 local history = require("hydronium_router.history")
+local hosts = require("hydronium.runtime.hosts")
 local state_codec = require("hydronium_router.history.state")
 
 local M = {}
 
 M.REQUIRED_BRIDGE_FNS = { "read", "write", "replace", "go", "on_change" }
-
-local function default_bridge()
-  return {
-    read = _G.__router_hash_read,
-    write = _G.__router_hash_write,
-    replace = _G.__router_hash_replace,
-    go = _G.__router_hash_go,
-    on_change = _G.__router_hash_on_change,
-  }
-end
 
 --- Strips a leading "#" and normalizes an empty fragment to "/", so
 --- `history.to_location` always receives a real path-shaped href.
@@ -116,11 +106,16 @@ end
 --- Create a hash-backed history.
 ---
 --- @param bridge? table  Explicit bridge table (see the module doc
----   comment). Omit to read the `__router_hash_*` globals instead -- the
----   real-browser-page default.
+---   comment). Omit to resolve `router.hash_history@1` from
+---   hydronium.runtime.hosts -- the real-browser-page default.
 --- @return table history  implements hydronium_router.History
 function M.create_hash_history(bridge)
-  bridge = bridge or default_bridge()
+  bridge = bridge or hosts.get("router.hash_history", 1)
+  if bridge == nil then
+    error("hydronium_router.history.hash.create_hash_history: no router.hash_history@1 host is installed. "
+      .. "Pass createHashHistoryCapability() (router/client/hash_history.js) in mount({ hostCapabilities }), "
+      .. "or pass a bridge table. The __router_hash_* globals were removed.", 2)
+  end
 
   if type(bridge) ~= "table" then
     error("hydronium_router.history.hash.create_hash_history: bridge must be a table, got "
@@ -137,9 +132,8 @@ function M.create_hash_history(bridge)
     error(
       "hydronium_router.history.hash.create_hash_history: missing required bridge function(s): "
       .. table.concat(missing, ", ")
-      .. " -- either pass a bridge table (create_hash_history({ read = ..., ... })), "
-      .. "or set the corresponding __router_hash_<name> globals before calling it with no argument. "
-      .. "router/client/hash_history.js installs exactly these five.",
+      .. " -- the bridge table or router.hash_history@1 capability must provide all five "
+      .. "(router/client/hash_history.js's createHashHistoryCapability() does).",
       2
     )
   end
