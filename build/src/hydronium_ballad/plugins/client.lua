@@ -506,6 +506,15 @@ function M.resolve(ctx, inputs, opts)
   local module_records = {}
   for _, id in ipairs(order) do
     local mod = by_id[id]
+    local capabilities, removed = host_capabilities.scan(mod.content, contracts)
+    if #removed > 0 then
+      local uses = {}
+      for _, hit in ipairs(removed) do uses[#uses + 1] = id .. ":" .. hit.line .. ": " .. hit.name end
+      error("hydronium client bundle: the __dom_*/__canvas_* bridge globals were removed.\n  "
+        .. table.concat(uses, "\n  ")
+        .. "\nUse require(\"hydronium.runtime.hosts\").require(\"dom\", 1).<method> (or \"canvas\", 1), "
+        .. "or pass a bridge to createDomHost(bridge).", 0)
+    end
     table.insert(module_records, {
       id = id,
       origin = mod.origin,
@@ -514,7 +523,7 @@ function M.resolve(ctx, inputs, opts)
       update = mod.update,
       requires = scan_requires(mod.content),
       revision = process.b3sum_string(mod.content),
-      host_capabilities = host_capabilities.scan(mod.content, contracts),
+      host_capabilities = capabilities,
     })
   end
   local host_manifest = host_capabilities.manifest(module_records, contracts)
@@ -524,7 +533,7 @@ function M.resolve(ctx, inputs, opts)
     aliases = sorted_aliases,
     module_records = module_records,
     host_capabilities = host_manifest,
-  }, { indent = false, keyorder = { "entries", "modules", "aliases", "module_records", "host_capabilities", "schema", "contracts", "providers", "retain_all", "elimination", "id", "origin", "target", "transform", "update", "requires", "revision", "analysis", "references", "unresolved", "name", "version", "methods", "provider", "language", "package", "module", "export", "lifecycle", "registration_effect", "method", "group", "effect", "required", "cleanup", "legacy_global", "line", "access", "source", "reason", "base", "real" } })
+  }, { indent = false, keyorder = { "entries", "modules", "aliases", "module_records", "host_capabilities", "schema", "contracts", "providers", "retain_all", "elimination", "id", "origin", "target", "transform", "update", "requires", "revision", "analysis", "references", "unresolved", "name", "version", "methods", "provider", "language", "package", "module", "export", "lifecycle", "registration_effect", "method", "group", "effect", "required", "cleanup", "line", "access", "source", "reason", "base", "real" } })
 
   out:add(ctx.graph:add_asset({
     kind = "hy_module_graph",

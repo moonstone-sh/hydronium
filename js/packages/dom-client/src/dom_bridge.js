@@ -1,8 +1,8 @@
 /*
   hydronium.client.dom_bridge -- the real, standalone, reusable
-  implementation of `hydronium.host.dom`'s documented `__dom_*` bridge
-  contract (see src/hydronium/host/dom.lua's own doc comment for the
-  full fifteen-function contract this satisfies).
+  implementation of the `dom@1` host capability that
+  `hydronium_dom.host.dom` consumes (hydronium_dom.host.contract declares
+  the functions).
 
   Extracted from what was, until this module existed, a hand-typed copy
   living inline inside a single verification page
@@ -17,16 +17,13 @@
   these through the selected Lua engine provider:
 
     const bridge = createDomBridge();
-    for (const [name, fn] of Object.entries(bridge)) {
-      lua.global.set("__dom_" + name, fn);
-    }
-    // Compatibility embedding only. mount() now uses installHostCapability
-    // to register dom@1 in hydronium.runtime.hosts, then injects that table.
-    // then, in Lua: require("hydronium.host.dom").createDomHost()
-    //   (no-arg form reads the __dom_* globals just set above)
+    await installHostCapability(lua, { name: "dom", version: 1, bindings: bridge });
+    // then, in Lua: require("hydronium_dom.host.dom").createDomHost()
+    //   (the no-argument form resolves dom@1 from hydronium.runtime.hosts)
 
-  For legacy embeddings, `hydronium.host.dom.createDomHost` still accepts
-  an explicit bridge table or the `__dom_*` globals.
+  An embedding may instead pass the bridge table explicitly:
+  `createDomHost(bridge)`. The `__dom_*` globals of earlier releases were
+  removed; nothing reads them.
 */
 
 /** @returns {Record<string, Function>} the 15 required bridge functions, plus the 1 optional one (hydration_mismatch) */

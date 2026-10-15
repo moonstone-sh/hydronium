@@ -47,12 +47,13 @@ fails the test, so the list below stays current:
 |---|---|---|
 | `hydronium_dom.assets`, `.server.client_boot`, `.server.meteorite_routes`, `.dev.source_registry` | `loadfile` | reads a generated manifest at runtime on the server: data, not code; a bundler treats it as an external file |
 | `hydronium_dom.server.island` | non-literal `require` | island ids are dynamic entry points (Q5) |
-| `hydronium_dom.host.dom`, `hydronium_dom.virtual` | `_G` | `legacy.read(_G)` for the old JS bridge globals (API work, below) |
 | `hydronium_dom.server.meteorite` | `rawget(_G, …)` | read-only `METEORITE_BUILD_MODE` (Q3) |
 | `hydronium_dom.dev.watch` | `_G` | dev-only sleep hook from Meteorite |
-| `hydronium_ink.yoga_ffi` | `debug` | finds the Yoga library beside itself when `MOONSTONE_PACKAGE_ROOT_HYDRONIUM_INK` is unset; a bundled ink app must set that variable and ship the library |
+| `hydronium_ink.yoga_ffi` | `debug` | third and last attempt to load Yoga, after the OS loader and `MOONSTONE_PACKAGE_ROOT_HYDRONIUM_INK`: a library beside its own source, for running from a checkout. In a bundle it fails harmlessly; a bundled ink app needs the library on the loader path or that variable set |
 
-`ffi` is accepted only in `ink` (LuaJIT-only by design); `dom` must stay
+The DOM host and the virtual host no longer read globals at all: the
+`__dom_*` bridge globals were removed outright (see
+`docs/HOST_CAPABILITIES.md`). `ffi` is accepted only in `ink` (LuaJIT-only by design); `dom` must stay
 portable. `pcall(require, "literal")` counts as a static, optional
 dependency (Q2). `hydronium_dom.server.sink` used to call `debug.getinfo`
 to count a write function's parameters; that now goes through
@@ -104,7 +105,7 @@ module whatever tags it uses.
 ## Remaining in Hydronium (deliberately left)
 
 - **`_G.<name>` bridge reads** in `form.lua`, the router's `history/browser`,
-  `history/hash`, `http` and `router`, and `dom.lua` (`legacy.read(_G)`), and
+  `history/hash`, `http` and `router`, and
   `rawget(_G, …)` in `dev.lua`. These are the legacy JS-bridge globals. The
   reads are rename-safe because Quaver renames neither globals nor fields. The
   sound fix is migrating these bridges to the `hydronium.runtime.hosts`

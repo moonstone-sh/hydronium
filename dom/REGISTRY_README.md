@@ -282,8 +282,9 @@ not create runtime globals. `table` and `select` remain lexical-only as
 
 Browser bootstrap installs `dom@1` in `hydronium.runtime.hosts` before
 loading the application. Custom embeddings may install the same capability or
-provide `createDomHost(bridge)` explicitly. Legacy `__dom_*` globals remain
-supported when the capability is absent. The declarative DOM contract records
+provide `createDomHost(bridge)` explicitly. The `__dom_*` globals of earlier
+releases were removed: nothing publishes or reads them, and the client build
+fails on code that still uses them. The declarative DOM contract records
 methods, effects and cleanup for build tools. This capability API is unreleased;
 see [Host capabilities](../docs/HOST_CAPABILITIES.md).
 

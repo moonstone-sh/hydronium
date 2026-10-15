@@ -10,7 +10,6 @@ const paths={
   'hydronium.runtime.hosts':'core/src/hydronium/runtime/hosts.lua',
   'hydronium_dom.host.dom':'dom/src/hydronium_dom/host/dom.lua',
   'hydronium_dom.host.contract':'dom/src/hydronium_dom/host/contract.lua',
-  'hydronium_dom.host.legacy':'dom/src/hydronium_dom/host/legacy.lua',
   'hydronium_dom.style':'dom/src/hydronium_dom/style.lua',
 };
 const sources={};
@@ -19,7 +18,7 @@ const fixture=`
 local hosts = require("hydronium.runtime.hosts")
 local contract = require("hydronium_dom.host.contract")
 local bridge = hosts.require("dom", 1)
-assert(_G.__dom_set_listener == nil, "test must work without legacy globals")
+assert(_G.__dom_set_listener == nil, "mount must not publish __dom_* globals")
 local names = {}
 for _, method in ipairs(contract.manifest().methods) do names[#names + 1] = method.name end
 table.sort(names)

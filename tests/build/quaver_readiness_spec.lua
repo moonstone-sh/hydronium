@@ -105,14 +105,12 @@ local PACKAGE_EXCEPTIONS = {
   ["hydronium_dom.dev.source_registry"] = { loadfile = true },
   -- Island ids are dynamic entry points by design.
   ["hydronium_dom.server.island"] = { ["dynamic require"] = true },
-  -- Legacy JS bridge globals; moving them onto hydronium.runtime.hosts is API work.
-  ["hydronium_dom.host.dom"] = { _G = true },
-  ["hydronium_dom.virtual"] = { _G = true },
   -- Read-only build-mode global set by Meteorite.
   ["hydronium_dom.server.meteorite"] = { _G = true, rawget = true },
   -- Dev-only sleep hook provided by Meteorite's dev server.
   ["hydronium_dom.dev.watch"] = { _G = true },
-  -- Locates the Yoga library beside itself when MOONSTONE_PACKAGE_ROOT_HYDRONIUM_INK is unset.
+  -- Last-resort, checkout-only lookup of the Yoga library beside its own source,
+  -- after the OS loader and MOONSTONE_PACKAGE_ROOT_HYDRONIUM_INK; harmless in a bundle.
   ["hydronium_ink.yoga_ffi"] = { debug = true },
 }
 -- ink is LuaJIT-only (terminal and Yoga through the FFI); dom must stay portable.

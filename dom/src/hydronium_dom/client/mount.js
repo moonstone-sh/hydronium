@@ -771,7 +771,7 @@ export async function boot(options) {
       }
     }
     mark("preload:end");
-    await installHostCapability(lua, { name: "dom", version: 1, bindings: bridge, legacyPrefix: "__dom_" });
+    await installHostCapability(lua, { name: "dom", version: 1, bindings: bridge });
     // Constructors, frame loops and image loading for hydronium_dom.canvas.
     await installHostCapability(lua, { name: "canvas", version: 1, bindings: createCanvasBridge() });
 

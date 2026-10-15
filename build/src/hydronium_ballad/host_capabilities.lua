@@ -11,41 +11,35 @@ function M.scan(source, contracts)
   for _, token in ipairs(lexer.tokenize(source, "@host-capabilities", { include_whitespace = false })) do
     if token.type ~= "COMMENT" and token.type ~= "WHITESPACE" and token.type ~= "EOF" then tokens[#tokens + 1] = token end
   end
-  local known = {}
-  for _, contract in ipairs(contracts) do
-    for _, method in ipairs(contract.methods) do known[method.legacy_global] = { contract = contract, method = method } end
-  end
   local result = { references = array(), unresolved = array(), retain_all = false, analysis = "literal_inventory_v1" }
+  -- The `__dom_*`/`__canvas_*` bridge globals were removed; any use is
+  -- returned separately so the caller can fail the build with its location.
+  local removed = {}
   local function unknown(t, reason)
     result.retain_all = true
     result.unresolved[#result.unresolved + 1] = { line = t.line, reason = reason }
   end
-  local function legacy(name, token, next_token)
-    local entry = known[name]
-    if not entry then unknown(token, "undeclared_legacy_binding:" .. name); return end
-    local write = next_token and next_token.value == "="
-    result.references[#result.references + 1] = { name = entry.contract.name, version = entry.contract.version,
-      method = entry.method.name, effect = entry.method.effect, line = token.line,
-      access = write and "write" or "read", source = "legacy_global" }
-    if write then unknown(token, "legacy_binding_mutation") end
+  local function removed_global(name, token)
+    removed[#removed + 1] = { line = token.line, name = name }
   end
+  local function is_removed(name) return name:match("^__dom_") or name:match("^__canvas_") end
   local aliases = {}
   for i, t in ipairs(tokens) do
     local next_t, after = tokens[i + 1], tokens[i + 2]
     if t.value == "local" and next_t and next_t.type == "IDENT" and after and after.value == "="
       and tokens[i + 3] and tokens[i + 3].value == "require" and tokens[i + 4] and tokens[i + 4].value == "("
       and literal(tokens[i + 5]) == "hydronium.runtime.hosts" then aliases[next_t.value] = true end
-    if t.type == "IDENT" and t.value:match("^__dom_") then
+    if t.type == "IDENT" and is_removed(t.value) then
       local previous, base = tokens[i - 1], tokens[i - 2]
-      if not previous or previous.value ~= "." or (base and base.value == "_G") then legacy(t.value, t, next_t) end
+      if not previous or previous.value ~= "." or (base and base.value == "_G") then removed_global(t.value, t) end
     elseif t.value == "_G" then
       if next_t and next_t.value == "." and after and after.type == "IDENT" then
-        -- The subsequent identifier is inventoried by the branch above.
-        if not after.value:match("^__dom_") then unknown(t, "global_environment_access") end
+        -- The subsequent identifier is reported by the branch above.
+        if not is_removed(after.value) then unknown(t, "global_environment_access") end
       elseif next_t and next_t.value == "[" then
         local name = literal(after)
-        if name and name:match("^__dom_") and tokens[i + 3] and tokens[i + 3].value == "]" then
-          legacy(name, t, tokens[i + 4])
+        if name and is_removed(name) and tokens[i + 3] and tokens[i + 3].value == "]" then
+          removed_global(name, t)
         else unknown(t, "computed_global_access") end
       else unknown(t, "global_environment_escape") end
     elseif t.value == "require" and next_t and next_t.value == "(" and literal(after) == "hydronium.runtime.hosts" then
@@ -70,7 +64,7 @@ function M.scan(source, contracts)
       unknown(t, "host_registry_escape_or_mutation")
     end
   end
-  return result
+  return result, removed
 end
 function M.manifest(module_records, contracts)
   local modules, providers, included = array(), array(), {}

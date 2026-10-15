@@ -14,9 +14,9 @@
     on_popstate(fn) -> unsubscribe|nil -- fn is called with no arguments
                                           after the browser navigates
 
-  This is the same injectable-table-or-global-fallback shape
-  `hydronium_dom.host.dom`'s `createDomHost` uses for its `__dom_*`
-  bridge, and for the same reason: the explicit-table form is what makes
+  `hydronium_dom.host.dom`'s `createDomHost` once had the same
+  injectable-table-or-global-fallback shape (its `__dom_*` globals are
+  now removed), and for the same reason: the explicit-table form is what makes
   this module unit-testable with a fake bridge, with no browser, no
   wasmoon, and no mutation of `_G`. Both forms produce an identical
   history; this module cannot tell which one supplied it.

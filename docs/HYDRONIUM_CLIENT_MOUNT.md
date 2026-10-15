@@ -32,8 +32,9 @@ and from native Lua, is in [LUA_ENGINES.md](LUA_ENGINES.md).
   js-island refusal staying intact).
 - **`src/hydronium/host/dom.lua`**: the `__dom_*` bridge is no longer
   bare, unguarded globals -- `createDomHost(bridge)` now accepts an
-  explicit bridge table (falling back to the `__dom_*` globals when
-  omitted, unchanged for every existing real-browser caller) and
+  explicit bridge table (the `__dom_*` global fallback this once had was
+  later removed; omitted, it resolves `dom@1` from
+  `hydronium.runtime.hosts`) and
   validates it eagerly, erroring with a named list of what's missing
   instead of a bare `attempt to call a nil value`. This is also what
   makes native testing possible without touching `_G`: **`tests/host/dom_spec.lua`**,
