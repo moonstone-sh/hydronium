@@ -275,6 +275,12 @@ For a project-owned shell, run
 its default markup. See [Lab controls and playback](docs/LAB_CONTROLS.md) for
 hooks, binding, components and customization boundaries.
 
+## Plain server rendering
+
+`hydronium_dom.server.renderer` provides SSR without Meteorite or Vite/manifest
+integration dependencies. The existing `hydronium_dom.server` entrypoint retains
+those integrations. See [renderer boundaries and explicit URL resolution](docs/SSR_RENDERER.md).
+
 ## Host embeddings
 
 Versioned host bindings live in the VM-local `hydronium.runtime.hosts`

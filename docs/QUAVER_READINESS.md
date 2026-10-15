@@ -16,23 +16,33 @@ conversion without `load`, environment mutation, or debug access. Compiler and
 diagnostic facilities preserve their existing behavior and error messages.
 
 The Quaver SSR experiment passes on Lua 5.4 and LuaJIT with identical rendered
-HTML, JSON behavior, and style serialization. Its narrow-import compacted source
-measurement drops from 81,947 to 80,795 bytes after the capability split and
-removal of legacy sink inference; with independently mangled JSON and style
-helpers it drops from 80,829 to 79,677 bytes. These are observed loaded
-Lua-source bytes for the fixture, not browser or native-server sizes. The
-complete source inventory remains emitted.
+HTML, JSON behavior, and styles. Measured milestones for compacted observed
+Lua-source bytes (including the page) are:
 
-The primitive module independently passes Strict mangling (623 to 261 bytes).
-Development warning emission now has no diagnostics dependency. Optional
+| Import / milestone | Bytes |
+| --- | ---: |
+| Original narrow element + site SSR entrypoint | 81,947 |
+| Compatibility split, explicit sinks, non-reflective warnings | 80,795 |
+| Explicit plain renderer entrypoint | 73,236 |
+| Plain renderer plus independently mangled JSON/style helpers | 72,118 |
+
+These are fixture totals, not browser or native-server sizes; the complete
+source inventory remains emitted. Narrow imports provide the module reduction,
+not automatic Quaver tree-shaking. The primitive module independently passes
+Strict mangling (623 to 261 bytes).
+
+Development warning emission has no diagnostics dependency. Optional
 `hydronium.core.dev_diagnostics.install()` supplies source locations only to a
-development entrypoint; normal warnings still report component names and causes.
-SSR sinks also use their explicit protocol without debug introspection.
+development entrypoint. SSR sinks use explicit methods without arity inference.
+The plain `hydronium_dom.server.renderer` also excludes Meteorite and manifest
+loading, accepting an optional per-render JavaScript module resolver. The
+existing site-facing entrypoint retains integration behavior.
 
-With Quaver's member-name scanner fix, narrow SSR now reaches the lazy Meteorite
-adapter before Strict analysis stops: that adapter reads `_G` for the build mode.
-The root facade still reaches the dynamic compilation capability via HMR/forms.
-Neither boundary is waived or called pure.
+With Quaver's member-name scanner fix, Strict dependency discovery now reaches
+export verification. The next blocker is `hydronium_dom.server.html`'s SVG
+lookup sets, populated by initializer loops (`QV104`). Those loops need a proof
+or a deliberate static representation; their effects are not silently dropped.
+See [SSR renderer boundaries](SSR_RENDERER.md).
 
 The historical measurements below describe the earlier consolidation into one
 compat module; its reflection-owner entry is now the two explicit capabilities.
