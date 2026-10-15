@@ -14,6 +14,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const client = join(root, "js/packages/dom-client/src");
 const modules = {
   "hydronium.runtime.hosts": "core/src/hydronium/runtime/hosts.lua",
+  "hydronium.compat": "core/src/hydronium/compat@lua54.lua",
   "hydronium.core.symbols": "core/src/hydronium/core/symbols.lua",
   "hydronium.core.errors": "core/src/hydronium/core/errors.lua",
   "hydronium.core.scope": "core/src/hydronium/core/scope.lua",
