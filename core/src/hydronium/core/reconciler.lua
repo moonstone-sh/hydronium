@@ -869,16 +869,35 @@ function Reconciler:reconcileChildren(parentHostNode, oldChildren, newChildren, 
   -- here would move this fragment past those unrelated siblings.
   if oldLen <= 1 and newLen <= 1 then return reconciledList end
 
-  -- Ensure physical sibling order in parent host
+  -- Ensure physical sibling order in parent host. Move only nodes that are
+  -- out of place: re-inserting a node that is already in position removes
+  -- and re-adds it, which blurs a focused <input> (and resets selection,
+  -- scroll and running CSS transitions) on every re-render of its parent.
+  -- Hosts without sibling navigation keep the old append-everything pass.
+  if not parentHostNode then return reconciledList end
+  local host = self.host
+  local ordered = {}
   for i = 1, #reconciledList do
-    local node = reconciledList[i]
-    local hostNodes = self:getAllHostNodes(node)
+    local hostNodes = self:getAllHostNodes(reconciledList[i])
     for j = 1, #hostNodes do
-      local hn = hostNodes[j]
-      if hn and parentHostNode then
-        self.host.appendChild(parentHostNode, hn)
+      if hostNodes[j] then ordered[#ordered + 1] = hostNodes[j] end
+    end
+  end
+  if host.nextSibling and host.insertBefore then
+    -- The first node anchors the list where it already is; each following
+    -- node must sit directly after its predecessor.
+    for i = 2, #ordered do
+      local expected = host.nextSibling(ordered[i - 1])
+      if expected ~= ordered[i] then
+        if expected then
+          host.insertBefore(parentHostNode, ordered[i], expected)
+        else
+          host.appendChild(parentHostNode, ordered[i])
+        end
       end
     end
+  else
+    for i = 1, #ordered do host.appendChild(parentHostNode, ordered[i]) end
   end
 
   return reconciledList
