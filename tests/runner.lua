@@ -540,6 +540,7 @@ local function main()
       "cli/tests/event_model_spec.lua",
       "cli/tests/dev_supervisor_spec.lua",
       "cli/tests/source_watch_spec.lua",
+      "cli/tests/dev_listen_spec.lua",
       "cli/tests/inspector_spec.lua",
       "cli/tests/inspector_detail_spec.lua",
       "cli/tests/main_spec.lua",

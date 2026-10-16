@@ -571,6 +571,15 @@ local function drain(ctx)
   local applied = 0
   for _, line in ipairs(lines) do
     local event = event_model.parse_line(line)
+    if event and event.kind == "startup" and ctx.resolve_urls then
+      -- The graph (and its listen.zon) is current once the server started.
+      -- Before State:apply, so a `url` on the event itself still wins.
+      local urls = ctx.resolve_urls()
+      if urls then
+        ctx.state.set_url(urls.url)
+        ctx.state.set_network_urls(urls.network)
+      end
+    end
     if event then
       -- Durable superset first, uncollapsed, every event, always.
       -- Hiding HMR below is a DISPLAY decision and must never reach here:
@@ -763,6 +772,10 @@ function M.dev(parsed)
     -- Display filter only; ctx.log above is written before it is consulted.
     show_hmr = parsed.show_hmr,
     hidden_hmr = 0,
+    -- The banner's real address(es), see src/dev_listen.lua.
+    resolve_urls = function()
+      return require("dev_listen").resolve()
+    end,
   }
 
   -- Real wall-clock, not a count of loop turns. render.lua's loop paces

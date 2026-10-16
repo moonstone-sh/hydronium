@@ -12,7 +12,8 @@
 
   SHAPE (matches the plan's target mock):
 
-     ➜  Hydronium app up and running on http://127.0.0.1:8080/
+     ➜  Hydronium app up and running on http://127.0.0.1:6300/
+        Network: http://192.168.1.20:6300/    (only when listening on 0.0.0.0)
         12 routes · 340ms
 
         GET /home · 51ms x3
@@ -59,15 +60,15 @@ M.SPINNER_FRAMES = {
   "\226\160\135", "\226\160\143",
 }
 
---- The dev server's URL.
+--- The dev server's URL, before one is known.
 ---
---- STATED GAP: the `startup` event's field list (routes, mode, backend,
---- ready_ms) carries no URL, so there is nothing to source this from yet.
---- This CLI parses no `--url`/`--port` flag either (the flag grammar is
---- exactly `dev [--verbose] [--show-ips]`), so the header shows this
---- default, and picks up `startup.url` automatically if a later meteorite
---- starts emitting one. It matches examples/quickstart/dev.sh's own port.
-M.DEFAULT_URL = "http://127.0.0.1:8080/"
+--- Meteorite's `startup` event carries no address (a `url` field is used if
+--- a later Meteorite adds one). `hydronium dev` resolves the real one from
+--- the generated graph's listen.zon when that event lands (src/dev_listen.lua),
+--- so this is only shown if that fails: nil, i.e. no URL rather than a
+--- made-up one. (It used to be "http://127.0.0.1:8080/", printed whatever
+--- port the server actually used.)
+M.DEFAULT_URL = nil
 
 -- ---------------------------------------------------------------------
 -- State
@@ -79,6 +80,7 @@ M.State = State
 
 --- @class hydronium_cli.UiStateOptions
 --- @field url? string
+--- @field network_urls? string[] LAN URLs when the server listens on every interface.
 --- @field history? table An inspector.History (src/inspector.lua). One is created if omitted.
 --- @field fullscreen? boolean Start in the fullscreen request-debug view.
 --- @field show_ips? boolean Show remote addresses (mirrors --show-ips).
@@ -102,6 +104,7 @@ function M.new_state(opts)
   local get_routes, set_routes = hydronium.signal(opts.routes)
   local get_ready_ms, set_ready_ms = hydronium.signal(opts.ready_ms)
   local get_url, set_url = hydronium.signal(opts.url or M.DEFAULT_URL)
+  local get_network_urls, set_network_urls = hydronium.signal(opts.network_urls or {})
   local get_entries, set_entries = hydronium.signal({})
   local get_note, set_note = hydronium.signal(nil)
   -- Count of hydronium dev-endpoint requests filtered out of the views.
@@ -124,6 +127,7 @@ function M.new_state(opts)
     routes = get_routes, set_routes = set_routes,
     ready_ms = get_ready_ms, set_ready_ms = set_ready_ms,
     url = get_url, set_url = set_url,
+    network_urls = get_network_urls, set_network_urls = set_network_urls,
     entries = get_entries, set_entries = set_entries,
     hidden_hmr = get_hidden_hmr, set_hidden_hmr = set_hidden_hmr,
     search = get_search, set_search = set_search,
@@ -196,10 +200,11 @@ end
 -- ---------------------------------------------------------------------
 
 local function header_lines(state)
+  local url = state.url()
   local children = {
     hydronium.h(ink.Box, { flexDirection = "row" },
       hydronium.h(ink.Text, { color = "green", bold = true }, " \226\158\156  "),
-      hydronium.h(ink.Text, {}, "Hydronium app up and running on "),
+      hydronium.h(ink.Text, {}, url and "Hydronium app up and running on " or "Hydronium app up and running"),
       -- "light blue" is not in the 8-color set this host speaks; cyan is
       -- the nearest, same choice examples/quickstart/dev.sh already made.
       --
@@ -209,9 +214,17 @@ local function header_lines(state)
       -- the decoration is what tells you it IS clickable, and a terminal with
       -- hyperlink support switched off renders the same underlined text with
       -- no escape bytes at all, so nothing looks broken either way.
-      hydronium.h(ink.Text, { color = "cyan", underline = true, href = state.url() }, state.url())
+      url and hydronium.h(ink.Text, { color = "cyan", underline = true, href = url }, url) or nil
     ),
   }
+  -- Listening on every interface (`--host`): the addresses other devices
+  -- use, like Vite's own "Network:" lines.
+  for _, network_url in ipairs(state.network_urls() or {}) do
+    children[#children + 1] = hydronium.h(ink.Box, { flexDirection = "row" },
+      hydronium.h(ink.Text, { dimColor = true }, "    Network: "),
+      hydronium.h(ink.Text, { color = "cyan", underline = true, href = network_url }, network_url)
+    )
+  end
 
   local routes, ready_ms = state.routes(), state.ready_ms()
   local meta = {}
