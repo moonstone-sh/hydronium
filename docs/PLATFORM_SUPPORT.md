@@ -71,7 +71,8 @@ Ctrl+C records; the test checks raw flags and restoration. A separate process
 contract checks argument boundaries and descendant cleanup after stopping the
 development supervisor. Browser-adapter tests run under Windows Node.js.
 
-These are native runtime checks, not claims based only on successful cross
-compilation. LuaLS bootstrap tests currently exhibit an independent full-suite
-order interaction with newer Moonstone/Ballad tooling; isolated tests pass and
-the same full-suite failure reproduces on unmodified main.
+The native job is a release gate, not evidence of support until it passes.
+The public LuaJIT 2.1.0 and 2.1.1783773675 descriptors currently contain no
+Windows artifacts. A Windows runtime publication is required before this gate
+can install Ink and certify the Windows consumer lifecycle. Cross compilation
+and mocked console tests alone do not establish native support.

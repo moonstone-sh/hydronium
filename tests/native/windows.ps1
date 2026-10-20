@@ -26,6 +26,7 @@ version = "0.1.0"
 kind = "script"
 [[registries]]
 name = "fixture"
+resolver = "moonstone"
 url = "$registryUri"
 priority = 100
 [interpreter]
