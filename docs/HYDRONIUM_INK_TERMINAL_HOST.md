@@ -546,15 +546,10 @@ Hooks, and how each was actually verified (not just reasoned about):
   the handler as one event, while ordinary keystrokes sent immediately
   before it still went through `useInput` individually, unaffected.
 
-**Explicitly not attempted anywhere in this module:** Windows (raw mode
-needs the Win32 console API, structurally different from termios --
-`render()` still mounts/paints once and skips the interactive loop on a
-non-tty or Windows, a real degradation, not a silent one), reactive
-`opts.isActive` on `useInput`/`useFocus`/`usePaste`/`useAnimation` (read
-once at setup, matching Hydronium's setup-once component model -- toggling
-needs an `if` inside the handler, or unmounting/remounting), and
-`useIsScreenReaderEnabled` (no real accessibility-tree signal exists to
-back it honestly).
+**Native Windows:** terminal, clock and source-discovery effects now have
+`@windows` backends. See [platform support](PLATFORM_SUPPORT.md) for the native
+console, package-installation and process-ownership gates. The renderer still
+uses the shared session/reconciler rather than a second Windows UI.
 
 ## How to run everything
 

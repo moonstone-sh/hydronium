@@ -38,8 +38,11 @@ local M = {}
 --- process's real stdin/stdout/stderr, unredirected, so `-t 0`/`-t 1`
 --- reflect the real file descriptors.
 function M.detect_tty()
-  local ok = os.execute("[ -t 0 ] && [ -t 1 ]")
-  return ok == true or ok == 0
+  local ok, tty = pcall(require, "hydronium_ink.tty_ffi")
+  if ok then return tty.isTTY(0) and tty.isTTY(1) end
+  if package.config:sub(1, 1) == "\\" then return false end
+  local status = os.execute("[ -t 0 ] && [ -t 1 ]")
+  return status == true or status == 0
 end
 
 return M

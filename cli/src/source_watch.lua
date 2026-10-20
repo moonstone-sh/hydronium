@@ -17,6 +17,7 @@
 local topology = require("hydronium.core.source_topology")
 
 local M = {}
+local host = require("dev_platform")
 
 M.CONFIG_PATH = "hydronium.sources.lua"
 M.INTERVAL_MS = 750
@@ -52,11 +53,14 @@ function M.snapshot(opts)
   local popen = opts.popen or io.popen
   local paths = {}
   for _, dir in ipairs(roots) do
-    local process = popen("find " .. shell_quote(dir)
-      .. " -type f \\( -name '*.lua' -o -name '*.luax' \\) 2>/dev/null", "r")
-    if process then
-      for path in process:lines() do paths[#paths + 1] = path end
-      process:close()
+    if host.source_paths and not opts.popen then
+      for _, path in ipairs(host.source_paths(dir)) do paths[#paths + 1] = path end
+    else
+      local process = popen(host.source_command(dir), "r")
+      if process then
+        for path in process:lines() do paths[#paths + 1] = path end
+        process:close()
+      end
     end
   end
   table.sort(paths)

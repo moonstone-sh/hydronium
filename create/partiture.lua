@@ -22,6 +22,8 @@ return ballad.partiture(function(p)
 			"src/create/luals.lua",
 			"src/create/pm.lua",
 			"src/create/process.lua",
+			"src/create/platform.lua",
+			"src/create/host*.lua",
 			"src/create/router_mode.lua",
 			"src/create/tailwind.lua",
 			"src/create/update_check.lua",

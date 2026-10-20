@@ -1,4 +1,5 @@
 local writer = {}
+local platform = require("create.platform")
 
 --- Lua's own `%q` format quotes for LUA SOURCE, not for a POSIX shell --
 --- it is not a safe way to interpolate a path into `os.execute`. This is
@@ -61,8 +62,8 @@ function writer.write_project(target_dir, files, opts)
     local dir = full_path:match("(.+)/[^/]+$")
     if dir and not results.directories[dir] then
       if not is_dry_run then
-        local ok = os.execute(string.format('mkdir -p %s', shell_quote(dir)))
-        if not ok then
+        local ok = os.execute(platform.mkdir_command(dir))
+        if ok ~= true and ok ~= 0 then
           return fail(string.format("Failed to create directory %s", dir))
         end
       end

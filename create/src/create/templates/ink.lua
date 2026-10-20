@@ -100,20 +100,13 @@ _G.__luax = require("hydronium_luax.runtime")
 -- Prefer Ballad's generated authority whenever it exists. Source-mode remains
 -- useful before a first build, but it is only a fallback; no directory name
 -- carries framework meaning in either path.
-local function quote_shell(value)
-  return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
-end
-
+local source_files = require("hydronium_ink.source_files")
 local function scan_paths(config)
   local paths = {}
   for _, source_root in ipairs(config.roots or {}) do
-    local command = "find " .. quote_shell(root .. "/" .. source_root.path)
-      .. " -type f \\( -name '*.lua' -o -name '*.luax' \\) -print"
-    local process = assert(io.popen(command, "r"))
-    for path in process:lines() do
+    for _, path in ipairs(source_files(root .. "/" .. source_root.path)) do
       paths[#paths + 1] = path:sub(#root + 2)
     end
-    assert(process:close(), "Hydronium Ink: source scan failed for " .. source_root.path)
   end
   table.sort(paths)
   return paths
@@ -340,7 +333,7 @@ Controls:
 
 Hydronium Ink requires LuaJIT 2.1 because its terminal layout engine uses FFI.
 Run the application in an interactive terminal on macOS or glibc Linux (arm64
-or x86-64); the current TTY backend does not support Windows.
+or x86-64), or x86-64 Windows 10/11 with virtual terminal output.
 ]], project_name)
 
   return files

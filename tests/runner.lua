@@ -4,6 +4,10 @@
 -- Moonstone materialization separately.
 package.path = "auth/src/?.lua;auth/src/?/init.lua;core/src/?.lua;core/src/?/init.lua;query/src/?.lua;query/src/?/init.lua;virtual/src/?.lua;virtual/src/?/init.lua;table/src/?.lua;table/src/?/init.lua;luax/src/?.lua;luax/src/?/init.lua;dom/src/?.lua;dom/src/?/init.lua;ink/src/?.lua;ink/src/?/init.lua;lab/src/?.lua;lab/src/?/init.lua;ink-lab/src/?.lua;ink-lab/src/?/init.lua;oklab-utils/src/?.lua;oklab-utils/src/?/init.lua;router/src/?.lua;router/src/?/init.lua;cli/src/?.lua;cli/src/?/init.lua;build/src/?.lua;build/src/?/init.lua;./?.lua;./?/init.lua;" .. package.path
 
+if package.config:sub(1, 1) == "\\" then
+  require("moonstone.variants").install()
+end
+local lua_assert = _G.assert
 local M = {}
 package.loaded["tests.runner"] = M
 
@@ -234,6 +238,7 @@ function assert_lib.has_error(fn, pattern, msg)
   end
 end
 
+setmetatable(assert_lib, { __call = function(_, ...) return lua_assert(...) end })
 M.assert = assert_lib
 
 -- Test structuring
@@ -450,6 +455,7 @@ local function main()
       "tests/host/assets_spec.lua",
       "tests/host/assets_provider_spec.lua",
       "tests/host/terminal_spec.lua",
+      "tests/host/windows_console_spec.lua",
       "tests/host/color_profile_spec.lua",
       "tests/host/terminal_background_spec.lua",
       "tests/host/keys_spec.lua",

@@ -19,3 +19,10 @@ the rest are cross-compiled and checked for successful compilation only.
 Verified on this machine: all 5 targets compile cleanly. The native
 `aarch64-macos` build exports the expected C symbols (checked with
 `nm -gU dist/aarch64-macos/libyogacore.dylib`).
+
+The registry package carries each prebuilt under `native/<target>/`. It uses
+Moonstone's copy-only materializer, and the FFI loader chooses the matching
+library from `MOONSTONE_PACKAGE_ROOT_HYDRONIUM_INK`. Foreign libraries are
+assets, not entries in the host's dynamic-loader path. Native Windows CI
+exports this package, installs it from a disposable file registry, loads Yoga,
+and exercises an allocated console; cross-compilation alone is not that proof.

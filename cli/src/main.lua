@@ -660,7 +660,7 @@ function M.dev(parsed)
     for i, word in ipairs(ballad_argv) do
       quoted[i] = dev_supervisor.shell_quote(word)
     end
-    ballad_cmd = table.concat(quoted, " ")
+    ballad_cmd = dev_supervisor.command(ballad_argv)
     ballad_ok = dev_supervisor.exec_ok(os.execute, ballad_cmd)
     if not ballad_ok then
       io.stderr:write("hydronium dev: `" .. ballad_cmd .. "` failed; not starting the dev servers\n")
@@ -914,8 +914,9 @@ local function run_vite_build(parsed)
   -- npx, not a bare `vite`: same reasoning as M.dual_dev_specs -- a project
   -- that declared vite as a local devDependency has no globally installed
   -- `vite` binary, and npx resolves node_modules/.bin relative to cwd.
-  local cmd = "cd " .. dev_supervisor.shell_quote(parsed.vite_dir or ".") .. " && npx "
-    .. table.concat(quoted, " ")
+  local command_argv = { "npx" }
+  for _, word in ipairs(vite_args) do command_argv[#command_argv + 1] = word end
+  local cmd = dev_supervisor.command(command_argv, parsed.vite_dir or ".")
   io.stdout:write("hydronium build: running `" .. table.concat(vite_args, " ") .. "` in "
     .. (parsed.vite_dir or ".") .. "\n")
   return dev_supervisor.exec_ok(os.execute, cmd)

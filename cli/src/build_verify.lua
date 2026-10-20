@@ -110,6 +110,9 @@ local function run_isolated(chunk_path, harness_path)
   -- the variable outright, so this does not quietly depend on that rule.
   local cmd = "env -u LUA_PATH -u LUA_CPATH luajit " .. quote(harness_path) .. " " .. quote(chunk_path)
     .. " 2>&1"
+  if require("dev_platform").windows then
+    cmd = require("ballad.process").build_command({ tool = "luajit", args = { harness_path, chunk_path }, env = { LUA_PATH = "", LUA_CPATH = "" } }) .. " 2>&1"
+  end
   local proc = io.popen(cmd, "r")
   if not proc then
     return false, "could not spawn isolated verification process"

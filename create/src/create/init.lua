@@ -1,4 +1,5 @@
 local writer = require("create.writer")
+local platform = require("create.platform")
 local luals = require("create.luals")
 local process = require("create.process")
 local jsonc = require("alter_jsonc")
@@ -100,7 +101,7 @@ end
 --- directory is legitimately fine to scaffold into either way, but for
 --- the right reason, not an accident of `ls`'s error behavior).
 local function directory_exists(dir)
-  local test_handle = io.popen(string.format("[ -d %s ] && echo yes || echo no", shell_quote(dir)))
+  local test_handle = io.popen(platform.directory_exists_command(dir))
   if not test_handle then return false end
   local out = test_handle:read("*l")
   test_handle:close()
@@ -111,7 +112,7 @@ local function is_directory_empty(dir)
   if not directory_exists(dir) then
     return true
   end
-  local handle = io.popen(string.format("ls -A %s 2>/dev/null", shell_quote(dir)))
+  local handle = io.popen(platform.list_command(dir))
   if not handle then return true end
   local output = handle:read("*a")
   handle:close()
@@ -178,7 +179,7 @@ function create.add_love(opts)
     local results, err = (opts.write_project or writer.write_project)(target_dir, files, { dry_run = true, no_overwrite = true })
     if not results then return nil, err end
     return {
-      project_name = opts.name or (target_dir:match("([^/]+)/?$") or "existing-love-project"),
+      project_name = opts.name or (target_dir:gsub("[\\/]$", ""):match("([^/\\]+)$") or "existing-love-project"),
       target_dir = target_dir, template = "love-addon", created = results.created,
       next_script = "love-dev", package_script = "love-package", dry_run = true,
       additive = true, commands = planned_commands,
@@ -197,7 +198,7 @@ function create.add_love(opts)
   local manifest_path = (target_dir .. "/moonstone.toml"):gsub("/+", "/")
   local original_manifest = read_file(manifest_path)
   local initialized = original_manifest == nil
-  local project_name = opts.name or (target_dir:match("([^/]+)/?$") or "existing-love-project")
+  local project_name = opts.name or (target_dir:gsub("[\\/]$", ""):match("([^/\\]+)$") or "existing-love-project")
 
   local function invoke(args)
     local result = run({ tool = moon, args = args, cwd = target_dir })
@@ -330,13 +331,13 @@ function create.scaffold(opts, ctx)
   local project_name = opts.name
   if not project_name or project_name == "" then
     if target_dir == "." or target_dir == "./" then
-      local handle = io.popen("basename \"$(pwd)\"")
+      local handle = io.popen(platform.cwd_command())
       if handle then
-        project_name = handle:read("*l")
+        project_name = (handle:read("*l") or ""):gsub("[\\/]$", ""):match("([^/\\]+)$")
         handle:close()
       end
     else
-      project_name = target_dir:match("([^/]+)/?$") or "my-hydronium-app"
+      project_name = target_dir:gsub("[\\/]$", ""):match("([^/\\]+)$") or "my-hydronium-app"
     end
   end
   project_name = project_name or "my-hydronium-app"

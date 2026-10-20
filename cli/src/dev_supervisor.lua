@@ -43,6 +43,7 @@
   the trailing fragment is held in `pending` until its newline arrives.
 --]]
 
+local host = require("dev_platform")
 local M = {}
 
 --- Where meteorite writes its dev-event stream, relative to the project
@@ -65,7 +66,7 @@ M.MAX_PENDING_BYTES = 1024 * 1024
 --- @param s string
 --- @return string
 function M.shell_quote(s)
-  return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
+  return host.quote(s)
 end
 
 --- `os.execute` reports success differently on 5.1 (a raw status number)
@@ -89,6 +90,7 @@ end
 --- @param exec? function
 function M.ensure_dir(dir, exec)
   exec = exec or os.execute
+  if host.windows then return host.mkdir(dir, exec) end
   M.exec_ok(exec, "mkdir -p " .. M.shell_quote(dir))
 end
 
@@ -220,7 +222,7 @@ function M.child_lua_path(lua_path)
   if lua_path == nil then return nil end
   local kept = {}
   for entry in (lua_path .. ";"):gmatch("([^;]*);") do
-    if not entry:find("/libexec/hydronium-cli/", 1, true) then kept[#kept + 1] = entry end
+    if not entry:gsub("\\", "/"):find("/libexec/hydronium-cli/", 1, true) then kept[#kept + 1] = entry end
   end
   return table.concat(kept, ";")
 end
@@ -235,6 +237,7 @@ function M.spawn_detached(argv, opts)
     error("dev_supervisor.spawn_detached: argv must be a non-empty array", 2)
   end
 
+  if host.windows then return host.spawn(argv, opts, M.child_lua_path(opts.lua_path or os.getenv("LUA_PATH"))) end
   local quoted = {}
   for i, word in ipairs(argv) do
     quoted[i] = M.shell_quote(word)
@@ -291,6 +294,7 @@ function M.is_alive(pid, exec)
   if not pid then
     return false
   end
+  if host.windows then return host.is_alive(pid, exec) end
   return M.exec_ok(exec or os.execute, "kill -0 " .. tostring(pid) .. " >/dev/null 2>&1")
 end
 
@@ -301,6 +305,7 @@ function M.signal_pid(pid, signal, exec)
   if not pid then
     return false
   end
+  if host.windows then return host.signal(pid, signal, exec) end
   return M.exec_ok(
     exec or os.execute,
     "kill -" .. (signal or "TERM") .. " " .. tostring(pid) .. " >/dev/null 2>&1"
@@ -393,9 +398,15 @@ function Supervisor:stop(grace_polls)
     if not M.is_alive(self.pid, self.exec) then
       return
     end
-    M.exec_ok(self.exec, "sleep 0.1")
+    if host.windows then host.sleep(100) else M.exec_ok(self.exec, "sleep 0.1") end
   end
   M.signal_pid(self.pid, "KILL", self.exec)
 end
 
+function M.command(argv, cwd)
+  if host.windows then return host.command(argv, cwd) end
+  local quoted = {}; for i, word in ipairs(argv) do quoted[i] = M.shell_quote(word) end
+  local command = table.concat(quoted, " ")
+  return cwd and ("cd " .. M.shell_quote(cwd) .. " && " .. command) or command
+end
 return M

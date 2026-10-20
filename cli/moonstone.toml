@@ -14,7 +14,7 @@ abi = "5.1"
 
 [scripts]
 package = "moon exec -- ballad play partiture.lua"
-dev = "luajit ./src/main.lua \"$@\""
+dev = "luajit ./src/main.lua"
 
 [[dependencies]]
 name = "hydronium/core"
@@ -85,4 +85,9 @@ role = "runtime"
 name = "hydronium/ballad"
 constraint = "path:../build"
 registry = "path"
+role = "runtime"
+
+[[dependencies]]
+name = "moonstone/clingy"
+constraint = "^0.8.1"
 role = "runtime"

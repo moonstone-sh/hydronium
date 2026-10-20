@@ -104,7 +104,7 @@ end)
 
 -- Every Hydronium package directory that ships Lua.
 local SOURCE_ROOTS = {
-  "auth/src", "build/src", "cli/src", "core/src", "dom/src", "i18n/src", "ink/src", "ink-lab/src",
+  "auth/src", "build/src", "create/src", "cli/src", "core/src", "dom/src", "i18n/src", "ink/src", "ink-lab/src",
   "lab/src", "lab-cli/src", "luax/src", "meteorite/src", "oklab-utils/src", "query/src",
   "router/src", "table/src", "virtual/src",
 }
@@ -134,13 +134,18 @@ describe("flavor variant policy", function()
   -- environment, where Moonstone keeps only the HOST interpreter's variant.
   -- A `@luajit` file there would reach a Lua 5.4 engine, so `@lua54` is the
   -- only tag Hydronium may ship, always beside an untagged fallback.
-  it("ships only @lua54 variants, each with an untagged fallback", function()
+  it("keeps browser variants portable and native OS variants at explicit boundaries", function()
     local problems = {}
     for _, path in ipairs(tagged_files()) do
       local base, tags = flavor_files.split_file(path)
       if base then
-        if not flavor_files.matches_browser(tags) then
-          problems[#problems + 1] = path .. ": only @lua54 variants are allowed"
+        local native_windows = (#tags == 1 and tags[1] == "windows") and (
+          path == "cli/src/dev_host@windows.lua" or path == "create/src/create/host@windows.lua"
+          or path == "ink/src/hydronium_ink/clock@windows.lua"
+          or path == "ink/src/hydronium_ink/tty_ffi@windows.lua"
+          or path == "ink/src/hydronium_ink/source_files@windows.lua")
+        if not flavor_files.matches_browser(tags) and not native_windows then
+          problems[#problems + 1] = path .. ": unsupported variant outside a native platform boundary"
         elseif not exists(base) then
           problems[#problems + 1] = path .. ": missing untagged fallback " .. base
         end

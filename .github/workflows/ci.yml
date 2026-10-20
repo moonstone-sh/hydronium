@@ -211,6 +211,39 @@ jobs:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
         run: bash tests/e2e/meteorite_vite_browser.sh
 
+  windows:
+    name: Native Windows framework and Ink
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_ref || github.ref }}
+      - uses: actions/checkout@v4
+        with:
+          repository: moonstone-sh/moonstone
+          # Portable scripts, Windows process ownership and copy-only recipes.
+          ref: 9713a5f4c5f079913c0ad7f8d2478582b1305aa6
+          path: .ci/moonstone
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Build the pinned Moonstone CLI
+        working-directory: .ci/moonstone
+        shell: pwsh
+        run: |
+          zig build
+          if ($LASTEXITCODE -ne 0) { throw 'Moonstone build failed' }
+          "$env:GITHUB_WORKSPACE/.ci/moonstone/zig-out/bin" >> $env:GITHUB_PATH
+      - name: Native Windows consumer, renderer, HMR and console contracts
+        shell: pwsh
+        run: ./tests/native/windows.ps1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: OS-neutral browser adapter contracts on Windows
+        run: node --test tests/client/forms.test.mjs tests/client/router_history.test.mjs tests/client/ink_lab.test.mjs
+
   # The JS/CSS adapter (hydronium/js -- @hydronium-js/dom-client, @hydronium-js/vite)
   # shares no toolchain with `validate` above: no zig, no moonstone, no ballad.
   # Kept as its own job so it runs in parallel and a failure names the right
