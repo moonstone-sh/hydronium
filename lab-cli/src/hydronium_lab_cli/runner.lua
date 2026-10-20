@@ -31,10 +31,11 @@ local function shell_quote(value) return "'" .. tostring(value):gsub("'", "'\\''
 --- it again obscures that boundary and can duplicate manifest entries on older
 --- Moonstone versions. The stable commands below are safe to run repeatedly.
 function M.init_commands()
+  local quote = package.config:sub(1, 1) == "\\" and require("clingy.platform").quote or shell_quote
   return {
     "moon add --dev --no-sync hydronium/lab hydronium/ink-lab hydronium/meteorite",
     "moon add --tool --no-sync moonstone/meteorite",
-    "moon manifest script set lab --command 'moon exec --dev -- hydronium-lab dev'",
+    "moon manifest script set lab --command " .. quote("moon exec --dev -- hydronium-lab dev"),
     "moon sync",
   }
 end
@@ -91,7 +92,7 @@ local function command_with_environment(command, environment)
     local parts = {}
     for _, key in ipairs(keys) do
       local value = tostring(environment[key])
-      if value:find('[\r\n"]') then error("Lab host adapter returned an unsafe Windows environment value", 3) end
+      require("clingy.platform").quote(value) -- reject cmd expansion at the shell boundary
       parts[#parts + 1] = 'set "' .. key .. "=" .. value .. '"'
     end
     parts[#parts + 1] = command
