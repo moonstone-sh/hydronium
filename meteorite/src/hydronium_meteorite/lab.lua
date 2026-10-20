@@ -52,16 +52,21 @@ local function install_luax_searcher()
   if package._hydronium_luax_searcher then return end
   local searchers = package.searchers or package.loaders
   if not searchers then return end
+  -- Resolve dependencies before registering: requiring them inside a searcher
+  -- re-enters this searcher when another consumer clears package.loaded.
+  local source_registry = require("hydronium_dom.dev.source_registry")
+  local dialects = require("hydronium_luax.dialects")
+  local loader = require("hydronium_luax.loader")
   -- Preserve Lua compatibility shims; compile LuaX only after Lua lookup fails.
   table.insert(searchers, 3, function(module_name)
     -- Namespaced ids declared in the project's source topology
     -- (hydronium.sources.lua / Ballad inventory) resolve like the app's dev host.
-    local topology = require("hydronium_dom.dev.source_registry").try_load_project()
+    local topology = source_registry.try_load_project()
     local record = topology and topology:module(module_name)
     if record then
-      if require("hydronium_luax.dialects").compiles(record.path) then
+      if dialects.compiles(record.path) then
         return function()
-          return require("hydronium_luax.loader").load(record.path, { module_id = module_name })
+          return loader.load(record.path, { module_id = module_name })
         end
       end
       local chunk, err = loadfile(record.path)
@@ -72,13 +77,13 @@ local function install_luax_searcher()
     for template in package.path:gmatch("[^;]+") do
       local lua_path = template:gsub("%?", mapped)
       if lua_path:match("%.lua$") then
-        for _, extension in ipairs(require("hydronium_luax.dialects").EXTENSIONS) do
+        for _, extension in ipairs(dialects.EXTENSIONS) do
           local candidate = lua_path:gsub("%.lua$", extension)
           local file = io.open(candidate, "rb")
           if file then
             file:close()
             return function()
-              return require("hydronium_luax.loader").load(candidate, { module_id = module_name })
+              return loader.load(candidate, { module_id = module_name })
             end
           end
         end

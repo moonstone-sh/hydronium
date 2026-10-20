@@ -10,9 +10,10 @@ moon init . --name terminal-demo --interpreter luajit@2.1
 moon add hydronium/ink
 ```
 
-The package resolves `hydronium/core` and projects the matching native
-Yoga library into the Moonstone environment. Supported targets are arm64 and
-x86-64 macOS, plus glibc Linux. Windows is not supported.
+The package resolves `hydronium/core` and loads its target's bundled Yoga
+library from the explicit Moonstone package root. Native targets are arm64 and
+x86-64 macOS/glibc Linux, and x86-64 Windows 10/11 with virtual terminal output.
+Installation copies the prebuilt files; it does not require a POSIX shell.
 
 ## A counter
 
@@ -224,11 +225,12 @@ is required.
 
 ## Current scope
 
-Ink is a LuaJIT terminal host. Interactive raw-mode input is supported on
-macOS and glibc Linux. Windows needs a separately verified Win32 console
-backend before it can be advertised as interactive; it is not currently a
-supported target. These are explicit host boundaries, not silent fallback
-behavior.
+Ink is a LuaJIT terminal host. Windows uses `@windows` clock, console, and
+source-discovery modules selected by Moonstone. Its native console backend
+supports UTF-8 input, navigation keys, Ctrl+C, resizing, ANSI output and mode
+restoration. Redirected input or output uses the noninteractive renderer.
+Windows ARM64 and Unix-style terminal emulators exposing only pipes are not
+certified interactive hosts. See [platform support](https://github.com/moonstone-sh/hydronium/blob/main/docs/PLATFORM_SUPPORT.md) for the CI contract.
 
 ## Browser story inspection
 

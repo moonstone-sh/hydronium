@@ -93,12 +93,14 @@ jobs:
             fi
             (cd "$orbit" && moon sync --update)
           done
-      - name: Prepare locked Ballad integration checkout
+      - name: Prepare version-pinned Ballad integration checkout
         run: |
           ballad_version="$(moon lock package get moonstone/ballad --json | jq -er '.package.version')"
           git -C .ci/ballad checkout --detach "v$ballad_version"
           ln -s "$GITHUB_WORKSPACE/.ci/ballad" "$GITHUB_WORKSPACE/../ballad"
-          (cd .ci/ballad && moon sync --locked)
+          # The release tag may not contain this runner's target profile.
+          # Generate it through Moonstone, then verify locked replay.
+          (cd .ci/ballad && moon sync && moon sync --locked)
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2

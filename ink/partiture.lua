@@ -11,12 +11,8 @@ return ballad.partiture(function(p)
             "native/dist/aarch64-macos/**",
             "native/dist/x86_64-linux-gnu/**",
             "native/dist/x86_64-macos/**",
-            "native/select-yoga.sh",
+            "native/dist/x86_64-windows-gnu/*.dll",
         },
-        materialize = convention.command({
-            command = "sh",
-            args = { "native/select-yoga.sh" },
-        }),
         collect = {
             lua_modules = {
                 convention.tree("src", {
@@ -24,9 +20,11 @@ return ballad.partiture(function(p)
                     strip_prefix = "hydronium_ink/",
                 }),
             },
-            native_lib = {
-                convention.file("libyogacore.dylib", "native/selected/libyogacore.dylib"),
-                convention.file("libyogacore.so", "native/selected/libyogacore.so"),
+            -- Copy-only materialization works without sh/cp/uname. Keep
+            -- foreign libraries out of the host loader search path; Ink picks
+            -- its own target's library from the explicit package root.
+            assets = {
+                convention.tree("native/dist", { prefix = "native", include = { "**/*.dll", "**/*.so", "**/*.dylib" } }),
             },
         },
     })

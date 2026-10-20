@@ -1,0 +1,27 @@
+local ffi = require("ffi")
+assert(ffi.os == "Windows", "native Windows required")
+package.path = "create/src/?.lua;create/src/?/init.lua;cli/src/?.lua;cli/src/?/init.lua;" .. package.path
+require("moonstone.variants").install()
+local fs = require("ballad.fs")
+local path = require("ballad.path")
+local root = os.tmpname() .. " hydronium workspace"
+os.remove(root)
+fs.mkdir(root)
+local ok, err = xpcall(function()
+  local target = root .. "/my app"
+  local result, problem = require("create.init").scaffold({ template = "ink", directory = target, name = "windows-ink" })
+  assert(result, problem)
+  assert(fs.is_file(target .. "/moonstone.toml") and fs.is_file(target .. "/run.lua"))
+  local again = require("create.init").scaffold({ template = "ink", directory = target, name = "do-not-overwrite" })
+  assert(again == nil, "scaffolder overwrote an existing project without confirmation")
+  local host = require("dev_platform")
+  assert(host.windows, "Windows flavor was not selected")
+  local files = host.source_paths(target)
+  assert(#files > 0, "native source discovery returned no files")
+  for _, name in ipairs(files) do assert(not name:find("\\", 1, true), "source paths were not normalized") end
+  local yoga = require("hydronium_ink.yoga_ffi")
+  assert(type(yoga) == "table", "Yoga DLL did not load")
+end, debug.traceback)
+fs.remove_tree(root)
+assert(ok, err)
+print("PASS: Windows scaffolding, nonempty directory protection, source discovery and Yoga DLL")

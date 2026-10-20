@@ -9,6 +9,9 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { runDualDevServer } from "../src/supervisor.mjs";
 
 function longRunningScript(name) {
@@ -61,8 +64,11 @@ test("stop() kills every child, and exited resolves once both have exited", asyn
   for (const r of results) {
     // Killed by a signal (SIGTERM), not a clean exit(0) -- these scripts
     // never exit on their own.
-    assert.equal(r.code, null);
-    assert.ok(r.signal === "SIGTERM" || r.signal === "SIGKILL", `unexpected signal ${r.signal}`);
+    if (process.platform === "win32") assert.notEqual(r.code, 0);
+    else {
+      assert.equal(r.code, null);
+      assert.ok(r.signal === "SIGTERM" || r.signal === "SIGKILL", `unexpected signal ${r.signal}`);
+    }
   }
 });
 
@@ -85,7 +91,8 @@ test("one process exiting brings the other down too (no half-alive dev session)"
   assert.equal(shortLived.code, 0);
   assert.equal(shortLived.signal, null);
   // The survivor was killed by the supervisor, not left running.
-  assert.ok(longLived.signal === "SIGTERM" || longLived.signal === "SIGKILL");
+  if (process.platform === "win32") assert.notEqual(longLived.code, 0);
+  else assert.ok(longLived.signal === "SIGTERM" || longLived.signal === "SIGKILL");
 
   assert.ok(
     supervisorLog.some(([name, line]) => name === "supervisor" && line.includes("short-lived exited")),
@@ -99,4 +106,48 @@ test("rejects an empty process list rather than silently doing nothing", () => {
 
 test("rejects a process spec missing name or command", () => {
   assert.throws(() => runDualDevServer([{ name: "x" }]), /string `name` and `command`/);
+});
+
+test("a missing command resolves failure and stops its sibling", { timeout: 10000 }, async () => {
+  const supervisor = runDualDevServer([
+    { name: "missing", command: "hydronium-no-such-executable-4af31" },
+    { name: "sibling", command: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"] },
+  ], { onLog() {}, forwardProcessSignals: false });
+  const results = await supervisor.exited;
+  assert.equal(results.find((item) => item.name === "missing").code, 1);
+  assert.equal(results.length, 2);
+});
+
+test("rejects shell separators embedded as newlines before spawning", () => {
+  assert.throws(() => runDualDevServer([{ name: "bad", command: "npm", args: ["safe\nunsafe"] }]), /newlines/);
+});
+
+test("Windows command shims preserve spaces, quotes and metacharacters", { skip: process.platform !== "win32", timeout: 10000 }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hydronium shim "));
+  try {
+    writeFileSync(join(dir, "capture.cjs"), 'console.log(JSON.stringify(process.argv.slice(2)))');
+    writeFileSync(join(dir, "capture.cmd"), `@echo off\r\n@"${process.execPath}" "%~dp0capture.cjs" %*\r\n`);
+    const lines = [];
+    const args = ["two words", "x&y", 'quote"x', "(value)"];
+    const supervisor = runDualDevServer([{ name: "shim", command: join(dir, "capture"), args }], { onLog: (_, line) => lines.push(line), forwardProcessSignals: false });
+    const result = await supervisor.exited;
+    assert.equal(result[0].code, 0);
+    assert.deepEqual(JSON.parse(lines.find((line) => line.startsWith("["))), args);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("Windows stop reaps a grandchild as well as its launcher", { skip: process.platform !== "win32", timeout: 10000 }, async () => {
+  let grandchild;
+  const script = `const {spawn}=require('node:child_process');const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});console.log(child.pid);setInterval(()=>{},1000);`;
+  const supervisor = runDualDevServer([{ name: "parent", command: process.execPath, args: ["-e", script] }], {
+    onLog: (name, line) => { if (name === "parent") grandchild = Number(line); }, forwardProcessSignals: false,
+  });
+  try {
+    const deadline = Date.now() + 5000;
+    while (!grandchild && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.ok(grandchild);
+    supervisor.stop();
+    await supervisor.exited;
+    assert.throws(() => process.kill(grandchild, 0), { code: "ESRCH" });
+  } finally { supervisor.stop(); }
 });

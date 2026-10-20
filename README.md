@@ -305,6 +305,11 @@ command exports the registry artifacts for all packaged orbits. GitHub Actions
 runs the same resolution, tests, and export path on every push and pull
 request.
 
+## Platform support
+
+See [the native platform contract](docs/PLATFORM_SUPPORT.md) for Windows flavors,
+Ink console support, development-process ownership, and native CI coverage.
+
 ## Status
 
 This checkout documents the development API. Named router slots, host

@@ -155,6 +155,7 @@ local function local_dev_target()
   elseif os_name == "Linux" then
     return (arch == "arm64" and "aarch64-linux-gnu" or "x86_64-linux-gnu"), "libyogacore.so"
   elseif os_name == "Windows" then
+    assert(arch == "x64", "Hydronium Ink currently supports x86-64 Windows; no Yoga library is published for " .. tostring(arch))
     return "x86_64-windows-gnu", "yogacore.dll"
   end
   error("hydronium_ink.yoga_ffi: no local-dev prebuilt target for ffi.os=" .. tostring(os_name))
@@ -169,9 +170,13 @@ local function load_yogacore()
   local package_root = os.getenv("MOONSTONE_PACKAGE_ROOT_HYDRONIUM_INK")
   local packaged_error
   if package_root and package_root ~= "" then
-    local packaged = package_root .. "/" .. filename
+    local packaged = package_root .. "/native/" .. triple .. "/" .. filename
     local package_ok, package_lib = pcall(ffi.load, packaged)
     if package_ok then return package_lib end
+    -- A path dependency points at the source package, whose prebuilts remain
+    -- in native/dist rather than the materialized native/<target> tree.
+    local source_ok, source_lib = pcall(ffi.load, package_root .. "/native/dist/" .. triple .. "/" .. filename)
+    if source_ok then return source_lib end
     packaged_error = " or the packaged library at " .. packaged .. " (" .. tostring(package_lib) .. ")"
   end
 

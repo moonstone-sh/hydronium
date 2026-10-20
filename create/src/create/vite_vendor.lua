@@ -628,7 +628,10 @@ export declare function runDualDevServer(processes: ProcessSpec[], options?: {
 // two plain `node` one-liners instead of needing a real Meteorite/Vite
 // project on disk, and nothing about the merge/signal-forwarding logic
 // below is actually specific to either tool.
-import { spawn } from "node:child_process";
+import { spawn as nativeSpawn, spawnSync } from "node:child_process";
+// POSIX's dependency-free source tests can run before workspace installation.
+// Windows needs PATHEXT and command-shim argument serialization.
+const spawn = process.platform === "win32" ? (await import("cross-spawn")).default : nativeSpawn;
 /**
  * @typedef {object} ProcessSpec
  * @property {string} name Short label used to prefix merged log lines.
@@ -662,14 +665,28 @@ export function runDualDevServer(processes, options = {}) {
         throw new Error("runDualDevServer: `processes` must be a non-empty array of process specs");
     }
     const { onLog = defaultOnLog, signals = ["SIGINT", "SIGTERM"], forwardProcessSignals = true } = options;
-    const entries = processes.map((spec) => {
-        if (!spec || typeof spec.name !== "string" || typeof spec.command !== "string") {
+    // Validate the whole request before starting the first child.
+    for (const spec of processes) {
+        if (!spec || typeof spec.name !== "string" || typeof spec.command !== "string" || spec.command.length === 0) {
             throw new Error("runDualDevServer: every process spec needs a string `name` and `command`");
         }
+        if (spec.cwd !== undefined && (typeof spec.cwd !== "string" || /[\0\r\n]/.test(spec.cwd))) {
+            throw new Error("runDualDevServer: cwd must be a path without NUL or newlines");
+        }
+        if (!Array.isArray(spec.args ?? []) || !(spec.args ?? []).every((word) => typeof word === "string")) {
+            throw new Error("runDualDevServer: arguments must be strings");
+        }
+        if ([spec.command, ...(spec.args ?? [])].some((word) => /[\0\r\n]/.test(word))) {
+            throw new Error("runDualDevServer: commands and arguments cannot contain NUL or newlines");
+        }
+    }
+    const entries = processes.map((spec) => {
         const child = spawn(spec.command, spec.args ?? [], {
             cwd: spec.cwd,
             env: spec.env ? { ...process.env, ...spec.env } : process.env,
             stdio: ["ignore", "pipe", "pipe"],
+            detached: process.platform !== "win32",
+            windowsHide: true,
         });
         attachLineForwarding(child.stdout, spec.name, onLog);
         attachLineForwarding(child.stderr, spec.name, onLog);
@@ -683,7 +700,20 @@ export function runDualDevServer(processes, options = {}) {
         stopping = true;
         for (const { child } of entries) {
             if (child.exitCode === null && child.signalCode === null) {
-                child.kill(signal);
+                if (child.pid && process.platform === "win32") {
+                    // npm/pnpm/cmd launchers have descendants. Killing only the shim
+                    // leaves the actual dev server holding its port and output pipes.
+                    spawnSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+                }
+                else if (child.pid) {
+                    try {
+                        process.kill(-child.pid, signal);
+                    }
+                    catch (error) {
+                        if (error.code !== "ESRCH")
+                            child.kill(signal);
+                    }
+                }
             }
         }
     }
@@ -706,6 +736,11 @@ export function runDualDevServer(processes, options = {}) {
     }
     const exited = Promise.all(entries.map(({ name, child }) => new Promise((resolve) => {
         child.on("exit", (code, signal) => resolve({ name, code, signal }));
+        child.on("error", (error) => {
+            onLog("supervisor", `${name} failed to start: ${error.message}`);
+            stop();
+            resolve({ name, code: 1, signal: null });
+        });
     })));
     return {
         children: entries.map((e) => e.child),
@@ -757,6 +792,9 @@ function attachLineForwarding(stream, name, onLog) {
   },
   "peerDependencies": {
     "vite": "^8.0.0"
+  },
+  "dependencies": {
+    "cross-spawn": "7.0.6"
   }
 }
 ]],

@@ -13,7 +13,7 @@ abi = "5.1"
 
 [scripts]
 test = "lua ./tests/create_spec.lua"
-dev = "lua ./src/main.lua \"$@\""
+dev = "lua ./src/main.lua"
 package = "moon exec -- ballad play partiture.lua"
 
 [[dependencies]]
@@ -33,7 +33,7 @@ role = "runtime"
 
 [[dependencies]]
 name = "moonstone/clingy"
-constraint = "^0.7.0"
+constraint = "^0.8.1"
 role = "runtime"
 
 # Core and Ink runtime dependencies for the interactive CLI wizard (src/create/ui/*),

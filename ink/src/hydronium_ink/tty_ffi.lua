@@ -1,55 +1,13 @@
---[[
-  hydronium_ink.tty_ffi -- raw POSIX terminal control via LuaJIT FFI:
-  entering/restoring raw mode, polling the real terminal size, and
-  non-blocking stdin reads. This is genuinely new infrastructure in this
-  workspace -- no existing raw-mode/termios/ioctl implementation was
-  found anywhere else here (checked: clingy's presentation/composer*.lua
-  uses "raw_mode" only as an output-verbosity-string name, not real TTY
-  control).
-
-  PLATFORM SCOPE, stated plainly: POSIX only (macOS + Linux via termios).
-  Windows needs a structurally different mechanism (Win32 console API,
-  no termios there at all) -- not implemented, not silently pretended to
-  work; `enableRawMode()` raises a clear error on `ffi.os == "Windows"`.
-
-  VERIFICATION HONESTY: the macOS `struct termios` layout below was
-  checked against this machine's real SDK header
-  (`$(xcrun --show-sdk-path)/usr/include/sys/termios.h`) and its exact
-  flag/ioctl constants (TIOCGWINSZ, ICANON, etc.) were confirmed by
-  compiling and running a tiny real C program against that same SDK --
-  see this file's own git history / the session that added it for the
-  literal commands. It is real and tested on this host.
-
-  The Linux layout was checked against real glibc headers (via this
-  repo's own vendored Zig toolchain's bundled cross-compilation headers,
-  `zig/lib/zig/libc/include/generic-glibc/bits/termios*.h` -- the actual
-  upstream glibc struct/constant definitions, not guessed from memory)
-  but **could not be run-tested on this machine** (this host is macOS).
-  This is a real, lower assurance level than the macOS path or than the
-  Yoga native build's cross-compiled targets (those are at least
-  compile-checked by `zig build`; there is no equivalent compile-check
-  for an FFI cdef, which LuaJIT only parses at runtime on whatever host
-  actually loads it). Treat the Linux path as best-effort until it's
-  actually run on Linux.
-
-  Uses `cfmakeraw()` (a real libc function on both platforms, POSIX/BSD
-  lineage, present in glibc too) to compute the correct raw-mode flag
-  bits, rather than hand-replicating ICANON/ECHO/ISIG/etc. bit math here
-  -- only the struct LAYOUT needs to be platform-correct for
-  tcgetattr/cfmakeraw/tcsetattr to work; the flag values themselves are
-  never read or written by this file directly.
---]]
+-- POSIX terminal backend (macOS and glibc Linux). Moonstone projects
+-- tty_ffi@windows.lua for native Windows; these termios layouts and ioctl
+-- constants are never used there. The public operations are shared by both
+-- drivers: raw mode, restoration, size, polling, bounded reads and writes.
 
 local ffi = require("ffi")
 local bit = require("bit")
 
 if ffi.os == "Windows" then
-  error(
-    "hydronium_ink.tty_ffi: POSIX-only in this version (termios has no"
-      .. " Windows equivalent -- Win32 console API would be a separate,"
-      .. " unimplemented code path). See this file's own doc comment.",
-    0
-  )
+  error("Hydronium Ink requires its @windows flavor; run through a Moonstone environment or install moonstone.variants for source development", 0)
 end
 
 if ffi.os == "OSX" then
@@ -88,6 +46,7 @@ struct termios {
 end
 
 ffi.cdef([[
+int isatty(int fd);
 int tcgetattr(int fd, struct termios *termios_p);
 int tcsetattr(int fd, int optional_actions, const struct termios *termios_p);
 void cfmakeraw(struct termios *termios_p);
@@ -134,6 +93,8 @@ local F_SETFL = 4
 local O_NONBLOCK = ffi.os == "OSX" and 0x00000004 or 0x00000800 -- Linux's O_NONBLOCK differs from BSD's
 
 local M = {}
+
+function M.isTTY(fd) return C.isatty(fd) == 1 end
 
 --- @class hydronium_ink.SavedTermios
 --- @field private raw ffi.cdata* The real `struct termios *` saved before entering raw mode.

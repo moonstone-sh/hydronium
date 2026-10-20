@@ -1,6 +1,7 @@
 -- JS package-manager detection and generated command adaptation.
 
 local M = {}
+local platform = require("create.platform")
 
 -- Preference order when more than one is available and the caller hasn't
 -- said which to use (e.g. `--tailwind` with no `--package-manager` on a
@@ -11,7 +12,7 @@ local M = {}
 M.candidates = { "pnpm", "bun", "npm" }
 
 local function has_command(name)
-  local ok = os.execute(string.format("command -v %s >/dev/null 2>&1", name))
+  local ok = os.execute(platform.find_command(name))
   return ok == true or ok == 0
 end
 

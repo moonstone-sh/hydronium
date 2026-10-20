@@ -12,7 +12,7 @@ version = "2.1.0"
 abi = "5.1"
 
 [scripts]
-dev = "lua ./main.lua \"$@\""
+dev = "lua ./main.lua"
 package = "moon exec -- ballad play partiture.lua"
 
 [[dependencies]]

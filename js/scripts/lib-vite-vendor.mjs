@@ -54,6 +54,7 @@ export function generateViteVendorLua(viteDist, vitePkgJsonPath) {
     types: fullPkg.types,
     exports: fullPkg.exports,
     peerDependencies: fullPkg.peerDependencies,
+    ...(fullPkg.dependencies ? { dependencies: fullPkg.dependencies } : {}),
   };
   const vendoredPkgJson = JSON.stringify(vendoredPkg, null, 2) + "\n";
 

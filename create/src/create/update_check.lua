@@ -21,6 +21,7 @@
 ]=]
 
 local M = {}
+local host = require("create.platform")
 
 M.PACKAGE = "hydronium/create"
 M.DEFAULT_REGISTRY = "https://registry.moonstone.sh/registry/v0"
@@ -82,9 +83,9 @@ end
 --- @return string
 function M.cache_path(getenv)
   getenv = getenv or default_getenv
-  local base = getenv("XDG_CACHE_HOME")
+  local base = getenv("XDG_CACHE_HOME") or getenv("LOCALAPPDATA")
   if base == nil or base == "" then
-    local home = getenv("HOME")
+    local home = getenv("HOME") or getenv("USERPROFILE")
     if home == nil or home == "" then return nil end
     base = home .. "/.cache"
   end
@@ -104,6 +105,7 @@ end
 
 --- Seconds since the cache file was last written, or nil when missing.
 local function cache_age(path)
+  if host.windows then return host.cache_age(path) end
   local handle = io.popen("stat -f %m " .. shell_quote(path) .. " 2>/dev/null || stat -c %Y " .. shell_quote(path) .. " 2>/dev/null")
   if not handle then return nil end
   local mtime = tonumber((handle:read("*a") or ""):match("%d+"))
@@ -117,6 +119,7 @@ end
 --- `marker` is given, the download's exit status is written there once it
 --- finishes, so a caller can poll with a plain io.open instead of a fork.
 function M.refresh_in_background(path, registry, execute, marker)
+  if host.windows then return host.refresh(path, registry, M.TIMEOUT_SECONDS, marker, execute) end
   execute = execute or os.execute
   local dir = path:match("^(.*)/[^/]+$")
   local tmp = path .. ".tmp"

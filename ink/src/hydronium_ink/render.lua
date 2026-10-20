@@ -1,15 +1,13 @@
 -- Native blocking TTY adapter over hydronium_ink.session. The session owns
--- application semantics; this module owns POSIX terminal effects and waiting.
-local ffi = require("ffi")
+-- application semantics; this module owns native terminal effects and waiting.
 local sessionModule = require("hydronium_ink.session")
 
--- Wall-clock + in-process sleep. Loaded defensively: hydronium_ink.clock is
--- POSIX-only and raises on Windows, and the non-interactive render path below
--- is the one context that previously had no FFI dependency at all.
+-- Native elapsed time and in-process sleep. Windows uses its performance
+-- counter; POSIX uses the clock backend beside this renderer.
 local clockOk, clockModule = pcall(require, "hydronium_ink.clock")
 local sleepMs = clockOk and clockModule.sleepMs or nil
 
-ffi.cdef([[int isatty(int fd);]])
+local nativeTTY = require("hydronium_ink.tty_ffi")
 
 local M = {}
 local POLL_INTERVAL_MS = 33
@@ -127,7 +125,7 @@ end
 --- should use `hydronium_ink.session` directly instead of entering this loop.
 function M.render(element, opts)
   opts = opts or {}
-  local interactive = ffi.C.isatty(0) == 1
+  local interactive = nativeTTY.isTTY(0) and nativeTTY.isTTY(1)
   local tty = interactive and require("hydronium_ink.tty_ffi") or nil
   local writeFn = opts.writeFn
   if not writeFn then

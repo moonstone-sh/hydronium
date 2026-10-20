@@ -18,6 +18,8 @@ return ballad.partiture(function(p)
 			"src/build_verify.lua",
 			"src/dev_log.lua",
 			"src/dev_supervisor.lua",
+			"src/dev_platform.lua",
+			"src/dev_host*.lua",
 			"src/event_model.lua",
 			"src/inspector.lua",
 			"src/main.lua",

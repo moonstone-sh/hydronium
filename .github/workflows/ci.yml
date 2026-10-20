@@ -90,12 +90,14 @@ jobs:
             fi
             (cd "$orbit" && moon sync --update)
           done
-      - name: Prepare locked Ballad integration checkout
+      - name: Prepare version-pinned Ballad integration checkout
         run: |
           ballad_version="$(moon lock package get moonstone/ballad --json | jq -er '.package.version')"
           git -C .ci/ballad checkout --detach "v$ballad_version"
           ln -s "$GITHUB_WORKSPACE/.ci/ballad" "$GITHUB_WORKSPACE/../ballad"
-          (cd .ci/ballad && moon sync --locked)
+          # The release tag may not contain this runner's target profile.
+          # Generate it through Moonstone, then verify locked replay.
+          (cd .ci/ballad && moon sync && moon sync --locked)
       - name: Server module incremental build integration
         run: bash tests/build/test_incremental_pipeline.sh
       - name: Run Hydronium tests
@@ -210,6 +212,44 @@ jobs:
         env:
           MOON_BIN: ${{ github.workspace }}/.ci/moonstone/zig-out/bin/moon
         run: bash tests/e2e/meteorite_vite_browser.sh
+
+  windows:
+    name: Native Windows framework and Ink
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_ref || github.ref }}
+      - uses: actions/checkout@v4
+        with:
+          repository: moonstone-sh/moonstone
+          # Portable scripts, Windows process ownership and copy-only recipes.
+          ref: 9713a5f4c5f079913c0ad7f8d2478582b1305aa6
+          path: .ci/moonstone
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Build the pinned Moonstone CLI
+        working-directory: .ci/moonstone
+        shell: pwsh
+        run: |
+          zig build
+          if ($LASTEXITCODE -ne 0) { throw 'Moonstone build failed' }
+          "$env:GITHUB_WORKSPACE/.ci/moonstone/zig-out/bin" >> $env:GITHUB_PATH
+      - name: Native Windows consumer, renderer, HMR and console contracts
+        shell: pwsh
+        run: ./tests/native/windows.ps1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - name: Install the Windows supervisor dependency
+        run: pnpm --dir js install --frozen-lockfile --ignore-scripts --filter @hydronium-js/vite...
+      - name: Browser adapter and process supervisor contracts on Windows
+        run: node --test tests/client/forms.test.mjs tests/client/router_history.test.mjs tests/client/ink_lab.test.mjs js/packages/vite/tests/supervisor.test.mjs
 
   # The JS/CSS adapter (hydronium/js -- @hydronium-js/dom-client, @hydronium-js/vite)
   # shares no toolchain with `validate` above: no zig, no moonstone, no ballad.

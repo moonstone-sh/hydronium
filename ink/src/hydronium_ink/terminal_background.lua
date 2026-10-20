@@ -38,11 +38,10 @@
   source is available.
 --]]
 
-local ffi = require("ffi")
 local oklab = require("hydronium_oklab_utils")
 local ink_color = require("hydronium_ink.color")
 
-ffi.cdef([[int isatty(int fd);]])
+local nativeTTY = require("hydronium_ink.tty_ffi")
 
 local M = {}
 
@@ -100,15 +99,14 @@ M.from_colorfgbg = from_colorfgbg
 --- @return hydronium_oklab_utils.Color|nil color, string|nil leftover Bytes read that were not the OSC 11 reply -- forward these into the session once one exists.
 function M.detect(opts)
   opts = opts or {}
-  local isatty = opts.isatty or function(fd) return ffi.C.isatty(fd) == 1 end
+  local isatty = opts.isatty or nativeTTY.isTTY
 
   if not (isatty(0) and isatty(1)) then
     return from_colorfgbg(), nil
   end
 
   -- Real primitives are required from here on (either genuinely provided,
-  -- or this really is an interactive TTY and tty_ffi's own POSIX-only
-  -- requirement is already satisfied by render.lua having gotten this far).
+  -- or this really is an interactive TTY and native console contract is already satisfied by render.lua).
   -- NOT `(opts.writeFn and ...) and nil or require(...)` -- that idiom
   -- breaks the moment the "then" branch is nil, which is exactly this case.
   local tty
